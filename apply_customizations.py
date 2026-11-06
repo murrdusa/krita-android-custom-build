@@ -384,6 +384,48 @@ bool KisTouchShortcut::matchDragType(QTouchEvent *event)
         });
 #endif
 ''')
+    # KDE's older Exiv2 finder expects "(0)" while current headers use "(0U)".
+    # The generated EXV_PACKAGE_VERSION string is stable across both formats.
+    p = 'cmake/modules/FindLibExiv2.cmake'
+    replace(p, '''include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(LibExiv2''', '''# Exiv2 0.28.x may generate "(0U)" version macros, which the older
+# three separate numeric regexes above do not recognize (result: "..").
+# Recover the actual installed version from its generated header or .pc file.
+if(NOT LibExiv2_VERSION OR LibExiv2_VERSION STREQUAL "..")
+    foreach(_exiv2_header "exv_conf.h" "version.hpp")
+        set(_exiv2_header_path "\${LibExiv2_INCLUDE_DIRS}/exiv2/\${_exiv2_header}")
+        if(EXISTS "\${_exiv2_header_path}")
+            file(STRINGS "\${_exiv2_header_path}" _exiv2_package_version
+                 REGEX "^#[ \t]*define[ \t]+EXV_PACKAGE_VERSION[ \t]+")
+            if(_exiv2_package_version)
+                string(REGEX MATCH "[0-9]+[.][0-9]+[.][0-9]+"
+                       _exiv2_detected_version "\${_exiv2_package_version}")
+                if(_exiv2_detected_version)
+                    set(LibExiv2_VERSION "\${_exiv2_detected_version}")
+                    break()
+                endif()
+            endif()
+        endif()
+    endforeach()
+endif()
+if(NOT LibExiv2_VERSION OR LibExiv2_VERSION STREQUAL "..")
+    set(_exiv2_pc "\${LibExiv2_INCLUDE_DIRS}/../lib/pkgconfig/exiv2.pc")
+    if(EXISTS "\${_exiv2_pc}")
+        file(STRINGS "\${_exiv2_pc}" _exiv2_pc_version REGEX "^Version:[ \t]*")
+        string(REGEX MATCH "[0-9]+[.][0-9]+[.][0-9]+"
+               _exiv2_detected_version "\${_exiv2_pc_version}")
+        if(_exiv2_detected_version)
+            set(LibExiv2_VERSION "\${_exiv2_detected_version}")
+        endif()
+    endif()
+endif()
+if(LibExiv2_VERSION AND NOT LibExiv2_VERSION STREQUAL "..")
+    message(STATUS "Detected installed Exiv2 version: \${LibExiv2_VERSION}")
+endif()
+
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(LibExiv2''')
+
     for name, contents in changed.items():
         (root / name).write_text(contents, encoding='utf-8')
         print('Patched:', name)
