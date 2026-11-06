@@ -51,7 +51,7 @@ jobs:
           git clone --depth 1 --branch v6.0.4 https://github.com/KDE/krita.git "$ROOT/persistent/krita"
           python3 apply_customizations.py "$ROOT/persistent/krita"
           python3 apply_tablet_update.py "$ROOT/persistent/krita"
-          python3 -c 'import hashlib, pathlib, re; p=pathlib.Path("$ROOT/persistent/krita"); xml=(p/"krita/krita5.xmlgui").read_text(); cmake=(p/"krita/CMakeLists.txt").read_text(); actual=hashlib.md5(re.sub(r"[ \\t\\r\\n]+", "", xml).encode()).hexdigest(); expected=re.search(r"set\\(krita5_xmlgui_hash_expected \"([a-f0-9]+)\"\\)", cmake).group(1); assert actual==expected, f"XMLGUI checksum mismatch: {actual} != {expected}"; print(f"XMLGUI checksum validated: {actual}")'
+          python3 -c 'import hashlib, pathlib; p=pathlib.Path.home()/"krita-custom-android-build/persistent/krita"; xml=(p/"krita/krita5.xmlgui").read_text(); cmake=(p/"krita/CMakeLists.txt").read_text(); actual=hashlib.md5("".join(xml.split()).encode()).hexdigest(); expected=next(s.split(chr(34))[1] for s in cmake.splitlines() if "set(krita5_xmlgui_hash_expected" in s); assert actual==expected, f"XMLGUI checksum mismatch: {actual} != {expected}"; print(f"XMLGUI checksum validated: {actual}")'
           git -C "$ROOT/persistent/krita" diff --check
           git -C "$ROOT/persistent/krita" diff --stat
           cp build-in-krita-container.sh "$ROOT/persistent/krita/build-in-krita-container.sh"
