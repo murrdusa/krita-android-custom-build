@@ -19,17 +19,12 @@ def main(root: Path):
     if s.count(old)!=1 or 'tablet_compact_skin.h' in s:
         raise RuntimeError("v7: mainwindow include anchor mismatch")
     s=s.replace(old,new)
-    old='''    QTimer::singleShot(0, this, [tabletCompact]() {
-        tabletCompact->setChecked(QSettings().value(QStringLiteral("TabletUi/compact"), true).toBool());
-    });'''
-    new='''    // A separate presentation layer: built-in Krita dockers/actions
-    // are restored when Compact UI is disabled.
+    old='''    QTimer::singleShot(0, this, [this, tabletCompact]() {'''
+    new='''    // Separate presentation layer; Krita's normal dockers/actions are restored.
     auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);
     connect(tabletCompact, &QAction::toggled, compactSkin,
             [compactSkin](bool enabled) { compactSkin->setCompactActive(enabled); });
-    QTimer::singleShot(0, this, [tabletCompact]() {
-        tabletCompact->setChecked(QSettings().value(QStringLiteral("TabletUi/compact"), true).toBool());
-    });'''
+    QTimer::singleShot(0, this, [this, tabletCompact]() {'''
     if s.count(old)!=1:
         raise RuntimeError("v7: Compact UI initialization anchor mismatch")
     s=s.replace(old,new)
