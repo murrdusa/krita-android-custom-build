@@ -30,6 +30,7 @@ if [[ ! -d "$SOURCE/.git" ]]; then
     [[ ! -e "$SOURCE" ]] || die "Existing non-Git Krita source: $SOURCE"
     say "First run: download Krita source v6.0.4"
     git clone --depth 1 --branch v6.0.4 https://github.com/KDE/krita.git "$SOURCE"
+    touch "$SOURCE/.krita_android_custom_patch_applied"
 else
     if [[ ! -f "$SOURCE/.krita_android_custom_patch_applied" ]] && [[ -n "$(git -C "$SOURCE" status --porcelain --untracked-files=no)" ]]; then
         die "Refusing to overwrite unrecognized source changes"
