@@ -74,7 +74,8 @@ def main(root):
            """            menuBar()->setVisible(menuBar()->property("tabletWasVisible").toBool());
             for (QMdiSubWindow *subwin : d->mdiArea->subWindowList()) {
                 if (subwin->property("tabletFrameSaved").toBool()) {
-                    subwin->setWindowFlags(Qt::WindowFlags(subwin->property("tabletPrevFlags").toInt()));
+                    subwin->setWindowFlags(Qt::WindowFlags(
+                        static_cast<Qt::WindowType>(subwin->property("tabletPrevFlags").toInt())));
                     subwin->setProperty("tabletFrameSaved", false);
                 }
             }
@@ -221,7 +222,7 @@ def main(root):
     # local transformation and the final local transformation.
     p = "libs/ui/input/kis_input_manager.cpp"
     sub(p, "#include <KoShapeMoveCommand.h>\n",
-           "#include <KoShapeMoveCommand.h>\n#include <KoShapeTransformCommand.h>\n")
+           "#include <KoShapeMoveCommand.h>\n#include <KoShapeTransformCommand.h>\n#include <QTransform>\n#include <QLineF>\n")
     sub(p, """    QPointF startingShapePosition;
 };
 QHash<KisInputManager*, TabletReferenceDrag> tabletReferenceDrags;""",
