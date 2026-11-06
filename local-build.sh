@@ -62,9 +62,14 @@ if [[ ! -d "$SOURCE/krita-deps-management/ci-utilities/.git" ]]; then
     git clone --depth 1 https://invent.kde.org/packaging/krita-ci-utilities.git "$SOURCE/krita-deps-management/ci-utilities"
 fi
 cd "$ROOT"
-if [[ ! -d "$ROOT/persistent/deps/_install" ]]; then
+# Bootstrap fetches many dependency packages. A successful container setup
+# from an earlier version of this script also proves bootstrap already ran.
+# Use a success marker instead of guessing the install directory layout.
+DEPS_READY="$ROOT/persistent/.android-arm64-deps-bootstrap-complete"
+if [[ ! -f "$DEPS_READY" && ! -s "$ROOT/.container_name" ]]; then
     say "First run: download Android Qt dependencies"
     ./bin/bootstrap-krita-deps.sh --android=arm64-v8a
+    touch "$DEPS_READY"
 else
     say "Reusing downloaded Android Qt dependencies"
 fi
