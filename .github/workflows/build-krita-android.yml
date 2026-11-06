@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile apply_customizations.py apply_tablet_update.py apply_tablet_refinements.py apply_tablet_polish.py
+          python3 -m py_compile apply_customizations.py apply_tablet_update.py apply_tablet_refinements.py apply_tablet_polish.py apply_tablet_cleanup.py
           bash -n build-in-krita-container.sh local-build.sh
 
       - name: Reclaim disk space
@@ -53,6 +53,7 @@ jobs:
           python3 apply_tablet_update.py "$ROOT/persistent/krita"
           python3 apply_tablet_refinements.py "$ROOT/persistent/krita"
           python3 apply_tablet_polish.py "$ROOT/persistent/krita"
+          python3 apply_tablet_cleanup.py "$ROOT/persistent/krita"
           python3 -c 'import hashlib, pathlib; p=pathlib.Path.home()/"krita-custom-android-build/persistent/krita"; xml=(p/"krita/krita5.xmlgui").read_text(); cmake=(p/"krita/CMakeLists.txt").read_text(); actual=hashlib.md5("".join(xml.split()).encode()).hexdigest(); expected=next(s.split(chr(34))[1] for s in cmake.splitlines() if "set(krita5_xmlgui_hash_expected" in s); assert actual==expected, f"XMLGUI checksum mismatch: {actual} != {expected}"; print(f"XMLGUI checksum validated: {actual}")'
           git -C "$ROOT/persistent/krita" diff --check
           git -C "$ROOT/persistent/krita" diff --stat
