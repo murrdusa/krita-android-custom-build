@@ -786,6 +786,27 @@ QHash<KisInputManager*, TabletReferenceDrag> tabletReferenceDrags;
     connect(tabletCompact, &QAction::toggled, this,
             [updateTabletTransformBar](bool) { updateTabletTransformBar(); });
 ''')
+    # Grow / Shrink / Feather are selection-specific operations from Krita's
+    # own modify-selection extension. Show them only when that extension's
+    # actions are registered rather than adding global, unrelated buttons.
+    p = "libs/ui/kis_selection_actions_panel.cpp"
+    sub(p, """    d->m_handleWidget = new KisSelectionActionsPanelHandle(BUTTON_SIZE, d->orientation, viewManager->canvas());""",
+           """#ifdef Q_OS_ANDROID
+    for (const auto &spec : {
+         std::pair<const char*, const char*>("growselection", "select-grow"),
+         std::pair<const char*, const char*>("shrinkselection", "select-shrink"),
+         std::pair<const char*, const char*>("featherselection", "select-feather")}) {
+        KisAction *action = viewManager->actionManager()->actionByName(QLatin1String(spec.first));
+        if (!action) continue;
+        auto *button = new KisSelectionActionsPanelButton(
+            QLatin1String(spec.second), action->text(), BUTTON_SIZE, viewManager->canvas());
+        connect(button, &QAbstractButton::clicked, action, &QAction::trigger);
+        connect(button, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(showContextMenu(QPoint)));
+        d->m_buttons.append(button);
+    }
+    d->m_buttonCount = d->m_buttons.size() + 1;
+#endif
+    d->m_handleWidget = new KisSelectionActionsPanelHandle(BUTTON_SIZE, d->orientation, viewManager->canvas());""")
     # Finish by updating Krita's mandatory XMLGUI version and stripped MD5.
     p = "krita/CMakeLists.txt"
     sub(p, "set(KRITA5_XMLGUI_VERSION 545)", "set(KRITA5_XMLGUI_VERSION 546)")
