@@ -70,6 +70,8 @@ public:
         m_surface = mdi->viewport();
         m_surface->installEventFilter(this);
         m_mdi->installEventFilter(this);
+        // Outside touches close only the temporary wheel; pinned wheel stays.
+        qApp->installEventFilter(this);
 
         m_brushStrip = new QFrame(m_surface);
         m_brushStrip->setObjectName(QStringLiteral("tabletBrushStrip"));
@@ -276,14 +278,35 @@ public:
         m_colorSizeStep = QSettings().value(
             QStringLiteral("TabletUi/colorWheelSize"),1).toInt();
         m_colorSizeStep=qBound(0,m_colorSizeStep,2);
-        // Each editing session starts with the canvas unobstructed.
-        m_colorExpanded=false;
+        m_colorPinned=QSettings().value(QStringLiteral("TabletUi/colorPinned"),false).toBool();
+        // Only explicit pinning keeps the selector open after restart.
+        m_colorExpanded=m_colorPinned;
     }
 
     bool eventFilter(QObject *watched,QEvent *event) override {
         if ((watched==m_surface || watched==m_mdi) &&
              (event->type()==QEvent::Resize || event->type()==QEvent::Show)) {
             QTimer::singleShot(0,this,[this](){positionOverlays();});
+        }
+        if (watched==m_colorDocker && event->type()==QEvent::Resize &&
+            m_colorPinButton) {
+            m_colorPinButton->move(7,30);
+            m_colorPinButton->raise();
+        }
+        if (m_compact && m_colorExpanded && !m_colorPinned &&
+            (event->type()==QEvent::MouseButtonPress ||
+             event->type()==QEvent::TouchBegin)) {
+            QWidget *target=qobject_cast<QWidget*>(watched);
+            // Keep interacting with the wheel, its pin or size controls.
+            const bool wheelTouch=m_colorDocker && target &&
+                (target==m_colorDocker || m_colorDocker->isAncestorOf(target));
+            const bool controlTouch=target &&
+                (target==m_colorButton || target==m_colorSizeButton);
+            if(target && !wheelTouch && !controlTouch) {
+                m_colorExpanded=false;
+                updateColorDock();
+                refreshColorControls();
+            }
         }
         return QObject::eventFilter(watched,event);
     }
@@ -308,8 +331,8 @@ public:
                                      m_previousWindowState);
             }
             m_startupCompact=false;
-            // Do not re-open the floating wheel automatically on each launch.
-            m_colorExpanded=false;
+            // Restore pinned wheel only, not a transient open wheel.
+            m_colorExpanded=m_colorPinned;
             hideCompactToolbarClutter();
             for(QDockWidget *dock:{m_layerDocker.data(),m_brushDocker.data(),
                                    m_toolOptionsDocker.data()}) {
@@ -322,7 +345,27 @@ public:
                 m_colorDocker->setFloating(true);
                 const int wheelWidth=QList<int>{225,265,330}.at(m_colorSizeStep);
                 m_colorDocker->resize(QSize(wheelWidth,wheelWidth+70));
-                m_colorExpanded=false;
+                if(!m_colorPinButton) {
+                    m_colorPinButton=new QToolButton(m_colorDocker);
+                    m_colorPinButton->setFixedSize(42,34);
+                    m_colorPinButton->setStyleSheet(
+                        "QToolButton{background:#242428;color:white;"
+                        "border:1px solid #aaa;border-radius:6px;font-size:18px;}");
+                    m_colorPinButton->setToolTip(i18n("Pin or unpin color wheel"));
+                    m_colorDocker->installEventFilter(this);
+                    connect(m_colorPinButton,&QToolButton::clicked,this,[this]() {
+                        m_colorPinned=!m_colorPinned;
+                        QSettings().setValue(QStringLiteral("TabletUi/colorPinned"),
+                                             m_colorPinned);
+                        // Unpinning returns immediately to the collapsed button.
+                        m_colorExpanded=m_colorPinned;
+                        updateColorDock();
+                        refreshColorControls();
+                    });
+                }
+                m_colorPinButton->move(7,30);
+                m_colorPinButton->setText(m_colorPinned ? QStringLiteral("🔒") :
+                                                         QStringLiteral("🔓"));
             }
             m_topBar->show();
             m_layerRefreshTimer->start();
@@ -802,8 +845,23 @@ private:
     void toggleColor() {
         m_colorExpanded=!m_colorExpanded;
         QSettings().setValue(QStringLiteral("TabletUi/colorExpanded"),m_colorExpanded);
-        m_recent->setVisible(m_compact && !m_colorExpanded && m_vm->activeNode());
         updateColorDock();
+        refreshColorControls();
+    }
+    void refreshColorControls() {
+        const bool show=m_compact && m_vm->activeNode() && m_surface->isVisible();
+        m_colorButton->setVisible(show && !m_colorPinned);
+        m_colorSizeButton->setVisible(show && !m_colorPinned);
+        m_recent->setVisible(show && !m_colorPinned && !m_colorExpanded);
+        if(m_colorPinButton) {
+            m_colorPinButton->setText(m_colorPinned ? QStringLiteral("🔒") :
+                                                     QStringLiteral("🔓"));
+            m_colorPinButton->setToolTip(m_colorPinned ?
+                i18n("Unpin and collapse color wheel") :
+                i18n("Pin color wheel to bottom-right corner"));
+            m_colorPinButton->setVisible(show && m_colorExpanded);
+            if(show && m_colorExpanded)m_colorPinButton->raise();
+        }
     }
     void updateColorDock() {
         if(!m_colorDocker)return;
@@ -813,10 +871,16 @@ private:
         }
         m_colorDocker->show();
         m_colorDocker->raise();
+        const int bottomGap=m_colorPinned ? 8 : 95;
         const QPoint global=m_surface->mapToGlobal(
-            QPoint(qMax(0,m_surface->width()-m_colorDocker->width()-10),
-                   qMax(0,m_surface->height()-m_colorDocker->height()-95)));
+            QPoint(qMax(0,m_surface->width()-m_colorDocker->width()-8),
+                   qMax(0,m_surface->height()-m_colorDocker->height()-bottomGap)));
         m_colorDocker->move(global);
+        if(m_colorPinButton) {
+            m_colorPinButton->move(7,30);
+            m_colorPinButton->show();
+            m_colorPinButton->raise();
+        }
     }
     void positionOverlays() {
         if(!m_compact)return;
@@ -839,15 +903,16 @@ private:
         const bool show=m_compact && m_vm->activeNode() && m_surface->isVisible();
         m_layerRail->setVisible(show);
         m_brushStrip->setVisible(show);
-        m_colorButton->setVisible(show);
-        m_colorSizeButton->setVisible(show);
-        m_recent->setVisible(show && !m_colorExpanded);
+        m_colorButton->setVisible(show && !m_colorPinned);
+        m_colorSizeButton->setVisible(show && !m_colorPinned);
+        m_recent->setVisible(show && !m_colorPinned && !m_colorExpanded);
         if(show) {
             refreshColors();
             paintSlotIcons();
             positionOverlays();
         }
         updateColorDock();
+        refreshColorControls();
     }
 
     QPointer<KisMainWindow> m_main;
@@ -868,7 +933,9 @@ private:
     bool m_startupCompact=false;
     bool m_recoverLegacyNormalLayout=false;
     bool m_compact=false;
-    bool m_colorExpanded=true;
+    bool m_colorExpanded=false;
+    bool m_colorPinned=false;
+    QToolButton *m_colorPinButton=nullptr;
     bool m_internalPresetChange=false;
     bool m_slotReady=false;
     int m_slot=0;
