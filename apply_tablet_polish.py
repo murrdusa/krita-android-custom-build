@@ -205,6 +205,112 @@ def main(root):
 #endif
         const QList<KisShortcutConfiguration*> shortcuts = profile->allShortcuts();""")
 
+    # Reference-image two-finger manipulation. The first finger establishes
+    # ownership of the reference. The second finger moves/scales/rotates just
+    # that KoShape (not the canvas). A single undo command stores the original
+    # local transformation and the final local transformation.
+    p = "libs/ui/input/kis_input_manager.cpp"
+    sub(p, "#include <KoShapeMoveCommand.h>\n",
+           "#include <KoShapeMoveCommand.h>\n#include <KoShapeTransformCommand.h>\n")
+    sub(p, """    QPointF startingShapePosition;
+};
+QHash<KisInputManager*, TabletReferenceDrag> tabletReferenceDrags;""",
+           """    QPointF startingShapePosition;
+    QTransform initialTransform;
+    QTransform twoFingerBase;
+    QPointF startCenter;
+    qreal startDistance = 1.0;
+    qreal startAngle = 0.0;
+    bool inTwoFinger = false;
+};
+QHash<KisInputManager*, TabletReferenceDrag> tabletReferenceDrags;""")
+    sub(p, """&& referenceTouch->touchPoints().size() == 1 && KisPart::exists())""",
+           """&& !referenceTouch->touchPoints().isEmpty() && KisPart::exists())""")
+    sub(p, """                        drag.startingShapePosition = shape->absolutePosition();
+                        tabletReferenceDrags.insert(this, drag);""",
+           """                        drag.startingShapePosition = shape->absolutePosition();
+                        drag.initialTransform = shape->transformation();
+                        tabletReferenceDrags.insert(this, drag);""")
+    sub(p, """            if (drag.canvas && drag.shape && !touchEvent->touchPoints().isEmpty()) {
+                QPointF now = drag.canvas->coordinatesConverter()->widgetToDocument(
+                    touchEvent->touchPoints().first().pos());
+                drag.shape->update();
+                drag.shape->setAbsolutePosition(
+                    drag.startingShapePosition + now - drag.startingDocPoint);
+                drag.shape->update();
+            }""",
+           """            if (drag.canvas && drag.shape && !touchEvent->touchPoints().isEmpty()) {
+                auto toDoc = [&drag](const QPointF &point) {
+                    return drag.canvas->coordinatesConverter()->widgetToDocument(point);
+                };
+                const auto &points = touchEvent->touchPoints();
+                if (points.size() >= 2 &&
+                    QSettings().value(QStringLiteral("TabletUi/referenceTwoFinger"), true).toBool()) {
+                    const QPointF first = toDoc(points.at(0).pos());
+                    const QPointF second = toDoc(points.at(1).pos());
+                    const QPointF mid = 0.5 * (first + second);
+                    const QLineF line(first, second);
+                    if (!drag.inTwoFinger) {
+                        drag.inTwoFinger = true;
+                        drag.twoFingerBase = drag.shape->transformation();
+                        drag.startCenter = mid;
+                        drag.startDistance = qMax(qreal(1.0), line.length());
+                        drag.startAngle = line.angle();
+                    } else {
+                        const qreal factor = qBound(qreal(0.15),
+                             line.length() / drag.startDistance, qreal(6.0));
+                        const qreal angle = drag.startAngle - line.angle();
+                        QTransform gesture;
+                        gesture.translate(mid.x(), mid.y());
+                        gesture.rotate(angle);
+                        gesture.scale(factor, factor);
+                        gesture.translate(-drag.startCenter.x(), -drag.startCenter.y());
+                        drag.shape->update();
+                        drag.shape->setTransformation(drag.twoFingerBase);
+                        drag.shape->applyAbsoluteTransformation(gesture);
+                        drag.shape->update();
+                    }
+                } else {
+                    const QPointF now = toDoc(points.first().pos());
+                    if (drag.inTwoFinger) {
+                        drag.inTwoFinger = false;
+                        drag.startingShapePosition = drag.shape->absolutePosition();
+                        drag.startingDocPoint = now;
+                    }
+                    drag.shape->update();
+                    drag.shape->setAbsolutePosition(
+                        drag.startingShapePosition + now - drag.startingDocPoint);
+                    drag.shape->update();
+                }
+            }""")
+    sub(p, """                QPointF finalPosition = drag.shape->absolutePosition();
+                if (QLineF(drag.startingShapePosition, finalPosition).length() > 0.01) {
+                    QList<KoShape*> shapes = {drag.shape};
+                    QList<QPointF> initial = {drag.startingShapePosition};
+                    QList<QPointF> final = {finalPosition};
+                    drag.canvas->addCommand(new KoShapeMoveCommand(shapes, initial, final));
+                }""",
+           """                const QTransform finalTransform = drag.shape->transformation();
+                if (drag.initialTransform != finalTransform) {
+                    drag.canvas->addCommand(new KoShapeTransformCommand(
+                        {drag.shape}, {drag.initialTransform}, {finalTransform}));
+                }""")
+    sub(p, """                drag.shape->setAbsolutePosition(drag.startingShapePosition);
+                drag.shape->update();""",
+           """                drag.shape->setTransformation(drag.initialTransform);
+                drag.shape->update();""")
+    p = "libs/ui/KisMainWindow.cpp"
+    sub(p, """        form->addRow(referenceFingerDrag);
+        layout->addLayout(form);""",
+           """        form->addRow(referenceFingerDrag);
+        QCheckBox *referenceTwoFinger = new QCheckBox(i18n("Two-finger resize and rotate reference images"), &dialog);
+        referenceTwoFinger->setChecked(stored.value(QStringLiteral("TabletUi/referenceTwoFinger"), true).toBool());
+        form->addRow(referenceTwoFinger);
+        layout->addLayout(form);""")
+    sub(p, """            stored.setValue(QStringLiteral("TabletUi/referenceFingerDrag"), referenceFingerDrag->isChecked());""",
+           """            stored.setValue(QStringLiteral("TabletUi/referenceFingerDrag"), referenceFingerDrag->isChecked());
+            stored.setValue(QStringLiteral("TabletUi/referenceTwoFinger"), referenceTwoFinger->isChecked());""")
+
     # The XML GUI configuration is identical to v3, but moving to v4 bumps
     # Krita's XMLGUI version so the corrected toolbar is reloaded on upgrades.
     p = "krita/CMakeLists.txt"
