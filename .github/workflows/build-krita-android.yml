@@ -1,6 +1,8 @@
 name: Krita Android custom build (experimental)
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       mode:
@@ -27,7 +29,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile apply_customizations.py
+          python3 -m py_compile apply_customizations.py apply_tablet_update.py
           bash -n build-in-krita-container.sh
 
       - name: Reclaim disk space
@@ -48,13 +50,14 @@ jobs:
           mkdir -p "$ROOT/persistent"
           git clone --depth 1 --branch v6.0.4 https://github.com/KDE/krita.git "$ROOT/persistent/krita"
           python3 apply_customizations.py "$ROOT/persistent/krita"
+          python3 apply_tablet_update.py "$ROOT/persistent/krita"
           git -C "$ROOT/persistent/krita" diff --check
           git -C "$ROOT/persistent/krita" diff --stat
           cp build-in-krita-container.sh "$ROOT/persistent/krita/build-in-krita-container.sh"
           touch "$ROOT/persistent/krita/.krita_android_custom_patch_applied"
 
       - name: Validation result (NOT an APK build)
-        if: inputs.mode == 'validate'
+        if: github.event_name == 'push' || inputs.mode == 'validate'
         run: echo "Patch applied and diff checked. Android compilation has NOT been tested."
 
       - name: Download KDE Android build support
