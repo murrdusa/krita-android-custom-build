@@ -44,6 +44,7 @@
 #include <QVariant>
 #include <QWidget>
 #include <QCryptographicHash>
+#include <algorithm>
 
 #include "KisMainWindow.h"
 #include "KisViewManager.h"
@@ -321,6 +322,8 @@ public:
         m_colorPinned=QSettings().value(QStringLiteral("TabletUi/colorPinned"),false).toBool();
         // Only explicit pinning keeps the selector open after restart.
         m_colorExpanded=m_colorPinned;
+        QTimer::singleShot(0,this,[this](){organizeDefaultToolbars();});
+        QTimer::singleShot(450,this,[this](){organizeDefaultToolbars();});
     }
 
     bool eventFilter(QObject *watched,QEvent *event) override {
@@ -482,6 +485,11 @@ private:
             QString::fromLatin1(QCryptographicHash::hash(
                 name.toUtf8(),QCryptographicHash::Md5).toHex());
     }
+    QString presetPinKey(const QString &name) const {
+        return QStringLiteral("TabletUi/presetPinned/") +
+            QString::fromLatin1(QCryptographicHash::hash(
+                name.toUtf8(),QCryptographicHash::Md5).toHex());
+    }
     bool presetInGroup(const KisPaintOpPresetSP &preset,int slot) const {
         if (!preset) return false;
         const QVariant manual=QSettings().value(groupKey(preset->name()));
@@ -507,6 +515,37 @@ private:
             if(name.contains(QStringLiteral("ColorSelector"),Qt::CaseInsensitive) ||
                dock->windowTitle().contains(i18n("Advanced Color Selector"),Qt::CaseInsensitive))
                 m_colorDocker=dock;
+        }
+    }
+    void organizeDefaultToolbars() {
+        QToolBar *mainBar=nullptr;
+        const auto bars=m_main->findChildren<QToolBar*>();
+        for(QToolBar *bar : bars)
+            if(bar->objectName()==QStringLiteral("mainToolBar"))mainBar=bar;
+        if(!mainBar)return;
+        QAction *compact=m_main->actionCollection()->action(
+            QStringLiteral("tablet_compact_ui"));
+        QAction *reset=m_main->actionCollection()->action(
+            QStringLiteral("tablet_reset_view"));
+        QAction *settings=m_main->actionCollection()->action(
+            QStringLiteral("tablet_settings"));
+        for(QToolBar *bar : bars) {
+            if(bar==m_topBar)continue;
+            if(reset)bar->removeAction(reset);
+            if(settings)bar->removeAction(settings);
+            if(compact && bar!=mainBar)bar->removeAction(compact);
+        }
+        if(compact) {
+            mainBar->removeAction(compact);
+            mainBar->insertAction(mainBar->actions().isEmpty() ?
+                nullptr : mainBar->actions().first(),compact);
+        }
+        // Keep Compact UI's toolbar at the left of all the other top bars.
+        for(QToolBar *bar:bars) {
+            if(bar!=mainBar && m_main->toolBarArea(bar)==Qt::TopToolBarArea) {
+                m_main->insertToolBar(bar,mainBar);
+                break;
+            }
         }
     }
     void hideCompactToolbarClutter() {
@@ -709,12 +748,22 @@ private:
                                     .dynamicCast<KisPaintOpPreset>();
                 if(!preset || !preset->valid())continue;
                 if(!all->isChecked() && !presetInGroup(preset,slot))continue;
-                const int idx=candidates.size();
                 candidates.append(preset);
+            }
+            std::stable_sort(candidates.begin(),candidates.end(),
+                [this](const KisPaintOpPresetSP &a,const KisPaintOpPresetSP &b) {
+                    return QSettings().value(presetPinKey(a->name()),false).toBool() &&
+                        !QSettings().value(presetPinKey(b->name()),false).toBool();
+                });
+            for(int idx=0;idx<candidates.size();++idx) {
+                const auto preset=candidates.at(idx);
+                const bool pinned=QSettings().value(
+                    presetPinKey(preset->name()),false).toBool();
                 auto *item=new QListWidgetItem(
-                    QIcon(QPixmap::fromImage(preset->image())),preset->name(),grid);
+                    QIcon(QPixmap::fromImage(preset->image())),
+                    (pinned?QStringLiteral("★ "):QString())+preset->name(),grid);
                 item->setData(Qt::UserRole,idx);
-                item->setToolTip(preset->name());
+                item->setToolTip(pinned?i18n("Pinned: %1",preset->name()):preset->name());
                 if(all->isChecked() && presetInGroup(preset,slot))
                     item->setBackground(QColor(70,103,113,90));
             }
@@ -727,7 +776,7 @@ private:
                 [&holdTimer,&heldItem,&heldAction](QListWidgetItem *item) {
             heldItem=item;
             heldAction=false;
-            holdTimer.start(550);
+            holdTimer.start(320);
         });
         connect(QScroller::scroller(grid->viewport()),&QScroller::stateChanged,
                 &dialog,[&holdTimer](QScroller::State state) {
@@ -750,8 +799,17 @@ private:
             QAction *blend=options.addAction(i18n("Add to Blend"));
             options.addSeparator();
             QAction *makeBlend=options.addAction(i18n("Create blending version"));
+            const bool alreadyPinned=QSettings().value(
+                presetPinKey(preset->name()),false).toBool();
+            QAction *pin=options.addAction(alreadyPinned ?
+                i18n("Unpin from top") : i18n("Pin to top"));
             QAction *selected=options.exec(QCursor::pos());
             if(!selected)return;
+            if(selected==pin) {
+                QSettings().setValue(presetPinKey(preset->name()),!alreadyPinned);
+                refill();
+                return;
+            }
             if(selected==makeBlend) {
                 if(createBlendingVersion(preset))refill();
                 return;
