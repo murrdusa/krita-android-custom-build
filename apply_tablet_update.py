@@ -105,9 +105,9 @@ def main(root: Path):
                 KisConfig settings(false);
                 settings.setSelectionActionBar(true);
                 settings.setSelectionActionBarBehavior(
-                    KisConfig::SelectionActionsBarBehavior::Fixed);
+                    KisConfig::Fixed);
                 settings.setSelectionActionBarPosition(
-                    KisConfig::SelectionActionsBarPosition::Bottom);
+                    KisConfig::Bottom);
             }
             KisConfigNotifier::instance()->notifyConfigChanged();
             menuBar()->setProperty("tabletWasVisible", menuBar()->isVisible());
