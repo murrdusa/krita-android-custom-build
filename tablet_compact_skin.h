@@ -783,7 +783,7 @@ private:
             if(state!=QScroller::Inactive)holdTimer.stop();
         });
         connect(&holdTimer,&QTimer::timeout,&dialog,
-                [this,slot,grid,all,&candidates,&heldItem,&heldAction,refill,&dialog]() {
+                [this,slot,all,&candidates,&heldItem,&heldAction,refill,&dialog]() {
             if(!heldItem)return;
             const int index=heldItem->data(Qt::UserRole).toInt();
             if(index<0 || index>=candidates.size())return;
@@ -796,7 +796,7 @@ private:
                 remove=options.addAction(i18n("Remove from this category"));
             QAction *paint=options.addAction(i18n("Add to Paint"));
             QAction *erase=options.addAction(i18n("Add to Erase"));
-            QAction *blend=options.addAction(i18n("Add to Blend"));
+            options.addAction(i18n("Add to Blend"));
             options.addSeparator();
             QAction *makeBlend=options.addAction(i18n("Create blending version"));
             const bool alreadyPinned=QSettings().value(
@@ -832,7 +832,7 @@ private:
             refill();
         });
         connect(grid,&QListWidget::itemClicked,&dialog,
-                [this,slot,all,&candidates,&dialog,&holdTimer,&heldAction](QListWidgetItem *item) {
+                [this,slot,&candidates,&dialog,&holdTimer,&heldAction](QListWidgetItem *item) {
             holdTimer.stop();
             if(heldAction) {heldAction=false;return;}
             int index=item->data(Qt::UserRole).toInt();
@@ -962,7 +962,7 @@ private:
                 m_vm->nodeManager()->toggleLock();
                 QTimer::singleShot(0,this,[this](){refreshLayers();});
             });
-            if(auto layer=node.dynamicCast<KisLayer>()) {
+            if(auto *layer=dynamic_cast<KisLayer*>(node.data())) {
                 auto *alpha=new QToolButton(frame);
                 alpha->setGeometry(rowWidth-22,46,20,20);
                 alpha->setText(layer->alphaLocked()?QStringLiteral("α"):
