@@ -31,7 +31,7 @@ def main(root: Path):
     # the freehand brush; the tap never paints a brush stroke.
     path = "plugins/tools/basictools/kis_tool_colorsampler.cc"
     change(path, "#include <QSignalBlocker>\n",
-           "#include <QSignalBlocker>\n#include <QSettings>\n#include <QTimer>\n#include <kactioncollection.h>\n")
+           "#include <QSignalBlocker>\n#include <QSettings>\n#include <QTimer>\n#include <QAction>\n#include <kactioncollection.h>\n")
     change(path, """    m_isActivated = true;
     m_config->load();
 
