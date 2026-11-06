@@ -29,7 +29,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile apply_customizations.py apply_tablet_update.py apply_tablet_refinements.py apply_tablet_polish.py apply_tablet_cleanup.py apply_reference_touch_fix.py apply_compact_skin.py tablet_compact_skin.h
+          python3 -m py_compile apply_customizations.py apply_tablet_update.py apply_tablet_refinements.py apply_tablet_polish.py apply_tablet_cleanup.py apply_reference_touch_fix.py apply_compact_skin.py
+          test -f tablet_compact_skin.h
           bash -n build-in-krita-container.sh local-build.sh
 
       - name: Reclaim disk space
