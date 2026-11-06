@@ -52,7 +52,7 @@
 #include "kis_paintop_box.h"
 #include "kis_node_manager.h"
 #include "kis_node.h"
-#include "kis_layer.h"
+#include "kis_paint_layer.h"
 #include "kis_base_node.h"
 #include "kis_image.h"
 #include "kis_icon_utils.h"
@@ -783,7 +783,7 @@ private:
             if(state!=QScroller::Inactive)holdTimer.stop();
         });
         connect(&holdTimer,&QTimer::timeout,&dialog,
-                [this,slot,all,&candidates,&heldItem,&heldAction,refill,&dialog]() {
+                [this,all,&candidates,&heldItem,&heldAction,refill,&dialog]() {
             if(!heldItem)return;
             const int index=heldItem->data(Qt::UserRole).toInt();
             if(index<0 || index>=candidates.size())return;
@@ -962,7 +962,7 @@ private:
                 m_vm->nodeManager()->toggleLock();
                 QTimer::singleShot(0,this,[this](){refreshLayers();});
             });
-            if(auto *layer=dynamic_cast<KisLayer*>(node.data())) {
+            if(auto *layer=qobject_cast<KisPaintLayer*>(node.data())) {
                 auto *alpha=new QToolButton(frame);
                 alpha->setGeometry(rowWidth-22,46,20,20);
                 alpha->setText(layer->alphaLocked()?QStringLiteral("α"):
