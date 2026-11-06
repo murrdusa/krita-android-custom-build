@@ -95,6 +95,21 @@ def main(root: Path):
     connect(tabletCompact, &QAction::toggled, this, [this](bool enabled) {
         QSettings().setValue(QStringLiteral("TabletUi/compact"), enabled);
         if (enabled) {
+            const KisConfig previous(true);
+            setProperty("tabletPrevSelectionEnabled", previous.selectionActionBar());
+            setProperty("tabletPrevSelectionBehavior",
+                        static_cast<int>(previous.selectionActionBarBehavior()));
+            setProperty("tabletPrevSelectionPosition",
+                        static_cast<int>(previous.selectionActionBarPosition()));
+            {
+                KisConfig settings(false);
+                settings.setSelectionActionBar(true);
+                settings.setSelectionActionBarBehavior(
+                    KisConfig::SelectionActionsBarBehavior::Fixed);
+                settings.setSelectionActionBarPosition(
+                    KisConfig::SelectionActionsBarPosition::Bottom);
+            }
+            KisConfigNotifier::instance()->notifyConfigChanged();
             menuBar()->setProperty("tabletWasVisible", menuBar()->isVisible());
             menuBar()->hide();
             if (QTabBar *tabs = d->findTabBarHACK()) {
@@ -106,6 +121,17 @@ def main(root: Path):
                 statusBar()->hide();
             }
         } else {
+            {
+                KisConfig settings(false);
+                settings.setSelectionActionBar(property("tabletPrevSelectionEnabled").toBool());
+                settings.setSelectionActionBarBehavior(
+                    static_cast<KisConfig::SelectionActionsBarBehavior>(
+                        property("tabletPrevSelectionBehavior").toInt()));
+                settings.setSelectionActionBarPosition(
+                    static_cast<KisConfig::SelectionActionsBarPosition>(
+                        property("tabletPrevSelectionPosition").toInt()));
+            }
+            KisConfigNotifier::instance()->notifyConfigChanged();
             menuBar()->setVisible(menuBar()->property("tabletWasVisible").toBool());
             if (QTabBar *tabs = d->findTabBarHACK()) {
                 tabs->setVisible(tabs->property("tabletWasVisible").toBool());
