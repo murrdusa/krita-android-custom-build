@@ -140,6 +140,22 @@ public:
         connect(m_colorButton, &QToolButton::clicked, this, [this]() {
             toggleColor();
         });
+        m_colorSizeButton = new QToolButton(m_surface);
+        m_colorSizeButton->setFixedSize(38,38);
+        m_colorSizeButton->setText(QStringLiteral("↗"));
+        m_colorSizeButton->setToolTip(i18n("Resize color wheel"));
+        m_colorSizeButton->setStyleSheet(
+            "QToolButton{background:#252528;color:white;border:1px solid #999;"
+            "border-radius:10px;font-size:22px;}");
+        connect(m_colorSizeButton, &QToolButton::clicked, this, [this]() {
+            m_colorSizeStep = (m_colorSizeStep+1)%3;
+            QSettings().setValue(QStringLiteral("TabletUi/colorWheelSize"),m_colorSizeStep);
+            if(m_colorDocker) {
+                const int w=QList<int>{225,265,330}.at(m_colorSizeStep);
+                m_colorDocker->resize(w,w+70);
+                updateColorDock();
+            }
+        });
         m_recent = new QFrame(m_surface);
         m_recent->setObjectName(QStringLiteral("tabletRecentColors"));
         m_recent->setStyleSheet(
@@ -217,6 +233,10 @@ public:
         m_brushStrip->hide();
         m_colorButton->hide();
         m_recent->hide();
+        m_colorSizeButton->hide();
+        m_colorSizeStep = QSettings().value(
+            QStringLiteral("TabletUi/colorWheelSize"),1).toInt();
+        m_colorSizeStep=qBound(0,m_colorSizeStep,2);
     }
 
     bool eventFilter(QObject *watched,QEvent *event) override {
@@ -240,7 +260,8 @@ public:
             if(m_colorDocker) {
                 m_colorDocker->hide();
                 m_colorDocker->setFloating(true);
-                m_colorDocker->resize(QSize(265,320));
+                const int wheelWidth=QList<int>{225,265,330}.at(m_colorSizeStep);
+                m_colorDocker->resize(QSize(wheelWidth,wheelWidth+70));
                 m_colorExpanded=QSettings().value(
                     QStringLiteral("TabletUi/colorExpanded"),true).toBool();
             }
@@ -613,10 +634,12 @@ private:
         m_brushStrip->adjustSize();
         m_brushStrip->move(8,qMax(0,h-m_brushStrip->height()-8));
         m_colorButton->move(qMax(0,w-58),qMax(0,h-56));
+        m_colorSizeButton->move(qMax(0,w-102),qMax(0,h-49));
         m_recent->move(qMax(0,w-m_recent->width()-8),qMax(0,h-90));
         m_layerRail->raise();
         m_brushStrip->raise();
         m_colorButton->raise();
+        m_colorSizeButton->raise();
         m_recent->raise();
         if(m_colorExpanded)updateColorDock();
     }
@@ -625,6 +648,7 @@ private:
         m_layerRail->setVisible(show);
         m_brushStrip->setVisible(show);
         m_colorButton->setVisible(show);
+        m_colorSizeButton->setVisible(show);
         m_recent->setVisible(show);
         if(show) {
             refreshColors();
@@ -657,6 +681,8 @@ private:
     QToolButton *m_addLayer=nullptr;
     QLabel *m_layerName=nullptr;
     QToolButton *m_colorButton=nullptr;
+    QToolButton *m_colorSizeButton=nullptr;
+    int m_colorSizeStep=1;
     QFrame *m_recent=nullptr;
     QHBoxLayout *m_recentLayout=nullptr;
     QToolBar *m_topBar=nullptr;
