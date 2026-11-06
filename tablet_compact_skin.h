@@ -386,7 +386,8 @@ private:
         QDialog dialog(m_main);
         dialog.setWindowTitle(i18n("Choose %1 preset",QStringList{
             i18n("Paint"),i18n("Erase"),i18n("Blend")}.at(slot)));
-        dialog.resize(425,570);
+        dialog.resize(qMax(270,qMin(425,m_surface->width()-24)),
+                      qMax(310,qMin(570,m_surface->height()-35)));
         auto *layout=new QVBoxLayout(&dialog);
         auto *all=new QCheckBox(i18n("Show all Krita brushes"),&dialog);
         layout->addWidget(all);
@@ -514,7 +515,8 @@ private:
         if(!node)return;
         QDialog dialog(m_main);
         dialog.setWindowTitle(node->name());
-        dialog.resize(360,450);
+        dialog.resize(qMax(286,qMin(360,m_surface->width()-24)),
+                      qMax(330,qMin(450,m_surface->height()-35)));
         auto *layout=new QVBoxLayout(&dialog);
         auto *blend=new KisCompositeOpComboBox(&dialog);
         if(node->compositeOp()) {
