@@ -427,6 +427,90 @@ KisInputManager::KisInputManager(QObject *parent)
         retval = d->matcher.touchEndEvent(touchEvent);
         if (d->touchStrokeStarted) {""")
 
+    # Direct stylus sampling on reference images, regardless of drawing tool.
+    # No brush stroke is allowed to start for the consumed tablet sequence.
+    path = "libs/ui/input/kis_input_manager.cpp"
+    change(path, "#include <QHash>\n", """#include <QHash>
+#include <QSet>
+#include <KisDocument.h>
+#include <KisReferenceImagesLayer.h>
+#include <KisReferenceImagesDecoration.h>
+#include <KoColor.h>
+#include <KoCanvasResource.h>
+#include <kis_coordinates_converter.h>
+""")
+    change(path, """QHash<KisInputManager*, TabletPinchTracking> tabletPinches;
+}""",
+           """QHash<KisInputManager*, TabletPinchTracking> tabletPinches;
+QSet<KisInputManager*> tabletReferencePenPresses;
+}""")
+    change(path, """    tabletPinches.remove(this);
+#endif
+    delete d;""",
+           """    tabletPinches.remove(this);
+    tabletReferencePenPresses.remove(this);
+#endif
+    delete d;""")
+    change(path, """    case QEvent::TabletPress: {
+        d->debugEvent<QTabletEvent, false>(event);
+        QTabletEvent *tabletEvent = static_cast<QTabletEvent*>(event);
+
+        {""",
+           """    case QEvent::TabletPress: {
+        d->debugEvent<QTabletEvent, false>(event);
+        QTabletEvent *tabletEvent = static_cast<QTabletEvent*>(event);
+#ifdef Q_OS_ANDROID
+        if (tabletEvent->button() == Qt::LeftButton &&
+            QSettings().value(QStringLiteral("TabletUi/referencePenSample"), true).toBool() &&
+            KisPart::exists()) {
+            KisMainWindow *window = KisPart::instance()->currentMainwindow();
+            KisCanvas2 *canvas = window && window->viewManager()
+                ? window->viewManager()->canvasBase() : nullptr;
+            if (canvas && window->activeView() &&
+                canvas->referenceImagesDecoration() &&
+                canvas->referenceImagesDecoration()->visible()) {
+                KisReferenceImagesLayerSP layer =
+                    window->activeView()->document()->referenceImagesLayer();
+                if (layer) {
+                    QColor sampled = layer->getPixel(
+                        canvas->coordinatesConverter()->widgetToImage(tabletEvent->posF()));
+                    if (sampled.isValid() && sampled.alpha() > 0) {
+                        KoColor result(sampled, canvas->image()->colorSpace());
+                        canvas->resourceManager()->setResource(
+                            KoCanvasResource::ForegroundColor, result);
+                        tabletReferencePenPresses.insert(this);
+                        d->blockMouseEvents();
+                        event->accept();
+                        return true;
+                    }
+                }
+            }
+        }
+#endif
+
+        {""")
+    change(path, """    case QEvent::TabletMove: {
+        d->debugEvent<QTabletEvent, false>(event);""",
+           """    case QEvent::TabletMove: {
+#ifdef Q_OS_ANDROID
+        if (tabletReferencePenPresses.contains(this)) {
+            event->accept();
+            return true;
+        }
+#endif
+        d->debugEvent<QTabletEvent, false>(event);""")
+    change(path, """    case QEvent::TabletRelease: {
+#if defined(Q_OS_MAC) || defined(Q_OS_ANDROID)""",
+           """    case QEvent::TabletRelease: {
+#ifdef Q_OS_ANDROID
+        if (tabletReferencePenPresses.remove(this)) {
+            d->allowMouseEvents();
+            event->accept();
+            return true;
+        }
+#endif
+#if defined(Q_OS_MAC) || defined(Q_OS_ANDROID)""")
+
     # Replace the v1 popup gallery with an inline page occupying the same
     # area as Recent Images; hide the news column on Android.
     path = "libs/ui/KisWelcomePageWidget.cpp"
