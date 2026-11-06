@@ -240,22 +240,6 @@ public:
         connect(m_colorButton, &QToolButton::clicked, this, [this]() {
             toggleColor();
         });
-        m_colorSizeButton = new QToolButton(m_surface);
-        m_colorSizeButton->setFixedSize(38,38);
-        m_colorSizeButton->setText(QStringLiteral("↗"));
-        m_colorSizeButton->setToolTip(i18n("Resize color wheel"));
-        m_colorSizeButton->setStyleSheet(
-            "QToolButton{background:#252528;color:white;border:1px solid #999;"
-            "border-radius:10px;font-size:22px;}");
-        connect(m_colorSizeButton, &QToolButton::clicked, this, [this]() {
-            m_colorSizeStep = (m_colorSizeStep+1)%3;
-            QSettings().setValue(QStringLiteral("TabletUi/colorWheelSize"),m_colorSizeStep);
-            if(m_colorDocker) {
-                const int w=QList<int>{225,265,330}.at(m_colorSizeStep);
-                m_colorDocker->resize(w,w+70);
-                updateColorDock();
-            }
-        });
         m_recent = new QFrame(m_surface);
         m_recent->setObjectName(QStringLiteral("tabletRecentColors"));
         m_recent->setStyleSheet(
@@ -330,10 +314,10 @@ public:
         m_brushStrip->hide();
         m_colorButton->hide();
         m_recent->hide();
-        m_colorSizeButton->hide();
-        m_colorSizeStep = QSettings().value(
-            QStringLiteral("TabletUi/colorWheelSize"),1).toInt();
-        m_colorSizeStep=qBound(0,m_colorSizeStep,2);
+        m_colorWheelPixels=qBound(190,QSettings().value(
+            QStringLiteral("TabletUi/colorWheelPixels"),265).toInt(),380);
+        m_colorShowHistory=QSettings().value(
+            QStringLiteral("TabletUi/colorShowHistory"),false).toBool();
         m_colorPinned=QSettings().value(QStringLiteral("TabletUi/colorPinned"),false).toBool();
         // Only explicit pinning keeps the selector open after restart.
         m_colorExpanded=m_colorPinned;
@@ -368,7 +352,7 @@ public:
             const bool wheelTouch=m_colorDocker && target &&
                 (target==m_colorDocker || m_colorDocker->isAncestorOf(target));
             const bool controlTouch=target &&
-                (target==m_colorButton || target==m_colorSizeButton);
+                (target==m_colorButton);
             if(target && !wheelTouch && !controlTouch) {
                 m_colorExpanded=false;
                 updateColorDock();
@@ -411,7 +395,7 @@ public:
             if(m_colorDocker) {
                 m_colorDocker->hide();
                 m_colorDocker->setFloating(true);
-                const int wheelWidth=QList<int>{225,265,330}.at(m_colorSizeStep);
+                const int wheelWidth=m_colorWheelPixels;
                 m_colorDocker->resize(QSize(wheelWidth,wheelWidth+70));
                 if(!m_colorPinButton) {
                     m_colorPinButton=new QToolButton(m_colorDocker);
@@ -421,11 +405,28 @@ public:
                         "border:1px solid #aaa;border-radius:6px;font-size:18px;}");
                     m_colorPinButton->setToolTip(i18n("Pin or unpin color wheel"));
                     m_colorDocker->installEventFilter(this);
+                    auto *pinTimer=new QTimer(this);
+                    pinTimer->setSingleShot(true);
+                    pinTimer->setInterval(330);
+                    connect(m_colorPinButton,&QToolButton::pressed,this,
+                            [this,pinTimer]() {
+                        m_colorPinLongPressed=false;
+                        pinTimer->start();
+                    });
+                    connect(m_colorPinButton,&QToolButton::released,
+                            pinTimer,&QTimer::stop);
+                    connect(pinTimer,&QTimer::timeout,this,[this]() {
+                        m_colorPinLongPressed=true;
+                        openColorSettings();
+                    });
                     connect(m_colorPinButton,&QToolButton::clicked,this,[this]() {
+                        if(m_colorPinLongPressed) {
+                            m_colorPinLongPressed=false;
+                            return;
+                        }
                         m_colorPinned=!m_colorPinned;
                         QSettings().setValue(QStringLiteral("TabletUi/colorPinned"),
                                              m_colorPinned);
-                        // Unpinning returns immediately to the collapsed button.
                         m_colorExpanded=m_colorPinned;
                         updateColorDock();
                         refreshColorControls();
@@ -1055,6 +1056,37 @@ private:
         m_recent->setFixedWidth(qMax(42,maxColors*23+6));
         positionOverlays();
     }
+    void openColorSettings() {
+        QDialog dialog(m_main);
+        dialog.setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
+        auto *layout=new QVBoxLayout(&dialog);
+        auto *history=new QCheckBox(i18n("Show recent colors"),&dialog);
+        history->setChecked(m_colorShowHistory);
+        layout->addWidget(history);
+        connect(history,&QCheckBox::toggled,&dialog,[this](bool enabled) {
+            m_colorShowHistory=enabled;
+            QSettings().setValue(QStringLiteral("TabletUi/colorShowHistory"),enabled);
+            updateColorDock();
+            refreshColorControls();
+        });
+        layout->addWidget(new QLabel(i18n("Color wheel size"),&dialog));
+        auto *size=new QSlider(Qt::Horizontal,&dialog);
+        size->setRange(190,380);
+        size->setValue(m_colorWheelPixels);
+        layout->addWidget(size);
+        auto *value=new QLabel(QStringLiteral("%1 px").arg(m_colorWheelPixels),&dialog);
+        layout->addWidget(value);
+        connect(size,&QSlider::valueChanged,&dialog,[this,value](int pixels) {
+            m_colorWheelPixels=pixels;
+            value->setText(QStringLiteral("%1 px").arg(pixels));
+            QSettings().setValue(QStringLiteral("TabletUi/colorWheelPixels"),pixels);
+            if(m_colorDocker)m_colorDocker->resize(pixels,pixels+70);
+            updateColorDock();
+            refreshColorControls();
+        });
+        dialog.setMinimumWidth(260);
+        dialog.exec();
+    }
     void toggleColor() {
         m_colorExpanded=!m_colorExpanded;
         QSettings().setValue(QStringLiteral("TabletUi/colorExpanded"),m_colorExpanded);
@@ -1063,9 +1095,8 @@ private:
     }
     void refreshColorControls() {
         const bool show=m_compact && m_vm->activeNode() && m_surface->isVisible();
-        m_colorButton->setVisible(show && !m_colorPinned);
-        m_colorSizeButton->setVisible(show && !m_colorPinned);
-        m_recent->setVisible(show && !m_colorPinned && !m_colorExpanded);
+        m_colorButton->setVisible(show && !m_colorExpanded);
+        m_recent->setVisible(show && m_colorExpanded && m_colorShowHistory);
         if(m_colorPinButton) {
             m_colorPinButton->setText(m_colorPinned ? QStringLiteral("🔒") :
                                                      QStringLiteral("🔓"));
@@ -1084,7 +1115,7 @@ private:
         }
         m_colorDocker->show();
         m_colorDocker->raise();
-        const int bottomGap=m_colorPinned ? 8 : 95;
+        const int bottomGap=m_colorShowHistory ? 39 : 8;
         const QPoint global=m_surface->mapToGlobal(
             QPoint(qMax(0,m_surface->width()-m_colorDocker->width()-8),
                    qMax(0,m_surface->height()-m_colorDocker->height()-bottomGap)));
@@ -1105,22 +1136,19 @@ private:
         m_brushStrip->adjustSize();
         m_brushStrip->move(8,qMax(0,h-m_brushStrip->height()-8));
         m_colorButton->move(qMax(0,w-58),qMax(0,h-56));
-        m_colorSizeButton->move(qMax(0,w-102),qMax(0,h-49));
-        m_recent->move(qMax(0,w-m_recent->width()-8),qMax(0,h-90));
+        m_recent->move(qMax(0,w-m_recent->width()-8),qMax(0,h-31));
         m_layerRail->raise();
         m_layerToggleButton->raise();
         m_brushStrip->raise();
         m_colorButton->raise();
-        m_colorSizeButton->raise();
         m_recent->raise();
         if(m_colorExpanded)updateColorDock();
     }
     void refreshVisibility() {
         const bool show=m_compact && m_vm->activeNode() && m_surface->isVisible();
         m_brushStrip->setVisible(show);
-        m_colorButton->setVisible(show && !m_colorPinned);
-        m_colorSizeButton->setVisible(show && !m_colorPinned);
-        m_recent->setVisible(show && !m_colorPinned && !m_colorExpanded);
+        m_colorButton->setVisible(show && !m_colorExpanded);
+        m_recent->setVisible(show && m_colorExpanded && m_colorShowHistory);
         if(show) {
             refreshColors();
             paintSlotIcons();
@@ -1152,6 +1180,9 @@ private:
     bool m_colorExpanded=false;
     bool m_colorPinned=false;
     QToolButton *m_colorPinButton=nullptr;
+    bool m_colorPinLongPressed=false;
+    bool m_colorShowHistory=false;
+    int m_colorWheelPixels=265;
     bool m_internalPresetChange=false;
     bool m_slotReady=false;
     int m_slot=0;
@@ -1174,8 +1205,7 @@ private:
     bool m_addLayerLongPressed=false;
     QLabel *m_layerName=nullptr;
     QToolButton *m_colorButton=nullptr;
-    QToolButton *m_colorSizeButton=nullptr;
-    int m_colorSizeStep=1;
+
     QFrame *m_recent=nullptr;
     QHBoxLayout *m_recentLayout=nullptr;
     QToolBar *m_topBar=nullptr;
