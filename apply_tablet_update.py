@@ -445,12 +445,10 @@ KisInputManager::KisInputManager(QObject *parent)
 QSet<KisInputManager*> tabletReferencePenPresses;
 }""")
     change(path, """    tabletPinches.remove(this);
-#endif
-    delete d;""",
+#endif""",
            """    tabletPinches.remove(this);
     tabletReferencePenPresses.remove(this);
-#endif
-    delete d;""")
+#endif""")
     change(path, """    case QEvent::TabletPress: {
         d->debugEvent<QTabletEvent, false>(event);
         QTabletEvent *tabletEvent = static_cast<QTabletEvent*>(event);
