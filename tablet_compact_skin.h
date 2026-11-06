@@ -292,6 +292,8 @@ public:
             }
             if(!m_previousWindowState.isEmpty())
                 m_main->restoreState(m_previousWindowState);
+            // Restoring a saved main-window state can make this toolbar visible.
+            m_topBar->hide();
         }
         refreshVisibility();
         refreshLayers();
@@ -345,7 +347,8 @@ private:
         m_hiddenActions.clear();
         for(QToolBar *bar : m_main->findChildren<QToolBar*>()) {
             if(bar == m_topBar)continue;
-            for(QAction *action : bar->actions()) {
+            const QList<QAction*> originalActions=bar->actions();
+            for(QAction *action : originalActions) {
                 if(!action || !action->isVisible())continue;
                 const QString id=action->objectName().toLower();
                 const QString title=(action->text()+QStringLiteral(" ")+
@@ -357,15 +360,22 @@ private:
                    title.contains(QStringLiteral("mirror vertical")) ||
                    title.contains(QStringLiteral("wrap around")) ||
                    title.contains(QStringLiteral("workspace"))) {
-                    m_hiddenActions.append(action);
-                    action->setVisible(false);
+                    const int index=originalActions.indexOf(action);
+                    QAction *next=index+1<originalActions.size() ?
+                        originalActions.at(index+1):nullptr;
+                    m_hiddenActions.append({bar,action,next});
+                    bar->removeAction(action);
                 }
             }
         }
     }
     void restoreCompactToolbarClutter() {
-        for(const QPointer<QAction> &action : m_hiddenActions)
-            if(action)action->setVisible(true);
+        // Reinsert from the end to preserve the original toolbar order.
+        for(int i=m_hiddenActions.size()-1;i>=0;--i) {
+            const HiddenToolbarAction &item=m_hiddenActions.at(i);
+            if(item.bar && item.action)
+                item.bar->insertAction(item.before,item.action);
+        }
         m_hiddenActions.clear();
     }
     void trigger(const QString &name) {
@@ -775,7 +785,12 @@ private:
     QPointer<QDockWidget> m_colorDocker;
     QPointer<QDockWidget> m_toolOptionsDocker;
     QByteArray m_previousWindowState;
-    QList<QPointer<QAction>> m_hiddenActions;
+    struct HiddenToolbarAction {
+        QPointer<QToolBar> bar;
+        QPointer<QAction> action;
+        QPointer<QAction> before;
+    };
+    QList<HiddenToolbarAction> m_hiddenActions;
     bool m_startupCompact=false;
     bool m_compact=false;
     bool m_colorExpanded=true;
