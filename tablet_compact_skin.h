@@ -458,9 +458,9 @@ private:
         QDialog dialog(m_main);
         dialog.setWindowTitle(i18n("Choose %1 preset",QStringList{
             i18n("Paint"),i18n("Erase"),i18n("Blend")}.at(slot)));
-        dialog.setWindowFlags(dialog.windowFlags() | Qt::Popup);
+        dialog.setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
         dialog.resize(qMax(270,qMin(425,m_surface->width()-24)),
-                      qMax(310,qMin(570,m_surface->height()-35)));
+                      qMax(240,qMin(440,m_surface->height()-35)));
         auto *layout=new QVBoxLayout(&dialog);
         auto *all=new QCheckBox(i18n("Show all Krita brushes"),&dialog);
         layout->addWidget(all);
@@ -528,22 +528,19 @@ private:
             const auto preset=candidates.at(index);
             if(!preset)return;
             heldAction=true;
-            if(all->isChecked()) {
-                QSettings().setValue(groupKey(preset->name()),slot);
-                refill();
-            } else {
-                QMenu options(&dialog);
-                QAction *remove=options.addAction(i18n("Remove from this category"));
-                QAction *paint=options.addAction(i18n("Move to Paint"));
-                QAction *erase=options.addAction(i18n("Move to Erase"));
-                QAction *blend=options.addAction(i18n("Move to Blend"));
-                QAction *selected=options.exec(QCursor::pos());
-                if(!selected)return;
-                const int group=selected==remove?-1:
-                    selected==paint?0:selected==erase?1:2;
-                QSettings().setValue(groupKey(preset->name()),group);
-                refill();
-            }
+            QMenu options(&dialog);
+            QAction *remove=nullptr;
+            if(!all->isChecked())
+                remove=options.addAction(i18n("Remove from this category"));
+            QAction *paint=options.addAction(i18n("Add to Paint"));
+            QAction *erase=options.addAction(i18n("Add to Erase"));
+            QAction *blend=options.addAction(i18n("Add to Blend"));
+            QAction *selected=options.exec(QCursor::pos());
+            if(!selected)return;
+            const int group=selected==remove?-1:
+                selected==paint?0:selected==erase?1:2;
+            QSettings().setValue(groupKey(preset->name()),group);
+            refill();
         });
         connect(all,&QCheckBox::toggled,&dialog,[&holdTimer,refill](bool){
             holdTimer.stop();refill();
@@ -639,7 +636,7 @@ private:
         if(!node)return;
         QDialog dialog(m_main);
         dialog.setWindowTitle(node->name());
-        dialog.setWindowFlags(dialog.windowFlags() | Qt::Popup);
+        dialog.setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
         dialog.resize(qMax(286,qMin(360,m_surface->width()-24)),
                       qMax(330,qMin(450,m_surface->height()-35)));
         auto *layout=new QVBoxLayout(&dialog);
@@ -689,9 +686,30 @@ private:
                 else if(i==5)m_vm->nodeManager()->removeNode();
                 else if(i==6)m_vm->nodeManager()->createQuickClippingGroup();
                 else if(i==9)trigger(QStringLiteral("toggle_layer_alpha_lock"));
-                else if(i==10 && m_layerDocker) {
-                    m_layerDocker->show();
-                    m_layerDocker->raise();
+                else if(i==10) {
+                    QMenu options(m_main);
+                    auto addNative=[this](QMenu *menu,const QString &id) {
+                        if(QAction *action=m_main->actionCollection()->action(id))
+                            menu->addAction(action);
+                    };
+                    addNative(&options,QStringLiteral("layer_properties"));
+                    addNative(&options,QStringLiteral("RenameCurrentLayer"));
+                    addNative(&options,QStringLiteral("duplicatelayer"));
+                    addNative(&options,QStringLiteral("merge_layer"));
+                    addNative(&options,QStringLiteral("flatten_layer"));
+                    addNative(&options,QStringLiteral("select_opaque"));
+                    addNative(&options,QStringLiteral("remove_layer"));
+                    QMenu *addMenu=options.addMenu(i18n("Add layer or mask"));
+                    addNative(addMenu,QStringLiteral("add_new_paint_layer"));
+                    addNative(addMenu,QStringLiteral("add_new_group_layer"));
+                    addNative(addMenu,QStringLiteral("add_new_clone_layer"));
+                    addNative(addMenu,QStringLiteral("add_new_transparency_mask"));
+                    addNative(addMenu,QStringLiteral("add_new_filter_mask"));
+                    QMenu *groupMenu=options.addMenu(i18n("Group and clipping"));
+                    addNative(groupMenu,QStringLiteral("create_quick_clipping_group"));
+                    addNative(groupMenu,QStringLiteral("quick_group"));
+                    addNative(groupMenu,QStringLiteral("quick_ungroup"));
+                    options.exec(QCursor::pos());
                 }
                 else if(i==7 && m_layerDocker) {
                     QMetaObject::invokeMethod(m_layerDocker, "slotSelectOpaque",
