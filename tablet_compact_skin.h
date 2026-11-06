@@ -184,14 +184,10 @@ public:
         connect(optionsAction, &QAction::triggered, this, [this]() {
             QAction *native = m_main->actionCollection()->action(QStringLiteral("show_tool_options"));
             if (native) native->trigger();
-            else {
-                for (QDockWidget *dock : m_main->findChildren<QDockWidget*>()) {
-                    if (dock->objectName() == QStringLiteral("sharedtooldocker")) {
-                        dock->show();
-                        dock->raise();
-                        break;
-                    }
-                }
+            else if(m_toolOptionsDocker) {
+                const bool wasVisible=m_toolOptionsDocker->isVisible();
+                m_toolOptionsDocker->setVisible(!wasVisible);
+                if(!wasVisible) m_toolOptionsDocker->raise();
             }
         });
         m_main->addToolBar(Qt::TopToolBarArea,m_topBar);
@@ -252,7 +248,8 @@ public:
         m_compact=active;
         if (active) {
             rememberDockers();
-            for(QDockWidget *dock:{m_layerDocker.data(),m_brushDocker.data()}) {
+            for(QDockWidget *dock:{m_layerDocker.data(),m_brushDocker.data(),
+                                   m_toolOptionsDocker.data()}) {
                 if(dock) dock->hide();
             }
             // The original color wheel and its color history are reused.
@@ -312,9 +309,11 @@ private:
         m_layerDocker=nullptr;
         m_brushDocker=nullptr;
         m_colorDocker=nullptr;
+        m_toolOptionsDocker=nullptr;
         for (QDockWidget *dock : m_main->findChildren<QDockWidget*>()) {
             const QString name=dock->objectName();
             if(name==QStringLiteral("KisLayerBox"))m_layerDocker=dock;
+            if(name==QStringLiteral("sharedtooldocker"))m_toolOptionsDocker=dock;
             if(name.contains(QStringLiteral("BrushPreset"),Qt::CaseInsensitive) ||
                dock->windowTitle().contains(i18n("Brush Presets"),Qt::CaseInsensitive))
                 m_brushDocker=dock;
@@ -665,6 +664,7 @@ private:
     QPointer<QDockWidget> m_layerDocker;
     QPointer<QDockWidget> m_brushDocker;
     QPointer<QDockWidget> m_colorDocker;
+    QPointer<QDockWidget> m_toolOptionsDocker;
     QByteArray m_previousWindowState;
     bool m_compact=false;
     bool m_colorExpanded=true;
