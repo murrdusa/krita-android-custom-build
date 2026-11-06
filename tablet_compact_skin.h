@@ -109,9 +109,47 @@ public:
         m_addLayer = new QToolButton(m_layerRail);
         m_addLayer->setText(QStringLiteral("+"));
         m_addLayer->setFixedSize(62,40);
-        m_addLayer->setToolTip(i18n("New paint layer"));
+        m_addLayer->setToolTip(i18n("Tap: new paint layer. Hold: layer and mask types"));
         rail->addWidget(m_addLayer);
+        m_addLayerHoldTimer = new QTimer(this);
+        m_addLayerHoldTimer->setSingleShot(true);
+        m_addLayerHoldTimer->setInterval(550);
+        connect(m_addLayer, &QToolButton::pressed, this, [this]() {
+            m_addLayerLongPressed = false;
+            m_addLayerHoldTimer->start();
+        });
+        connect(m_addLayer, &QToolButton::released, this, [this]() {
+            m_addLayerHoldTimer->stop();
+        });
+        connect(m_addLayerHoldTimer, &QTimer::timeout, this, [this]() {
+            m_addLayerLongPressed = true;
+            QMenu menu(m_main);
+            auto addNative = [this, &menu](const QString &id) {
+                if (QAction *action = m_main->actionCollection()->action(id))
+                    menu.addAction(action);
+                else
+                    qWarning("Compact UI: missing layer creation action %s", qPrintable(id));
+            };
+            addNative(QStringLiteral("add_new_paint_layer"));
+            addNative(QStringLiteral("add_new_group_layer"));
+            addNative(QStringLiteral("add_new_clone_layer"));
+            addNative(QStringLiteral("add_new_vector_layer"));
+            addNative(QStringLiteral("add_new_filter_layer"));
+            addNative(QStringLiteral("add_new_fill_layer"));
+            addNative(QStringLiteral("add_new_file_layer"));
+            menu.addSeparator();
+            addNative(QStringLiteral("add_new_transparency_mask"));
+            addNative(QStringLiteral("add_new_filter_mask"));
+            addNative(QStringLiteral("add_new_colorize_mask"));
+            addNative(QStringLiteral("add_new_transform_mask"));
+            menu.exec(m_addLayer->mapToGlobal(QPoint(m_addLayer->width(), 0)));
+            QTimer::singleShot(150, this, [this]() { refreshLayers(); });
+        });
         connect(m_addLayer, &QToolButton::clicked, this, [this]() {
+            if (m_addLayerLongPressed) {
+                m_addLayerLongPressed = false;
+                return;
+            }
             trigger(QStringLiteral("add_new_paint_layer"));
             QTimer::singleShot(150, this, [this]() { refreshLayers(); });
         });
@@ -842,6 +880,8 @@ private:
     QWidget *m_layersContent=nullptr;
     QVBoxLayout *m_layersLayout=nullptr;
     QToolButton *m_addLayer=nullptr;
+    QTimer *m_addLayerHoldTimer=nullptr;
+    bool m_addLayerLongPressed=false;
     QLabel *m_layerName=nullptr;
     QToolButton *m_colorButton=nullptr;
     QToolButton *m_colorSizeButton=nullptr;
