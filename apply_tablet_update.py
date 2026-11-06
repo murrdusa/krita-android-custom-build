@@ -472,7 +472,6 @@ KisInputManager::KisInputManager(QObject *parent)
 #include <KisReferenceImagesLayer.h>
 #include <KisReferenceImagesDecoration.h>
 #include <KoColor.h>
-#include <KoCanvasResource.h>
 #include <kis_coordinates_converter.h>
 """)
     change(path, """QHash<KisInputManager*, TabletPinchTracking> tabletPinches;
