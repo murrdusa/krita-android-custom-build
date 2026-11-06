@@ -444,9 +444,15 @@ KisInputManager::KisInputManager(QObject *parent)
            """QHash<KisInputManager*, TabletPinchTracking> tabletPinches;
 QSet<KisInputManager*> tabletReferencePenPresses;
 }""")
-    change(path, """    tabletPinches.remove(this);
+    change(path, """KisInputManager::~KisInputManager()
+{
+#ifdef Q_OS_ANDROID
+    tabletPinches.remove(this);
 #endif""",
-           """    tabletPinches.remove(this);
+           """KisInputManager::~KisInputManager()
+{
+#ifdef Q_OS_ANDROID
+    tabletPinches.remove(this);
     tabletReferencePenPresses.remove(this);
 #endif""")
     change(path, """    case QEvent::TabletPress: {
