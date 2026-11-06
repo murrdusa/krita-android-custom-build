@@ -560,7 +560,12 @@ private:
         grid->setDragEnabled(false);
         grid->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
         grid->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        QScroller::grabGesture(grid->viewport(),QScroller::TouchGesture);
+        // Android's mouse synthesis is more reliable than QScroller's touch
+        // recognizer for QListWidget icon cells. Never grab both gestures:
+        // Qt permits only one recognizer per viewport.
+        grid->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
+        QScroller::grabGesture(grid->viewport(),
+                              QScroller::LeftMouseButtonGesture);
         layout->addWidget(grid,1);
         auto *assign=new QPushButton(i18n("Assign current brush to this category"),&dialog);
         layout->addWidget(assign);
