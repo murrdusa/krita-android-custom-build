@@ -259,6 +259,12 @@ public:
                 QStringLiteral("TabletUi/normalWindowState")).toByteArray();
             if(m_startupCompact && !storedNormal.isEmpty()) {
                 m_previousWindowState=storedNormal;
+            } else if(m_startupCompact) {
+                // An older install may have saved an already-compact layout.
+                // No reliable normal snapshot exists yet; recover visible UI
+                // on first exit, and save a clean baseline on next entry.
+                m_recoverLegacyNormalLayout=true;
+                m_previousWindowState.clear();
             } else if(!m_previousWindowState.isEmpty()) {
                 QSettings().setValue(QStringLiteral("TabletUi/normalWindowState"),
                                      m_previousWindowState);
@@ -292,6 +298,16 @@ public:
             }
             if(!m_previousWindowState.isEmpty())
                 m_main->restoreState(m_previousWindowState);
+            if(m_recoverLegacyNormalLayout) {
+                for(QDockWidget *dock : {m_layerDocker.data(),m_brushDocker.data(),
+                                        m_toolOptionsDocker.data(),m_colorDocker.data()}) {
+                    if(dock)dock->show();
+                }
+                for(QToolBar *bar : m_main->findChildren<QToolBar*>()) {
+                    if(bar!=m_topBar)bar->show();
+                }
+                m_recoverLegacyNormalLayout=false;
+            }
             // Restoring a saved main-window state can make this toolbar visible.
             m_topBar->hide();
         }
@@ -486,6 +502,8 @@ private:
                     QIcon(QPixmap::fromImage(preset->image())),preset->name(),grid);
                 item->setData(Qt::UserRole,idx);
                 item->setToolTip(preset->name());
+                if(all->isChecked() && presetInGroup(preset,slot))
+                    item->setBackground(QColor(70,103,113,90));
             }
         };
         QTimer holdTimer(&dialog);
@@ -792,6 +810,7 @@ private:
     };
     QList<HiddenToolbarAction> m_hiddenActions;
     bool m_startupCompact=false;
+    bool m_recoverLegacyNormalLayout=false;
     bool m_compact=false;
     bool m_colorExpanded=true;
     bool m_internalPresetChange=false;
