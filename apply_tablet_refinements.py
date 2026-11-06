@@ -73,7 +73,7 @@ def main(root: Path):
             d->mdiArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
             d->mdiArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
             if (d->viewManager->canvasBase()) {
-                auto *ctl = d->viewManager->canvasBase()->canvasController();
+                auto *ctl = activeView() ? activeView()->canvasController() : nullptr;
                 if (ctl) {
                     if (!ctl->property("tabletScrollSaved").toBool()) {
                         ctl->setProperty("tabletPrevHScroll", int(ctl->horizontalScrollBarPolicy()));
@@ -93,7 +93,7 @@ def main(root: Path):
             d->mdiArea->setVerticalScrollBarPolicy(static_cast<Qt::ScrollBarPolicy>(
                 d->mdiArea->property("tabletPrevVScroll").toInt()));
             if (d->viewManager->canvasBase()) {
-                auto *ctl = d->viewManager->canvasBase()->canvasController();
+                auto *ctl = activeView() ? activeView()->canvasController() : nullptr;
                 if (ctl && ctl->property("tabletScrollSaved").toBool()) {
                     ctl->setHorizontalScrollBarPolicy(static_cast<Qt::ScrollBarPolicy>(
                         ctl->property("tabletPrevHScroll").toInt()));
@@ -107,7 +107,7 @@ def main(root: Path):
             });""",
            """                if (QTabBar *tabs = d->findTabBarHACK()) { tabs->setFixedHeight(0); tabs->hide(); }
                 if (d->viewManager->canvasBase()) {
-                    auto *ctl = d->viewManager->canvasBase()->canvasController();
+                    auto *ctl = activeView() ? activeView()->canvasController() : nullptr;
                     if (ctl) {
                         if (!ctl->property("tabletScrollSaved").toBool()) {
                             ctl->setProperty("tabletPrevHScroll", int(ctl->horizontalScrollBarPolicy()));
