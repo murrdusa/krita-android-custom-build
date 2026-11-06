@@ -701,6 +701,91 @@ QHash<KisInputManager*, TabletReferenceDrag> tabletReferenceDrags;
            """            stored.setValue(QStringLiteral("TabletUi/quickPinch"), pinchEnabled->isChecked());
             stored.setValue(QStringLiteral("TabletUi/referenceFingerDrag"), referenceFingerDrag->isChecked());""")
 
+    # A compact, context-sensitive transform strip only in Compact UI.
+    # Use the actual transform tool's Qt slots/properties, so apply, reset and
+    # cancel retain Krita's transaction / undo semantics.
+    p = "libs/ui/KisMainWindow.cpp"
+    sub(p, """    connect(quickMenu, &QMenu::aboutToShow, this,
+            [this, quickMenu, customizeQuick, tabletQuickDefaults]() {
+        quickMenu->clear();
+        const QStringList selected = QSettings().value(
+            QStringLiteral("TabletUi/quickActions"), tabletQuickDefaults).toStringList();
+        for (const QString &name : selected) {
+            QAction *action = actionCollection()->action(name);
+            if (action) quickMenu->addAction(action);
+        }
+        quickMenu->addSeparator();
+        quickMenu->addAction(customizeQuick);
+    });
+""",
+           r'''    connect(quickMenu, &QMenu::aboutToShow, this,
+            [this, quickMenu, customizeQuick, tabletQuickDefaults]() {
+        quickMenu->clear();
+        const QStringList selected = QSettings().value(
+            QStringLiteral("TabletUi/quickActions"), tabletQuickDefaults).toStringList();
+        for (const QString &name : selected) {
+            QAction *action = actionCollection()->action(name);
+            if (action) quickMenu->addAction(action);
+        }
+        quickMenu->addSeparator();
+        quickMenu->addAction(customizeQuick);
+    });
+
+    QToolBar *tabletTransformBar = new QToolBar(i18n("Transform Actions"), this);
+    tabletTransformBar->setObjectName(QStringLiteral("tabletTransformContextBar"));
+    tabletTransformBar->setMovable(false);
+    tabletTransformBar->setFloatable(false);
+    tabletTransformBar->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    auto *transformModeButton = new QToolButton(tabletTransformBar);
+    transformModeButton->setText(i18n("Mode"));
+    transformModeButton->setPopupMode(QToolButton::InstantPopup);
+    auto *transformModeMenu = new QMenu(transformModeButton);
+    auto getTransformTool = [this]() -> KoToolBase* {
+        KisCanvas2 *canvas = d->viewManager->canvasBase();
+        if (!canvas) return nullptr;
+        return KoToolManager::instance()->toolById(canvas, QStringLiteral("KisToolTransform"));
+    };
+    const QStringList transformNames = {
+        i18n("Free"), i18n("Warp"), i18n("Cage"),
+        i18n("Liquify"), i18n("Perspective"), i18n("Mesh")};
+    for (int mode = 0; mode < transformNames.size(); ++mode) {
+        QAction *choice = transformModeMenu->addAction(transformNames.at(mode));
+        connect(choice, &QAction::triggered, this, [getTransformTool, mode]() {
+            if (KoToolBase *tool = getTransformTool())
+                tool->setProperty("transformMode", mode);
+        });
+    }
+    transformModeButton->setMenu(transformModeMenu);
+    tabletTransformBar->addWidget(transformModeButton);
+    QAction *resetTransform = tabletTransformBar->addAction(i18n("Reset"));
+    connect(resetTransform, &QAction::triggered, this, [getTransformTool]() {
+        if (KoToolBase *tool = getTransformTool())
+            QMetaObject::invokeMethod(tool, "slotRestartTransform", Qt::DirectConnection);
+    });
+    QAction *cancelTransform = tabletTransformBar->addAction(i18n("Cancel"));
+    connect(cancelTransform, &QAction::triggered, this, [getTransformTool]() {
+        if (KoToolBase *tool = getTransformTool())
+            QMetaObject::invokeMethod(tool, "slotCancelTransform", Qt::DirectConnection);
+    });
+    QAction *applyTransform = tabletTransformBar->addAction(i18n("Apply"));
+    connect(applyTransform, &QAction::triggered, this, [getTransformTool]() {
+        if (KoToolBase *tool = getTransformTool())
+            QMetaObject::invokeMethod(tool, "applyTransform", Qt::DirectConnection);
+    });
+    addToolBar(Qt::BottomToolBarArea, tabletTransformBar);
+    tabletTransformBar->hide();
+    auto updateTabletTransformBar = [this, tabletCompact, tabletTransformBar]() {
+        const bool active = d->viewManager->canvasBase() &&
+            KoToolManager::instance()->activeToolId() == QStringLiteral("KisToolTransform");
+        tabletTransformBar->setVisible(tabletCompact->isChecked() && active);
+    };
+    connect(KoToolManager::instance(), &KoToolManager::changedTool, this,
+            [updateTabletTransformBar](KoCanvasController *) {
+        updateTabletTransformBar();
+    });
+    connect(tabletCompact, &QAction::toggled, this,
+            [updateTabletTransformBar](bool) { updateTabletTransformBar(); });
+''')
     # Finish by updating Krita's mandatory XMLGUI version and stripped MD5.
     p = "krita/CMakeLists.txt"
     sub(p, "set(KRITA5_XMLGUI_VERSION 545)", "set(KRITA5_XMLGUI_VERSION 546)")
