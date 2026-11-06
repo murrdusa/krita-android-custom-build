@@ -332,6 +332,101 @@ static constexpr int BUTTON_SIZE = 30;
 
 }""") if False else None
 
+    # Optional quick two-finger inward pinch; the original pinch gesture still
+    # runs normally. The reset is applied only at gesture completion, after an
+    # unmistakable rapid inward movement. Defaults OFF until user opts in.
+    path = "libs/ui/input/kis_input_manager.cpp"
+    change(path, "#include <QTouchEvent>\n", """#include <QTouchEvent>
+#ifdef Q_OS_ANDROID
+#include <QSettings>
+#include <QElapsedTimer>
+#include <QLineF>
+#include <QTimer>
+#include <QHash>
+#include <KisPart.h>
+#include <KisMainWindow.h>
+#include <kactioncollection.h>
+#endif
+""")
+    change(path, """KisInputManager::KisInputManager(QObject *parent)
+""", """#ifdef Q_OS_ANDROID
+namespace {
+struct TabletPinchTracking {
+    QElapsedTimer age;
+    qreal startDistance = 0;
+    qreal smallestDistance = 0;
+    bool tracked = false;
+};
+QHash<KisInputManager*, TabletPinchTracking> tabletPinches;
+}
+#endif
+
+KisInputManager::KisInputManager(QObject *parent)
+""")
+    change(path, """KisInputManager::~KisInputManager()
+{
+""", """KisInputManager::~KisInputManager()
+{
+#ifdef Q_OS_ANDROID
+    tabletPinches.remove(this);
+#endif
+""")
+    change(path, """    case QEvent::TouchBegin:
+    {
+        d->debugEvent<QTouchEvent, false>(event);""", """    case QEvent::TouchBegin:
+    {
+#ifdef Q_OS_ANDROID
+        tabletPinches.remove(this);
+#endif
+        d->debugEvent<QTouchEvent, false>(event);""")
+    change(path, """        QTouchEvent *touchEvent = static_cast<QTouchEvent*>(event);
+        d->debugEvent<QTouchEvent, false>(event);
+
+        int eventPointCount = touchEvent->touchPoints().size();""",
+           """        QTouchEvent *touchEvent = static_cast<QTouchEvent*>(event);
+        d->debugEvent<QTouchEvent, false>(event);
+#ifdef Q_OS_ANDROID
+        if (QSettings().value(QStringLiteral("TabletUi/quickPinch"), false).toBool()
+            && touchEvent->touchPoints().size() == 2) {
+            const auto &points = touchEvent->touchPoints();
+            qreal distance = QLineF(points.at(0).pos(), points.at(1).pos()).length();
+            TabletPinchTracking &tracker = tabletPinches[this];
+            if (!tracker.tracked && distance > 80) {
+                tracker.tracked = true;
+                tracker.startDistance = distance;
+                tracker.smallestDistance = distance;
+                tracker.age.start();
+            } else if (tracker.tracked) {
+                tracker.smallestDistance = qMin(tracker.smallestDistance, distance);
+            }
+        }
+#endif
+
+        int eventPointCount = touchEvent->touchPoints().size();""")
+    change(path, """        retval = d->matcher.touchEndEvent(touchEvent);
+        if (d->touchStrokeStarted) {""",
+           """#ifdef Q_OS_ANDROID
+        auto tracker = tabletPinches.take(this);
+        if (tracker.tracked && tracker.age.isValid() &&
+            tracker.age.elapsed() <= qBound(120, QSettings().value(
+                QStringLiteral("TabletUi/pinchMs"), 250).toInt(), 500) &&
+            tracker.startDistance - tracker.smallestDistance > 45 &&
+            tracker.smallestDistance < tracker.startDistance * 0.68) {
+            QTimer::singleShot(0, this, []() {
+                if (!KisPart::exists()) return;
+                KisMainWindow *window = KisPart::instance()->currentMainwindow();
+                if (!window) return;
+                QAction *rotation = window->actionCollection()->action(
+                    QStringLiteral("reset_canvas_rotation"));
+                QAction *fit = window->actionCollection()->action(QStringLiteral("zoom_to_fit"));
+                if (rotation) rotation->trigger();
+                if (fit) fit->trigger();
+            });
+        }
+#endif
+        retval = d->matcher.touchEndEvent(touchEvent);
+        if (d->touchStrokeStarted) {""")
+
     # Replace the v1 popup gallery with an inline page occupying the same
     # area as Recent Images; hide the news column on Android.
     path = "libs/ui/KisWelcomePageWidget.cpp"
