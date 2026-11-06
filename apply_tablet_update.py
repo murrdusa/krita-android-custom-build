@@ -286,6 +286,16 @@ def main(root: Path):
     <Action name="reload_preset_action"/>
     <Action name="mirror_actions"/>""")
 
+    # Krita deliberately checks the XMLGUI toolbar layout checksum during
+    # CMake configuration. This custom toolbar requires a new Android-only
+    # XMLGUI version and the matching whitespace-stripped MD5.
+    path = "krita/CMakeLists.txt"
+    change(path, "set(KRITA5_XMLGUI_VERSION 544)",
+           "set(KRITA5_XMLGUI_VERSION 545)")
+    change(path,
+           'set(krita5_xmlgui_hash_expected "b74fdc4f3bafac700be2db906a424542")',
+           'set(krita5_xmlgui_hash_expected "a4656de215838ff1371d720f9c3d4b26")')
+
     # Native Android hardware buttons, implemented on Qt's GUI thread.
     path = "packaging/android/apk/src/org/krita/android/JNIWrappers.java"
     change(path, "    public static native boolean hasMainWindowLoaded();",
