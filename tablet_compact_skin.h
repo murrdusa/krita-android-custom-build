@@ -29,6 +29,9 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QScroller>
+#include <QCursor>
+#include <QAction>
 #include <QSettings>
 #include <QSlider>
 #include <QTimer>
@@ -63,6 +66,7 @@ public:
     TabletCompactSkin(KisMainWindow *window, QMdiArea *mdi, KisViewManager *vm)
         : QObject(window), m_main(window), m_mdi(mdi), m_vm(vm)
     {
+        m_startupCompact = QSettings().value(QStringLiteral("TabletUi/compact"),true).toBool();
         m_surface = mdi->viewport();
         m_surface->installEventFilter(this);
         m_mdi->installEventFilter(this);
@@ -234,6 +238,8 @@ public:
         m_colorSizeStep = QSettings().value(
             QStringLiteral("TabletUi/colorWheelSize"),1).toInt();
         m_colorSizeStep=qBound(0,m_colorSizeStep,2);
+        // Each editing session starts with the canvas unobstructed.
+        m_colorExpanded=false;
     }
 
     bool eventFilter(QObject *watched,QEvent *event) override {
@@ -249,6 +255,18 @@ public:
         m_compact=active;
         if (active) {
             rememberDockers();
+            const QByteArray storedNormal=QSettings().value(
+                QStringLiteral("TabletUi/normalWindowState")).toByteArray();
+            if(m_startupCompact && !storedNormal.isEmpty()) {
+                m_previousWindowState=storedNormal;
+            } else if(!m_previousWindowState.isEmpty()) {
+                QSettings().setValue(QStringLiteral("TabletUi/normalWindowState"),
+                                     m_previousWindowState);
+            }
+            m_startupCompact=false;
+            // Do not re-open the floating wheel automatically on each launch.
+            m_colorExpanded=false;
+            hideCompactToolbarClutter();
             for(QDockWidget *dock:{m_layerDocker.data(),m_brushDocker.data(),
                                    m_toolOptionsDocker.data()}) {
                 if(dock) dock->hide();
@@ -260,13 +278,13 @@ public:
                 m_colorDocker->setFloating(true);
                 const int wheelWidth=QList<int>{225,265,330}.at(m_colorSizeStep);
                 m_colorDocker->resize(QSize(wheelWidth,wheelWidth+70));
-                m_colorExpanded=QSettings().value(
-                    QStringLiteral("TabletUi/colorExpanded"),true).toBool();
+                m_colorExpanded=false;
             }
             m_topBar->show();
             m_layerRefreshTimer->start();
         } else {
             m_layerRefreshTimer->stop();
+            restoreCompactToolbarClutter();
             m_topBar->hide();
             if(m_colorDocker) {
                 m_colorDocker->hide();
@@ -322,6 +340,33 @@ private:
                dock->windowTitle().contains(i18n("Advanced Color Selector"),Qt::CaseInsensitive))
                 m_colorDocker=dock;
         }
+    }
+    void hideCompactToolbarClutter() {
+        m_hiddenActions.clear();
+        for(QToolBar *bar : m_main->findChildren<QToolBar*>()) {
+            if(bar == m_topBar)continue;
+            for(QAction *action : bar->actions()) {
+                if(!action || !action->isVisible())continue;
+                const QString id=action->objectName().toLower();
+                const QString title=(action->text()+QStringLiteral(" ")+
+                                     action->toolTip()).toLower();
+                if(id.contains(QStringLiteral("mirror")) ||
+                   id.contains(QStringLiteral("wrap")) ||
+                   id.contains(QStringLiteral("workspace")) ||
+                   title.contains(QStringLiteral("mirror horizontal")) ||
+                   title.contains(QStringLiteral("mirror vertical")) ||
+                   title.contains(QStringLiteral("wrap around")) ||
+                   title.contains(QStringLiteral("workspace"))) {
+                    m_hiddenActions.append(action);
+                    action->setVisible(false);
+                }
+            }
+        }
+    }
+    void restoreCompactToolbarClutter() {
+        for(const QPointer<QAction> &action : m_hiddenActions)
+            if(action)action->setVisible(true);
+        m_hiddenActions.clear();
     }
     void trigger(const QString &name) {
         if(QAction *a=m_main->actionCollection()->action(name))a->trigger();
@@ -387,6 +432,7 @@ private:
         QDialog dialog(m_main);
         dialog.setWindowTitle(i18n("Choose %1 preset",QStringList{
             i18n("Paint"),i18n("Erase"),i18n("Blend")}.at(slot)));
+        dialog.setWindowFlags(dialog.windowFlags() | Qt::Popup);
         dialog.resize(qMax(270,qMin(425,m_surface->width()-24)),
                       qMax(310,qMin(570,m_surface->height()-35)));
         auto *layout=new QVBoxLayout(&dialog);
@@ -402,6 +448,12 @@ private:
         grid->setSpacing(3);
         grid->setWordWrap(true);
         grid->setSelectionMode(QAbstractItemView::SingleSelection);
+        grid->setMovement(QListView::Static);
+        grid->setDragDropMode(QAbstractItemView::NoDragDrop);
+        grid->setDragEnabled(false);
+        grid->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        grid->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        QScroller::grabGesture(grid->viewport(),QScroller::TouchGesture);
         layout->addWidget(grid,1);
         auto *assign=new QPushButton(i18n("Assign current brush to this category"),&dialog);
         layout->addWidget(assign);
@@ -426,7 +478,48 @@ private:
                 item->setToolTip(preset->name());
             }
         };
-        connect(all,&QCheckBox::toggled,&dialog,[refill](bool){refill();});
+        QTimer holdTimer(&dialog);
+        holdTimer.setSingleShot(true);
+        QListWidgetItem *heldItem=nullptr;
+        bool heldAction=false;
+        connect(grid,&QListWidget::itemPressed,&dialog,
+                [&holdTimer,&heldItem,&heldAction](QListWidgetItem *item) {
+            heldItem=item;
+            heldAction=false;
+            holdTimer.start(550);
+        });
+        connect(QScroller::scroller(grid->viewport()),&QScroller::stateChanged,
+                &dialog,[&holdTimer](QScroller::State state) {
+            if(state!=QScroller::Inactive)holdTimer.stop();
+        });
+        connect(&holdTimer,&QTimer::timeout,&dialog,
+                [this,slot,grid,all,&candidates,&heldItem,&heldAction,refill,&dialog]() {
+            if(!heldItem)return;
+            const int index=heldItem->data(Qt::UserRole).toInt();
+            if(index<0 || index>=candidates.size())return;
+            const auto preset=candidates.at(index);
+            if(!preset)return;
+            heldAction=true;
+            if(all->isChecked()) {
+                QSettings().setValue(groupKey(preset->name()),slot);
+                refill();
+            } else {
+                QMenu options(&dialog);
+                QAction *remove=options.addAction(i18n("Remove from this category"));
+                QAction *paint=options.addAction(i18n("Move to Paint"));
+                QAction *erase=options.addAction(i18n("Move to Erase"));
+                QAction *blend=options.addAction(i18n("Move to Blend"));
+                QAction *selected=options.exec(QCursor::pos());
+                if(!selected)return;
+                const int group=selected==remove?-1:
+                    selected==paint?0:selected==erase?1:2;
+                QSettings().setValue(groupKey(preset->name()),group);
+                refill();
+            }
+        });
+        connect(all,&QCheckBox::toggled,&dialog,[&holdTimer,refill](bool){
+            holdTimer.stop();refill();
+        });
         connect(assign,&QPushButton::clicked,&dialog,[this,slot,refill]() {
             auto p=m_vm->canvasResourceProvider()->currentPreset();
             if(!p)return;
@@ -437,11 +530,13 @@ private:
             refill();
         });
         connect(grid,&QListWidget::itemClicked,&dialog,
-                [this,slot,&candidates,&dialog](QListWidgetItem *item) {
+                [this,slot,all,&candidates,&dialog,&holdTimer,&heldAction](QListWidgetItem *item) {
+            holdTimer.stop();
+            if(heldAction) {heldAction=false;return;}
             int index=item->data(Qt::UserRole).toInt();
             if(index<0 || index>=candidates.size())return;
             auto preset=candidates.at(index);
-            QSettings().setValue(groupKey(preset->name()),slot);
+            // Tapping in Show All selects without changing group membership.
             m_lastPreset[slot]=preset->name();
             activateSlot(slot);
             dialog.accept();
@@ -516,6 +611,7 @@ private:
         if(!node)return;
         QDialog dialog(m_main);
         dialog.setWindowTitle(node->name());
+        dialog.setWindowFlags(dialog.windowFlags() | Qt::Popup);
         dialog.resize(qMax(286,qMin(360,m_surface->width()-24)),
                       qMax(330,qMin(450,m_surface->height()-35)));
         auto *layout=new QVBoxLayout(&dialog);
@@ -546,9 +642,10 @@ private:
         const Command commands[]={
             {"Hide","visibility"},{"Duplicate","duplicatelayer"},{"Clear","clear"},
             {"Lock","lock"},{"Merge","merge_layer"},{"Delete","remove_layer"},
-            {"Clip","create_quick_clipping_group"},{"Select","select_opaque"},{"Mask","add_new_transparency_mask"}
+            {"Clip","create_quick_clipping_group"},{"Select","select_opaque"},{"Mask","add_new_transparency_mask"},
+            {"Alpha Lock","toggle_layer_alpha_lock"},{"More...",""}
         };
-        for(int i=0;i<9;++i) {
+        for(int i=0;i<11;++i) {
             auto *btn=new QToolButton(&dialog);
             btn->setText(i18n(commands[i].label));
             btn->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
@@ -563,6 +660,11 @@ private:
                 else if(i==3)m_vm->nodeManager()->toggleLock();
                 else if(i==5)m_vm->nodeManager()->removeNode();
                 else if(i==6)m_vm->nodeManager()->createQuickClippingGroup();
+                else if(i==9)trigger(QStringLiteral("toggle_layer_alpha_lock"));
+                else if(i==10 && m_layerDocker) {
+                    m_layerDocker->show();
+                    m_layerDocker->raise();
+                }
                 else if(i==7 && m_layerDocker) {
                     QMetaObject::invokeMethod(m_layerDocker, "slotSelectOpaque",
                                               Qt::DirectConnection);
@@ -616,6 +718,7 @@ private:
     void toggleColor() {
         m_colorExpanded=!m_colorExpanded;
         QSettings().setValue(QStringLiteral("TabletUi/colorExpanded"),m_colorExpanded);
+        m_recent->setVisible(m_compact && !m_colorExpanded && m_vm->activeNode());
         updateColorDock();
     }
     void updateColorDock() {
@@ -654,7 +757,7 @@ private:
         m_brushStrip->setVisible(show);
         m_colorButton->setVisible(show);
         m_colorSizeButton->setVisible(show);
-        m_recent->setVisible(show);
+        m_recent->setVisible(show && !m_colorExpanded);
         if(show) {
             refreshColors();
             paintSlotIcons();
@@ -672,6 +775,8 @@ private:
     QPointer<QDockWidget> m_colorDocker;
     QPointer<QDockWidget> m_toolOptionsDocker;
     QByteArray m_previousWindowState;
+    QList<QPointer<QAction>> m_hiddenActions;
+    bool m_startupCompact=false;
     bool m_compact=false;
     bool m_colorExpanded=true;
     bool m_internalPresetChange=false;
