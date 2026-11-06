@@ -214,6 +214,100 @@ def main(root: Path):
 #endif
             {"tool_crop", i18n("Crop to Selection"), &KisSelectionManager::imageResizeToSelection},""")
 
+    # Configurable Quick Actions: curated actions, reordered by drag-and-drop;
+    # direct gradient/pattern chooser actions replace permanent toolbar slots.
+    p = "libs/ui/KisMainWindow.cpp"
+    def quick_actions(s):
+        start = s.index("    QMenu *quickMenu = new QMenu(i18n(\"Quick Actions\"), this);")
+        stop = s.index("\n#endif\n\n    d->recentFiles", start)
+        replacement = r'''    QMenu *quickMenu = new QMenu(i18n("Quick Actions"), this);
+    quickMenu->menuAction()->setIcon(KisIconUtils::loadIcon("application-menu"));
+    actionCollection()->addAction(QStringLiteral("tablet_quick_actions"), quickMenu->menuAction());
+    const QStringList tabletQuickAvailable = {
+        QStringLiteral("gradients"), QStringLiteral("patterns"),
+        QStringLiteral("file_new"), QStringLiteral("file_open"),
+        QStringLiteral("file_save_as"), QStringLiteral("file_export_file"),
+        QStringLiteral("select_all"), QStringLiteral("invert_selection"),
+        QStringLiteral("reselect"), QStringLiteral("deselect"),
+        QStringLiteral("fill_selection_foreground_color"),
+        QStringLiteral("cut_selection_to_new_layer"),
+        QStringLiteral("duplicate_layer"), QStringLiteral("merge_layer"),
+        QStringLiteral("quick_group"), QStringLiteral("edit_undo"),
+        QStringLiteral("edit_redo"), QStringLiteral("tablet_reset_view"),
+        QStringLiteral("tablet_settings")
+    };
+    const QStringList tabletQuickDefaults = {
+        QStringLiteral("gradients"), QStringLiteral("patterns"),
+        QStringLiteral("file_new"), QStringLiteral("file_open"),
+        QStringLiteral("file_save_as"), QStringLiteral("file_export_file"),
+        QStringLiteral("select_all"), QStringLiteral("invert_selection"),
+        QStringLiteral("reselect"), QStringLiteral("deselect"),
+        QStringLiteral("fill_selection_foreground_color"),
+        QStringLiteral("duplicate_layer"), QStringLiteral("merge_layer"),
+        QStringLiteral("quick_group"), QStringLiteral("edit_undo"),
+        QStringLiteral("edit_redo"), QStringLiteral("tablet_reset_view"),
+        QStringLiteral("tablet_settings")
+    };
+    QAction *customizeQuick = new QAction(i18n("Customize Quick Actions..."), this);
+    connect(customizeQuick, &QAction::triggered, this,
+            [this, tabletQuickAvailable, tabletQuickDefaults]() {
+        QDialog dialog(this);
+        dialog.setWindowTitle(i18n("Customize Quick Actions"));
+        auto *layout = new QVBoxLayout(&dialog);
+        auto *info = new QLabel(i18n("Check actions to show. Drag rows to change their order."), &dialog);
+        layout->addWidget(info);
+        auto *list = new QListWidget(&dialog);
+        list->setDragDropMode(QAbstractItemView::InternalMove);
+        list->setDefaultDropAction(Qt::MoveAction);
+        layout->addWidget(list);
+        QStringList selected = QSettings().value(
+            QStringLiteral("TabletUi/quickActions"), tabletQuickDefaults).toStringList();
+        QStringList ordered = selected;
+        for (const QString &name : tabletQuickAvailable) {
+            if (!ordered.contains(name)) ordered.append(name);
+        }
+        for (const QString &name : ordered) {
+            if (!tabletQuickAvailable.contains(name)) continue;
+            QAction *action = actionCollection()->action(name);
+            QString label = action && !action->text().isEmpty() ? action->text() : name;
+            auto *item = new QListWidgetItem(label.remove(QLatin1Char('&')), list);
+            item->setData(Qt::UserRole, name);
+            item->setFlags(item->flags() | Qt::ItemIsUserCheckable | Qt::ItemIsDragEnabled);
+            item->setCheckState(selected.contains(name) ? Qt::Checked : Qt::Unchecked);
+        }
+        auto *buttons = new QDialogButtonBox(
+            QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+        layout->addWidget(buttons);
+        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        if (dialog.exec() == QDialog::Accepted) {
+            QStringList chosen;
+            for (int i = 0; i < list->count(); ++i) {
+                auto *item = list->item(i);
+                if (item->checkState() == Qt::Checked)
+                    chosen << item->data(Qt::UserRole).toString();
+            }
+            QSettings().setValue(QStringLiteral("TabletUi/quickActions"), chosen);
+        }
+    });
+    connect(quickMenu, &QMenu::aboutToShow, this,
+            [this, quickMenu, customizeQuick, tabletQuickDefaults]() {
+        quickMenu->clear();
+        const QStringList selected = QSettings().value(
+            QStringLiteral("TabletUi/quickActions"), tabletQuickDefaults).toStringList();
+        for (const QString &name : selected) {
+            QAction *action = actionCollection()->action(name);
+            if (action) quickMenu->addAction(action);
+        }
+        quickMenu->addSeparator();
+        quickMenu->addAction(customizeQuick);
+    });
+'''
+        return s[:start] + replacement + s[stop:]
+    edit(p, quick_actions)
+    sub(p, "#include <QListWidget>\n",
+           "#include <QListWidget>\n#include <QLabel>\n#include <QAbstractItemView>\n")
+
     # Finish by updating Krita's mandatory XMLGUI version and stripped MD5.
     p = "krita/CMakeLists.txt"
     sub(p, "set(KRITA5_XMLGUI_VERSION 545)", "set(KRITA5_XMLGUI_VERSION 546)")
