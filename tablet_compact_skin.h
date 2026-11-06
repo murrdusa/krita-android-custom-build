@@ -541,9 +541,9 @@ private:
         auto *grid=new QGridLayout();
         struct Command {const char *label;const char *action;};
         const Command commands[]={
-            {"Hide","visibility"},{"Duplicate","duplicate_layer"},{"Clear","clear_layer"},
+            {"Hide","visibility"},{"Duplicate","duplicatelayer"},{"Clear","clear"},
             {"Lock","lock"},{"Merge","merge_layer"},{"Delete","remove_layer"},
-            {"Clip","quick_clipping_group"},{"Select","select_opaque"},{"Mask","add_new_transparency_mask"}
+            {"Clip","create_quick_clipping_group"},{"Select","select_opaque"},{"Mask","add_new_transparency_mask"}
         };
         for(int i=0;i<9;++i) {
             auto *btn=new QToolButton(&dialog);
@@ -560,11 +560,14 @@ private:
                 else if(i==3)m_vm->nodeManager()->toggleLock();
                 else if(i==5)m_vm->nodeManager()->removeNode();
                 else if(i==6)m_vm->nodeManager()->createQuickClippingGroup();
-                else {
+                else if(i==7 && m_layerDocker) {
+                    QMetaObject::invokeMethod(m_layerDocker, "slotSelectOpaque",
+                                              Qt::DirectConnection);
+                } else {
                     const QStringList actions={
-                        QStringLiteral(""),QStringLiteral(""),QStringLiteral("clear_layer"),
+                        QStringLiteral(""),QStringLiteral(""),QStringLiteral("clear"),
                         QStringLiteral(""),QStringLiteral("merge_layer"),QStringLiteral(""),
-                        QStringLiteral(""),QStringLiteral("select_opaque"),QStringLiteral("add_new_transparency_mask")};
+                        QStringLiteral(""),QStringLiteral(""),QStringLiteral("add_new_transparency_mask")};
                     trigger(actions.at(i));
                 }
                 dialog.accept();
