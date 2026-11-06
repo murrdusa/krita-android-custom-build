@@ -78,7 +78,17 @@ def main(root):
                     subwin->setProperty("tabletFrameSaved", false);
                 }
             }
-            d->mdiArea->setViewMode(QMdiArea::TabbedView);
+            const auto originalViewMode = d->mdiArea->property("tabletPrevMdiMode").isValid()
+                ? static_cast<QMdiArea::ViewMode>(d->mdiArea->property("tabletPrevMdiMode").toInt())
+                : QMdiArea::TabbedView;
+            d->mdiArea->setViewMode(originalViewMode);
+            if (QTabBar *tabs = d->findTabBarHACK()) {
+                customizeTabBar();
+                tabs->setExpanding(true);
+                tabs->setElideMode(Qt::ElideRight);
+                tabs->setAcceptDrops(true);
+                tabs->setChangeCurrentOnDrag(true);
+            }
             for (QMdiSubWindow *subwin : d->mdiArea->subWindowList()) {
                 subwin->showMaximized();
             }
