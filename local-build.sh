@@ -14,7 +14,7 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 [[ "$JOBS" =~ ^[1-9][0-9]*$ ]] || die "Invalid KRITA_BUILD_JOBS"
 for p in git python3 docker; do command -v "$p" >/dev/null || die "Missing $p. See LOCAL-BUILD.md"; done
 docker info >/dev/null 2>&1 || die "Start Docker Desktop and enable Ubuntu under Resources > WSL Integration."
-[[ -f "$REPO/apply_tablet_update.py" ]] || die "Please clone/update the Krita customization repository."
+[[ -f "$REPO/apply_tablet_refinements.py" ]] || die "Please clone/update the Krita customization repository."
 if [[ "$MODE" == status ]]; then
     echo "Workspace: $ROOT"
     [[ ! -d "$OUT" ]] || find "$OUT" -maxdepth 1 -name '*.apk' -print
@@ -41,6 +41,7 @@ fi
 say "Apply customizations from this repository"
 python3 "$REPO/apply_customizations.py" "$SOURCE"
 python3 "$REPO/apply_tablet_update.py" "$SOURCE"
+python3 "$REPO/apply_tablet_refinements.py" "$SOURCE"
 python3 - "$SOURCE" <<'PY'
 import hashlib, pathlib, sys
 root=pathlib.Path(sys.argv[1])
