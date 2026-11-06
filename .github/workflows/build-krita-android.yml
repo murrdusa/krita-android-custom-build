@@ -1,0 +1,98 @@
+name: Krita Android custom build (experimental)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Validate patch first; build attempts APK"
+        required: true
+        type: choice
+        default: validate
+        options:
+          - validate
+          - build
+
+permissions:
+  contents: read
+
+jobs:
+  krita:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - name: Check out customization repository
+        uses: actions/checkout@v4
+
+      - name: Check script syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile apply_customizations.py
+          bash -n build-in-krita-container.sh
+
+      - name: Reclaim disk space
+        if: inputs.mode == 'build'
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/powershell /opt/hostedtoolcache || true
+          docker system prune --all --force || true
+          df -h /
+
+      - name: Clone official source and apply patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$HOME/krita-custom-android-build"
+          mkdir -p "$ROOT/persistent"
+          git clone --depth 1 --branch v6.0.4 https://github.com/KDE/krita.git "$ROOT/persistent/krita"
+          python3 apply_customizations.py "$ROOT/persistent/krita"
+          git -C "$ROOT/persistent/krita" diff --check
+          git -C "$ROOT/persistent/krita" diff --stat
+          cp build-in-krita-container.sh "$ROOT/persistent/krita/build-in-krita-container.sh"
+          touch "$ROOT/persistent/krita/.krita_android_custom_patch_applied"
+
+      - name: Validation result (NOT an APK build)
+        if: inputs.mode == 'validate'
+        run: echo "Patch applied and diff checked. Android compilation has NOT been tested."
+
+      - name: Download KDE Android build support
+        if: inputs.mode == 'build'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$HOME/krita-custom-android-build"
+          SRC="$ROOT/persistent/krita"
+          git clone --depth 1 https://invent.kde.org/dkazakov/krita-docker-env.git "$ROOT/docker-env-staging"
+          cp -a "$ROOT/docker-env-staging/." "$ROOT/"
+          rm -rf "$ROOT/docker-env-staging"
+          git clone --depth 1 https://invent.kde.org/packaging/krita-deps-management.git "$SRC/krita-deps-management"
+          git clone --depth 1 https://invent.kde.org/packaging/krita-ci-utilities.git "$SRC/krita-deps-management/ci-utilities"
+          cd "$ROOT"
+          ./bin/bootstrap-krita-deps.sh --android=arm64-v8a
+          df -h /
+
+      - name: Compile Android debug APK in KDE container
+        if: inputs.mode == 'build'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$HOME/krita-custom-android-build"
+          cd "$ROOT"
+          docker info >/dev/null
+          ./bin/build_image --android
+          ./bin/run_container
+          test -s .container_name
+          CONTAINER_NAME="$(head -1 .container_name | tr -d '\r\n')"
+          test -n "$CONTAINER_NAME"
+          docker exec -i -u appimage "$CONTAINER_NAME" bash -lc 'bash "$HOME/persistent/krita/build-in-krita-container.sh"'
+
+      - name: Upload APK artifact when available
+        if: always() && inputs.mode == 'build'
+        uses: actions/upload-artifact@v4
+        with:
+          name: krita-android-experimental-debug-apk
+          path: ~/krita-custom-android-build/persistent/krita-custom-apks/*.apk
+          if-no-files-found: warn
+          retention-days: 7
