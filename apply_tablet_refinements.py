@@ -308,6 +308,179 @@ def main(root: Path):
     sub(p, "#include <QListWidget>\n",
            "#include <QListWidget>\n#include <QLabel>\n#include <QAbstractItemView>\n")
 
+    # Four independently configurable hardware key gestures. Single actions
+    # dispatch on KEY UP; brush-size long actions start repeating only after
+    # the long-press threshold. This keeps short-press latency near zero.
+    p = "packaging/android/apk/src/org/krita/android/JNIWrappers.java"
+    sub(p, "    public static native void volumeUndoRedo(boolean redo);",
+           """    public static native void volumeUndoRedo(boolean redo);
+    public static native int volumeKeyAction(boolean up, boolean longPress);
+    public static native int volumeLongPressMs();
+    public static native void volumeExecute(int action);""")
+    p = "packaging/android/apk/src/org/krita/android/MainActivity.java"
+    sub(p, "import android.os.Bundle;", """import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;""")
+    def java_volume(s):
+        start = s.index("    @Override\n    public boolean onKeyDown(final int keyCode, final KeyEvent event) {")
+        stop = s.index("    @Override\n    public boolean onKeyUp(final int keyCode, final KeyEvent event) {", start)
+        return s[:start] + r'''    // Tablet buttons: normal actions fire on release. Long press only
+    // auto-repeats while held for brush size changes.
+    private final Handler tabletVolumeHandler = new Handler(Looper.getMainLooper());
+    private Runnable tabletVolumeRepeat;
+    private int tabletVolumeHeldKey = -1;
+    private long tabletVolumeStart = 0;
+    private boolean tabletVolumeDidRepeat = false;
+
+    @Override
+    public boolean onKeyDown(final int keyCode, final KeyEvent event) {
+        if ((keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP)
+                && haveLibsLoaded && JNIWrappers.volumeMappingEnabled()) {
+            if (event.getRepeatCount() == 0) {
+                if (tabletVolumeRepeat != null) tabletVolumeHandler.removeCallbacks(tabletVolumeRepeat);
+                tabletVolumeHeldKey = keyCode;
+                tabletVolumeStart = event.getEventTime();
+                tabletVolumeDidRepeat = false;
+                final int longAction = JNIWrappers.volumeKeyAction(
+                    keyCode == KeyEvent.KEYCODE_VOLUME_UP, true);
+                if (longAction == 5 || longAction == 6) {
+                    tabletVolumeRepeat = new Runnable() {
+                        @Override public void run() {
+                            if (tabletVolumeHeldKey != keyCode) return;
+                            tabletVolumeDidRepeat = true;
+                            JNIWrappers.volumeExecute(longAction);
+                            tabletVolumeHandler.postDelayed(this, 90);
+                        }
+                    };
+                    tabletVolumeHandler.postDelayed(
+                        tabletVolumeRepeat, JNIWrappers.volumeLongPressMs());
+                }
+            }
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+''' + s[stop:]
+    edit(p, java_volume)
+    sub(p, """        if ((keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP)
+                && haveLibsLoaded && JNIWrappers.volumeMappingEnabled()) {
+            return true;
+        }""",
+           """        if ((keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP)
+                && haveLibsLoaded && JNIWrappers.volumeMappingEnabled()) {
+            if (tabletVolumeRepeat != null) {
+                tabletVolumeHandler.removeCallbacks(tabletVolumeRepeat);
+                tabletVolumeRepeat = null;
+            }
+            if (tabletVolumeHeldKey == keyCode && !tabletVolumeDidRepeat) {
+                boolean longPress = event.getEventTime() - tabletVolumeStart
+                                    >= JNIWrappers.volumeLongPressMs();
+                int action = JNIWrappers.volumeKeyAction(
+                    keyCode == KeyEvent.KEYCODE_VOLUME_UP, longPress);
+                if (action != 0) JNIWrappers.volumeExecute(action);
+            }
+            tabletVolumeHeldKey = -1;
+            tabletVolumeDidRepeat = false;
+            return true;
+        }""")
+    p = "krita/main.cc"
+    sub(p, """#define MAIN_EXPORT __attribute__ ((visibility ("default")))
+#define MAIN_FN main""",
+           r'''// Action IDs: 0 disabled, 1 undo, 2 redo, 3 eraser, 4 pick once,
+ // 5 increase brush size, 6 decrease brush size.
+extern "C" JNIEXPORT jint JNICALL
+Java_org_krita_android_JNIWrappers_volumeKeyAction(JNIEnv*, jobject, jboolean up, jboolean longPress)
+{
+    QSettings s;
+    if (longPress && !s.value(QStringLiteral("TabletUi/volumeLongEnabled"), true).toBool()) return 0;
+    if (!longPress && !s.value(QStringLiteral("TabletUi/volumeShortEnabled"), true).toBool()) return 0;
+    const QString key = up
+       ? (longPress ? QStringLiteral("TabletUi/volumeUpLong") : QStringLiteral("TabletUi/volumeUpShort"))
+       : (longPress ? QStringLiteral("TabletUi/volumeDownLong") : QStringLiteral("TabletUi/volumeDownShort"));
+    const int fallback = up ? (longPress ? 3 : 2) : (longPress ? 4 : 1);
+    return qBound(0, s.value(key, fallback).toInt(), 6);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_org_krita_android_JNIWrappers_volumeLongPressMs(JNIEnv*, jobject)
+{
+    return qBound(80, QSettings().value(QStringLiteral("TabletUi/volumeLongMs"), 150).toInt(), 1000);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_krita_android_JNIWrappers_volumeExecute(JNIEnv*, jobject, jint code)
+{
+    if (code <= 0 || code > 6 || !KisPart::exists()) return;
+    KisMainWindow *window = KisPart::instance()->currentMainwindow();
+    if (!window) return;
+    QMetaObject::invokeMethod(window, [window, code]() {
+        if (code == 1 || code == 2) {
+            QMetaObject::invokeMethod(window, code == 1 ? "undo" : "redo",
+                                      Qt::DirectConnection);
+            return;
+        }
+        QString name;
+        if (code == 3) name = QStringLiteral("erase_action");
+        if (code == 4) name = QStringLiteral("tablet_pick_once");
+        if (code == 5) name = QStringLiteral("increase_brush_size");
+        if (code == 6) name = QStringLiteral("decrease_brush_size");
+        if (QAction *action = window->actionCollection()->action(name))
+            action->trigger();
+    }, Qt::QueuedConnection);
+}
+
+#define MAIN_EXPORT __attribute__ ((visibility ("default")))
+#define MAIN_FN main''')
+    p = "libs/ui/KisMainWindow.cpp"
+    sub(p, """        form->addRow(volumeKeys);
+        QCheckBox *pinchEnabled""",
+           r'''        form->addRow(volumeKeys);
+        QCheckBox *volumeShortEnabled = new QCheckBox(i18n("Enable volume short presses"), &dialog);
+        volumeShortEnabled->setChecked(stored.value(QStringLiteral("TabletUi/volumeShortEnabled"), true).toBool());
+        form->addRow(volumeShortEnabled);
+        QCheckBox *volumeLongEnabled = new QCheckBox(i18n("Enable volume long presses"), &dialog);
+        volumeLongEnabled->setChecked(stored.value(QStringLiteral("TabletUi/volumeLongEnabled"), true).toBool());
+        form->addRow(volumeLongEnabled);
+        QSpinBox *volumeLongMs = new QSpinBox(&dialog);
+        volumeLongMs->setRange(80, 1000);
+        volumeLongMs->setSuffix(i18n(" ms"));
+        volumeLongMs->setValue(stored.value(QStringLiteral("TabletUi/volumeLongMs"), 150).toInt());
+        form->addRow(i18n("Long-press threshold"), volumeLongMs);
+        auto makeVolumeSelector = [&dialog, &stored, form](const QString &label,
+                                                            const QString &key, int defaultAction) {
+            QComboBox *combo = new QComboBox(&dialog);
+            combo->addItem(i18n("None"), 0);
+            combo->addItem(i18n("Undo"), 1);
+            combo->addItem(i18n("Redo"), 2);
+            combo->addItem(i18n("Toggle Eraser"), 3);
+            combo->addItem(i18n("Pick Color Once"), 4);
+            combo->addItem(i18n("Increase Brush Size (repeat if held)"), 5);
+            combo->addItem(i18n("Decrease Brush Size (repeat if held)"), 6);
+            combo->setCurrentIndex(combo->findData(stored.value(key, defaultAction).toInt()));
+            form->addRow(label, combo);
+            return combo;
+        };
+        QComboBox *volDownShort = makeVolumeSelector(
+            i18n("Volume down / short"), QStringLiteral("TabletUi/volumeDownShort"), 1);
+        QComboBox *volUpShort = makeVolumeSelector(
+            i18n("Volume up / short"), QStringLiteral("TabletUi/volumeUpShort"), 2);
+        QComboBox *volDownLong = makeVolumeSelector(
+            i18n("Volume down / long"), QStringLiteral("TabletUi/volumeDownLong"), 4);
+        QComboBox *volUpLong = makeVolumeSelector(
+            i18n("Volume up / long"), QStringLiteral("TabletUi/volumeUpLong"), 3);
+        QCheckBox *pinchEnabled''')
+    sub(p, """            stored.setValue(QStringLiteral("TabletUi/volumeKeys"), volumeKeys->isChecked());""",
+           """            stored.setValue(QStringLiteral("TabletUi/volumeKeys"), volumeKeys->isChecked());
+            stored.setValue(QStringLiteral("TabletUi/volumeShortEnabled"), volumeShortEnabled->isChecked());
+            stored.setValue(QStringLiteral("TabletUi/volumeLongEnabled"), volumeLongEnabled->isChecked());
+            stored.setValue(QStringLiteral("TabletUi/volumeLongMs"), volumeLongMs->value());
+            stored.setValue(QStringLiteral("TabletUi/volumeDownShort"), volDownShort->currentData().toInt());
+            stored.setValue(QStringLiteral("TabletUi/volumeUpShort"), volUpShort->currentData().toInt());
+            stored.setValue(QStringLiteral("TabletUi/volumeDownLong"), volDownLong->currentData().toInt());
+            stored.setValue(QStringLiteral("TabletUi/volumeUpLong"), volUpLong->currentData().toInt());""")
+    sub(p, "#include <QAbstractItemView>\n", "#include <QAbstractItemView>\n#include <QComboBox>\n")
+
     # Finish by updating Krita's mandatory XMLGUI version and stripped MD5.
     p = "krita/CMakeLists.txt"
     sub(p, "set(KRITA5_XMLGUI_VERSION 545)", "set(KRITA5_XMLGUI_VERSION 546)")
