@@ -823,6 +823,14 @@ QHash<KisInputManager*, TabletReferenceDrag> tabletReferenceDrags;
     p = "libs/ui/kis_selection_actions_panel.cpp"
     sub(p, "#include <QMenu>\n", "#include <QMenu>\n#include <utility>\n")
 
+    # Ensure icon-only toolbar buttons have actual icons in Krita's bundled
+    # Android icon resources rather than desktop-theme fallbacks.
+    p = "libs/ui/KisMainWindow.cpp"
+    sub(p, 'KisIconUtils::loadIcon("color-picker")',
+           'KisIconUtils::loadIcon("krita_tool_color_sampler")', 2)
+    sub(p, 'KisIconUtils::loadIcon("application-menu")',
+           'KisIconUtils::loadIcon("view-list-text")')
+
     # Finish by updating Krita's mandatory XMLGUI version and stripped MD5.
     p = "krita/CMakeLists.txt"
     sub(p, "set(KRITA5_XMLGUI_VERSION 545)", "set(KRITA5_XMLGUI_VERSION 546)")
