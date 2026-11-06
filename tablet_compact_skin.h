@@ -23,6 +23,8 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QMainWindow>
+#include <QMessageBox>
+#include <QDateTime>
 #include <QMdiArea>
 #include <QMenu>
 #include <QPointer>
@@ -58,6 +60,8 @@
 #include <KoCompositeOpRegistry.h>
 #include <KoResource.h>
 #include <brushengine/kis_paintop_preset.h>
+#include <brushengine/kis_paintop_settings.h>
+#include <brushengine/kis_paintop_registry.h>
 #include <klocalizedstring.h>
 
 class TabletCompactSkin final : public QObject
@@ -555,6 +559,64 @@ private:
         }
         return KisPaintOpPresetSP();
     }
+    bool createBlendingVersion(const KisPaintOpPresetSP &source) {
+        if(!source || !source->settings())return false;
+        // Color Smudge and Pixel share this brush-tip XML property. Other
+        // engines may not: refuse conversion rather than creating a broken tip.
+        const QString brushXml=source->settings()->getString(
+            QStringLiteral("brush_definition"));
+        if(brushXml.isEmpty()) {
+            QMessageBox::information(m_main,i18n("Blend brush"),
+                i18n("This brush engine cannot transfer its tip directly. "
+                     "Use Krita's Brush Editor to create a Color Smudge preset."));
+            return false;
+        }
+        KisPaintOpPresetSP base;
+        auto *resources=presetModel();
+        for(int i=0;i<resources->rowCount() && i<3000;++i) {
+            auto p=resources->resourceForIndex(resources->index(i,0))
+                        .dynamicCast<KisPaintOpPreset>();
+            if(p && p->valid() && p->paintOp().id()==QStringLiteral("colorsmudge")) {
+                base=p; break;
+            }
+        }
+        if(!base) {
+            base=KisPaintOpRegistry::instance()->defaultPreset(
+                KoID(QStringLiteral("colorsmudge")),
+                source->resourcesInterface());
+        }
+        if(!base || !base->settings()) {
+            QMessageBox::warning(m_main,i18n("Blend brush"),
+                i18n("The Color Smudge engine is not available."));
+            return false;
+        }
+        KisPaintOpPresetSP created=base->clone().dynamicCast<KisPaintOpPreset>();
+        if(!created)return false;
+        auto settings=created->settings()->clone();
+        settings->setProperty(QStringLiteral("brush_definition"),brushXml);
+        // Reuse the source tip and size, but retain genuine Color Smudge
+        // options from the base preset (smudge length, color rate, etc.).
+        settings->setPaintOpSize(source->settings()->paintOpSize());
+        created->setSettings(settings);
+        const QString newName=source->name()+QStringLiteral(" (Blend)");
+        created->setName(newName);
+        created->setFilename(QStringLiteral("compact_blend_%1.kpp")
+                             .arg(QDateTime::currentMSecsSinceEpoch()));
+        created->setResourceId(-1);
+        created->setStorageLocation(QString());
+        created->setImage(source->image());
+        created->setValid(true);
+        if(!resources->addResourceDeduplicateFileName(created,QString())) {
+            QMessageBox::warning(m_main,i18n("Blend brush"),
+                i18n("Could not save the blending preset to Krita resources."));
+            return false;
+        }
+        QSettings().setValue(groupKey(newName),2);
+        m_lastPreset[2]=newName;
+        QSettings().setValue(QStringLiteral("TabletUi/slot2Preset"),newName);
+        paintSlotIcons();
+        return true;
+    }
     void activateSlot(int slot) {
         if(slot<0 || slot>2) return;
         if(!m_vm->canvasResourceProvider())return;
@@ -680,8 +742,14 @@ private:
             QAction *paint=options.addAction(i18n("Add to Paint"));
             QAction *erase=options.addAction(i18n("Add to Erase"));
             QAction *blend=options.addAction(i18n("Add to Blend"));
+            options.addSeparator();
+            QAction *makeBlend=options.addAction(i18n("Create blending version"));
             QAction *selected=options.exec(QCursor::pos());
             if(!selected)return;
+            if(selected==makeBlend) {
+                if(createBlendingVersion(preset))refill();
+                return;
+            }
             const int group=selected==remove?-1:
                 selected==paint?0:selected==erase?1:2;
             QSettings().setValue(groupKey(preset->name()),group);
