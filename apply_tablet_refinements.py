@@ -831,6 +831,13 @@ QHash<KisInputManager*, TabletReferenceDrag> tabletReferenceDrags;
     sub(p, 'KisIconUtils::loadIcon("application-menu")',
            'KisIconUtils::loadIcon("view-list-text")')
 
+    # main.cc uses Krita's action collection in the new hardware-key JNI
+    # dispatcher. KisMainWindow.h only forward-declares KisKActionCollection,
+    # so include the concrete type as well as QAction before invoking methods.
+    p = "krita/main.cc"
+    sub(p, "#include <KisMainWindow.h>\n",
+           "#include <KisMainWindow.h>\n#ifdef Q_OS_ANDROID\n#include <kactioncollection.h>\n#include <QAction>\n#endif\n")
+
     # Finish by updating Krita's mandatory XMLGUI version and stripped MD5.
     p = "krita/CMakeLists.txt"
     sub(p, "set(KRITA5_XMLGUI_VERSION 545)", "set(KRITA5_XMLGUI_VERSION 546)")
