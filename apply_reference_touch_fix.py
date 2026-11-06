@@ -110,7 +110,7 @@ QHash<KisInputManager*, TabletReferenceTap> tabletReferenceTaps;""")
                 }
                 if (!drag.lastCacheRefresh.isValid() ||
                     drag.lastCacheRefresh.elapsed() >= 25) {
-                    if (auto *decoration = drag.canvas->referenceImagesDecoration())
+                    if (auto decoration = drag.canvas->referenceImagesDecoration())
                         decoration->invalidateInteractiveReferenceCache();
                     drag.lastCacheRefresh.start();
                 }
@@ -163,7 +163,7 @@ QHash<KisInputManager*, TabletReferenceTap> tabletReferenceTaps;""")
                 } else {
                     tabletReferenceTaps.remove(this);
                 }
-                if (auto *decoration = drag.canvas->referenceImagesDecoration())
+                if (auto decoration = drag.canvas->referenceImagesDecoration())
                     decoration->invalidateInteractiveReferenceCache();
             }
             d->allowMouseEvents();""")
@@ -174,7 +174,7 @@ QHash<KisInputManager*, TabletReferenceTap> tabletReferenceTaps;""")
            """                drag.shape->setTransformation(drag.initialTransform);
                 drag.shape->update();
                 if (drag.canvas) {
-                    if (auto *decoration = drag.canvas->referenceImagesDecoration())
+                    if (auto decoration = drag.canvas->referenceImagesDecoration())
                         decoration->invalidateInteractiveReferenceCache();
                 }
             }
