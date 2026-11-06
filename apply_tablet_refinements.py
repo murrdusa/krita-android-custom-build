@@ -807,6 +807,19 @@ QHash<KisInputManager*, TabletReferenceDrag> tabletReferenceDrags;
     d->m_buttonCount = d->m_buttons.size() + 1;
 #endif
     d->m_handleWidget = new KisSelectionActionsPanelHandle(BUTTON_SIZE, d->orientation, viewManager->canvas());""")
+    # One-time migration for users who saved the old 250ms default in v2.
+    # Preserve explicit non-default values and a deliberately disabled pinch.
+    p = "libs/ui/KisMainWindow.cpp"
+    sub(p, """    QAction *tabletCompact = new QAction(i18n("Compact UI"), this);""",
+           """    {
+        QSettings defaults;
+        if (!defaults.value(QStringLiteral("TabletUi/v3DefaultsMigrated"), false).toBool()) {
+            if (defaults.value(QStringLiteral("TabletUi/doubleTapMs"), 250).toInt() == 250)
+                defaults.setValue(QStringLiteral("TabletUi/doubleTapMs"), 150);
+            defaults.setValue(QStringLiteral("TabletUi/v3DefaultsMigrated"), true);
+        }
+    }
+    QAction *tabletCompact = new QAction(i18n("Compact UI"), this);""")
     # Finish by updating Krita's mandatory XMLGUI version and stripped MD5.
     p = "krita/CMakeLists.txt"
     sub(p, "set(KRITA5_XMLGUI_VERSION 545)", "set(KRITA5_XMLGUI_VERSION 546)")
