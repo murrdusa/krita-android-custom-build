@@ -1,6 +1,41 @@
 # Krita Android tablet customization (experimental)
 
-Source patches and a GitHub Actions workflow for **Krita 5.3.4 Android** (KDE source tag `v6.0.4`).
+Custom Krita 5.3.4 ARM64 for Android, patched from KDE tag `v6.0.4`. Rebuild locally using WSL2 and Docker with `git pull --ff-only && bash local-build.sh build`.
+
+## Current release status
+
+- **v1:** compiled and tested; working double-tap mirror and narrow Layers docker.
+- **v2:** compiled locally into an APK; user confirmed Compact UI, one-shot picker, reference sampling, native volume Undo/Redo, gallery and key controls largely work.
+- **v3 refinements:** code written in `apply_tablet_refinements.py` and source patch validation passed. **Not yet compiled into a new APK or tested on Android.** The v2 APK remains the last verified build.
+
+## v3 changes for testing
+
+- Compact UI attempts to reclaim hidden document-tab height instead of leaving a gray strip; hides canvas and MDI scrollbars and restores their previous policies on exit.
+- Default top toolbar is icon-dense instead of large text labels. Quick Actions opens by tapping the entire button. Removes a duplicate brush preset reset button; narrows the brush blending-mode selector.
+- Moves Gradient and Pattern selectors to Quick Actions. Quick Actions is now configurable via a checklist and reorderable list.
+- One-finger double-tap defaults to Mirror View in Krita Default input profile on new profiles. The interval defaults to **150 ms**; previously stored nondefault intervals remain unchanged. One-shot sampler gets **Ctrl+Alt+Shift+P** by default.
+- Quick two-finger inward pinch reset defaults to **enabled** for users without a saved preference; timing remains configurable.
+- Native volume key gestures: separate short/long bindings for both volume buttons. Default: Down short Undo, Up short Redo, Down long Pick Color Once, Up long Toggle Eraser. Long-press threshold defaults to **150 ms**. Normal actions trigger on key release; brush size Up/Down may be selected as a repeating action while held.
+- Direct finger dragging of visible reference images from any tool; movement is recorded as an undoable shape command. Can be disabled in Tablet Controls.
+- Selection Actions Bar enlarged with additional selection-relevant actions. Transform tool gets its own bottom contextual bar (mode, reset, cancel, apply) in Compact UI.
+- Gallery defaults to shared Downloads and has a Downloads button plus **opt-in All Files Access** settings route. Android permission must be explicitly granted; the permission does not allow access to other apps' private Android/data files. Gallery rename/move/advanced organization is still deferred.
+- More flexible narrow Tool Options layout constraints. Individual tool widgets may still require specialized responsive work.
+
+## Patch/build workflow
+
+1. `apply_customizations.py`: v1 base changes.
+2. `apply_tablet_update.py`: v2 changes.
+3. `apply_tablet_refinements.py`: v3 changes.
+4. `local-build.sh`: fetch source, apply all three patches, incrementally compile APK inside KDE Docker container. **Keep its persistent working directories** to avoid recompiling everything.
+5. GitHub Actions `validate` mode checks that source edits apply and the XMLGUI checksum matches; it does **not** compile C++ or Java.
+
+Detailed Windows setup instructions: [LOCAL-BUILD.md](LOCAL-BUILD.md).
+
+## Installation and permissions
+
+This is an unofficial sideloaded build. Keep Play Store Krita installed and back up critical drawings. The APK is intended to install separately as `org.krita.debug`, but verify Android's prompt instead of uninstalling anything. Gallery All Files Access is optional, broader than the usual document picker, and must be granted through Android's Settings. It may not be appropriate for Play Store distribution.
+
+---
 
 ## APK history
 
