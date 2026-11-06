@@ -79,7 +79,7 @@ def main(root: Path):
     # frameless subwindow both when switching mode and after activation.
     replace(p, """subwin->setWindowFlags(subwin->windowFlags() | Qt::FramelessWindowHint);""",
            """subwin->setWindowFlags(Qt::SubWindow | Qt::CustomizeWindowHint |
-                                       Qt::FramelessWindowHint);""", occurrences=2)
+                                       Qt::FramelessWindowHint);""", occurrences=3)
     # Reassert after Qt's deferred subwindow-activation/layout work; changing
     # MDI view modes can rebuild internal tab/titlebar decorations.
     replace(p, """                if (QMdiSubWindow *subwin = d->mdiArea->activeSubWindow()) {
