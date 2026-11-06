@@ -205,7 +205,7 @@ public:
                 this, [this](const KoColor&) {if(m_compact) refreshColors();});
 
         m_layerRefreshTimer = new QTimer(this);
-        m_layerRefreshTimer->setInterval(2500);
+        m_layerRefreshTimer->setInterval(5000);
         connect(m_layerRefreshTimer, &QTimer::timeout,this,[this]() {
             if(m_compact && m_vm->activeNode()) refreshLayers();
         });
@@ -270,7 +270,6 @@ private:
         return s.contains(QStringLiteral("blender")) ||
                s.contains(QStringLiteral("smudge")) ||
                s.contains(QStringLiteral("blur")) ||
-               s.contains(QStringLiteral("wet")) ||
                s.contains(QStringLiteral("mixing"));
     }
     QString groupKey(const QString &name) const {
@@ -310,11 +309,15 @@ private:
         QAction *action=m_main->actionCollection()->action(QStringLiteral("erase_action"));
         if(action && action->isChecked()!=enable)action->trigger();
     }
+    KisResourceModel *presetModel() {
+        if (!m_presetModel) m_presetModel = new KisResourceModel(ResourceType::PaintOpPresets, this);
+        return m_presetModel;
+    }
     KisPaintOpPresetSP findPreset(const QString &name) {
         if(name.isEmpty()) return KisPaintOpPresetSP();
-        KisResourceModel resources(ResourceType::PaintOpPresets);
-        for(int i=0;i<resources.rowCount() && i<3000;++i) {
-            auto p=resources.resourceForIndex(resources.index(i,0))
+        KisResourceModel *resources = presetModel();
+        for(int i=0;i<resources->rowCount() && i<3000;++i) {
+            auto p=resources->resourceForIndex(resources->index(i,0))
                        .dynamicCast<KisPaintOpPreset>();
             if(p && p->name()==name && p->valid())return p;
         }
@@ -325,9 +328,9 @@ private:
         if(!m_vm->canvasResourceProvider())return;
         KisPaintOpPresetSP preset=findPreset(m_lastPreset[slot]);
         if(!preset) {
-            KisResourceModel resources(ResourceType::PaintOpPresets);
-            for(int i=0;i<resources.rowCount() && i<3000;++i) {
-                auto p=resources.resourceForIndex(resources.index(i,0))
+            KisResourceModel *resources = presetModel();
+            for(int i=0;i<resources->rowCount() && i<3000;++i) {
+                auto p=resources->resourceForIndex(resources->index(i,0))
                            .dynamicCast<KisPaintOpPreset>();
                 if(p && p->valid() && presetInGroup(p,slot)){preset=p;break;}
             }
@@ -387,9 +390,9 @@ private:
         auto refill=[this,slot,grid,&candidates,all]() {
             grid->clear();
             candidates.clear();
-            KisResourceModel resources(ResourceType::PaintOpPresets);
-            for(int i=0;i<resources.rowCount() && i<3000;++i) {
-                auto preset=resources.resourceForIndex(resources.index(i,0))
+            KisResourceModel *resources = presetModel();
+            for(int i=0;i<resources->rowCount() && i<3000;++i) {
+                auto preset=resources->resourceForIndex(resources->index(i,0))
                                     .dynamicCast<KisPaintOpPreset>();
                 if(!preset || !preset->valid())continue;
                 if(!all->isChecked() && !presetInGroup(preset,slot))continue;
@@ -435,6 +438,7 @@ private:
         if(!m_compact || !m_vm->activeNode())return;
         auto image=m_vm->image().toStrongRef();
         if(!image || !image->root())return;
+        const int oldScroll=m_layersScroll->verticalScrollBar()->value();
         clearLayerRows();
         const KisNodeSP active=m_vm->activeNode();
         int count=0;
@@ -480,6 +484,9 @@ private:
             m_layersLayout->addWidget(frame);
         }
         m_layersLayout->addStretch(1);
+        QTimer::singleShot(0,this,[this,oldScroll]() {
+            if(m_layersScroll) m_layersScroll->verticalScrollBar()->setValue(oldScroll);
+        });
         m_layerName->setText(active ? active->name().left(14):QString());
         positionOverlays();
     }
@@ -654,6 +661,7 @@ private:
     QHBoxLayout *m_recentLayout=nullptr;
     QToolBar *m_topBar=nullptr;
     QTimer *m_layerRefreshTimer=nullptr;
+    KisResourceModel *m_presetModel=nullptr;
 };
 
 #endif // Q_OS_ANDROID
