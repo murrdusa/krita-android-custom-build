@@ -102,7 +102,7 @@ def main(root: Path):
                                        Qt::FramelessWindowHint);
                 subwin->showMaximized();
             }
-            const KisConfig previous(true);""",
+            d->mdiArea->setProperty("tabletPrevHScroll", int(d->mdiArea->horizontalScrollBarPolicy()));""",
            """            for (QMdiSubWindow *subwin : d->mdiArea->subWindowList()) {
                 if (!subwin->property("tabletFrameSaved").toBool()) {
                     subwin->setProperty("tabletPrevFlags", int(subwin->windowFlags()));
@@ -121,9 +121,7 @@ def main(root: Path):
                     subwin->showMaximized();
                 }
             });
-            const KisConfig previous(true);""")
-    # Last replacement above intentionally runs before selection-config
-    # deletion in order to add a one-shot layout repair timer.
+            d->mdiArea->setProperty("tabletPrevHScroll", int(d->mdiArea->horizontalScrollBarPolicy()));""")
 
     for p, contents in modified.items():
         (root / p).write_text(contents, encoding="utf-8")
