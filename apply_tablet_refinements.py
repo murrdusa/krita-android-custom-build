@@ -527,7 +527,7 @@ import android.provider.Settings;""")
 
     p = "libs/ui/KisWelcomePageWidget.cpp"
     sub(p, "#include <QComboBox>\n",
-           "#include <QComboBox>\n#include <QAndroidJniObject>\n")
+           "#include <QComboBox>\n#ifdef Q_OS_ANDROID\n#include <QAndroidJniObject>\n#endif\n")
     sub(p, """        galleryControls->addWidget(folderButton);
         galleryControls->addWidget(refreshButton);""",
            """        galleryControls->addWidget(folderButton);
