@@ -44,6 +44,7 @@ python3 "$REPO/apply_tablet_update.py" "$SOURCE"
 python3 "$REPO/apply_tablet_refinements.py" "$SOURCE"
 python3 "$REPO/apply_tablet_polish.py" "$SOURCE"
 python3 "$REPO/apply_tablet_cleanup.py" "$SOURCE"
+python3 "$REPO/apply_reference_touch_fix.py" "$SOURCE"
 python3 - "$SOURCE" <<'PY'
 import hashlib, pathlib, sys
 root=pathlib.Path(sys.argv[1])
