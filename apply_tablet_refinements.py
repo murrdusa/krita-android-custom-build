@@ -821,7 +821,7 @@ QHash<KisInputManager*, TabletReferenceDrag> tabletReferenceDrags;
     }
     QAction *tabletCompact = new QAction(i18n("Compact UI"), this);""")
     p = "libs/ui/kis_selection_actions_panel.cpp"
-    sub(p, "#include <QMenu>\\n", "#include <QMenu>\\n#include <utility>\\n")
+    sub(p, "#include <QMenu>\n", "#include <QMenu>\n#include <utility>\n")
 
     # Finish by updating Krita's mandatory XMLGUI version and stripped MD5.
     p = "krita/CMakeLists.txt"
