@@ -10,6 +10,7 @@
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QColor>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -50,6 +51,7 @@
 #include "kis_paintop_box.h"
 #include "kis_node_manager.h"
 #include "kis_node.h"
+#include "kis_layer.h"
 #include "kis_base_node.h"
 #include "kis_image.h"
 #include "kis_icon_utils.h"
@@ -113,8 +115,10 @@ public:
         rail->setContentsMargins(3,5,3,5);
         rail->setSpacing(3);
         m_layerPinned = QSettings().value(QStringLiteral("TabletUi/layerPinned"),true).toBool();
-        m_layerWidthStep = qBound(0,QSettings().value(
-            QStringLiteral("TabletUi/layerRailWidth"),0).toInt(),2);
+        m_layerTileSize=qBound(64,QSettings().value(
+            QStringLiteral("TabletUi/layerTileSize"),64).toInt(),160);
+        m_layerOnRight=QSettings().value(
+            QStringLiteral("TabletUi/layerOnRight"),false).toBool();
         m_layerToggleButton = new QToolButton(m_surface);
         m_layerToggleButton->setText(QStringLiteral("▤"));
         m_layerToggleButton->setToolTip(i18n("Open compact layers"));
@@ -137,25 +141,26 @@ public:
         layerHeader->addWidget(m_addLayer,1);
         m_layerPinButton = new QToolButton(m_layerRail);
         m_layerPinButton->setFixedSize(32,38);
-        m_layerPinButton->setToolTip(i18n("Pin or collapse the layer rail"));
+        m_layerPinButton->setToolTip(i18n("Tap: pin/unpin. Hold: layer settings"));
         layerHeader->addWidget(m_layerPinButton);
+        auto *layerPinTimer=new QTimer(this);
+        layerPinTimer->setSingleShot(true);
+        layerPinTimer->setInterval(330);
+        connect(m_layerPinButton,&QToolButton::pressed,this,[this,layerPinTimer]() {
+            m_layerPinLongPressed=false;
+            layerPinTimer->start();
+        });
+        connect(m_layerPinButton,&QToolButton::released,layerPinTimer,&QTimer::stop);
+        connect(layerPinTimer,&QTimer::timeout,this,[this]() {
+            m_layerPinLongPressed=true;
+            openLayerSettings();
+        });
         connect(m_layerPinButton,&QToolButton::clicked,this,[this]() {
+            if(m_layerPinLongPressed){m_layerPinLongPressed=false;return;}
             m_layerPinned=!m_layerPinned;
             m_layerExpanded=m_layerPinned;
             QSettings().setValue(QStringLiteral("TabletUi/layerPinned"),m_layerPinned);
             refreshLayerControls();
-        });
-        m_layerWidthButton = new QToolButton(m_layerRail);
-        m_layerWidthButton->setText(QStringLiteral("↔"));
-        m_layerWidthButton->setFixedHeight(30);
-        m_layerWidthButton->setToolTip(i18n("Change layer rail width"));
-        rail->addWidget(m_layerWidthButton);
-        connect(m_layerWidthButton,&QToolButton::clicked,this,[this]() {
-            m_layerWidthStep=(m_layerWidthStep+1)%3;
-            QSettings().setValue(QStringLiteral("TabletUi/layerRailWidth"),
-                                 m_layerWidthStep);
-            updateLayerWidth();
-            refreshLayers();
         });
         m_addLayerHoldTimer = new QTimer(this);
         m_addLayerHoldTimer->setSingleShot(true);
@@ -783,17 +788,49 @@ private:
         dialog.exec();
     }
     void updateLayerWidth() {
-        const int widths[]={74,100,126};
-        m_layerRail->setFixedWidth(widths[m_layerWidthStep]);
-        m_layerWidthButton->setText(QStringLiteral("↔ %1").arg(widths[m_layerWidthStep]));
+        m_layerRail->setFixedWidth(m_layerTileSize+10);
         if(m_layerRail->isVisible())positionOverlays();
+    }
+    void openLayerSettings() {
+        QDialog dialog(m_main);
+        dialog.setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
+        auto *layout=new QVBoxLayout(&dialog);
+        layout->addWidget(new QLabel(i18n("Layer thumbnail size"),&dialog));
+        auto *size=new QSlider(Qt::Horizontal,&dialog);
+        size->setRange(64,160);
+        size->setSingleStep(4);
+        size->setValue(m_layerTileSize);
+        layout->addWidget(size);
+        auto *value=new QLabel(QStringLiteral("%1 × %1").arg(m_layerTileSize),&dialog);
+        layout->addWidget(value);
+        connect(size,&QSlider::valueChanged,&dialog,[this,value](int newSize) {
+            m_layerTileSize=newSize;
+            value->setText(QStringLiteral("%1 × %1").arg(newSize));
+            QSettings().setValue(QStringLiteral("TabletUi/layerTileSize"),newSize);
+            updateLayerWidth();
+            refreshLayers();
+        });
+        layout->addWidget(new QLabel(i18n("Layer panel position"),&dialog));
+        auto *side=new QComboBox(&dialog);
+        side->addItem(i18n("Left"),false);
+        side->addItem(i18n("Right"),true);
+        side->setCurrentIndex(m_layerOnRight?1:0);
+        layout->addWidget(side);
+        connect(side,QOverload<int>::of(&QComboBox::currentIndexChanged),&dialog,
+                [this](int index) {
+            m_layerOnRight=index==1;
+            QSettings().setValue(QStringLiteral("TabletUi/layerOnRight"),m_layerOnRight);
+            positionOverlays();
+        });
+        dialog.setMinimumWidth(260);
+        dialog.exec();
     }
     void refreshLayerControls() {
         const bool show=m_compact && m_vm->activeNode() && m_surface->isVisible();
         m_layerRail->setVisible(show && (m_layerPinned || m_layerExpanded));
         m_layerToggleButton->setVisible(show && !m_layerPinned && !m_layerExpanded);
-        m_layerPinButton->setText(m_layerPinned?QStringLiteral("●"):
-                                                QStringLiteral("○"));
+        m_layerPinButton->setText(m_layerPinned?QStringLiteral("🔒"):
+                                                QStringLiteral("🔓"));
         m_layerPinButton->setToolTip(m_layerPinned ?
             i18n("Unpin and collapse layers") : i18n("Pin layers open"));
         if(show)positionOverlays();
@@ -818,13 +855,14 @@ private:
             if(node->inherits("KisReferenceImagesLayer"))continue;
             ++count;
             auto *frame=new QFrame(m_layersContent);
-            const int rowWidth=m_layerRail->width()-10;
-            frame->setFixedSize(rowWidth,67);
+            const int rowWidth=m_layerTileSize;
+            frame->setFixedSize(rowWidth+4,rowWidth+4);
             auto *tile=new QToolButton(frame);
-            tile->setGeometry(1,1,rowWidth-4,62);
+            tile->setGeometry(1,1,rowWidth,rowWidth);
             tile->setToolButtonStyle(Qt::ToolButtonIconOnly);
-            tile->setIconSize(QSize(52,52));
-            QImage thumb=node->createThumbnail(52,52,Qt::KeepAspectRatio);
+            tile->setIconSize(QSize(rowWidth-12,rowWidth-12));
+            QImage thumb=node->createThumbnail(rowWidth-12,rowWidth-12,
+                                               Qt::KeepAspectRatio);
             if(!thumb.isNull())tile->setIcon(QIcon(QPixmap::fromImage(thumb)));
             tile->setText(node->name());
             tile->setToolTip(node->name());
@@ -840,7 +878,7 @@ private:
                 else QTimer::singleShot(0,this,[this](){refreshLayers();});
             });
             auto *eye=new QToolButton(frame);
-            eye->setGeometry(rowWidth-24,2,20,20);
+            eye->setGeometry(rowWidth-22,2,20,20);
             eye->setIcon(KisIconUtils::loadIcon(
                 node->visible()?QStringLiteral("visible"):
                                 QStringLiteral("hidden")));
@@ -853,6 +891,32 @@ private:
                 m_vm->nodeManager()->toggleVisibility();
                 QTimer::singleShot(0,this,[this](){refreshLayers();});
             });
+            auto *lock=new QToolButton(frame);
+            lock->setGeometry(rowWidth-22,24,20,20);
+            lock->setText(node->userLocked()?QStringLiteral("🔒"):
+                                             QStringLiteral("🔓"));
+            lock->setToolTip(i18n("Toggle layer lock"));
+            lock->setStyleSheet("QToolButton{background:#666;color:white;"
+                                "border:0;border-radius:5px;}");
+            connect(lock,&QToolButton::clicked,this,[this,node]() {
+                m_vm->nodeManager()->slotUiActivatedNode(node);
+                m_vm->nodeManager()->toggleLock();
+                QTimer::singleShot(0,this,[this](){refreshLayers();});
+            });
+            if(auto layer=node.dynamicCast<KisLayer>()) {
+                auto *alpha=new QToolButton(frame);
+                alpha->setGeometry(rowWidth-22,46,20,20);
+                alpha->setText(layer->alphaLocked()?QStringLiteral("α"):
+                                                   QStringLiteral("α̸"));
+                alpha->setToolTip(i18n("Toggle alpha lock"));
+                alpha->setStyleSheet("QToolButton{background:#666;color:white;"
+                                     "border:0;border-radius:5px;}");
+                connect(alpha,&QToolButton::clicked,this,[this,node]() {
+                    m_vm->nodeManager()->slotUiActivatedNode(node);
+                    m_vm->nodeManager()->toggleAlphaLock();
+                    QTimer::singleShot(0,this,[this](){refreshLayers();});
+                });
+            }
             m_layersLayout->addWidget(frame);
         }
         m_layersLayout->addStretch(1);
@@ -1035,8 +1099,9 @@ private:
         if(!m_compact)return;
         const int w=m_surface->width();
         const int h=m_surface->height();
-        m_layerRail->setGeometry(4,35,m_layerRail->width(),qMax(140,h-125));
-        m_layerToggleButton->move(6,42);
+        const int layerX=m_layerOnRight?qMax(4,w-m_layerRail->width()-4):4;
+        m_layerRail->setGeometry(layerX,35,m_layerRail->width(),qMax(140,h-125));
+        m_layerToggleButton->move(m_layerOnRight?qMax(6,w-54):6,42);
         m_brushStrip->adjustSize();
         m_brushStrip->move(8,qMax(0,h-m_brushStrip->height()-8));
         m_colorButton->move(qMax(0,w-58),qMax(0,h-56));
@@ -1096,10 +1161,11 @@ private:
     QFrame *m_layerRail=nullptr;
     QToolButton *m_layerToggleButton=nullptr;
     QToolButton *m_layerPinButton=nullptr;
-    QToolButton *m_layerWidthButton=nullptr;
+    bool m_layerPinLongPressed=false;
     bool m_layerPinned=true;
     bool m_layerExpanded=true;
-    int m_layerWidthStep=0;
+    bool m_layerOnRight=false;
+    int m_layerTileSize=64;
     QScrollArea *m_layersScroll=nullptr;
     QWidget *m_layersContent=nullptr;
     QVBoxLayout *m_layersLayout=nullptr;
