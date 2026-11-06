@@ -15,6 +15,38 @@ BUILDDIR="$KDECI_WORKDIR_PATH/krita/_build"
 grep -q 'applicationIdSuffix ".debug"' "$SOURCE/packaging/android/apk/build.gradle" || { echo 'Separate debug app ID not configured' >&2; exit 1; }
 [[ -d "$KDECI_SHARED_INSTALL_PATH" ]] || { echo 'Qt/Krita Android deps missing' >&2; exit 1; }
 
+# Krita 5.3.4 Android requires libavfilter, but some versions of KDE's
+# prebuilt FFmpeg Android bundle omit it. Rebuild that dependency, including
+# libavfilter, for the same Android ABI/toolchain and install prefix.
+export PKG_CONFIG_PATH="$KDECI_SHARED_INSTALL_PATH/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+if ! pkg-config --exists libavfilter; then
+  echo '## libavfilter absent from the prebuilt Android dependency bundle'
+  echo '## Building FFmpeg with avfilter enabled, preserving animation support'
+  FFMPEG_SOURCE="$SOURCE/krita-deps-management/ext_ffmpeg"
+  FFMPEG_CMAKELISTS="$FFMPEG_SOURCE/CMakeLists.txt"
+  [[ -f "$FFMPEG_CMAKELISTS" ]] || { echo "Missing FFmpeg dependency source: $FFMPEG_CMAKELISTS" >&2; exit 1; }
+  if ! grep -q -- '-Davfilter=enabled' "$FFMPEG_CMAKELISTS"; then
+    sed -i '/^[[:space:]]*-Davcodec=enabled/a\            -Davfilter=enabled' "$FFMPEG_CMAKELISTS"
+  fi
+  grep -q -- '-Davfilter=enabled' "$FFMPEG_CMAKELISTS" || { echo 'Failed to enable FFmpeg avfilter build option' >&2; exit 1; }
+  FFMPEG_BUILDDIR="$KDECI_WORKDIR_PATH/ffmpeg-android-rebuild"
+  mkdir -p "$FFMPEG_BUILDDIR" "$KDECI_WORKDIR_PATH/cache/downloads"
+  cmake -S "$FFMPEG_SOURCE" -B "$FFMPEG_BUILDDIR" \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DEXTERNALS_DOWNLOAD_DIR="$KDECI_WORKDIR_PATH/cache/downloads" \
+    -DCMAKE_INSTALL_PREFIX="$KDECI_SHARED_INSTALL_PATH" \
+    -DCMAKE_TOOLCHAIN_FILE="$SOURCE/krita-deps-management/tools/android-toolchain-krita.cmake" \
+    -DANDROID_ABI="$KDECI_ANDROID_ABI" \
+    -DSUBMAKE_JOBS="${KRITA_BUILD_JOBS:-2}"
+  cmake --build "$FFMPEG_BUILDDIR" --target ext_ffmpeg --parallel "${KRITA_BUILD_JOBS:-2}"
+fi
+if ! pkg-config --exists libavfilter; then
+  echo 'ERROR: libavfilter is still missing after the FFmpeg dependency rebuild' >&2
+  find "$KDECI_SHARED_INSTALL_PATH/lib" -maxdepth 3 \( -iname '*avfilter*' -o -name 'libavcodec.pc' \) -print || true
+  exit 1
+fi
+echo "## FFmpeg libavfilter ready: $(pkg-config --modversion libavfilter)"
+
 mkdir -p "$BUILDDIR"
 cd "$BUILDDIR"
 cmake \
