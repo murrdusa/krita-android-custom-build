@@ -21,6 +21,20 @@ Custom Krita 5.3.4 ARM64 for Android, patched from KDE tag `v6.0.4`. Rebuild loc
 - Gallery defaults to shared Downloads and has a Downloads button plus **opt-in All Files Access** settings route. Android permission must be explicitly granted; the permission does not allow access to other apps' private Android/data files. Gallery rename/move/advanced organization is still deferred.
 - More flexible narrow Tool Options layout constraints. Individual tool widgets may still require specialized responsive work.
 
+## v4 UI correction patch (source validated; APK not yet built)
+
+Run `git pull --ff-only` and `bash local-build.sh build` in Ubuntu to compile the new APK incrementally. This patch is implemented in `apply_tablet_polish.py`, after v3.
+
+- **Compact UI:** Qt QMdiArea still reserved its document tab height after simply hiding QTabBar. v4 switches to frameless MDI subwindows only while Compact UI is active, then restores the original MDI view mode and document tab styling when switched off. This does not change Android immersive/fullscreen state. Standard document tabs should become visible again, including the filename and unsaved marker.
+- **Welcome:** Hide the image-specific toolbar buttons on the welcome screen, and restore the toolbar when a document opens.
+- **Icons:** Sample Visible Layers gets a distinct icon from Pick Color Once; reference visibility gets a compact reference icon instead of long text. The brush blend-mode selector maximum width is lowered from 116 to 90.
+- **Volume settings:** Remove redundant short/long enable checkboxes. Keep one master volume-key toggle and the four individually assignable actions (each can be `None`). Long-press threshold remains configurable.
+- **Double-tap:** Assign Mirror View (150 ms default) to the saved/current input profile on a one-time migration **only when the gesture is not already bound**. A customized double-tap is preserved.
+- **Reference image:** Add two-finger move, resize and rotate gestures with a single undoable shape-transform command. This is experimental and needs on-device testing.
+- **Deferred:** Screen-anchored/pinned reference overlays and a complete relocation of every special tool's options into the bottom strip. Transform and selection context bars remain enabled.
+
+**Validation caveat:** The GitHub workflow checks patch application and whitespace, not C++ or Java compilation. Please send the first `error:` line if a local incremental build fails.
+
 ## Patch/build workflow
 
 1. `apply_customizations.py`: v1 base changes.
