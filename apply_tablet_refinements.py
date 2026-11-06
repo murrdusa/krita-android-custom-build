@@ -481,6 +481,226 @@ Java_org_krita_android_JNIWrappers_volumeExecute(JNIEnv*, jobject, jint code)
             stored.setValue(QStringLiteral("TabletUi/volumeUpLong"), volUpLong->currentData().toInt());""")
     sub(p, "#include <QAbstractItemView>\n", "#include <QAbstractItemView>\n#include <QComboBox>\n")
 
+    # Optional Android all-files permission for a sideloaded personal gallery.
+    # Android 11+ intentionally prevents folder picker authorization of the
+    # Downloads ROOT. This special permission must be granted by the user in
+    # Android Settings; it never grants access to other apps' private data.
+    p = "packaging/android/apk/AndroidManifest.xml"
+    sub(p, """    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />""",
+           """    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />""")
+    p = "packaging/android/apk/src/org/krita/android/MainActivity.java"
+    sub(p, "import android.os.Looper;", """import android.os.Looper;
+import android.os.Environment;
+import android.provider.Settings;""")
+    sub(p, """public class MainActivity extends QtActivity {
+
+    private static final String TAG""",
+           """public class MainActivity extends QtActivity {
+    private static volatile MainActivity tabletPermissionActivity;
+
+    public static boolean tabletHasAllFilesAccess() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager();
+    }
+
+    // Settings authorization is user initiated and can be revoked at any time.
+    public static void tabletRequestAllFilesAccess() {
+        final MainActivity activity = tabletPermissionActivity;
+        if (activity == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return;
+        activity.runOnUiThread(() -> {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                Uri.parse("package:" + activity.getPackageName()));
+            try {
+                activity.startActivity(intent);
+            } catch (android.content.ActivityNotFoundException e) {
+                activity.startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+            }
+        });
+    }
+
+    private static final String TAG""")
+    sub(p, """        super.onCreate(savedInstanceState);
+        Log.i(TAG, "TouchSlop:""",
+           """        super.onCreate(savedInstanceState);
+        tabletPermissionActivity = this;
+        Log.i(TAG, "TouchSlop:""")
+
+    p = "libs/ui/KisWelcomePageWidget.cpp"
+    sub(p, "#include <QComboBox>\n",
+           "#include <QComboBox>\n#include <QAndroidJniObject>\n")
+    sub(p, """        galleryControls->addWidget(folderButton);
+        galleryControls->addWidget(refreshButton);""",
+           """        galleryControls->addWidget(folderButton);
+        auto *downloadsButton = new QPushButton(i18n("Downloads"), galleryPage);
+        auto *allowFiles = new QPushButton(i18n("Allow Downloads Access"), galleryPage);
+        galleryControls->addWidget(downloadsButton);
+        galleryControls->addWidget(allowFiles);
+        galleryControls->addWidget(refreshButton);""")
+    sub(p, """        auto folder = std::make_shared<QString>(
+            QSettings().value(QStringLiteral("CustomProjectGalleryFolder"), QDir::homePath()).toString());""",
+           """        const QString downloadsPath = QStringLiteral("/storage/emulated/0/Download");
+        auto folder = std::make_shared<QString>(
+            QSettings().value(QStringLiteral("CustomProjectGalleryFolder"),
+                downloadsPath).toString());""")
+    sub(p, """        connect(refreshButton, &QPushButton::clicked, this, populate);""",
+           """        connect(downloadsButton, &QPushButton::clicked, this, [folder, populate]() {
+            *folder = QStringLiteral("/storage/emulated/0/Download");
+            QSettings().setValue(QStringLiteral("CustomProjectGalleryFolder"), *folder);
+            populate();
+        });
+        connect(allowFiles, &QPushButton::clicked, this, [this]() {
+            if (QAndroidJniObject::callStaticMethod<jboolean>(
+                    "org/krita/android/MainActivity", "tabletHasAllFilesAccess", "()Z")) {
+                QMessageBox::information(this, i18n("Gallery Access"),
+                    i18n("File access is already granted. Select Downloads and press Refresh."));
+                return;
+            }
+            if (QMessageBox::question(this, i18n("Allow Gallery Downloads Access"),
+                    i18n("Android requires special All Files Access to let this personal build "
+                         "scan every Krita file in Downloads. This is optional and can be "
+                         "revoked in Android Settings. Open the permission settings?"))
+                    == QMessageBox::Yes) {
+                QAndroidJniObject::callStaticMethod<void>(
+                    "org/krita/android/MainActivity", "tabletRequestAllFilesAccess", "()V");
+            }
+        });
+        connect(refreshButton, &QPushButton::clicked, this, populate);""")
+
+    # Finger drag references without switching tools.  The shape manager owns
+    # the geometry; the move is recorded as one undoable shape command.
+    # Touches elsewhere remain regular pinch/pan/painting events.
+    p = "libs/ui/input/kis_input_manager.cpp"
+    sub(p, "#include <QSet>\n", """#include <QSet>
+#include <KoShapeManager.h>
+#include <KoShapeMoveCommand.h>
+#include <KisReferenceImage.h>
+""")
+    sub(p, """QSet<KisInputManager*> tabletReferencePenPresses;
+}""",
+           """QSet<KisInputManager*> tabletReferencePenPresses;
+struct TabletReferenceDrag {
+    KoShape *shape = nullptr;
+    KisCanvas2 *canvas = nullptr;
+    QPointF startingDocPoint;
+    QPointF startingShapePosition;
+};
+QHash<KisInputManager*, TabletReferenceDrag> tabletReferenceDrags;
+}""")
+    sub(p, """    tabletReferencePenPresses.remove(this);
+#endif""",
+           """    tabletReferencePenPresses.remove(this);
+    tabletReferenceDrags.remove(this);
+#endif""")
+    sub(p, """        tabletPinches.remove(this);
+#endif
+        d->debugEvent<QTouchEvent, false>(event);""",
+           """        tabletPinches.remove(this);
+        QTouchEvent *referenceTouch = static_cast<QTouchEvent*>(event);
+        if (QSettings().value(QStringLiteral("TabletUi/referenceFingerDrag"), true).toBool()
+            && referenceTouch->touchPoints().size() == 1 && KisPart::exists()) {
+            KisMainWindow *window = KisPart::instance()->currentMainwindow();
+            KisCanvas2 *canvas = window && window->viewManager()
+                ? window->viewManager()->canvasBase() : nullptr;
+            if (canvas && window->activeView() &&
+                canvas->referenceImagesDecoration() &&
+                canvas->referenceImagesDecoration()->visible()) {
+                KisReferenceImagesLayerSP refs =
+                    window->activeView()->document()->referenceImagesLayer();
+                if (refs) {
+                    QPointF widgetPoint = referenceTouch->touchPoints().first().pos();
+                    QPointF docPoint = canvas->coordinatesConverter()->widgetToDocument(widgetPoint);
+                    KoShape *shape = refs->shapeManager()->shapeAt(docPoint);
+                    if (dynamic_cast<KisReferenceImage*>(shape)) {
+                        TabletReferenceDrag drag;
+                        drag.shape = shape;
+                        drag.canvas = canvas;
+                        drag.startingDocPoint = docPoint;
+                        drag.startingShapePosition = shape->absolutePosition();
+                        tabletReferenceDrags.insert(this, drag);
+                        d->blockMouseEvents();
+                        event->accept();
+                        return true;
+                    }
+                }
+            }
+        }
+#endif
+        d->debugEvent<QTouchEvent, false>(event);""")
+    sub(p, """        QTouchEvent *touchEvent = static_cast<QTouchEvent*>(event);
+        d->debugEvent<QTouchEvent, false>(event);
+#ifdef Q_OS_ANDROID
+        if (QSettings().value(QStringLiteral("TabletUi/quickPinch"), true).toBool()""",
+           """        QTouchEvent *touchEvent = static_cast<QTouchEvent*>(event);
+        d->debugEvent<QTouchEvent, false>(event);
+#ifdef Q_OS_ANDROID
+        if (tabletReferenceDrags.contains(this)) {
+            auto &drag = tabletReferenceDrags[this];
+            if (drag.canvas && drag.shape && !touchEvent->touchPoints().isEmpty()) {
+                QPointF now = drag.canvas->coordinatesConverter()->widgetToDocument(
+                    touchEvent->touchPoints().first().pos());
+                drag.shape->update();
+                drag.shape->setAbsolutePosition(
+                    drag.startingShapePosition + now - drag.startingDocPoint);
+                drag.shape->update();
+            }
+            event->accept();
+            return true;
+        }
+        if (QSettings().value(QStringLiteral("TabletUi/quickPinch"), true).toBool()""")
+    sub(p, """    case QEvent::TouchEnd:
+    {
+        d->cancelTouchHoldTimer();""",
+           """    case QEvent::TouchEnd:
+    {
+#ifdef Q_OS_ANDROID
+        if (tabletReferenceDrags.contains(this)) {
+            TabletReferenceDrag drag = tabletReferenceDrags.take(this);
+            if (drag.shape && drag.canvas) {
+                QPointF finalPosition = drag.shape->absolutePosition();
+                if (QLineF(drag.startingShapePosition, finalPosition).length() > 0.01) {
+                    QList<KoShape*> shapes = {drag.shape};
+                    QList<QPointF> initial = {drag.startingShapePosition};
+                    QList<QPointF> final = {finalPosition};
+                    drag.canvas->addCommand(new KoShapeMoveCommand(shapes, initial, final));
+                }
+            }
+            d->allowMouseEvents();
+            event->accept();
+            return true;
+        }
+#endif
+        d->cancelTouchHoldTimer();""")
+    sub(p, """    case QEvent::TouchCancel:
+    {
+""",
+           """    case QEvent::TouchCancel:
+    {
+#ifdef Q_OS_ANDROID
+        if (tabletReferenceDrags.contains(this)) {
+            TabletReferenceDrag drag = tabletReferenceDrags.take(this);
+            if (drag.shape) {
+                drag.shape->update();
+                drag.shape->setAbsolutePosition(drag.startingShapePosition);
+                drag.shape->update();
+            }
+            d->allowMouseEvents();
+            event->accept();
+            return true;
+        }
+#endif
+""")
+    p = "libs/ui/KisMainWindow.cpp"
+    sub(p, """        form->addRow(pinchEnabled);
+        layout->addLayout(form);""",
+           """        form->addRow(pinchEnabled);
+        QCheckBox *referenceFingerDrag = new QCheckBox(i18n("Finger drag moves reference images"), &dialog);
+        referenceFingerDrag->setChecked(stored.value(QStringLiteral("TabletUi/referenceFingerDrag"), true).toBool());
+        form->addRow(referenceFingerDrag);
+        layout->addLayout(form);""")
+    sub(p, """            stored.setValue(QStringLiteral("TabletUi/quickPinch"), pinchEnabled->isChecked());""",
+           """            stored.setValue(QStringLiteral("TabletUi/quickPinch"), pinchEnabled->isChecked());
+            stored.setValue(QStringLiteral("TabletUi/referenceFingerDrag"), referenceFingerDrag->isChecked());""")
+
     # Finish by updating Krita's mandatory XMLGUI version and stripped MD5.
     p = "krita/CMakeLists.txt"
     sub(p, "set(KRITA5_XMLGUI_VERSION 545)", "set(KRITA5_XMLGUI_VERSION 546)")
