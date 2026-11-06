@@ -35,6 +35,20 @@ Run `git pull --ff-only` and `bash local-build.sh build` in Ubuntu to compile th
 
 **Validation caveat:** The GitHub workflow checks patch application and whitespace, not C++ or Java compilation. Please send the first `error:` line if a local incremental build fails.
 
+## v7 Compact UI phone layout — source validated, not yet compiled
+
+This experimental layer uses the new `tablet_compact_skin.h` and `apply_compact_skin.py`. All new controls appear **only when Compact UI is enabled**; on exit, Krita's QMainWindow docker state is restored.
+
+- **Paint / Erase / Blend slots** (bottom-left): first tap switches to the last-used native Krita brush preset for that category; second tap opens a touch-oriented icon grid of presets. Each category remembers its last preset independently, including after restarts. Paint disables eraser mode; Erase enables it; Blend selects a normal Krita smudge/blender preset with eraser mode off. This is *not* a universal conversion of all paint engines into smear engines.
+- Presets are initially grouped by names (erase/eraser, blend/smudge/blur; others Paint), with user overrides stored privately in `TabletUi/presetGroup`. In the preset grid, enable **Show all Krita brushes** and choose a brush to put it in a different group; **Assign current brush to this category** is another option. Built-in Krita preset tags and the native brush selector remain unchanged.
+- **Layer thumbnails rail** (left): scrollable thumbnail list of top-level layers; tap to select, tap the selected layer again to open a compact controls panel. It offers blending mode, opacity, visibility, duplicate, clear, lock, merge, delete, clipping group, opaque selection and transparency mask, delegating to Krita's existing commands where possible. An Add button creates a paint layer. It shows an abbreviated active-layer name.
+- **Color selector** (bottom-right): Krita's existing Advanced Color Selector docker is reused as a resizable floating wheel. Tap the color button to minimize/restore it; adjacent small button cycles three wheel sizes; recent color swatches remain in a narrow row. Original docker layout is restored on exiting Compact UI.
+- **Top popup buttons:** native full brush preset chooser and Tool Options. When Tool Options are in docker mode, its button shows the existing docker; it does not forcibly rewrite Krita's global preference.
+- Source-only validation passed; this patch contains substantial Qt/C++ code, so a first local incremental compilation may expose errors. Do not assume a working APK before testing.
+- Limitations: only top-level layers are shown in the first experimental rail, and color docker floating behavior on Android remains untested. There is no automatic conversion of any arbitrary brush to a true smudge engine.
+
+Build: `cd ~/krita-tablet-customizations && git pull --ff-only && bash local-build.sh build`.
+
 ## Patch/build workflow
 
 1. `apply_customizations.py`: v1 base changes.
