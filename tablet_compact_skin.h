@@ -482,26 +482,7 @@ public:
             // The active MDI subwindow may become null after a normal <->
             // Compact workspace switch. Close through the live KisView
             // instead; never close a different tab by guessing an index.
-            QPointer<KisView> view;
-            KisDocument *selectedDoc=m_vm?m_vm->document():nullptr;
-            if(m_mdi) {
-                auto useIfMatching=[&](QMdiSubWindow *sub) {
-                    if(!sub || view)return;
-                    KisView *candidate=qobject_cast<KisView*>(sub->widget());
-                    if(candidate && candidate->document()==selectedDoc)
-                        view=candidate;
-                };
-                useIfMatching(m_mdi->activeSubWindow());
-                useIfMatching(m_mdi->currentSubWindow());
-                for(QMdiSubWindow *sub:m_mdi->subWindowList())
-                    useIfMatching(sub);
-                // Only one view may safely be used when the view manager
-                // has temporarily lost its document during a mode change.
-                if(!view && !selectedDoc &&
-                   m_mdi->subWindowList().size()==1)
-                    view=qobject_cast<KisView*>(
-                        m_mdi->subWindowList().first()->widget());
-            }
+            QPointer<KisView> view=compactClosingView();
             if(!view || !view->document())return;
             KisDocument *document=view->document();
             // Save explicitly; do not offer the discard path when the user
@@ -517,6 +498,15 @@ public:
                 syncNormalWelcomeChrome();
             });
         });
+        m_discardCloseAction=new QAction(
+            KisIconUtils::loadIcon("dialog-warning"),
+            i18n("Close without saving…"),this);
+        m_discardCloseAction->setToolTip(
+            i18n("Hold for five seconds to discard edits and close"));
+        m_main->actionCollection()->addAction(
+            QStringLiteral("tablet_discard_and_close"),m_discardCloseAction);
+        connect(m_discardCloseAction,&QAction::triggered,this,
+                [this]() {showDiscardCloseDialog();});
         // Dedicated Compact UI toolbar: normal desktop toolbars are untouched.
         m_compactBar=new QToolBar(i18n("Compact UI shortcuts"),m_main);
         m_compactBar->setObjectName(QStringLiteral("tabletDedicatedCompactBar"));
@@ -561,6 +551,8 @@ public:
                     native->trigger();
             });
             m_hubMenu->addAction(m_customizeAction);
+            m_hubMenu->addSeparator();
+            m_hubMenu->addAction(m_discardCloseAction);
             QAction *brush=m_hubMenu->addAction(i18n("Brush controls..."));
             connect(brush,&QAction::triggered,this,
                     [this](){configureBrushControls();});
@@ -1315,6 +1307,102 @@ private:
             slider->setValue(qMin(slider->maximum(),slider->value()+step));
         });
     }
+    QPointer<KisView> compactClosingView() const {
+        QPointer<KisView> result;
+        KisDocument *selected=m_vm?m_vm->document():nullptr;
+        if(!m_mdi)return result;
+        auto pick=[&](QMdiSubWindow *sub) {
+            if(!sub || result)return;
+            KisView *candidate=qobject_cast<KisView*>(sub->widget());
+            if(candidate && candidate->document()==selected)
+                result=candidate;
+        };
+        pick(m_mdi->activeSubWindow());
+        pick(m_mdi->currentSubWindow());
+        for(QMdiSubWindow *sub:m_mdi->subWindowList())pick(sub);
+        if(!result && !selected && m_mdi->subWindowList().size()==1)
+            result=qobject_cast<KisView*>(
+                m_mdi->subWindowList().first()->widget());
+        return result;
+    }
+    void showDiscardCloseDialog() {
+        QPointer<KisView> view=compactClosingView();
+        if(!view || !view->document())return;
+        QDialog dialog(m_main);
+        dialog.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
+        styleTouchDialog(dialog);
+        dialog.resize(qMax(290,qMin(430,m_surface->width()-28)),310);
+        auto *layout=new QVBoxLayout(&dialog);
+        layout->setContentsMargins(18,16,18,16);
+        layout->setSpacing(13);
+        auto *heading=new QLabel(i18n("Close without saving?"),&dialog);
+        heading->setWordWrap(true);
+        heading->setStyleSheet("font-size:20px;font-weight:600;");
+        layout->addWidget(heading);
+        auto *details=new QLabel(
+            i18n("All unsaved changes to this project will be lost. "
+                 "Hold the red button continuously for five seconds "
+                 "to confirm."),&dialog);
+        details->setWordWrap(true);
+        layout->addWidget(details);
+        auto *progress=new QProgressBar(&dialog);
+        progress->setRange(0,5000);
+        progress->setValue(0);
+        progress->setTextVisible(false);
+        progress->setFixedHeight(16);
+        progress->setStyleSheet(
+            "QProgressBar{background:#404956;border:0;border-radius:8px;}"
+            "QProgressBar::chunk{background:#e46d71;border-radius:8px;}");
+        layout->addWidget(progress);
+        auto *discard=new QPushButton(i18n("Hold 5 seconds to discard"),&dialog);
+        discard->setMinimumHeight(65);
+        discard->setStyleSheet(
+            "QPushButton{background:#7e333c;border:2px solid #e18b95;"
+            "color:white;border-radius:9px;font-weight:600;}"
+            "QPushButton:pressed{background:#a84351;}");
+        layout->addWidget(discard);
+        auto *cancel=new QPushButton(i18n("Cancel — keep project"),&dialog);
+        cancel->setMinimumHeight(53);
+        layout->addWidget(cancel);
+        connect(cancel,&QPushButton::clicked,&dialog,&QDialog::reject);
+        auto *ticker=new QTimer(&dialog);
+        ticker->setInterval(45);
+        QElapsedTimer clock;
+        connect(discard,&QPushButton::pressed,&dialog,[&]() {
+            clock.start();
+            progress->setValue(0);
+            discard->setText(i18n("Keep holding…"));
+            ticker->start();
+        });
+        connect(discard,&QPushButton::released,&dialog,[&]() {
+            ticker->stop();
+            progress->setValue(0);
+            discard->setText(i18n("Hold 5 seconds to discard"));
+        });
+        connect(ticker,&QTimer::timeout,&dialog,[&,view]() {
+            if(!view || !view->document()) {
+                ticker->stop();
+                dialog.reject();
+                return;
+            }
+            const int ms=qMin(5000,int(clock.elapsed()));
+            progress->setValue(ms);
+            discard->setText(i18n("%1 seconds remaining",
+                                  (5000-ms+999)/1000));
+            if(ms<5000)return;
+            ticker->stop();
+            // The deliberate full hold is the discard confirmation.
+            KisDocument *document=view->document();
+            document->waitForSavingToComplete();
+            document->setModified(false);
+            view->closeView(); // Native Krita tab cleanup.
+            dialog.accept();
+            QTimer::singleShot(0,this,[this]() {
+                refreshVisibility();syncNormalWelcomeChrome();
+            });
+        });
+        dialog.exec();
+    }
     void configureBrushControls() {
         QDialog dialog(m_main);
         dialog.setWindowTitle(i18n("Brush Control Settings"));
@@ -1484,6 +1572,7 @@ private:
         // Unavailable actions are naturally omitted for this Krita build.
         const QStringList frequent={
             QStringLiteral("tablet_save_and_close"),
+            QStringLiteral("tablet_discard_and_close"),
             QStringLiteral("tablet_all_brush_presets"),
             QStringLiteral("tablet_all_tools_popup"),
             QStringLiteral("tablet_sample_all_layers"),
@@ -3871,6 +3960,7 @@ private:
     QToolBar *m_topBar=nullptr;
     QToolBar *m_compactBar=nullptr;
     QAction *m_customizeAction=nullptr;
+    QAction *m_discardCloseAction=nullptr;
     QMenu *m_hubMenu=nullptr;
     QAction *m_toolsAction=nullptr;
     QAction *m_sampleModeAction=nullptr;
