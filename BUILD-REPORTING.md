@@ -54,3 +54,33 @@ This is a separate process: if WSL shuts down, the reporter stops. Start it agai
 **Privacy:** GitHub issues in a public repository are public. Build excerpts may include local file paths and source snippets. Complete build logs remain local and are not uploaded.
 
 **Troubleshooting:** If the reporter log says GitHub authentication failed, run `gh auth login` again. If it cannot publish status, check the GitHub account's repository permissions. It retries reporting the same build during the next poll if a request fails.
+
+
+## Live build output in Ubuntu / Windows Terminal
+
+The background watcher continues compiling even when its terminal is closed.
+For a *live viewer* that switches between builds automatically, open an Ubuntu
+terminal and run:
+
+```bash
+cd ~/krita-tablet-customizations
+git pull --ff-only
+python3 krita_build_live.py
+```
+
+Keep this viewer tab open while playing games or working elsewhere. It shows
+the latest build output as it is written, the revision being compiled, elapsed
+time, completion status, and a heartbeat approximately every 25 seconds.
+If the compiler is silent for two minutes it prints a warning, **not** a
+failure claim. When the watcher starts another build, the viewer automatically
+follows its new log. Press Ctrl+C to close only the viewer; compilation and
+GitHub reporting continue in the background.
+
+To show only the useful progress lines and errors:
+
+```bash
+python3 krita_build_live.py --quiet
+```
+
+You can also use a separate Windows Terminal tab for the viewer. No special
+permissions or new Python packages are required.
