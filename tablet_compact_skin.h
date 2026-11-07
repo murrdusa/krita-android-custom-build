@@ -463,8 +463,11 @@ public:
             // Krita's standard Close QAction is not named "file_close".
             // Call the exact implementation used by the document-tab X;
             // it handles unsaved work, cancellation and Save As correctly.
-            if(m_mdi && (m_mdi->currentSubWindow() || m_mdi->activeSubWindow()))
-                m_main->closeCurrentWindow();
+            if(m_mdi) {
+                QMdiSubWindow *sub=m_mdi->currentSubWindow();
+                if(!sub)sub=m_mdi->activeSubWindow();
+                if(sub)sub->close();
+            }
         });
         // Dedicated Compact UI toolbar: normal desktop toolbars are untouched.
         m_compactBar=new QToolBar(i18n("Compact UI shortcuts"),m_main);
@@ -500,9 +503,6 @@ public:
             m_hubMenu->clear();
             auto *collection=m_main->actionCollection();
             m_hubMenu->addSection(i18n("Compact UI settings"));
-            auto addSetting=[this,collection](const QString &id) {
-                if(QAction *a=collection->action(id))m_hubMenu->addAction(a);
-            };
             // Keep Tablet Controls and toolbar customization in this
             // always-present settings group, not in optional quick actions.
             if(QAction *tablet=collection->action(QStringLiteral("tablet_settings")))
