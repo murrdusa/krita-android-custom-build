@@ -35,6 +35,9 @@
 #include <QMdiArea>
 #include <QMdiSubWindow>
 #include <QMenu>
+#include <QMenuBar>
+#include <QStatusBar>
+#include <QTabBar>
 #include <QPointer>
 #include <QPainter>
 #include <QTabletEvent>
@@ -98,6 +101,8 @@ public:
         m_startupCompact = QSettings().value(QStringLiteral("TabletUi/compact"),true).toBool();
         m_surface = mdi->viewport();
         m_surface->installEventFilter(this);
+        if(m_main->menuBar())m_main->menuBar()->installEventFilter(this);
+        if(m_main->statusBar())m_main->statusBar()->installEventFilter(this);
         m_mdi->installEventFilter(this);
         // Outside touches close only the temporary wheel; pinned wheel stays.
         qApp->installEventFilter(this);
@@ -459,6 +464,57 @@ public:
             QStringLiteral("tablet_all_tools_popup"),m_toolsAction);
         m_main->actionCollection()->addAction(
             QStringLiteral("tablet_customize_compact"),m_customizeAction);
+        // Always-second, nonremovable hub: settings, native Krita menus and
+        // customizable user actions remain available without a menu bar.
+        m_hubMenu=new QMenu(i18n("Compact UI menu"),m_main);
+        m_hubMenu->menuAction()->setIcon(m_customizeAction->icon());
+        m_hubMenu->menuAction()->setToolTip(
+            i18n("Compact settings, Krita menus and quick actions"));
+        m_main->actionCollection()->addAction(
+            QStringLiteral("tablet_compact_hub"),m_hubMenu->menuAction());
+        connect(m_hubMenu,&QMenu::aboutToShow,this,[this]() {
+            m_hubMenu->clear();
+            auto *collection=m_main->actionCollection();
+            m_hubMenu->addSection(i18n("Compact UI settings"));
+            auto addSetting=[this,collection](const QString &id) {
+                if(QAction *a=collection->action(id))m_hubMenu->addAction(a);
+            };
+            addSetting(QStringLiteral("tablet_settings"));
+            m_hubMenu->addAction(m_customizeAction);
+            QAction *brush=m_hubMenu->addAction(i18n("Brush controls..."));
+            connect(brush,&QAction::triggered,this,
+                    [this](){configureBrushControls();});
+            QAction *layers=m_hubMenu->addAction(i18n("Layers display..."));
+            connect(layers,&QAction::triggered,this,
+                    [this](){openLayerSettings();});
+            QAction *color=m_hubMenu->addAction(i18n("Color selector settings..."));
+            connect(color,&QAction::triggered,this,
+                    [this](){openColorSettings();});
+            m_hubMenu->addSection(i18n("Krita menus"));
+            for(QAction *topLevel:m_main->menuBar()->actions()) {
+                if(topLevel && topLevel->menu())
+                    m_hubMenu->addMenu(topLevel->menu());
+            }
+            m_hubMenu->addSection(i18n("Quick actions"));
+            const QStringList defaults={
+                QStringLiteral("gradients"),QStringLiteral("patterns"),
+                QStringLiteral("duplicatelayer"),QStringLiteral("quick_group")};
+            const QStringList selected=QSettings().value(
+                QStringLiteral("TabletUi/quickActionsV2"),defaults).toStringList();
+            for(const QString &key:selected) {
+                if(key==QStringLiteral("tablet_compact_ui") ||
+                   key==QStringLiteral("tablet_quick_actions"))continue;
+                if(QAction *a=collection->action(key))m_hubMenu->addAction(a);
+            }
+            // The existing submenu contains the native Quick Actions editor.
+            if(QAction *legacy=collection->action(
+                    QStringLiteral("tablet_quick_actions"))) {
+                if(legacy->menu()) {
+                    m_hubMenu->addSeparator();
+                    m_hubMenu->addMenu(legacy->menu());
+                }
+            }
+        });
         m_sampleModeAction=new QAction(
             KisIconUtils::loadIcon("krita_tool_color_sampler"),
             i18n("Sample all visible layers"),this);
@@ -513,7 +569,9 @@ public:
                     if (m_compact) QTimer::singleShot(0,this,[this]() {refreshLayers();});
                 });
         connect(m_mdi, &QMdiArea::subWindowActivated, this, [this](QMdiSubWindow*) {
-            QTimer::singleShot(0,this,[this]() {refreshVisibility();refreshLayers();});
+            QTimer::singleShot(0,this,[this]() {
+                enforceCompactChrome();refreshVisibility();refreshLayers();
+            });
         });
         connect(m_vm->canvasResourceProvider(), &KisCanvasResourceProvider::sigFGColorChanged,
                 this, [this](const KoColor&) {if(m_compact) refreshColors();});
@@ -546,6 +604,16 @@ public:
     }
 
     bool eventFilter(QObject *watched,QEvent *event) override {
+        // Krita's startup/welcome-page layout may re-show menu/status bars
+        // after the restored Compact UI action fires. Keep chrome hidden
+        // without altering the stored normal workspace visibility.
+        if(m_compact && event->type()==QEvent::Show &&
+           (watched==m_main->menuBar() || watched==m_main->statusBar())) {
+            QPointer<QWidget> chrome=qobject_cast<QWidget*>(watched);
+            QTimer::singleShot(0,this,[this,chrome]() {
+                if(m_compact && chrome)chrome->hide();
+            });
+        }
         // Dockers are normal-Krita widgets, not Compact UI overlays. Some
         // plugins re-show their dockers after document/selection changes.
         if(m_compact && event->type()==QEvent::Show) {
@@ -643,6 +711,10 @@ public:
             // Snapshot the real Krita workspace before hiding a single toolbar.
             rememberDockers();
             rememberCompactToolbarState(true);
+            enforceCompactChrome();
+            QTimer::singleShot(0,this,[this](){enforceCompactChrome();});
+            QTimer::singleShot(350,this,[this](){enforceCompactChrome();});
+            QTimer::singleShot(1000,this,[this](){enforceCompactChrome();});
             const QByteArray storedNormal=QSettings().value(
                 QStringLiteral("TabletUi/normalWindowStateV2")).toByteArray();
             if(m_startupCompact && !storedNormal.isEmpty()) {
@@ -948,6 +1020,15 @@ private:
         if(m_compactBar->iconSize()!=square)
             m_compactBar->setIconSize(square);
     }
+    void enforceCompactChrome() {
+        if(!m_compact)return;
+        if(m_main->menuBar())m_main->menuBar()->hide();
+        if(m_main->statusBar())m_main->statusBar()->hide();
+        if(m_mdi && m_mdi->viewMode()==QMdiArea::SubWindowView) {
+            for(QTabBar *tabs:m_mdi->findChildren<QTabBar*>())
+                tabs->hide();
+        }
+    }
     void rememberCompactToolbarState(bool compactMode) {
         if(compactMode) {
             m_originalToolbars.clear();
@@ -974,8 +1055,7 @@ private:
         }
     }
     QStringList compactDefaultActions() const {
-        return {QStringLiteral("tablet_quick_actions"),
-                QStringLiteral("tablet_save_and_close"),
+        return {QStringLiteral("tablet_save_and_close"),
                 QStringLiteral("tablet_all_brush_presets"),
                 QStringLiteral("tablet_sample_all_layers"),
                 QStringLiteral("view_toggle_reference_images"),
@@ -989,20 +1069,21 @@ private:
         auto *collection=m_main->actionCollection();
         QAction *compact=collection->action(QStringLiteral("tablet_compact_ui"));
         if(compact)m_compactBar->addAction(compact);
-        m_compactBar->addAction(m_customizeAction);
+        if(m_hubMenu)m_compactBar->addAction(m_hubMenu->menuAction());
         const QStringList chosen=QSettings().value(
             QStringLiteral("TabletUi/compactActionOrderV1"),
             compactDefaultActions()).toStringList();
         for(const QString &id:chosen) {
             if(id==QStringLiteral("tablet_compact_ui") ||
-               id==QStringLiteral("tablet_customize_compact"))continue;
+               id==QStringLiteral("tablet_customize_compact") ||
+               id==QStringLiteral("tablet_compact_hub") ||
+               id==QStringLiteral("tablet_quick_actions"))continue;
             if(QAction *action=collection->action(id))
                 m_compactBar->addAction(action);
         }
-        if(QAction *quick=collection->action(
-                QStringLiteral("tablet_quick_actions"))) {
+        if(m_hubMenu) {
             if(QToolButton *button=qobject_cast<QToolButton*>(
-                    m_compactBar->widgetForAction(quick))) {
+                    m_compactBar->widgetForAction(m_hubMenu->menuAction()))) {
                 button->setPopupMode(QToolButton::InstantPopup);
                 button->setToolButtonStyle(Qt::ToolButtonIconOnly);
             }
@@ -1019,7 +1100,6 @@ private:
         // layer operations, transforms, navigation and canvas controls.
         // Unavailable actions are naturally omitted for this Krita build.
         const QStringList frequent={
-            QStringLiteral("tablet_quick_actions"),
             QStringLiteral("tablet_save_and_close"),
             QStringLiteral("tablet_all_brush_presets"),
             QStringLiteral("tablet_all_tools_popup"),
@@ -1125,7 +1205,9 @@ private:
         auto *collection=m_main->actionCollection();
         auto addItem=[&](QListWidget *list,QAction *action,const QString &id) {
             if(!action || id==QStringLiteral("tablet_compact_ui") ||
-               id==QStringLiteral("tablet_customize_compact"))return;
+               id==QStringLiteral("tablet_customize_compact") ||
+               id==QStringLiteral("tablet_compact_hub") ||
+               id==QStringLiteral("tablet_quick_actions"))return;
             auto *item=new QListWidgetItem(
                 action->text().remove(QLatin1Char('&')).isEmpty() ?
                 id : action->text().remove(QLatin1Char('&')),list);
@@ -2203,6 +2285,7 @@ private:
     QToolBar *m_topBar=nullptr;
     QToolBar *m_compactBar=nullptr;
     QAction *m_customizeAction=nullptr;
+    QMenu *m_hubMenu=nullptr;
     QAction *m_toolsAction=nullptr;
     QAction *m_sampleModeAction=nullptr;
     QToolButton *m_toolOptionsFloating=nullptr;
