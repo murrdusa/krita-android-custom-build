@@ -1880,7 +1880,7 @@ private:
                     expander->setStyleSheet(
                         "QToolButton{background:#3c5c70;color:white;"
                         "border:1px solid #ddd;border-radius:4px;}");
-                    connect(expander,&QToolButton::clicked,this,[this,node]() {
+                    connect(expander,&QToolButton::clicked,this,[this,node]() mutable {
                         node->setCollapsed(!node->collapsed());
                         refreshLayers();
                     });
