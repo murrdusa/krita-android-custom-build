@@ -322,6 +322,52 @@ QHash<KisInputManager*, TabletReferenceDrag> tabletReferenceDrags;""")
            """            stored.setValue(QStringLiteral("TabletUi/referenceFingerDrag"), referenceFingerDrag->isChecked());
             stored.setValue(QStringLiteral("TabletUi/referenceTwoFinger"), referenceTwoFinger->isChecked());""")
 
+    # Compact UI hold tuning and optional haptic response.
+    p = "libs/ui/KisMainWindow.cpp"
+    sub(p, """        form->addRow(referenceTwoFinger);
+        layout->addLayout(form);""",
+           """        form->addRow(referenceTwoFinger);
+        QSpinBox *tabletHoldMs = new QSpinBox(&dialog);
+        tabletHoldMs->setRange(160,600);
+        tabletHoldMs->setSuffix(i18n(" ms"));
+        tabletHoldMs->setValue(stored.value(QStringLiteral("TabletUi/longPressMs"),260).toInt());
+        form->addRow(i18n("Compact UI hold delay"),tabletHoldMs);
+        QCheckBox *hapticLongPress = new QCheckBox(
+            i18n("Vibrate when a hold action is triggered"),&dialog);
+        hapticLongPress->setChecked(stored.value(
+            QStringLiteral("TabletUi/hapticLongPress"),false).toBool());
+        form->addRow(hapticLongPress);
+        layout->addLayout(form);""")
+    sub(p, """            stored.setValue(QStringLiteral("TabletUi/referenceTwoFinger"), referenceTwoFinger->isChecked());""",
+           """            stored.setValue(QStringLiteral("TabletUi/referenceTwoFinger"), referenceTwoFinger->isChecked());
+            stored.setValue(QStringLiteral("TabletUi/longPressMs"),tabletHoldMs->value());
+            stored.setValue(QStringLiteral("TabletUi/hapticLongPress"),hapticLongPress->isChecked());""")
+
+    p = "packaging/android/apk/src/org/krita/android/MainActivity.java"
+    sub(p, """    public static int getLongPressTimeout() {""",
+           """    // Optional low-amplitude feedback for Compact UI long-press menus.
+    public static void vibrateHold() {
+        final Activity activity = QtNative.activity();
+        if (activity == null) return;
+        activity.runOnUiThread(() -> {
+            android.os.Vibrator vibrator = (android.os.Vibrator)
+                activity.getSystemService(android.content.Context.VIBRATOR_SERVICE);
+            if (vibrator == null || !vibrator.hasVibrator()) return;
+            if (Build.VERSION.SDK_INT >= 26) {
+                vibrator.vibrate(android.os.VibrationEffect.createOneShot(
+                    25, android.os.VibrationEffect.DEFAULT_AMPLITUDE));
+            } else {
+                vibrator.vibrate(25);
+            }
+        });
+    }
+
+    public static int getLongPressTimeout() {""")
+    p = "packaging/android/apk/AndroidManifest.xml"
+    sub(p, """    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />""",
+           """    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />""")
+
     # The XML GUI configuration is identical to v3, but moving to v4 bumps
     # Krita's XMLGUI version so the corrected toolbar is reloaded on upgrades.
     p = "krita/CMakeLists.txt"
