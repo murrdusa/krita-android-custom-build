@@ -633,9 +633,9 @@ private:
         for(QAction *action:m_topBar->actions())
             if(!mainBar->actions().contains(action))mainBar->addAction(action);
         // One-time defaults, never undo changes made in Configure Toolbars.
-        if(QSettings().value(QStringLiteral("TabletUi/toolbarDefaultsV11"),false).toBool())
+        if(QSettings().value(QStringLiteral("TabletUi/toolbarDefaultsV12"),false).toBool())
             return;
-        QSettings().setValue(QStringLiteral("TabletUi/toolbarDefaultsV11"),true);
+        QSettings().setValue(QStringLiteral("TabletUi/toolbarDefaultsV12"),true);
         for(QToolBar *bar:bars) {
             const auto items=bar->actions();
             for(QAction *action:items) {
@@ -646,6 +646,8 @@ private:
                 const bool redundant=id.contains(QStringLiteral("mirror")) ||
                     id.contains(QStringLiteral("wrap")) ||
                     id.contains(QStringLiteral("workspace")) ||
+                    id==QStringLiteral("select_layout") ||
+                    id==QStringLiteral("expanding_spacer_1") ||
                     label.contains(QStringLiteral("mirror horizontal")) ||
                     label.contains(QStringLiteral("mirror vertical")) ||
                     label.contains(QStringLiteral("wrap around")) ||
