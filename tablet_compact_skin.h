@@ -552,7 +552,10 @@ public:
             if(QAction *a=m_main->actionCollection()->action(
                     QStringLiteral("show_tool_options")))a->trigger();
         });
-        QTimer::singleShot(0,this,[this](){rebuildCompactToolbar();});
+        QTimer::singleShot(0,this,[this]() {
+            rebuildCompactToolbar();
+            refreshVisibility();
+        });
         // Tool actions remain registered for both UI modes.
 
         connect(m_vm->canvasResourceProvider(),
@@ -576,6 +579,9 @@ public:
             QTimer::singleShot(0,this,[this]() {
                 enforceCompactChrome();refreshVisibility();refreshLayers();
             });
+            // View-manager activation may occur after QMdiArea emits this
+            // signal, especially when a document is still being loaded.
+            QTimer::singleShot(200,this,[this]() {refreshVisibility();});
         });
         connect(m_vm->canvasResourceProvider(), &KisCanvasResourceProvider::sigFGColorChanged,
                 this, [this](const KoColor&) {if(m_compact) refreshColors();});
@@ -727,6 +733,7 @@ public:
             rememberDockers();
             rememberCompactToolbarState(true);
             enforceCompactChrome();
+            QTimer::singleShot(0,this,[this](){refreshVisibility();});
             QTimer::singleShot(0,this,[this](){enforceCompactChrome();});
             QTimer::singleShot(350,this,[this](){enforceCompactChrome();});
             QTimer::singleShot(1000,this,[this](){enforceCompactChrome();});
@@ -2394,8 +2401,12 @@ private:
     void refreshVisibility() {
         const bool show=m_compact && m_vm->activeNode() && m_surface->isVisible();
         m_brushStrip->setVisible(show);
-        // The mode toggle must remain accessible even without an open image.
-        if(m_compactBar)m_compactBar->setVisible(m_compact);
+        // The welcome page is not a painting workspace: don't render the
+        // dedicated Compact drawing toolbar over Recent Images / Project Gallery.
+        // It returns automatically once a document is active.
+        const bool documentOpen=m_mdi && m_mdi->activeSubWindow() &&
+            !m_vm->image().toStrongRef().isNull();
+        if(m_compactBar)m_compactBar->setVisible(m_compact && documentOpen);
         m_brushControls->setVisible(show);
         m_toolOptionsFloating->setVisible(show);
         if(show)refreshBrushControls();
