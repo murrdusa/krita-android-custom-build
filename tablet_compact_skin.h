@@ -3029,7 +3029,7 @@ private:
             groupControls->addWidget(fold);
             groupControls->addWidget(ungroup);
             layout->addLayout(groupControls);
-            connect(fold,&QPushButton::clicked,&dialog,[this,node,&dialog]() {
+            connect(fold,&QPushButton::clicked,&dialog,[this,node,&dialog]() mutable {
                 node->setCollapsed(!node->collapsed());
                 dialog.accept();
                 refreshLayers();
@@ -3473,7 +3473,6 @@ private:
     int m_nativeColorSpacing=0;
 
     QDockWidget::DockWidgetFeatures m_previousColorFeatures=QDockWidget::DockWidgetFeatures();
-    bool m_colorPinLongPressed=false;
     bool m_colorShowHistory=false;
     int m_colorWheelPixels=265;
     int m_colorHistoryRows=1;
@@ -3503,8 +3502,6 @@ private:
     QToolButton *m_brushButtons[3]={nullptr,nullptr,nullptr};
     QFrame *m_layerRail=nullptr;
     QToolButton *m_layerToggleButton=nullptr;
-    QToolButton *m_layerPinButton=nullptr;
-    bool m_layerPinLongPressed=false;
     bool m_layerPinned=true;
     bool m_layerExpanded=true;
     bool m_layerOnRight=false;
