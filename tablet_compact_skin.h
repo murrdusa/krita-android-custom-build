@@ -70,6 +70,8 @@
 #include "KisViewManager.h"
 #include "kis_canvas_resource_provider.h"
 #include "kis_paintop_box.h"
+#include "kis_slider_spin_box.h"
+#include "kis_image_config.h"
 #include "kis_node_manager.h"
 #include "kis_node.h"
 #include "kis_paint_layer.h"
@@ -131,7 +133,7 @@ public:
         m_brushControls->setObjectName(QStringLiteral("tabletBrushControls"));
         m_brushControls->setStyleSheet(
             "#tabletBrushControls{background:rgba(34,34,38,235);border-radius:8px;}");
-        m_brushControls->setFixedWidth(190);
+        m_brushControls->setFixedWidth(qBound(200,m_surface->width()/3,300));
         auto *controlLayout=new QVBoxLayout(m_brushControls);
         controlLayout->setContentsMargins(8,6,8,6);
         controlLayout->setSpacing(2);
@@ -149,33 +151,36 @@ public:
         controlLayout->addLayout(header);
         connect(controlSettings,&QToolButton::clicked,this,
                 [this](){configureBrushControls();});
-        auto createSlider=[this,controlLayout](const QString &title,int minimum,int maximum,
-                                               QSlider **slider,QLabel **readout) {
+        // Use the same touch-friendly native Krita slider/spinbox widget
+        // used in the standard brush toolbar (including its size curve).
+        auto createSlider=[this,controlLayout](const QString &title,qreal minimum,
+                                               qreal maximum,int decimals,
+                                               KisDoubleSliderSpinBox **slider) {
             auto *row=new QWidget(m_brushControls);
             auto *layout=new QVBoxLayout(row);
             layout->setContentsMargins(0,0,0,0);
-            layout->setSpacing(0);
-            auto *header=new QHBoxLayout();
-            auto *label=new QLabel(title,row);
-            label->setStyleSheet(QStringLiteral("color:white;"));
-            *readout=new QLabel(row);
-            (*readout)->setStyleSheet(QStringLiteral("color:#d2d2d2;"));
-            header->addWidget(label);
-            header->addStretch(1);
-            header->addWidget(*readout);
-            layout->addLayout(header);
-            *slider=new QSlider(Qt::Horizontal,row);
-            (*slider)->setRange(minimum,maximum);
+            layout->setSpacing(1);
+            *slider=new KisDoubleSliderSpinBox(row);
+            (*slider)->setRange(minimum,maximum,decimals);
+            (*slider)->setPrefix(title+QStringLiteral(": "));
+            (*slider)->setMinimumHeight(38);
+            (*slider)->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
+            (*slider)->setBlockUpdateSignalOnDrag(false);
             layout->addWidget(*slider);
             controlLayout->addWidget(row);
             return row;
         };
-        m_sizeRow=createSlider(i18n("Size"),1,1000,
-                                &m_brushSizeSlider,&m_brushSizeValue);
-        m_opacityRow=createSlider(i18n("Opacity"),0,100,
-                                   &m_brushOpacitySlider,&m_brushOpacityValue);
-        m_flowRow=createSlider(i18n("Flow"),0,100,
-                               &m_brushFlowSlider,&m_brushFlowValue);
+        m_sizeRow=createSlider(i18n("Size"),0.01,
+                KisImageConfig(true).maxBrushSize(),2,&m_brushSizeSlider);
+        m_brushSizeSlider->setExponentRatio(3.0);
+        m_brushSizeSlider->setSuffix(i18n(" px"));
+        m_brushSizeSlider->setSingleStep(1);
+        m_opacityRow=createSlider(i18n("Opacity"),0,100,0,&m_brushOpacitySlider);
+        m_brushOpacitySlider->setSuffix(QStringLiteral("%"));
+        m_brushOpacitySlider->setSingleStep(5);
+        m_flowRow=createSlider(i18n("Flow"),0,100,0,&m_brushFlowSlider);
+        m_brushFlowSlider->setSuffix(QStringLiteral("%"));
+        m_brushFlowSlider->setSingleStep(5);
         m_compositeRow=new QWidget(m_brushControls);
         auto *blendRow=new QHBoxLayout(m_compositeRow);
         blendRow->setContentsMargins(0,0,0,0);
@@ -192,17 +197,20 @@ public:
         blendRow->addWidget(m_brushComposite,1);
         controlLayout->addWidget(m_compositeRow);
         auto *provider=m_vm->canvasResourceProvider();
-        connect(m_brushSizeSlider,&QSlider::valueChanged,this,[provider,this](int value) {
+        connect(m_brushSizeSlider,QOverload<qreal>::of(
+                &KisDoubleSliderSpinBox::valueChanged),
+                this,[provider,this](qreal value) {
             if(!m_syncingBrushControls)provider->setSize(value);
-            m_brushSizeValue->setText(QStringLiteral("%1 px").arg(value));
         });
-        connect(m_brushOpacitySlider,&QSlider::valueChanged,this,[provider,this](int value) {
+        connect(m_brushOpacitySlider,QOverload<qreal>::of(
+                &KisDoubleSliderSpinBox::valueChanged),
+                this,[provider,this](qreal value) {
             if(!m_syncingBrushControls)provider->setOpacity(value/100.0);
-            m_brushOpacityValue->setText(QStringLiteral("%1%").arg(value));
         });
-        connect(m_brushFlowSlider,&QSlider::valueChanged,this,[provider,this](int value) {
+        connect(m_brushFlowSlider,QOverload<qreal>::of(
+                &KisDoubleSliderSpinBox::valueChanged),
+                this,[provider,this](qreal value) {
             if(!m_syncingBrushControls)provider->setFlow(value/100.0);
-            m_brushFlowValue->setText(QStringLiteral("%1%").arg(value));
         });
         connect(m_brushComposite,QOverload<int>::of(&QComboBox::currentIndexChanged),
                 this,[provider,this](int index) {
@@ -889,9 +897,9 @@ private:
         auto *provider=m_vm->canvasResourceProvider();
         if(!provider)return;
         m_syncingBrushControls=true;
-        m_brushSizeSlider->setValue(qBound(1,qRound(provider->size()),1000));
-        m_brushOpacitySlider->setValue(qBound(0,qRound(provider->opacity()*100),100));
-        m_brushFlowSlider->setValue(qBound(0,qRound(provider->flow()*100),100));
+        m_brushSizeSlider->setValue(provider->size());
+        m_brushOpacitySlider->setValue(provider->opacity()*100.0);
+        m_brushFlowSlider->setValue(provider->flow()*100.0);
         bool hasFlow=false;
         const auto preset=provider->currentPreset();
         if(preset && preset->settings())
@@ -2020,12 +2028,9 @@ private:
     QWidget *m_sizeRow=nullptr;
     QWidget *m_opacityRow=nullptr;
     QWidget *m_compositeRow=nullptr;
-    QSlider *m_brushSizeSlider=nullptr;
-    QSlider *m_brushOpacitySlider=nullptr;
-    QSlider *m_brushFlowSlider=nullptr;
-    QLabel *m_brushSizeValue=nullptr;
-    QLabel *m_brushOpacityValue=nullptr;
-    QLabel *m_brushFlowValue=nullptr;
+    KisDoubleSliderSpinBox *m_brushSizeSlider=nullptr;
+    KisDoubleSliderSpinBox *m_brushOpacitySlider=nullptr;
+    KisDoubleSliderSpinBox *m_brushFlowSlider=nullptr;
     QComboBox *m_brushComposite=nullptr;
     QTimer *m_brushControlTimer=nullptr;
     bool m_syncingBrushControls=false;
