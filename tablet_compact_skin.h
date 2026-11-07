@@ -13,6 +13,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QBoxLayout>
+#include <QMap>
 #include <QColor>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -1054,24 +1055,37 @@ private:
         scroll->setWidget(body);
         layout->addWidget(scroll);
         QList<QToolButton*> entries;
-        int index=0;
-        for(KoToolAction *action:KoToolManager::instance()->toolActionList()) {
-            if(!action)continue;
-            auto *button=new QToolButton(body);
-            button->setText(action->iconText());
-            button->setToolTip(action->toolTip());
-            button->setIcon(KisIconUtils::loadIcon(action->iconName()));
-            button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
-            button->setIconSize(QSize(34,34));
-            button->setFixedSize(94,82);
-            grid->addWidget(button,index/4,index%4);
-            entries.append(button);
-            connect(button,&QToolButton::clicked,&dialog,[action,&dialog]() {
-                action->trigger();
-                dialog.accept();
-            });
-            ++index;
+        QMap<QString,QList<KoToolAction*>> sections;
+        for(KoToolAction *action:KoToolManager::instance()->toolActionList())
+            if(action)sections[action->section()].append(action);
+        const int columns=m_surface->width()<470 ? 3 : 4;
+        int row=0;
+        for(auto it=sections.constBegin();it!=sections.constEnd();++it) {
+            auto *heading=new QLabel(it.key().isEmpty() ?
+                i18n("Other Tools") : it.key(),body);
+            heading->setStyleSheet(QStringLiteral(
+                "font-weight:bold;padding-top:8px;color:#ddd;"));
+            grid->addWidget(heading,row++,0,1,columns);
+            int column=0;
+            for(KoToolAction *action:it.value()) {
+                auto *button=new QToolButton(body);
+                button->setText(action->iconText());
+                button->setToolTip(action->toolTip());
+                button->setIcon(KisIconUtils::loadIcon(action->iconName()));
+                button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+                button->setIconSize(QSize(34,34));
+                button->setFixedSize(94,82);
+                grid->addWidget(button,row,column);
+                entries.append(button);
+                connect(button,&QToolButton::clicked,&dialog,[action,&dialog]() {
+                    action->trigger();
+                    dialog.accept();
+                });
+                if(++column==columns) {column=0;++row;}
+            }
+            if(column)++row;
         }
+        QScroller::grabGesture(scroll->viewport(),QScroller::TouchGesture);
         connect(filter,&QLineEdit::textChanged,&dialog,
                 [entries](const QString &text) {
             for(QToolButton *button:entries)
