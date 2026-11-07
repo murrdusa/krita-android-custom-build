@@ -1845,7 +1845,7 @@ private:
         // Match the pinch-to-folder interaction: the newly-created group
         // starts collapsed, but native Krita grouping remains fully undoable.
         QTimer::singleShot(250,this,[this,start,finish,parent]() mutable {
-            const KisNodeSP newParent=start->parent();
+            KisNodeSP newParent=start->parent();
             if(newParent && newParent!=parent &&
                newParent==finish->parent() &&
                newParent->inherits("KisGroupLayer"))
