@@ -240,14 +240,7 @@ def main(root: Path):
     };
     const QStringList tabletQuickDefaults = {
         QStringLiteral("gradients"), QStringLiteral("patterns"),
-        QStringLiteral("file_new"), QStringLiteral("file_open"),
-        QStringLiteral("file_save_as"), QStringLiteral("file_export_file"),
-        QStringLiteral("select_all"), QStringLiteral("invert_selection"),
-        QStringLiteral("reselect"), QStringLiteral("deselect"),
-        QStringLiteral("fill_selection_foreground_color"),
-        QStringLiteral("duplicate_layer"), QStringLiteral("merge_layer"),
-        QStringLiteral("quick_group"), QStringLiteral("edit_undo"),
-        QStringLiteral("edit_redo"), QStringLiteral("tablet_reset_view"),
+        QStringLiteral("duplicate_layer"), QStringLiteral("quick_group"),
         QStringLiteral("tablet_settings")
     };
     QAction *customizeQuick = new QAction(i18n("Customize Quick Actions..."), this);
@@ -263,7 +256,7 @@ def main(root: Path):
         list->setDefaultDropAction(Qt::MoveAction);
         layout->addWidget(list);
         QStringList selected = QSettings().value(
-            QStringLiteral("TabletUi/quickActions"), tabletQuickDefaults).toStringList();
+            QStringLiteral("TabletUi/quickActionsV2"), tabletQuickDefaults).toStringList();
         QStringList ordered = selected;
         for (const QString &name : tabletQuickAvailable) {
             if (!ordered.contains(name)) ordered.append(name);
@@ -289,14 +282,14 @@ def main(root: Path):
                 if (item->checkState() == Qt::Checked)
                     chosen << item->data(Qt::UserRole).toString();
             }
-            QSettings().setValue(QStringLiteral("TabletUi/quickActions"), chosen);
+            QSettings().setValue(QStringLiteral("TabletUi/quickActionsV2"), chosen);
         }
     });
     connect(quickMenu, &QMenu::aboutToShow, this,
             [this, quickMenu, customizeQuick, tabletQuickDefaults]() {
         quickMenu->clear();
         const QStringList selected = QSettings().value(
-            QStringLiteral("TabletUi/quickActions"), tabletQuickDefaults).toStringList();
+            QStringLiteral("TabletUi/quickActionsV2"), tabletQuickDefaults).toStringList();
         for (const QString &name : selected) {
             QAction *action = actionCollection()->action(name);
             if (action) quickMenu->addAction(action);
@@ -711,7 +704,7 @@ QHash<KisInputManager*, TabletReferenceDrag> tabletReferenceDrags;
             [this, quickMenu, customizeQuick, tabletQuickDefaults]() {
         quickMenu->clear();
         const QStringList selected = QSettings().value(
-            QStringLiteral("TabletUi/quickActions"), tabletQuickDefaults).toStringList();
+            QStringLiteral("TabletUi/quickActionsV2"), tabletQuickDefaults).toStringList();
         for (const QString &name : selected) {
             QAction *action = actionCollection()->action(name);
             if (action) quickMenu->addAction(action);
@@ -724,26 +717,17 @@ QHash<KisInputManager*, TabletReferenceDrag> tabletReferenceDrags;
             [this, quickMenu, customizeQuick, tabletQuickDefaults]() {
         quickMenu->clear();
         const QStringList selected = QSettings().value(
-            QStringLiteral("TabletUi/quickActions"), tabletQuickDefaults).toStringList();
+            QStringLiteral("TabletUi/quickActionsV2"), tabletQuickDefaults).toStringList();
         for (const QString &name : selected) {
             QAction *action = actionCollection()->action(name);
             if (action) quickMenu->addAction(action);
         }
         quickMenu->addSeparator();
-        // Native Krita menu hierarchy is also available while Compact UI
-        // hides the menu bar. Reuse the original menus and their QAction trees.
-        QMenu *allMenus=quickMenu->findChild<QMenu*>(
-            QStringLiteral("tabletNativeMenuLinks"));
-        if(!allMenus) {
-            allMenus=new QMenu(i18n("Krita Menus"),quickMenu);
-            allMenus->setObjectName(QStringLiteral("tabletNativeMenuLinks"));
-        }
-        allMenus->clear();
+        // Flatten one level: native menu entries directly in Quick Actions.
         for(QAction *topLevel:menuBar()->actions()) {
             if(QMenu *native=topLevel->menu())
-                allMenus->addMenu(native);
+                quickMenu->addMenu(native);
         }
-        quickMenu->addMenu(allMenus);
         quickMenu->addSeparator();
         quickMenu->addAction(customizeQuick);
     });
