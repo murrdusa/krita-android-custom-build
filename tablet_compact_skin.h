@@ -1748,6 +1748,15 @@ private:
         side->addItem(i18n("Right"),true);
         side->setCurrentIndex(m_layerOnRight?1:0);
         layout->addWidget(side);
+        auto *pinchGrouping=new QCheckBox(
+            i18n("Pinch two layer thumbnails together to create a group"),&dialog);
+        pinchGrouping->setChecked(QSettings().value(
+            QStringLiteral("TabletUi/pinchToGroupLayers"),true).toBool());
+        layout->addWidget(pinchGrouping);
+        connect(pinchGrouping,&QCheckBox::toggled,&dialog,[](bool enabled) {
+            QSettings().setValue(
+                QStringLiteral("TabletUi/pinchToGroupLayers"),enabled);
+        });
         connect(side,QOverload<int>::of(&QComboBox::currentIndexChanged),&dialog,
                 [this](int index) {
             m_layerOnRight=index==1;
@@ -1890,7 +1899,9 @@ private:
                 m_touchPinchStartDistance=QLineF(
                     pts.at(0).start,pts.at(1).start).length();
             }
-            if(type==QEvent::TouchUpdate &&
+            if(QSettings().value(
+                   QStringLiteral("TabletUi/pinchToGroupLayers"),true).toBool() &&
+               (type==QEvent::TouchUpdate || type==QEvent::TouchEnd) &&
                m_touchPinchStartDistance>=65) {
                 const qreal current=QLineF(
                     pts.at(0).last,pts.at(1).last).length();
@@ -1899,7 +1910,7 @@ private:
                     m_touchPinchReady=true;
             }
         } else if(m_layerTouches.size()==1 && !m_touchLayerPinching &&
-                  type==QEvent::TouchUpdate) {
+                  (type==QEvent::TouchUpdate || type==QEvent::TouchEnd)) {
             const CompactTouchPoint point=m_layerTouches.constBegin().value();
             const int travel=(point.last-point.start).manhattanLength();
             if(!m_touchLayerArmed && travel>12) {
@@ -1910,6 +1921,14 @@ private:
                     m_touchLayerLast.y()-point.last.y());
             } else if(m_touchLayerArmed && travel>18) {
                 m_touchLayerMoved=true;
+                for(const CompactLayerRow &row:m_compactLayerRows) {
+                    if(row.node && row.widget &&
+                       QRect(row.widget->mapToGlobal(QPoint()),row.widget->size())
+                           .contains(point.last) && row.node!=m_touchLayerPrimary) {
+                        m_layerName->setText(i18n("Move near %1",row.node->name()));
+                        break;
+                    }
+                }
             }
             m_touchLayerLast=point.last;
         }
@@ -1917,7 +1936,11 @@ private:
             if(point.state() & Qt::TouchPointReleased)
                 m_layerTouches.remove(point.id());
         }
-        if(type==QEvent::TouchEnd)m_layerTouches.clear();
+        // Qt may send separate TouchEnd events to separate widgets when the
+        // two fingers started on different thumbnails. Don't finish a pinch
+        // while the second finger is still touching its own widget.
+        if(type==QEvent::TouchEnd && touch->touchPoints().isEmpty())
+            m_layerTouches.clear();
         if(m_layerTouches.isEmpty()) {
             m_layerTouchHoldTimer->stop();
             const KisNodeSP primary=m_touchLayerPrimary;
@@ -2029,6 +2052,26 @@ private:
                 m_compactLayerHeight+=rowHeight+7;
                 auto *frame=new QFrame(m_layersContent);
                 frame->setFixedSize(rowWidth+4,rowHeight+4);
+                // A clipped layer is visibly attached to the base below it,
+                // rather than floating as another oversized independent tile.
+                if(inheritsAlpha) {
+                    frame->setObjectName(QStringLiteral("compactClippedLayer"));
+                    frame->setStyleSheet(
+                        "QFrame#compactClippedLayer{border-left:4px solid #4aafa1;"
+                        "background:#454b4b;border-radius:3px;}");
+                } else if(node->previousSibling() &&
+                          KisLayerPropertiesIcons::nodeProperty(
+                              node->previousSibling(),
+                              KisLayerPropertiesIcons::inheritAlpha,false).toBool()) {
+                    frame->setObjectName(QStringLiteral("compactClipBase"));
+                    frame->setStyleSheet(
+                        "QFrame#compactClipBase{border-left:4px solid #4aafa1;"
+                        "border-top:2px solid #4aafa1;border-radius:3px;}");
+                } else if(depth>0) {
+                    frame->setObjectName(QStringLiteral("compactNestedLayer"));
+                    frame->setStyleSheet(
+                        "QFrame#compactNestedLayer{border-left:3px solid #657f90;}");
+                }
                 auto *tile=new QToolButton(frame);
                 tile->setObjectName(QStringLiteral("compactLayerTouchTile"));
                 tile->setAttribute(Qt::WA_AcceptTouchEvents,true);
@@ -2075,7 +2118,7 @@ private:
                     "font-weight:bold;}" :
                     "QLabel{background:#435767;color:white;border-radius:3px;"
                     "font-weight:bold;}");
-                typeBadge->setVisible(isMask || (inheritsAlpha && !isGroup));
+                typeBadge->setVisible(isMask);
                 typeBadge->setAttribute(Qt::WA_TransparentForMouseEvents);
                 if(isGroup) {
                     auto *expander=new QToolButton(frame);
