@@ -13,7 +13,7 @@ def main(root):
     path=Path(root)/"libs/ui/KisWelcomePageWidget.cpp"
     s=path.read_text(encoding="utf-8")
     s=sub(s,"#include <QTabWidget>\n",
-          "#include <QTabWidget>\n#include <QGridLayout>\n"
+          "#include <QTabWidget>\n#include <QTabBar>\n#include <QGridLayout>\n"
           "#include <QLineEdit>\n#include <QClipboard>\n"
           "#include <QAbstractItemModel>\n","includes")
     # Controls in two columns, so nothing is cut off in folded portrait.
