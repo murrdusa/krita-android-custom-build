@@ -128,6 +128,20 @@ public:
         auto *controlLayout=new QVBoxLayout(m_brushControls);
         controlLayout->setContentsMargins(8,6,8,6);
         controlLayout->setSpacing(2);
+        auto *header=new QHBoxLayout;
+        auto *headerLabel=new QLabel(i18n("Brush controls"),m_brushControls);
+        headerLabel->setStyleSheet(QStringLiteral("color:#e6e6e6;font-weight:bold;"));
+        header->addWidget(headerLabel);
+        header->addStretch(1);
+        auto *controlSettings=new QToolButton(m_brushControls);
+        controlSettings->setIcon(KisIconUtils::loadIcon("configure"));
+        controlSettings->setIconSize(QSize(17,17));
+        controlSettings->setFixedSize(29,26);
+        controlSettings->setToolTip(i18n("Customize brush controls"));
+        header->addWidget(controlSettings);
+        controlLayout->addLayout(header);
+        connect(controlSettings,&QToolButton::clicked,this,
+                [this](){configureBrushControls();});
         auto createSlider=[this,controlLayout](const QString &title,int minimum,int maximum,
                                                QSlider **slider,QLabel **readout) {
             auto *row=new QWidget(m_brushControls);
@@ -149,11 +163,15 @@ public:
             controlLayout->addWidget(row);
             return row;
         };
-        createSlider(i18n("Size"),1,1000,&m_brushSizeSlider,&m_brushSizeValue);
-        createSlider(i18n("Opacity"),0,100,&m_brushOpacitySlider,&m_brushOpacityValue);
+        m_sizeRow=createSlider(i18n("Size"),1,1000,
+                                &m_brushSizeSlider,&m_brushSizeValue);
+        m_opacityRow=createSlider(i18n("Opacity"),0,100,
+                                   &m_brushOpacitySlider,&m_brushOpacityValue);
         m_flowRow=createSlider(i18n("Flow"),0,100,
                                &m_brushFlowSlider,&m_brushFlowValue);
-        auto *blendRow=new QHBoxLayout();
+        m_compositeRow=new QWidget(m_brushControls);
+        auto *blendRow=new QHBoxLayout(m_compositeRow);
+        blendRow->setContentsMargins(0,0,0,0);
         auto *blendLabel=new QLabel(i18n("Blend"),m_brushControls);
         blendLabel->setStyleSheet(QStringLiteral("color:white;"));
         m_brushComposite=new QComboBox(m_brushControls);
@@ -165,7 +183,7 @@ public:
                                       QString::fromLatin1(entry.second));
         blendRow->addWidget(blendLabel);
         blendRow->addWidget(m_brushComposite,1);
-        controlLayout->addLayout(blendRow);
+        controlLayout->addWidget(m_compositeRow);
         auto *provider=m_vm->canvasResourceProvider();
         connect(m_brushSizeSlider,&QSlider::valueChanged,this,[provider,this](int value) {
             if(!m_syncingBrushControls)provider->setSize(value);
@@ -780,6 +798,35 @@ private:
                 m_colorDocker=dock;
         }
     }
+    void configureBrushControls() {
+        QDialog dialog(m_main);
+        dialog.setWindowTitle(i18n("Brush Control Settings"));
+        auto *layout=new QVBoxLayout(&dialog);
+        QStringList names={i18n("Size"),i18n("Opacity"),
+                           i18n("Flow (when supported)"),i18n("Blend mode")};
+        QStringList keys={QStringLiteral("size"),QStringLiteral("opacity"),
+                          QStringLiteral("flow"),QStringLiteral("composite")};
+        QList<QCheckBox*> toggles;
+        for(int i=0;i<keys.size();++i) {
+            auto *checkbox=new QCheckBox(names.at(i),&dialog);
+            checkbox->setChecked(QSettings().value(
+                QStringLiteral("TabletUi/brushControl/")+keys.at(i),true).toBool());
+            layout->addWidget(checkbox);
+            toggles.append(checkbox);
+        }
+        auto *buttons=new QDialogButtonBox(
+            QDialogButtonBox::Ok|QDialogButtonBox::Cancel,&dialog);
+        layout->addWidget(buttons);
+        connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);
+        connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
+        if(dialog.exec()!=QDialog::Accepted)return;
+        for(int i=0;i<keys.size();++i)
+            QSettings().setValue(
+                QStringLiteral("TabletUi/brushControl/")+keys.at(i),
+                toggles.at(i)->isChecked());
+        refreshBrushControls();
+        positionOverlays();
+    }
     void refreshBrushControls() {
         if(!m_compact || !m_vm->activeNode())return;
         auto *provider=m_vm->canvasResourceProvider();
@@ -792,7 +839,14 @@ private:
         const auto preset=provider->currentPreset();
         if(preset && preset->settings())
             hasFlow=preset->settings()->hasProperty(QStringLiteral("FlowValue"));
-        m_flowRow->setVisible(hasFlow);
+        auto enabled=[](const QString &key) {
+            return QSettings().value(
+                QStringLiteral("TabletUi/brushControl/")+key,true).toBool();
+        };
+        m_sizeRow->setVisible(enabled(QStringLiteral("size")));
+        m_opacityRow->setVisible(enabled(QStringLiteral("opacity")));
+        m_flowRow->setVisible(hasFlow && enabled(QStringLiteral("flow")));
+        m_compositeRow->setVisible(enabled(QStringLiteral("composite")));
         const int index=m_brushComposite->findData(provider->currentCompositeOp());
         if(index>=0)m_brushComposite->setCurrentIndex(index);
         m_syncingBrushControls=false;
@@ -1911,6 +1965,9 @@ private:
     QFrame *m_brushStrip=nullptr;
     QFrame *m_brushControls=nullptr;
     QWidget *m_flowRow=nullptr;
+    QWidget *m_sizeRow=nullptr;
+    QWidget *m_opacityRow=nullptr;
+    QWidget *m_compositeRow=nullptr;
     QSlider *m_brushSizeSlider=nullptr;
     QSlider *m_brushOpacitySlider=nullptr;
     QSlider *m_brushFlowSlider=nullptr;
