@@ -642,7 +642,7 @@ public:
             rememberDockers();
             rememberCompactToolbarState(true);
             const QByteArray storedNormal=QSettings().value(
-                QStringLiteral("TabletUi/normalWindowState")).toByteArray();
+                QStringLiteral("TabletUi/normalWindowStateV2")).toByteArray();
             if(m_startupCompact && !storedNormal.isEmpty()) {
                 m_previousWindowState=storedNormal;
             } else if(m_startupCompact) {
@@ -652,7 +652,7 @@ public:
                 m_recoverLegacyNormalLayout=true;
                 m_previousWindowState.clear();
             } else if(!m_previousWindowState.isEmpty()) {
-                QSettings().setValue(QStringLiteral("TabletUi/normalWindowState"),
+                QSettings().setValue(QStringLiteral("TabletUi/normalWindowStateV2"),
                                      m_previousWindowState);
             }
             m_startupCompact=false;
@@ -803,6 +803,13 @@ public:
         }
         refreshVisibility();
         refreshLayers();
+        if(!active) {
+            // Krita may apply deferred toolbar state after the mode changes.
+            // Reassert only the normal toolbar's Compact toggle, not its
+            // other user-configured actions or the rest of the workspace.
+            QTimer::singleShot(0,this,[this](){organizeDefaultToolbars();});
+            QTimer::singleShot(250,this,[this](){organizeDefaultToolbars();});
+        }
     }
 
 private:

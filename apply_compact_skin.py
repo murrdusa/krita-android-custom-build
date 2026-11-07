@@ -43,6 +43,35 @@ def main(root: Path):
     if s.count(old)!=1:
         raise RuntimeError("v7: Compact UI initialization anchor mismatch")
     s=s.replace(old,new)
+    # Previous customization stages modify the stock Krita toolbar XML
+    # globally. Compact UI now has an entirely separate configurable toolbar,
+    # so reset native Krita's default toolbar/menu layout and inject ONLY the
+    # persistent mode toggle into the normal toolbar.
+    import subprocess, hashlib, re
+    source_xml=subprocess.check_output(
+        ["git","-C",str(root),"show","HEAD:krita/krita5.xmlgui"],
+        text=True)
+    toolbar_anchor='''  <ToolBar name="mainToolBar" fullWidth="false" noMerge="1">
+    <Text>File</Text>
+'''
+    if source_xml.count(toolbar_anchor)!=1:
+        raise RuntimeError("Stock Krita toolbar XML anchor mismatch")
+    native_xml=source_xml.replace(toolbar_anchor,toolbar_anchor+
+        '    <Action name="tablet_compact_ui"/>\\n',1)
+    (root/"krita/krita5.xmlgui").write_text(native_xml,encoding="utf-8")
+    cmake_file=root/"krita/CMakeLists.txt"
+    cmake_text=cmake_file.read_text(encoding="utf-8")
+    version_pattern=r'set\\(KRITA5_XMLGUI_VERSION [0-9]+\\)'
+    checksum_pattern=r'set\\(krita5_xmlgui_hash_expected "[0-9a-f]+"\\)'
+    if len(re.findall(version_pattern,cmake_text))!=1 or len(
+            re.findall(checksum_pattern,cmake_text))!=1:
+        raise RuntimeError("Krita XMLGUI version/checksum anchor mismatch")
+    cmake_text=re.sub(version_pattern,'set(KRITA5_XMLGUI_VERSION 547)',cmake_text)
+    actual=hashlib.md5(''.join(native_xml.split()).encode()).hexdigest()
+    cmake_text=re.sub(checksum_pattern,
+        f'set(krita5_xmlgui_hash_expected "{actual}")',cmake_text)
+    cmake_file.write_text(cmake_text,encoding="utf-8")
+    print("v7 restored stock Krita normal toolbar + Compact toggle; XMLGUI",actual)
     target=root/"libs/ui/tablet_compact_skin.h"
     src=Path(__file__).resolve().parent/"tablet_compact_skin.h"
     if not src.is_file():
