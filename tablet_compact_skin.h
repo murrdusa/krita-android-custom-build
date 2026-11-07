@@ -29,6 +29,8 @@
 #include <QMdiArea>
 #include <QMenu>
 #include <QPointer>
+#include <QPainter>
+#include <QTabletEvent>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -151,10 +153,15 @@ public:
             m_layerPinLongPressed=false;
             layerPinTimer->start();
         });
-        connect(m_layerPinButton,&QToolButton::released,layerPinTimer,&QTimer::stop);
         connect(layerPinTimer,&QTimer::timeout,this,[this]() {
             m_layerPinLongPressed=true;
-            openLayerSettings();
+        });
+        // Opening a nested popup on timeout swallows the release/click event
+        // on Android. Open it only after the finger is lifted.
+        connect(m_layerPinButton,&QToolButton::released,this,[this,layerPinTimer]() {
+            layerPinTimer->stop();
+            if(m_layerPinLongPressed)
+                QTimer::singleShot(0,this,[this]() {openLayerSettings();});
         });
         connect(m_layerPinButton,&QToolButton::clicked,this,[this]() {
             if(m_layerPinLongPressed){m_layerPinLongPressed=false;return;}
@@ -333,12 +340,18 @@ public:
         }
         if (watched==m_colorDocker && event->type()==QEvent::Resize &&
             m_colorPinButton) {
-            m_colorPinButton->move(7,30);
+            m_colorPinButton->move(qMax(0,m_colorDocker->width()-89),39);
             m_colorPinButton->raise();
         }
+        // Stylus strokes arrive as tablet events on the canvas, not mouse
+        // button events. Close unpinned panels without consuming the stroke.
+        const bool pointerStart=event->type()==QEvent::MouseButtonPress ||
+            event->type()==QEvent::TouchBegin ||
+            event->type()==QEvent::TabletPress ||
+            (event->type()==QEvent::TabletMove &&
+             static_cast<QTabletEvent*>(event)->pressure()>0.0);
         if (m_compact && !m_layerPinned && m_layerExpanded &&
-            (event->type()==QEvent::MouseButtonPress ||
-             event->type()==QEvent::TouchBegin)) {
+            pointerStart) {
             QWidget *target=qobject_cast<QWidget*>(watched);
             const bool railTouch=target &&
                 (target==m_layerRail || m_layerRail->isAncestorOf(target));
@@ -348,8 +361,7 @@ public:
             }
         }
         if (m_compact && m_colorExpanded && !m_colorPinned &&
-            (event->type()==QEvent::MouseButtonPress ||
-             event->type()==QEvent::TouchBegin)) {
+            pointerStart) {
             QWidget *target=qobject_cast<QWidget*>(watched);
             // Keep interacting with the wheel, its pin or size controls.
             const bool wheelTouch=m_colorDocker && target &&
@@ -399,10 +411,11 @@ public:
                 m_colorDocker->hide();
                 m_colorDocker->setFloating(true);
                 const int wheelWidth=m_colorWheelPixels;
-                m_colorDocker->resize(QSize(wheelWidth,wheelWidth+70));
+                m_colorDocker->resize(QSize(wheelWidth,wheelWidth+24));
                 if(!m_colorPinButton) {
                     m_colorPinButton=new QToolButton(m_colorDocker);
-                    m_colorPinButton->setFixedSize(42,34);
+                    m_colorPinButton->setFixedSize(36,36);
+                    m_colorPinButton->setIconSize(QSize(28,28));
                     m_colorPinButton->setStyleSheet(
                         "QToolButton{background:#242428;color:white;"
                         "border:1px solid #aaa;border-radius:6px;font-size:18px;}");
@@ -416,11 +429,14 @@ public:
                         m_colorPinLongPressed=false;
                         pinTimer->start();
                     });
-                    connect(m_colorPinButton,&QToolButton::released,
-                            pinTimer,&QTimer::stop);
                     connect(pinTimer,&QTimer::timeout,this,[this]() {
                         m_colorPinLongPressed=true;
-                        openColorSettings();
+                    });
+                    connect(m_colorPinButton,&QToolButton::released,this,
+                            [this,pinTimer]() {
+                        pinTimer->stop();
+                        if(m_colorPinLongPressed)
+                            QTimer::singleShot(0,this,[this](){openColorSettings();});
                     });
                     connect(m_colorPinButton,&QToolButton::clicked,this,[this]() {
                         if(m_colorPinLongPressed) {
@@ -435,9 +451,9 @@ public:
                         refreshColorControls();
                     });
                 }
-                m_colorPinButton->move(7,30);
-                m_colorPinButton->setText(m_colorPinned ? QStringLiteral("🔒") :
-                                                         QStringLiteral("🔓"));
+                m_colorPinButton->move(qMax(0,m_colorDocker->width()-89),39);
+                m_colorPinButton->setText(QString());
+                m_colorPinButton->setIcon(lockIcon(m_colorPinned));
             }
             m_topBar->show();
             m_layerRefreshTimer->start();
@@ -850,6 +866,26 @@ private:
         m_layerRail->setFixedWidth(m_layerTileSize+10);
         if(m_layerRail->isVisible())positionOverlays();
     }
+    static QIcon lockIcon(bool locked) {
+        QPixmap pix(32,32);
+        pix.fill(Qt::transparent);
+        QPainter p(&pix);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(QPen(QColor(245,245,245),2.8));
+        p.setBrush(Qt::NoBrush);
+        if(locked) {
+            p.drawArc(QRectF(9,4,14,20),0,180*16);
+        } else {
+            p.drawArc(QRectF(15,4,14,20),0,180*16);
+            p.drawLine(QPointF(15,14),QPointF(15,17));
+        }
+        p.setBrush(QColor(235,235,235));
+        p.drawRoundedRect(QRectF(7,15,18,14),2,2);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(42,42,45));
+        p.drawEllipse(QRectF(14,20,4,4));
+        return QIcon(pix);
+    }
     void openLayerSettings() {
         QDialog dialog(m_main);
         dialog.setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
@@ -888,8 +924,9 @@ private:
         const bool show=m_compact && m_vm->activeNode() && m_surface->isVisible();
         m_layerRail->setVisible(show && (m_layerPinned || m_layerExpanded));
         m_layerToggleButton->setVisible(show && !m_layerPinned && !m_layerExpanded);
-        m_layerPinButton->setText(m_layerPinned?QStringLiteral("🔒"):
-                                                QStringLiteral("🔓"));
+        m_layerPinButton->setText(QString());
+        m_layerPinButton->setIcon(lockIcon(m_layerPinned));
+        m_layerPinButton->setIconSize(QSize(26,26));
         m_layerPinButton->setToolTip(m_layerPinned ?
             i18n("Unpin and collapse layers") : i18n("Pin layers open"));
         if(show)positionOverlays();
@@ -1138,7 +1175,7 @@ private:
             m_colorWheelPixels=pixels;
             value->setText(QStringLiteral("%1 px").arg(pixels));
             QSettings().setValue(QStringLiteral("TabletUi/colorWheelPixels"),pixels);
-            if(m_colorDocker)m_colorDocker->resize(pixels,pixels+70);
+            if(m_colorDocker)m_colorDocker->resize(pixels,pixels+24);
             updateColorDock();
             refreshColorControls();
         });
@@ -1156,8 +1193,8 @@ private:
         m_colorButton->setVisible(show && !m_colorExpanded);
         m_recent->setVisible(show && m_colorExpanded && m_colorShowHistory);
         if(m_colorPinButton) {
-            m_colorPinButton->setText(m_colorPinned ? QStringLiteral("🔒") :
-                                                     QStringLiteral("🔓"));
+            m_colorPinButton->setText(QString());
+            m_colorPinButton->setIcon(lockIcon(m_colorPinned));
             m_colorPinButton->setToolTip(m_colorPinned ?
                 i18n("Unpin and collapse color wheel") :
                 i18n("Pin color wheel to bottom-right corner"));
@@ -1179,7 +1216,7 @@ private:
                    qMax(0,m_surface->height()-m_colorDocker->height()-bottomGap)));
         m_colorDocker->move(global);
         if(m_colorPinButton) {
-            m_colorPinButton->move(7,30);
+            m_colorPinButton->move(qMax(0,m_colorDocker->width()-89),39);
             m_colorPinButton->show();
             m_colorPinButton->raise();
         }
