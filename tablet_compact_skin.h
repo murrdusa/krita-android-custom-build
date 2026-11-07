@@ -3021,20 +3021,79 @@ private:
         positionOverlays();
     }
 
+    bool groupCompactWithBelow(KisNodeSP node) {
+        if(!node || !m_vm || !m_vm->nodeManager() ||
+           m_clipTransactionBusy || isCompactClipGroup(node->parent()))
+            return false;
+        // Krita siblings are bottom-to-top: prevSibling is the layer below.
+        KisNodeSP below=node->prevSibling();
+        if(!below || !node->inherits("KisLayer") ||
+           !below->inherits("KisLayer") || isCompactClipGroup(below) ||
+           compactInheritsAlpha(node) || compactInheritsAlpha(below))
+            return false;
+        KisNodeList selected{below,node};
+        if(!m_vm->nodeManager()->canMoveLayers(selected,false))return false;
+        m_vm->nodeManager()->slotUiActivatedNode(node);
+        m_vm->nodeManager()->slotSetSelectedNodes(selected);
+        m_vm->nodeManager()->createQuickGroup();
+        QTimer::singleShot(240,this,[this](){refreshLayers();});
+        return true;
+    }
     void openLayerActions(KisNodeSP node) {
-        if(!node)return;
+        if(!node || !m_vm || !m_vm->nodeManager())return;
         QDialog dialog(m_main);
         dialog.setWindowTitle(node->name());
-        dialog.setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
-        dialog.resize(qMax(286,qMin(360,m_surface->width()-24)),
-                      qMax(330,qMin(450,m_surface->height()-35)));
-        auto *layout=new QVBoxLayout(&dialog);
-        auto *blend=new KisCompositeOpComboBox(&dialog);
-        if(node->compositeOp()) {
+        dialog.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
+        dialog.resize(qMax(290,qMin(425,m_surface->width()-24)),
+                      qMax(360,qMin(635,m_surface->height()-40)));
+        dialog.setStyleSheet(
+            "QDialog{background:#303238;color:#f2f3f6;}"
+            "QLabel{color:#e6e9ef;}"
+            "QPushButton{padding:7px;background:#434854;"
+            "border:1px solid #677184;border-radius:7px;}"
+            "QPushButton:pressed{background:#557c94;}"
+            "QToolButton{background:#404651;color:#f3f5f7;"
+            "border:1px solid #667183;border-radius:8px;padding:5px;}"
+            "QToolButton:pressed{background:#537a93;}"
+            "QCheckBox{spacing:10px;min-height:38px;}");
+        auto *outer=new QVBoxLayout(&dialog);
+        outer->setContentsMargins(12,12,12,12);
+        auto *scroll=new QScrollArea(&dialog);
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        QScroller::grabGesture(scroll->viewport(),QScroller::TouchGesture);
+        auto *page=new QWidget(scroll);
+        auto *layout=new QVBoxLayout(page);
+        layout->setContentsMargins(4,3,4,3);
+        layout->setSpacing(8);
+        auto *headingRow=new QHBoxLayout;
+        auto *heading=new QLabel(node->name(),page);
+        heading->setWordWrap(true);
+        heading->setStyleSheet("font-size:18px;font-weight:600;");
+        headingRow->addWidget(heading,1);
+        auto *rename=new QPushButton(i18n("Rename"),page);
+        rename->setMinimumHeight(43);
+        headingRow->addWidget(rename);
+        layout->addLayout(headingRow);
+        connect(rename,&QPushButton::clicked,&dialog,
+                [this,node,heading]() {
+            bool accepted=false;
+            const QString name=QInputDialog::getText(
+                m_main,i18n("Rename layer"),i18n("Name"),
+                QLineEdit::Normal,node->name(),&accepted);
+            if(accepted && !name.trimmed().isEmpty()) {
+                m_vm->nodeManager()->setNodeName(node,name.trimmed());
+                heading->setText(name.trimmed());
+                QTimer::singleShot(0,this,[this](){refreshLayers();});
+            }
+        });
+        auto *blend=new KisCompositeOpComboBox(page);
+        if(node->compositeOp())
             blend->selectCompositeOp(KoCompositeOpRegistry::instance().getKoID(
                 node->compositeOpId()));
-        }
-        layout->addWidget(new QLabel(i18n("Layer blending"),&dialog));
+        layout->addWidget(new QLabel(i18n("Blending mode"),page));
+        blend->setMinimumHeight(44);
         layout->addWidget(blend);
         connect(blend,QOverload<int>::of(&QComboBox::activated),&dialog,
                 [this,node,blend](int) {
@@ -3043,166 +3102,205 @@ private:
                 blend->selectedCompositeOp().id());
             if(op)m_vm->nodeManager()->setNodeCompositeOp(node,op);
         });
-        auto *opacity=new QSlider(Qt::Horizontal,&dialog);
+        auto *opacity=new QSlider(Qt::Horizontal,page);
         opacity->setRange(0,100);
         opacity->setValue(node->percentOpacity());
-        layout->addWidget(new QLabel(i18n("Opacity"),&dialog));
+        opacity->setMinimumHeight(34);
+        auto *opacityRow=new QHBoxLayout;
+        opacityRow->addWidget(new QLabel(i18n("Opacity"),page));
+        auto *opacityValue=new QLabel(
+            QStringLiteral("%1%").arg(opacity->value()),page);
+        opacityRow->addStretch(1);
+        opacityRow->addWidget(opacityValue);
+        layout->addLayout(opacityRow);
         layout->addWidget(opacity);
-        connect(opacity,&QSlider::sliderReleased,&dialog,[this,node,opacity]() {
-            m_vm->nodeManager()->setNodeOpacity(node,qRound(opacity->value()*255.0/100.0));
+        connect(opacity,&QSlider::valueChanged,&dialog,[opacityValue](int v) {
+            opacityValue->setText(QStringLiteral("%1%").arg(v));
         });
-        if(node->inherits("KisLayer")) {
-            const bool inherit=KisLayerPropertiesIcons::nodeProperty(
-                node,KisLayerPropertiesIcons::inheritAlpha,false).toBool();
-            auto *clip=new QCheckBox(i18n("Clip to nearest layer below"),&dialog);
-            clip->setChecked(inherit);
+        connect(opacity,&QSlider::sliderReleased,&dialog,[this,node,opacity]() {
+            m_vm->nodeManager()->setNodeOpacity(
+                node,qRound(opacity->value()*255.0/100.0));
+        });
+        if(node->inherits("KisLayer") &&
+           !node->inherits("KisGroupLayer")) {
+            auto *clip=new QCheckBox(i18n("Clip to next layer below"),page);
+            clip->setChecked(compactInheritsAlpha(node));
             layout->addWidget(clip);
             connect(clip,&QCheckBox::toggled,&dialog,[this,node](bool checked) {
                 setCompactClip(node,checked);
             });
         }
-        if(node->inherits("KisGroupLayer")) {
-            auto *groupControls=new QHBoxLayout;
+        const bool isGroup=node->inherits("KisGroupLayer");
+        if(isGroup) {
+            auto *groupRow=new QHBoxLayout;
             auto *fold=new QPushButton(node->collapsed()?
-                i18n("Expand group"):i18n("Collapse group"),&dialog);
-            auto *ungroup=new QPushButton(i18n("Ungroup"),&dialog);
-            fold->setMinimumHeight(44);
-            ungroup->setMinimumHeight(44);
-            groupControls->addWidget(fold);
-            groupControls->addWidget(ungroup);
-            layout->addLayout(groupControls);
-            connect(fold,&QPushButton::clicked,&dialog,[this,node,&dialog]() mutable {
+                i18n("Expand group"):i18n("Collapse group"),page);
+            auto *ungroup=new QPushButton(i18n("Ungroup"),page);
+            fold->setMinimumHeight(48);
+            ungroup->setMinimumHeight(48);
+            groupRow->addWidget(fold);
+            groupRow->addWidget(ungroup);
+            layout->addLayout(groupRow);
+            connect(fold,&QPushButton::clicked,&dialog,
+                    [this,node,&dialog]() mutable {
                 node->setCollapsed(!node->collapsed());
                 dialog.accept();
                 refreshLayers();
             });
-            connect(ungroup,&QPushButton::clicked,&dialog,[this,node,&dialog]() {
-                if(!node->parent() || !m_vm || !m_vm->nodeManager())return;
+            connect(ungroup,&QPushButton::clicked,&dialog,
+                    [this,node,&dialog]() {
                 m_vm->nodeManager()->slotUiActivatedNode(node);
                 m_vm->nodeManager()->slotSetSelectedNodes(KisNodeList{node});
                 m_vm->nodeManager()->quickUngroup();
                 dialog.accept();
-                QTimer::singleShot(240,this,[this](){refreshLayers();});
+                QTimer::singleShot(250,this,[this](){refreshLayers();});
             });
-            const bool pass=KisLayerPropertiesIcons::nodeProperty(
-                node,KisLayerPropertiesIcons::passThrough,false).toBool();
-            auto *through=new QCheckBox(i18n("Pass-through group"),&dialog);
-            through->setChecked(pass);
+            auto *through=new QCheckBox(i18n("Pass-through group"),page);
+            through->setChecked(KisLayerPropertiesIcons::nodeProperty(
+                node,KisLayerPropertiesIcons::passThrough,false).toBool());
             layout->addWidget(through);
-            connect(through,&QCheckBox::toggled,&dialog,[this,node](bool checked) {
+            connect(through,&QCheckBox::toggled,&dialog,[this,node](bool value) {
                 if(auto image=m_vm->image().toStrongRef())
                     KisLayerPropertiesIcons::setNodePropertyAutoUndo(
-                        node,KisLayerPropertiesIcons::passThrough,
-                        checked,image);
+                        node,KisLayerPropertiesIcons::passThrough,value,image);
                 QTimer::singleShot(100,this,[this](){refreshLayers();});
             });
         }
-        auto *grid=new QGridLayout();
+        auto *sectionTitle=new QLabel(i18n("Layer actions"),page);
+        sectionTitle->setStyleSheet("font-size:14px;font-weight:600;");
+        layout->addWidget(sectionTitle);
+        auto *grid=new QGridLayout;
+        grid->setSpacing(7);
         QToolButton *toggleButtons[3]={nullptr,nullptr,nullptr};
-        auto refreshToggles=[node,&toggleButtons]() {
-            const auto *paint=qobject_cast<const KisPaintLayer*>(node.data());
-            if(toggleButtons[0]) {
-                toggleButtons[0]->setText(node->visible()?i18n("Visible"):i18n("Hidden"));
-                toggleButtons[0]->setStyleSheet(node->visible() ?
-                    "QToolButton{border:2px solid #87b0c4;}" :
-                    "QToolButton{border:2px solid #a0a0a0;}");
-            }
-            if(toggleButtons[1]) {
-                toggleButtons[1]->setText(node->userLocked()?i18n("Unlock layer"):i18n("Lock layer"));
-                toggleButtons[1]->setIcon(lockIcon(node->userLocked()));
-                toggleButtons[1]->setStyleSheet(node->userLocked() ?
-                    "QToolButton{border:2px solid #87b0c4;}" :
-                    "QToolButton{border:2px solid #a0a0a0;}");
-            }
-            if(toggleButtons[2]) {
-                const bool locked=paint && paint->alphaLocked();
-                toggleButtons[2]->setText(locked?i18n("Unlock Alpha"):i18n("Lock Alpha"));
-                toggleButtons[2]->setStyleSheet(locked ?
-                    "QToolButton{border:2px solid #87b0c4;}" :
-                    "QToolButton{border:2px solid #a0a0a0;}");
-                toggleButtons[2]->setEnabled(paint!=nullptr);
-            }
-        };
-        struct Command {const char *label;const char *action;};
-        // Clipping already has a dedicated checkbox. Keep frequent actions
-        // in one compact 3x3 grid; advanced actions remain in More.
-        const Command commands[]={
-            {"Visible","visibility"},{"Duplicate","duplicatelayer"},{"Lock","lock"},
+        struct Command{const char *label;const char *native;};
+        const Command buttons[]={
+            {"Visible","visibility"},{"Duplicate","duplicatelayer"},
+            {"Lock","lock"},{"Group","quick_group"},
             {"Merge","merge_layer"},{"Delete","remove_layer"},
             {"Alpha Lock","toggle_layer_alpha_lock"},
             {"Select","select_opaque"},{"Mask","add_new_transparency_mask"},
-            {"More...",""}
+            {"More",""}
         };
-        for(int i=0;i<9;++i) {
-            auto *btn=new QToolButton(&dialog);
-            btn->setText(i18n(commands[i].label));
-            btn->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
-            btn->setFixedSize(88,62);
-            QAction *action=m_main->actionCollection()->action(QLatin1String(commands[i].action));
-            if(action)btn->setIcon(action->icon());
-            grid->addWidget(btn,i/3,i%3);
-            if(i==0)toggleButtons[0]=btn;
-            else if(i==2)toggleButtons[1]=btn;
-            else if(i==5)toggleButtons[2]=btn;
-            connect(btn,&QToolButton::clicked,&dialog,
-                    [this,node,i,&dialog,refreshToggles]() {
+        const auto refreshToggles=[node,&toggleButtons]() {
+            const auto *paint=qobject_cast<const KisPaintLayer*>(node.data());
+            const bool active[]={node->visible(),node->userLocked(),
+                                  paint && paint->alphaLocked()};
+            const QString labels[]={
+                node->visible()?i18n("Visible"):i18n("Hidden"),
+                node->userLocked()?i18n("Unlock"):i18n("Lock"),
+                (paint && paint->alphaLocked())?i18n("Unlock alpha"):i18n("Lock alpha")
+            };
+            for(int k=0;k<3;++k)if(toggleButtons[k]) {
+                toggleButtons[k]->setText(labels[k]);
+                toggleButtons[k]->setStyleSheet(active[k]?
+                    "QToolButton{background:#38677c;color:white;"
+                    "border:2px solid #8ec3e0;border-radius:8px;}"
+                    :"QToolButton{background:#414650;color:white;"
+                    "border:1px solid #758090;border-radius:8px;}");
+                if(k==2)toggleButtons[k]->setEnabled(paint!=nullptr);
+            }
+        };
+        for(int i=0;i<10;++i) {
+            auto *button=new QToolButton(page);
+            button->setText(i==3 && isGroup ?
+                i18n("Ungroup"):i18n(buttons[i].label));
+            button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+            button->setIconSize(QSize(22,22));
+            button->setMinimumHeight(54);
+            button->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
+            if(QAction *native=m_main->actionCollection()->action(
+                    QString::fromLatin1(buttons[i].native)))
+                button->setIcon(native->icon());
+            grid->addWidget(button,i/2,i%2);
+            if(i==0)toggleButtons[0]=button;
+            if(i==2)toggleButtons[1]=button;
+            if(i==6)toggleButtons[2]=button;
+            connect(button,&QToolButton::clicked,&dialog,
+                    [this,node,i,isGroup,&dialog,refreshToggles]() {
                 m_vm->nodeManager()->slotUiActivatedNode(node);
                 if(i==0)m_vm->nodeManager()->toggleVisibility();
                 else if(i==1)m_vm->nodeManager()->duplicateActiveNode();
                 else if(i==2)m_vm->nodeManager()->toggleLock();
-                else if(i==4)m_vm->nodeManager()->removeNode();
-                else if(i==5)trigger(QStringLiteral("toggle_layer_alpha_lock"));
-                else if(i==8) {
-                    QMenu options(m_main);
-                    auto addNative=[this](QMenu *menu,const QString &id) {
-                        if(QAction *action=m_main->actionCollection()->action(id))
-                            menu->addAction(action);
-                    };
-                    addNative(&options,QStringLiteral("layer_properties"));
-                    addNative(&options,QStringLiteral("RenameCurrentLayer"));
-                    addNative(&options,QStringLiteral("duplicatelayer"));
-                    addNative(&options,QStringLiteral("merge_layer"));
-                    addNative(&options,QStringLiteral("flatten_layer"));
-                    addNative(&options,QStringLiteral("clear"));
-                    addNative(&options,QStringLiteral("select_opaque"));
-                    addNative(&options,QStringLiteral("remove_layer"));
-                    addNative(&options,QStringLiteral("raise_layer"));
-                    addNative(&options,QStringLiteral("lower_layer"));
-                    QMenu *addMenu=options.addMenu(i18n("Add layer or mask"));
-                    addNative(addMenu,QStringLiteral("add_new_paint_layer"));
-                    addNative(addMenu,QStringLiteral("add_new_group_layer"));
-                    addNative(addMenu,QStringLiteral("add_new_clone_layer"));
-                    addNative(addMenu,QStringLiteral("add_new_transparency_mask"));
-                    addNative(addMenu,QStringLiteral("add_new_filter_mask"));
-                    addNative(addMenu,QStringLiteral("add_new_transform_mask"));
-                    addNative(addMenu,QStringLiteral("add_new_colorize_mask"));
-                    addNative(addMenu,QStringLiteral("add_new_selection_mask"));
-                    addNative(addMenu,QStringLiteral("add_new_vector_layer"));
-                    addNative(addMenu,QStringLiteral("add_new_fill_layer"));
-                    addNative(addMenu,QStringLiteral("add_new_file_layer"));
-                    QMenu *groupMenu=options.addMenu(i18n("Group and clipping"));
-                    addNative(groupMenu,QStringLiteral("create_quick_clipping_group"));
-                    addNative(groupMenu,QStringLiteral("quick_group"));
-                    addNative(groupMenu,QStringLiteral("quick_ungroup"));
-                    // Full original Layer menu, including plugins/operations
-                    // not mirrored by this Compact dialog.
-                    for(QAction *entry:m_main->menuBar()->actions()) {
-                        if(entry && entry->menu() &&
-                           entry->text().remove(QLatin1Char('&')).compare(
-                               i18n("Layer"),Qt::CaseInsensitive)==0) {
-                            options.addSeparator();
-                            options.addMenu(entry->menu());
-                            break;
-                        }
+                else if(i==3) {
+                    if(isGroup) {
+                        m_vm->nodeManager()->slotSetSelectedNodes(KisNodeList{node});
+                        m_vm->nodeManager()->quickUngroup();
+                    } else if(!groupCompactWithBelow(node)) {
+                        QMessageBox::information(&dialog,i18n("Group layers"),
+                            i18n("Place two unlocked, non-clipped layers next "
+                                 "to each other, then select Group on the upper "
+                                 "layer. You can also pinch two layers."));
+                        return;
                     }
-                    options.exec(QCursor::pos());
-                }
-                else if(i==6 && m_layerDocker) {
-                    QMetaObject::invokeMethod(m_layerDocker, "slotSelectOpaque",
+                } else if(i==4)trigger(QStringLiteral("merge_layer"));
+                else if(i==5)m_vm->nodeManager()->removeNode();
+                else if(i==6)trigger(QStringLiteral("toggle_layer_alpha_lock"));
+                else if(i==7 && m_layerDocker)
+                    QMetaObject::invokeMethod(m_layerDocker,"slotSelectOpaque",
                                               Qt::DirectConnection);
-                } else if(i==3)trigger(QStringLiteral("merge_layer"));
-                else if(i==7)trigger(QStringLiteral("add_new_transparency_mask"));
-                if(i==0 || i==2 || i==5) {
+                else if(i==8)trigger(QStringLiteral("add_new_transparency_mask"));
+                else if(i==9) {
+                    QDialog extras(&dialog);
+                    extras.setWindowTitle(i18n("More layer actions"));
+                    extras.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
+                    extras.resize(qMax(280,qMin(395,m_surface->width()-30)),
+                                  qMax(330,qMin(545,m_surface->height()-60)));
+                    auto *extraLayout=new QVBoxLayout(&extras);
+                    auto *title=new QLabel(i18n("More layer actions"),&extras);
+                    title->setStyleSheet("font-size:18px;font-weight:600;");
+                    extraLayout->addWidget(title);
+                    auto *extraScroll=new QScrollArea(&extras);
+                    extraScroll->setWidgetResizable(true);
+                    extraScroll->setFrameShape(QFrame::NoFrame);
+                    QScroller::grabGesture(extraScroll->viewport(),
+                                           QScroller::TouchGesture);
+                    auto *area=new QWidget(extraScroll);
+                    auto *entries=new QVBoxLayout(area);
+                    entries->setSpacing(6);
+                    struct Extra{const char *label;const char *id;};
+                    const Extra choices[]={
+                        {"Properties","layer_properties"},
+                        {"Clear layer","clear"},
+                        {"Move up","raise_layer"},
+                        {"Move down","lower_layer"},
+                        {"Flatten layer","flatten_layer"},
+                        {"Add paint layer","add_new_paint_layer"},
+                        {"Add group layer","add_new_group_layer"},
+                        {"Add transparency mask","add_new_transparency_mask"},
+                        {"Add filter mask","add_new_filter_mask"},
+                        {"Add transform mask","add_new_transform_mask"},
+                        {"Add vector layer","add_new_vector_layer"}
+                    };
+                    for(const auto &entry:choices) {
+                        QAction *action=m_main->actionCollection()->action(
+                            QString::fromLatin1(entry.id));
+                        if(!action)continue;
+                        auto *option=new QPushButton(i18n(entry.label),area);
+                        option->setIcon(action->icon());
+                        option->setMinimumHeight(50);
+                        entries->addWidget(option);
+                        connect(option,&QPushButton::clicked,&extras,
+                                [this,node,&extras,&dialog,action]() {
+                            extras.accept();
+                            dialog.accept();
+                            QTimer::singleShot(0,this,[this,node,action]() {
+                                m_vm->nodeManager()->slotUiActivatedNode(node);
+                                action->trigger();
+                                refreshLayers();
+                            });
+                        });
+                    }
+                    entries->addStretch();
+                    extraScroll->setWidget(area);
+                    extraLayout->addWidget(extraScroll,1);
+                    auto *back=new QPushButton(i18n("Back"),&extras);
+                    back->setMinimumHeight(48);
+                    extraLayout->addWidget(back);
+                    connect(back,&QPushButton::clicked,&extras,&QDialog::reject);
+                    extras.exec();
+                    return;
+                }
+                if(i==0 || i==2 || i==6) {
                     refreshToggles();
                     QTimer::singleShot(0,this,[this](){refreshLayers();});
                 } else {
@@ -3212,10 +3310,13 @@ private:
             });
         }
         layout->addLayout(grid);
+        scroll->setWidget(page);
+        outer->addWidget(scroll,1);
+        auto *close=new QPushButton(i18n("Close"),&dialog);
+        close->setMinimumHeight(50);
+        outer->addWidget(close);
+        connect(close,&QPushButton::clicked,&dialog,&QDialog::accept);
         refreshToggles();
-        auto *done=new QPushButton(i18n("Close"),&dialog);
-        layout->addWidget(done);
-        connect(done,&QPushButton::clicked,&dialog,&QDialog::accept);
         dialog.exec();
     }
     void refreshColors() {
