@@ -61,12 +61,12 @@ def main(root: Path):
     (root/"krita/krita5.xmlgui").write_text(native_xml,encoding="utf-8")
     cmake_file=root/"krita/CMakeLists.txt"
     cmake_text=cmake_file.read_text(encoding="utf-8")
-    version_pattern=r'set\(KRITA5_XMLGUI_VERSION [0-9]+\)'
+    version_pattern=r'set\(KRITA5_XMLGUI_VERSION 547\)'
     checksum_pattern=r'set\(krita5_xmlgui_hash_expected "[0-9a-f]+"\)'
     if len(re.findall(version_pattern,cmake_text))!=1 or len(
             re.findall(checksum_pattern,cmake_text))!=1:
         raise RuntimeError("Krita XMLGUI version/checksum anchor mismatch")
-    cmake_text=re.sub(version_pattern,'set(KRITA5_XMLGUI_VERSION 547)',cmake_text)
+    cmake_text=re.sub(version_pattern,'set(KRITA5_XMLGUI_VERSION 548)',cmake_text)
     actual=hashlib.md5(''.join(native_xml.split()).encode()).hexdigest()
     cmake_text=re.sub(checksum_pattern,
         f'set(krita5_xmlgui_hash_expected "{actual}")',cmake_text)
