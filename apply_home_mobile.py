@@ -307,8 +307,9 @@ def main(root):
         galleryTabs->tabBar()->hide();''',"single on-device gallery")
     # Hide obsolete controls without changing the tested file scan/permissions
     # logic; users retain access permissions if needed.
-    s=sub(s,'        auto *searchRow=new QHBoxLayout;',
-'''        galleryControls->removeWidget(folderButton);
+    s=sub(s,'        syncUndo();',
+'''        syncUndo();
+        galleryControls->removeWidget(folderButton);
         galleryControls->removeWidget(downloadsButton);
         folderButton->hide();
         downloadsButton->hide();
@@ -335,8 +336,7 @@ def main(root):
         undoTrash->setText(i18n("Undo"));
         undoTrash->setToolTip(i18n("Restore last trashed project"));
         undoTrash->setFixedSize(65,42);
-        allowFiles->setMinimumHeight(44);
-        auto *searchRow=new QHBoxLayout;''',"compact gallery toolbar")
+        allowFiles->setMinimumHeight(44);''',"compact gallery toolbar")
     s=sub(s,'''            undoTrash->setEnabled(!stack.isEmpty() &&
                 QFileInfo(stack.last().toMap().value(
                     QStringLiteral("trash")).toString()).isFile());''',
