@@ -419,6 +419,7 @@ public:
         m_compactBar->setMovable(false);
         m_compactBar->setFloatable(false);
         m_compactBar->setIconSize(QSize(26,26));
+        m_compactBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
         m_main->addToolBar(Qt::TopToolBarArea,m_compactBar);
         m_compactBar->hide();
         m_customizeAction=new QAction(
@@ -1911,6 +1912,7 @@ private:
     void refreshVisibility() {
         const bool show=m_compact && m_vm->activeNode() && m_surface->isVisible();
         m_brushStrip->setVisible(show);
+        if(m_compactBar)m_compactBar->setVisible(show);
         m_brushControls->setVisible(show);
         m_toolOptionsFloating->setVisible(show);
         if(show)refreshBrushControls();
