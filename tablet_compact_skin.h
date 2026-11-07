@@ -3501,31 +3501,37 @@ private:
         if(!m_colorDocker || !m_compact)return;
         const int wheel=qBound(190,m_colorWheelPixels,380);
         if(QWidget *body=m_colorDocker->widget()) {
+            bool selectorChanged=false;
             for(QWidget *child:body->findChildren<QWidget*>()) {
-                // Wide Gamut's selector retains its previous dimensions
-                // when merely resizing the QDockWidget. Set the actual
-                // selector square to the new size before sizing the dock.
+                // The actual native hue wheel must change size together
+                // with the compact history strip.
                 if(child->inherits("KisVisualColorSelector") &&
                    child->size()!=QSize(wheel,wheel)) {
                     child->setFixedSize(wheel,wheel);
                     child->updateGeometry();
                     child->update();
+                    selectorChanged=true;
                 }
             }
-            if(QLayout *layout=body->layout()) {
-                layout->invalidate();
-                layout->activate();
+            if(selectorChanged) {
+                if(QLayout *layout=body->layout()) {
+                    layout->invalidate();
+                    layout->activate();
+                }
             }
         }
         const int footer=m_colorShowHistory?m_recent->height():0;
         const QSize target(wheel,wheel+footer+2);
-        // A floating docker can retain a larger minimumSizeHint from its
-        // desktop layout. The native selector is now constrained explicitly.
-        m_colorDocker->setMinimumSize(0,0);
-        m_colorDocker->setMaximumSize(16777215,16777215);
-        if(m_colorDocker->size()!=target)m_colorDocker->resize(target);
-        // Tighten the floating dock around the square and history footer.
-        m_colorDocker->setFixedSize(target);
+        // Avoid invalidating an entire Android window layout repeatedly
+        // when only a paint color or overlay position changes.
+        if(m_colorDocker->size()!=target ||
+           m_colorDocker->minimumSize()!=target ||
+           m_colorDocker->maximumSize()!=target) {
+            m_colorDocker->setMinimumSize(0,0);
+            m_colorDocker->setMaximumSize(16777215,16777215);
+            m_colorDocker->resize(target);
+            m_colorDocker->setFixedSize(target);
+        }
         if(m_recent->width()!=wheel)m_recent->setFixedWidth(wheel);
     }
     void syncNormalWelcomeChrome() {
