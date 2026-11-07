@@ -1112,8 +1112,8 @@ private:
         });
         auto *grid=new QGridLayout();
         QToolButton *toggleButtons[3]={nullptr,nullptr,nullptr};
-        auto refreshToggles=[this,node,&toggleButtons]() {
-            auto *paint=qobject_cast<KisPaintLayer*>(node.data());
+        auto refreshToggles=[node,&toggleButtons]() {
+            const auto *paint=qobject_cast<const KisPaintLayer*>(node.data());
             if(toggleButtons[0]) {
                 toggleButtons[0]->setText(node->visible()?i18n("Visible"):i18n("Hidden"));
                 toggleButtons[0]->setStyleSheet(node->visible() ?
