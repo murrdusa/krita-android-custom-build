@@ -1763,6 +1763,7 @@ private:
     struct CompactLayerRow {
         KisNodeSP node;
         QPointer<QWidget> widget;
+        QPointer<QToolButton> tile;
         int depth=0;
     };
 
@@ -1814,6 +1815,7 @@ private:
         if(!image || !image->root())return;
         const int oldScroll=m_layersScroll->verticalScrollBar()->value();
         m_compactLayerRows.clear();
+        m_compactLayerHeight=0;
         clearLayerRows();
         const KisNodeSP active=m_vm->activeNode();
         int count=0;
@@ -1825,24 +1827,36 @@ private:
                 node=node->nextSibling()) {
                 if(node->inherits("KisReferenceImagesLayer"))continue;
                 ++count;
-                const int rowWidth=m_layerTileSize;
-                auto *frame=new QFrame(m_layersContent);
-                frame->setFixedSize(rowWidth+4,rowWidth+4);
-                auto *tile=new QToolButton(frame);
-                tile->setGeometry(1,1,rowWidth,rowWidth);
-                tile->setToolButtonStyle(Qt::ToolButtonIconOnly);
-                tile->setIconSize(QSize(rowWidth-12,rowWidth-12));
-                const QImage thumb=node->createThumbnail(
-                    rowWidth-12,rowWidth-12,Qt::KeepAspectRatio);
-                if(!thumb.isNull())
-                    tile->setIcon(QIcon(QPixmap::fromImage(thumb)));
-                tile->setText(node->name());
                 const bool isGroup=node->inherits("KisGroupLayer");
                 const bool isMask=node->inherits("KisMask");
                 const bool inheritsAlpha=KisLayerPropertiesIcons::nodeProperty(
                     node,KisLayerPropertiesIcons::inheritAlpha,false).toBool();
                 const bool passThrough=isGroup &&
                     qobject_cast<KisGroupLayer*>(node.data())->passThroughMode();
+                // A folder or inherited-alpha layer is one compact strip,
+                // not a second full thumbnail-sized card. A mask lives within
+                // the visual hierarchy of its owning layer.
+                const int rowWidth=m_layerTileSize;
+                const bool compactRow=isGroup || isMask || inheritsAlpha;
+                const int rowHeight=compactRow?qMax(42,rowWidth*53/100):rowWidth;
+                const int iconPx=compactRow?qMax(25,rowHeight-9):rowWidth-12;
+                m_compactLayerHeight+=rowHeight+7;
+                auto *frame=new QFrame(m_layersContent);
+                frame->setFixedSize(rowWidth+4,rowHeight+4);
+                auto *tile=new QToolButton(frame);
+                tile->setObjectName(QStringLiteral("compactLayerTouchTile"));
+                tile->setAttribute(Qt::WA_AcceptTouchEvents,true);
+                tile->setGeometry(1,1,rowWidth,rowHeight);
+                tile->setToolButtonStyle(compactRow ?
+                    Qt::ToolButtonTextBesideIcon:Qt::ToolButtonIconOnly);
+                tile->setIconSize(QSize(iconPx,iconPx));
+                const QImage thumb=node->createThumbnail(
+                    iconPx,iconPx,Qt::KeepAspectRatio);
+                if(isGroup)tile->setIcon(KisIconUtils::loadIcon("folder"));
+                else if(!thumb.isNull())tile->setIcon(QIcon(QPixmap::fromImage(thumb)));
+                tile->setText(compactRow ?
+                    QFontMetrics(tile->font()).elidedText(node->name(),
+                        Qt::ElideRight,qMax(20,rowWidth-iconPx-22)):node->name());
                 const QString type=isGroup?i18n("Group"):
                     isMask?i18n("Mask"):i18n("Layer");
                 QString tooltip=node->name()+QStringLiteral(" — ")+type;
@@ -1859,7 +1873,7 @@ private:
                 // Hierarchy stripes stay within the square thumbnail.
                 for(int d=0;d<qMin(depth,4);++d) {
                     auto *stripe=new QFrame(frame);
-                    stripe->setGeometry(1+d*2,2,2,rowWidth-2);
+                    stripe->setGeometry(1+d*2,2,2,rowHeight-2);
                     stripe->setStyleSheet(
                         "background:#5a9db7;border:none;");
                     stripe->setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -1875,7 +1889,7 @@ private:
                     "font-weight:bold;}" :
                     "QLabel{background:#435767;color:white;border-radius:3px;"
                     "font-weight:bold;}");
-                typeBadge->setVisible(isGroup || isMask || inheritsAlpha);
+                typeBadge->setVisible(isMask || (inheritsAlpha && !isGroup));
                 typeBadge->setAttribute(Qt::WA_TransparentForMouseEvents);
                 if(isGroup) {
                     auto *expander=new QToolButton(frame);
@@ -1896,7 +1910,7 @@ private:
                     auto *clip=new QLabel(frame);
                     clip->setText(passThrough?QStringLiteral("⇢"):
                                              QStringLiteral("α↓"));
-                    clip->setGeometry(4,rowWidth-25,27,22);
+                    clip->setGeometry(4,qMax(2,rowHeight-25),27,22);
                     clip->setAlignment(Qt::AlignCenter);
                     clip->setToolTip(passThrough?i18n("Pass-through group"):
                                                   i18n("Inherit alpha / clipped"));
@@ -1954,7 +1968,9 @@ private:
                 });
                 const int overlaySize=qBound(20,rowWidth/4,38);
                 const int iconX=rowWidth-overlaySize+1;
-                const int iconGap=qMax(2,(rowWidth-3*overlaySize)/4);
+                const int iconGap=compactRow ?
+                    qMax(2,(rowHeight-overlaySize)/2) :
+                    qMax(2,(rowWidth-3*overlaySize)/4);
                 auto *eye=new QToolButton(frame);
                 eye->setGeometry(iconX,iconGap,overlaySize,overlaySize);
                 eye->setIconSize(QSize(overlaySize-5,overlaySize-5));
@@ -1973,6 +1989,7 @@ private:
                 auto *lock=new QToolButton(frame);
                 lock->setGeometry(iconX,iconGap*2+overlaySize,
                                    overlaySize,overlaySize);
+                lock->setVisible(!compactRow);
                 lock->setIcon(lockIcon(node->userLocked()));
                 lock->setIconSize(QSize(overlaySize-4,overlaySize-4));
                 lock->setToolTip(i18n("Toggle layer lock"));
@@ -1984,7 +2001,7 @@ private:
                     m_vm->nodeManager()->toggleLock();
                     QTimer::singleShot(0,this,[this](){refreshLayers();});
                 });
-                if(auto *paint=qobject_cast<KisPaintLayer*>(node.data())) {
+                if(!compactRow)if(auto *paint=qobject_cast<KisPaintLayer*>(node.data())) {
                     auto *alpha=new QToolButton(frame);
                     alpha->setGeometry(iconX,iconGap*3+overlaySize*2,
                                        overlaySize,overlaySize);
@@ -2003,7 +2020,7 @@ private:
                     });
                 }
                 m_layersLayout->addWidget(frame);
-                m_compactLayerRows.append({node,frame,depth});
+                m_compactLayerRows.append({node,frame,tile,depth});
                 if(node->childCount() && (!isGroup || !node->collapsed()))
                     appendChildren(node,depth+1);
             }
@@ -2372,8 +2389,7 @@ private:
                                       m_brushControls->height()-11));
         const int layerX=m_layerOnRight?qMax(4,w-m_layerRail->width()-4):4;
         const int layerY=35;
-        const int count=qMax(1,m_visibleLayerCount);
-        const int rowsHeight=count*(m_layerTileSize+4)+(count-1)*3;
+        const int rowsHeight=qMax(m_layerTileSize+4,m_compactLayerHeight);
         const int desired=5+38+3+rowsHeight+3+34+5+12;
         // Keep the rail above the brush panel when both share the left side.
         // On the right, also avoid a pinned color selector at the bottom.
@@ -2480,6 +2496,7 @@ private:
     bool m_layerOnRight=false;
     int m_layerTileSize=64;
     int m_visibleLayerCount=1;
+    int m_compactLayerHeight=0;
     QList<CompactLayerRow> m_compactLayerRows;
     KisNodeSP m_layerDragNode;
     QPointer<QWidget> m_layerDragTile;
