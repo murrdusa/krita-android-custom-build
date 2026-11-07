@@ -661,10 +661,7 @@ public:
             if(m_layerTouches.size()==1 && !m_touchLayerScrolling &&
                !m_touchLayerPinching) {
                 m_touchLayerArmed=true;
-                if(m_layersScroll && m_layersScroll->viewport()) {
-                    if(QScroller *scroller=QScroller::scroller(
-                            m_layersScroll->viewport()))scroller->stop();
-                }
+                suspendLayerScroller();
                 if(m_layerEdgeScrollTimer)m_layerEdgeScrollTimer->start();
                 showLayerDragPreview(m_touchLayerPrimary,m_touchLayerLast);
                 feedbackForHold();
@@ -723,11 +720,7 @@ public:
                         return;
                     m_layerDragArmed=true;
                     if(m_layerEdgeScrollTimer)m_layerEdgeScrollTimer->start();
-                    if(m_layersScroll && m_layersScroll->viewport()) {
-                        QScroller *scroller=QScroller::scroller(
-                            m_layersScroll->viewport());
-                        if(scroller)scroller->stop();
-                    }
+                    suspendLayerScroller();
                     showLayerDragPreview(heldNode,m_layerDragLast);
                     feedbackForHold();
                 });
@@ -1011,6 +1004,7 @@ public:
              m_layerRefreshTimer->start();
             m_brushControlTimer->start();
         } else {
+            restoreLayerScroller();
             hideLayerDragPreview();
             if(m_compactToolPopup)m_compactToolPopup->hide();
             // Reparent the actual option widgets to the normal native
@@ -2064,6 +2058,7 @@ private:
             m_layerRail->isAncestorOf(target);
         if(!inRail && m_layerTouches.isEmpty())return false;
         if(type==QEvent::TouchCancel) {
+            restoreLayerScroller();
             m_layerTouchHoldTimer->stop();
             m_layerTouches.clear();
             m_touchLayerArmed=false;
@@ -2159,6 +2154,7 @@ private:
             m_layerTouches.clear();
         if(m_layerTouches.isEmpty()) {
             m_layerTouchHoldTimer->stop();
+            restoreLayerScroller();
             hideLayerDragPreview();
             if(m_layerEdgeScrollTimer)m_layerEdgeScrollTimer->stop();
             const KisNodeSP primary=m_touchLayerPrimary;
@@ -2289,7 +2285,23 @@ private:
         return newParent->allowAsChild(node);
     }
 
+    void suspendLayerScroller() {
+        if(!m_layersScroll || !m_layersScroll->viewport() ||
+           m_layerScrollerSuspended)return;
+        QWidget *viewport=m_layersScroll->viewport();
+        if(QScroller *scroller=QScroller::scroller(viewport))scroller->stop();
+        QScroller::ungrabGesture(viewport);
+        m_layerScrollerSuspended=true;
+    }
+    void restoreLayerScroller() {
+        if(!m_layerScrollerSuspended || !m_layersScroll ||
+           !m_layersScroll->viewport())return;
+        QScroller::grabGesture(m_layersScroll->viewport(),
+                              QScroller::TouchGesture);
+        m_layerScrollerSuspended=false;
+    }
     void finishLayerDrag() {
+        restoreLayerScroller();
         m_layerPenTracking=false;
         hideLayerDragPreview();
         if(m_layerEdgeScrollTimer)m_layerEdgeScrollTimer->stop();
@@ -2579,6 +2591,7 @@ private:
                 connect(tileHold,&QTimer::timeout,tile,[this,held]() {
                     *held=true;
                     m_layerDragArmed=true;
+                    suspendLayerScroller();
                     if(m_layerEdgeScrollTimer)m_layerEdgeScrollTimer->start();
                     showLayerDragPreview(m_layerDragNode,m_layerDragLast);
                     feedbackForHold();
@@ -3105,6 +3118,7 @@ private:
     bool m_normalMenuVisible=true;
     bool m_normalStatusVisible=true;
     bool m_layerPenTracking=false;
+    bool m_layerScrollerSuspended=false;
     bool m_recoverLegacyNormalLayout=false;
     bool m_compact=false;
     bool m_colorExpanded=false;
