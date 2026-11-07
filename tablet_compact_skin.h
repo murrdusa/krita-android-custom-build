@@ -411,8 +411,24 @@ public:
                     QStringLiteral("show_tool_options")))
                 native->trigger();
         });
+        QPixmap saveClosePixmap(32,32);
+        saveClosePixmap.fill(Qt::transparent);
+        {
+            QPainter painter(&saveClosePixmap);
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.setPen(QPen(QColor(235,235,235),2));
+            painter.setBrush(QColor(54,59,64));
+            painter.drawRoundedRect(QRectF(4,3,23,25),3,3);
+            painter.setBrush(QColor(220,220,220));
+            painter.drawRect(QRectF(9,5,12,8));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRect(QRectF(9,18,11,6));
+            painter.setPen(QPen(QColor(245,113,112),3));
+            painter.drawLine(QPointF(20,20),QPointF(29,29));
+            painter.drawLine(QPointF(29,20),QPointF(20,29));
+        }
         auto *saveClose = m_topBar->addAction(
-            KisIconUtils::loadIcon("document-close"), i18n("Save and Close"));
+            QIcon(saveClosePixmap), i18n("Save and Close"));
         saveClose->setToolTip(i18n("Save artwork and return to Krita home"));
         m_main->actionCollection()->addAction(
             QStringLiteral("tablet_save_and_close"),saveClose);
