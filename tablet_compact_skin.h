@@ -56,7 +56,6 @@
 #include <initializer_list>
 #include <QScrollBar>
 #include <QRegularExpression>
-#include "KisVisualColorSelectorShape.h"
 #include <QScroller>
 #include <QCursor>
 #include <QAction>
@@ -3138,17 +3137,9 @@ private:
         refreshColorControls();
     }
     void refreshNativeColorSelectorLayout() {
-        if(m_colorDocker) {
+        if(m_colorDocker)
             QMetaObject::invokeMethod(m_colorDocker.data(),
                 "slotConfigurationChanged",Qt::DirectConnection);
-            // Wide Gamut caches the ring image; force a new gradient after
-            // the saved hue angle changes.
-            for(KisVisualColorSelectorShape *shape:
-                m_colorDocker->findChildren<KisVisualColorSelectorShape*>()) {
-                shape->forceImageUpdate();
-                shape->update();
-            }
-        }
         if(m_compact && m_colorExpanded)
             QTimer::singleShot(0,this,[this](){updateColorDock();});
     }
