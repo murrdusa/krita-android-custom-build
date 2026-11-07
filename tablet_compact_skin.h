@@ -296,7 +296,7 @@ public:
         layerHeader->setSpacing(2);
         rail->addLayout(layerHeader);
         m_addLayer = new QToolButton(m_layerRail);
-        m_addLayer->setText(i18n("+ Add Layer"));
+        m_addLayer->setText(i18n("Add"));
         m_addLayer->setFixedHeight(60);
         m_addLayer->setIcon(KisIconUtils::loadIcon("list-add"));
         m_addLayer->setIconSize(QSize(22,22));
@@ -1232,7 +1232,11 @@ private:
             "QLabel{color:#e7eaf0;font-size:14px;}"
             "QCheckBox{color:#f2f5fa;min-height:48px;"
             "padding:5px 6px;spacing:12px;font-size:14px;}"
-            "QCheckBox::indicator{width:24px;height:24px;}"
+            "QCheckBox::indicator{width:24px;height:24px;"
+            "border:1px solid #8ba4b9;border-radius:5px;"
+            "background:#252e3a;}"
+            "QCheckBox::indicator:checked{background:#5290b6;"
+            "border:2px solid #c3e5f7;}"
             "QComboBox{background:#3a4451;color:white;border:1px solid #6b7e93;"
             "border-radius:8px;min-height:46px;padding:5px 12px;}"
             "QPushButton,QToolButton{background:#394858;color:white;"
@@ -1380,6 +1384,12 @@ private:
             discard->setText(i18n("Hold 5 seconds to discard"));
         });
         connect(ticker,&QTimer::timeout,&dialog,[&,view]() {
+            if(!discard->isDown()) {
+                ticker->stop();
+                progress->setValue(0);
+                discard->setText(i18n("Hold 5 seconds to discard"));
+                return;
+            }
             if(!view || !view->document()) {
                 ticker->stop();
                 dialog.reject();
@@ -3632,7 +3642,8 @@ private:
         nativeSettings->setMinimumHeight(56);
         nativeSettings->setToolTip(i18n("Advanced Krita color selector settings"));
         layout->addWidget(nativeSettings);
-        connect(nativeSettings,&QPushButton::clicked,&dialog,[this]() {
+        connect(nativeSettings,&QPushButton::clicked,&dialog,[this,&dialog]() {
+            dialog.accept();
             QPointer<QDockWidget> docker=m_colorDocker;
             QTimer::singleShot(0,this,[docker]() {
                 if(docker)QMetaObject::invokeMethod(

@@ -193,8 +193,23 @@ def main(root: Path):
         QSettings stored;
         QDialog dialog(this);
         dialog.setWindowTitle(i18n("Tablet Controls"));
+        dialog.setStyleSheet(
+            "QDialog{background:#29313b;color:#edf3f9;}"
+            "QLabel{color:#eaf0f6;font-size:14px;}"
+            "QCheckBox{color:#f4f7ff;min-height:52px;"
+            "padding:8px;font-size:14px;spacing:12px;}"
+            "QSpinBox{background:#3b4a5a;color:white;"
+            "border:1px solid #7898ae;border-radius:8px;"
+            "min-height:48px;padding:6px;font-size:15px;}"
+            "QPushButton{background:#3d5366;color:white;"
+            "border:1px solid #7193ac;border-radius:8px;"
+            "min-height:50px;padding:5px;font-size:14px;}");
         QVBoxLayout *layout = new QVBoxLayout(&dialog);
+        layout->setContentsMargins(14,14,14,14);
+        layout->setSpacing(10);
         QFormLayout *form = new QFormLayout;
+        form->setRowWrapPolicy(QFormLayout::WrapAllRows);
+        form->setVerticalSpacing(9);
         QSpinBox *doubleTapMs = new QSpinBox(&dialog);
         doubleTapMs->setRange(120, 600);
         doubleTapMs->setSuffix(i18n(" ms"));
@@ -215,6 +230,10 @@ def main(root: Path):
         QDialogButtonBox *buttons = new QDialogButtonBox(
             QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
         layout->addWidget(buttons);
+        for(QAbstractButton *button:buttons->buttons())
+            button->setMinimumHeight(50);
+        dialog.resize(qMax(300,qMin(440,this->width()-30)),
+                      qMax(360,qMin(640,this->height()-40)));
         connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
         connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
         if (dialog.exec() == QDialog::Accepted) {
