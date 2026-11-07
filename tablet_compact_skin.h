@@ -38,6 +38,10 @@
 #include <QTouchEvent>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QTabWidget>
+#include <QSignalBlocker>
+#include <QHeaderView>
+#include <KoToolManager.h>
 #include <QScrollBar>
 #include <QScroller>
 #include <QCursor>
@@ -271,7 +275,7 @@ public:
         m_colorHistoryOnTop=QSettings().value(
             QStringLiteral("TabletUi/colorHistoryOnTop"),false).toBool();
 
-        m_topBar = new QToolBar(i18n("Compact tools"), m_main);
+        m_topBar = new QToolBar(i18n("Popup actions"), m_main);
         m_topBar->setObjectName(QStringLiteral("tabletCompactPopupBar"));
         m_topBar->setMovable(false);
         m_topBar->setFloatable(false);
@@ -305,7 +309,38 @@ public:
             if(QAction *close=m_main->actionCollection()->action(
                     QStringLiteral("file_close")))close->trigger();
         });
-        // Tool actions attach to mainToolBar in both UI modes.
+        // Dedicated Compact UI toolbar: normal desktop toolbars are untouched.
+        m_compactBar=new QToolBar(i18n("Compact UI shortcuts"),m_main);
+        m_compactBar->setObjectName(QStringLiteral("tabletDedicatedCompactBar"));
+        m_compactBar->setMovable(false);
+        m_compactBar->setFloatable(false);
+        m_compactBar->setIconSize(QSize(26,26));
+        m_main->addToolBar(Qt::TopToolBarArea,m_compactBar);
+        m_compactBar->hide();
+        m_customizeAction=new QAction(
+            KisIconUtils::loadIcon("configure"),i18n("Customize Compact toolbar"),this);
+        connect(m_customizeAction,&QAction::triggered,this,
+                [this](){configureCompactToolbar();});
+        m_toolsAction=new QAction(
+            KisIconUtils::loadIcon("tools"),i18n("All Tools"),this);
+        connect(m_toolsAction,&QAction::triggered,this,[this](){openAllTools();});
+        m_main->actionCollection()->addAction(
+            QStringLiteral("tablet_all_tools_popup"),m_toolsAction);
+        m_main->actionCollection()->addAction(
+            QStringLiteral("tablet_customize_compact"),m_customizeAction);
+        m_toolOptionsFloating=new QToolButton(m_surface);
+        m_toolOptionsFloating->setIcon(KisIconUtils::loadIcon("configure"));
+        m_toolOptionsFloating->setIconSize(QSize(28,28));
+        m_toolOptionsFloating->setFixedSize(43,43);
+        m_toolOptionsFloating->setToolTip(i18n("Tool options"));
+        m_toolOptionsFloating->setStyleSheet(
+            "QToolButton{background:#303033;border:1px solid #aaa;border-radius:7px;}");
+        connect(m_toolOptionsFloating,&QToolButton::clicked,this,[this]() {
+            if(QAction *a=m_main->actionCollection()->action(
+                    QStringLiteral("show_tool_options")))a->trigger();
+        });
+        QTimer::singleShot(0,this,[this](){rebuildCompactToolbar();});
+        // Tool actions remain registered for both UI modes.
 
         connect(m_vm->canvasResourceProvider(),
                 &KisCanvasResourceProvider::sigPaintOpPresetChanged, this,
@@ -344,6 +379,7 @@ public:
         m_brushStrip->hide();
         m_colorButton->hide();
         m_recent->hide();
+        m_toolOptionsFloating->hide();
         m_colorWheelPixels=qBound(190,QSettings().value(
             QStringLiteral("TabletUi/colorWheelPixels"),265).toInt(),380);
         m_colorShowHistory=QSettings().value(
@@ -437,6 +473,7 @@ public:
         if (m_compact==active) return;
         m_compact=active;
         if (active) {
+            rememberCompactToolbarState(true);
             rememberDockers();
             const QByteArray storedNormal=QSettings().value(
                 QStringLiteral("TabletUi/normalWindowState")).toByteArray();
@@ -548,6 +585,7 @@ public:
             }
              m_layerRefreshTimer->start();
         } else {
+            rememberCompactToolbarState(false);
             m_layerRefreshTimer->stop();
              if(m_colorDocker) {
                 m_colorDocker->hide();
@@ -631,6 +669,202 @@ private:
                 m_colorDocker=dock;
         }
     }
+    void rememberCompactToolbarState(bool compactMode) {
+        if(compactMode) {
+            m_originalToolbars.clear();
+            for(QToolBar *bar:m_main->findChildren<QToolBar*>()) {
+                if(bar==m_compactBar)continue;
+                if(bar->isVisible())m_originalToolbars.append(bar);
+                if(bar->objectName()!=QStringLiteral("tabletTransformContextBar"))
+                    bar->hide();
+            }
+            m_compactBar->show();
+            m_compactBar->raise();
+        } else {
+            m_compactBar->hide();
+            for(const QPointer<QToolBar> &bar:m_originalToolbars)
+                if(bar)bar->show();
+            m_originalToolbars.clear();
+        }
+    }
+    QStringList compactDefaultActions() const {
+        return {QStringLiteral("tablet_quick_actions"),
+                QStringLiteral("tablet_save_and_close"),
+                QStringLiteral("tablet_all_brush_presets"),
+                QStringLiteral("view_toggle_reference_images"),
+                QStringLiteral("erase_action"),
+                QStringLiteral("tablet_all_tools_popup")};
+    }
+    void rebuildCompactToolbar() {
+        if(!m_compactBar)return;
+        m_compactBar->clear();
+        auto *collection=m_main->actionCollection();
+        QAction *compact=collection->action(QStringLiteral("tablet_compact_ui"));
+        if(compact)m_compactBar->addAction(compact);
+        m_compactBar->addAction(m_customizeAction);
+        const QStringList chosen=QSettings().value(
+            QStringLiteral("TabletUi/compactActionOrderV1"),
+            compactDefaultActions()).toStringList();
+        for(const QString &id:chosen) {
+            if(id==QStringLiteral("tablet_compact_ui") ||
+               id==QStringLiteral("tablet_customize_compact"))continue;
+            if(QAction *action=collection->action(id))
+                m_compactBar->addAction(action);
+        }
+    }
+    void configureCompactToolbar() {
+        QDialog dialog(m_main);
+        dialog.setWindowTitle(i18n("Customize Compact UI Toolbar"));
+        auto *layout=new QVBoxLayout(&dialog);
+        auto *tabs=new QTabWidget(&dialog);
+        layout->addWidget(tabs);
+        const QStringList frequent={
+            QStringLiteral("tablet_quick_actions"),
+            QStringLiteral("tablet_save_and_close"),
+            QStringLiteral("tablet_all_brush_presets"),
+            QStringLiteral("tablet_all_tools_popup"),
+            QStringLiteral("view_toggle_reference_images"),
+            QStringLiteral("erase_action"),
+            QStringLiteral("file_save"),
+            QStringLiteral("edit_undo"),
+            QStringLiteral("edit_redo"),
+            QStringLiteral("select_all"),
+            QStringLiteral("deselect"),
+            QStringLiteral("tool_crop"),
+            QStringLiteral("tablet_settings")};
+        const QStringList original=QSettings().value(
+            QStringLiteral("TabletUi/compactActionOrderV1"),
+            compactDefaultActions()).toStringList();
+        auto *favorites=new QListWidget(tabs);
+        favorites->setDragDropMode(QAbstractItemView::InternalMove);
+        favorites->setDefaultDropAction(Qt::MoveAction);
+        tabs->addTab(favorites,i18n("Frequently used"));
+        auto *allPage=new QWidget(tabs);
+        auto *allLayout=new QVBoxLayout(allPage);
+        auto *search=new QLineEdit(allPage);
+        search->setPlaceholderText(i18n("Search Krita actions..."));
+        allLayout->addWidget(search);
+        auto *all=new QListWidget(allPage);
+        allLayout->addWidget(all);
+        tabs->addTab(allPage,i18n("All Krita actions"));
+        auto *collection=m_main->actionCollection();
+        auto addItem=[&](QListWidget *list,QAction *action,const QString &id) {
+            if(!action || id==QStringLiteral("tablet_compact_ui") ||
+               id==QStringLiteral("tablet_customize_compact"))return;
+            auto *item=new QListWidgetItem(
+                action->text().remove(QLatin1Char('&')).isEmpty() ?
+                id : action->text().remove(QLatin1Char('&')),list);
+            item->setData(Qt::UserRole,id);
+            item->setFlags(item->flags()|Qt::ItemIsUserCheckable|
+                          Qt::ItemIsDragEnabled);
+            item->setCheckState(original.contains(id)?Qt::Checked:Qt::Unchecked);
+            item->setIcon(action->icon());
+        };
+        for(const QString &id:frequent)addItem(favorites,collection->action(id),id);
+        for(QAction *action:collection->actions()) {
+            if(!action || action->objectName().isEmpty())continue;
+            addItem(all,action,action->objectName());
+        }
+        all->sortItems();
+        connect(search,&QLineEdit::textChanged,all,[all](const QString &text) {
+            for(int i=0;i<all->count();++i)
+                all->item(i)->setHidden(
+                    !all->item(i)->text().contains(text,Qt::CaseInsensitive) &&
+                    !all->item(i)->data(Qt::UserRole).toString().contains(
+                        text,Qt::CaseInsensitive));
+        });
+        auto sync=[favorites,all](QListWidget *source,int row) {
+            if(row<0)return;
+            auto *item=source->item(row);
+            const QString id=item->data(Qt::UserRole).toString();
+            QListWidget *other=source==favorites?all:favorites;
+            for(int j=0;j<other->count();++j)
+                if(other->item(j)->data(Qt::UserRole).toString()==id)
+                    other->item(j)->setCheckState(item->checkState());
+        };
+        connect(favorites,&QListWidget::itemChanged,&dialog,
+                [favorites,all,sync](QListWidgetItem *item) {
+            sync(favorites,favorites->row(item));
+        });
+        connect(all,&QListWidget::itemChanged,&dialog,
+                [all,sync](QListWidgetItem *item) {
+            sync(all,all->row(item));
+        });
+        auto *buttons=new QDialogButtonBox(
+            QDialogButtonBox::Ok|QDialogButtonBox::Cancel,&dialog);
+        layout->addWidget(buttons);
+        connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);
+        connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
+        dialog.resize(qMin(650,m_surface->width()-20),
+                      qMin(750,m_surface->height()-20));
+        if(dialog.exec()!=QDialog::Accepted)return;
+        QStringList selected;
+        for(int i=0;i<favorites->count();++i) {
+            auto *item=favorites->item(i);
+            if(item->checkState()==Qt::Checked)
+                selected.append(item->data(Qt::UserRole).toString());
+        }
+        for(const QString &id:original) {
+            if(selected.contains(id))continue;
+            for(int i=0;i<all->count();++i) {
+                if(all->item(i)->data(Qt::UserRole).toString()==id &&
+                   all->item(i)->checkState()==Qt::Checked) {
+                    selected.append(id);break;
+                }
+            }
+        }
+        for(int i=0;i<all->count();++i) {
+            auto *item=all->item(i);
+            if(item->checkState()==Qt::Checked &&
+               !selected.contains(item->data(Qt::UserRole).toString()))
+                selected.append(item->data(Qt::UserRole).toString());
+        }
+        QSettings().setValue(QStringLiteral("TabletUi/compactActionOrderV1"),selected);
+        rebuildCompactToolbar();
+    }
+    void openAllTools() {
+        QDialog dialog(m_main);
+        dialog.setWindowFlags(Qt::Popup);
+        auto *layout=new QVBoxLayout(&dialog);
+        auto *filter=new QLineEdit(&dialog);
+        filter->setPlaceholderText(i18n("Find a tool..."));
+        layout->addWidget(filter);
+        auto *scroll=new QScrollArea(&dialog);
+        scroll->setWidgetResizable(true);
+        auto *body=new QWidget(scroll);
+        auto *grid=new QGridLayout(body);
+        scroll->setWidget(body);
+        layout->addWidget(scroll);
+        QList<QToolButton*> entries;
+        int index=0;
+        for(KoToolAction *action:KoToolManager::instance()->toolActionList()) {
+            if(!action)continue;
+            auto *button=new QToolButton(body);
+            button->setText(action->iconText());
+            button->setToolTip(action->toolTip());
+            button->setIcon(KisIconUtils::loadIcon(action->iconName()));
+            button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+            button->setIconSize(QSize(34,34));
+            button->setFixedSize(94,82);
+            grid->addWidget(button,index/4,index%4);
+            entries.append(button);
+            connect(button,&QToolButton::clicked,&dialog,[action,&dialog]() {
+                action->trigger();
+                dialog.accept();
+            });
+            ++index;
+        }
+        connect(filter,&QLineEdit::textChanged,&dialog,
+                [entries](const QString &text) {
+            for(QToolButton *button:entries)
+                button->setVisible(button->text().contains(
+                    text,Qt::CaseInsensitive) || button->toolTip().contains(
+                    text,Qt::CaseInsensitive));
+        });
+        dialog.resize(qMin(530,m_surface->width()-20),
+                      qMin(700,m_surface->height()-20));
+        dialog.exec();
+    }
     void organizeDefaultToolbars() {
         QToolBar *mainBar=nullptr;
         const auto bars=m_main->findChildren<QToolBar*>();
@@ -639,8 +873,8 @@ private:
         if(!mainBar)return;
         auto *actions=m_main->actionCollection();
         QAction *compact=actions->action(QStringLiteral("tablet_compact_ui"));
-        for(QAction *action:m_topBar->actions())
-            if(!mainBar->actions().contains(action))mainBar->addAction(action);
+        // Do not insert Compact UI-only actions into the normal Krita toolbar.
+        rebuildCompactToolbar();
         // Keep Compact UI first on every startup, including saved layouts.
         if(compact && mainBar->actions().value(0)!=compact) {
             for(QToolBar *bar:bars)if(bar!=mainBar)bar->removeAction(compact);
@@ -648,12 +882,7 @@ private:
             mainBar->insertAction(mainBar->actions().isEmpty() ?
                 nullptr:mainBar->actions().first(),compact);
         }
-        for(QToolBar *bar:bars) {
-            if(bar!=mainBar && m_main->toolBarArea(bar)==Qt::TopToolBarArea) {
-                m_main->insertToolBar(bar,mainBar);
-                break;
-            }
-        }
+
         // One-time defaults, never undo changes made in Configure Toolbars.
         if(QSettings().value(QStringLiteral("TabletUi/toolbarDefaultsV12"),false).toBool())
             return;
@@ -1466,11 +1695,13 @@ private:
         m_layerToggleButton->move(m_layerOnRight?qMax(6,w-54):6,42);
         m_brushStrip->adjustSize();
         m_brushStrip->move(8,qMax(0,h-m_brushStrip->height()-8));
+        m_toolOptionsFloating->move(qMax(0,w-54),55);
         m_colorButton->move(qMax(0,w-58),qMax(0,h-56));
 
         m_layerRail->raise();
         m_layerToggleButton->raise();
         m_brushStrip->raise();
+        m_toolOptionsFloating->raise();
         m_colorButton->raise();
         m_recent->raise();
         if(m_colorExpanded)updateColorDock();
@@ -1478,6 +1709,7 @@ private:
     void refreshVisibility() {
         const bool show=m_compact && m_vm->activeNode() && m_surface->isVisible();
         m_brushStrip->setVisible(show);
+        m_toolOptionsFloating->setVisible(show);
         m_colorButton->setVisible(show && !m_colorExpanded);
         m_recent->setVisible(show && m_colorExpanded);
         if(show) {
@@ -1549,6 +1781,11 @@ private:
     QFrame *m_recent=nullptr;
     QGridLayout *m_recentLayout=nullptr;
     QToolBar *m_topBar=nullptr;
+    QToolBar *m_compactBar=nullptr;
+    QAction *m_customizeAction=nullptr;
+    QAction *m_toolsAction=nullptr;
+    QToolButton *m_toolOptionsFloating=nullptr;
+    QList<QPointer<QToolBar>> m_originalToolbars;
     QTimer *m_layerRefreshTimer=nullptr;
     KisResourceModel *m_presetModel=nullptr;
 };
