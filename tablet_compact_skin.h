@@ -1167,50 +1167,73 @@ private:
         rebuildCompactToolbar();
     }
     void openAllTools() {
-        QDialog dialog(m_main);
-        dialog.setWindowFlags(Qt::Popup);
+        QDialog dialog(m_surface);
+        dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
+        dialog.setStyleSheet(
+            "QDialog{background:#303034;border:1px solid #56565b;}");
         auto *layout=new QVBoxLayout(&dialog);
+        layout->setContentsMargins(8,8,8,8);
+        layout->setSpacing(5);
         auto *filter=new QLineEdit(&dialog);
         filter->setPlaceholderText(i18n("Find a tool..."));
+        filter->setMinimumHeight(37);
         layout->addWidget(filter);
         auto *scroll=new QScrollArea(&dialog);
+        scroll->setFrameShape(QFrame::NoFrame);
         scroll->setWidgetResizable(true);
+        scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         auto *body=new QWidget(scroll);
         auto *grid=new QGridLayout(body);
+        grid->setContentsMargins(2,2,2,2);
+        grid->setHorizontalSpacing(5);
+        grid->setVerticalSpacing(5);
         scroll->setWidget(body);
         layout->addWidget(scroll);
         QList<QToolButton*> entries;
         QMap<QString,QList<KoToolAction*>> sections;
         for(KoToolAction *action:KoToolManager::instance()->toolActionList())
             if(action)sections[action->section()].append(action);
-        const int columns=m_surface->width()<470 ? 3 : 4;
+        const int tileWidth=110;
+        const int columns=qBound(2,(m_surface->width()-36)/(tileWidth+5),6);
         int row=0;
         for(auto it=sections.constBegin();it!=sections.constEnd();++it) {
-            auto *heading=new QLabel(it.key().isEmpty() ?
-                i18n("Other Tools") : it.key(),body);
+            const QString category=it.key().section(QLatin1Char('/'),-1);
+            auto *heading=new QLabel(category.isEmpty() ?
+                i18n("Other Tools") : category,body);
             heading->setStyleSheet(QStringLiteral(
-                "font-weight:bold;padding-top:8px;color:#ddd;"));
+                "font-weight:bold;padding-top:6px;color:#ddd;"));
             grid->addWidget(heading,row++,0,1,columns);
             int column=0;
             for(KoToolAction *action:it.value()) {
                 auto *button=new QToolButton(body);
-                button->setText(action->iconText());
+                QString caption=action->iconText().trimmed();
+                if(caption.endsWith(QStringLiteral(" Tool"),Qt::CaseInsensitive))
+                    caption.chop(5);
+                if(caption.length()>21)
+                    caption=caption.left(19)+QStringLiteral("…");
+                button->setText(caption);
                 button->setToolTip(action->toolTip());
                 button->setIcon(KisIconUtils::loadIcon(action->iconName()));
                 button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
-                button->setIconSize(QSize(34,34));
-                button->setFixedSize(94,82);
+                button->setIconSize(QSize(38,38));
+                button->setFixedSize(tileWidth,85);
+                button->setStyleSheet(
+                    "QToolButton{background:#404044;color:#ddd;"
+                    "border-radius:5px;padding:3px;}"
+                    "QToolButton:pressed{background:#5b6d7d;}");
                 grid->addWidget(button,row,column);
                 entries.append(button);
                 connect(button,&QToolButton::clicked,&dialog,[action,&dialog]() {
                     action->trigger();
                     dialog.accept();
                 });
-                if(++column==columns) {column=0;++row;}
+                if(++column==columns){column=0;++row;}
             }
             if(column)++row;
         }
-        QScroller::grabGesture(scroll->viewport(),QScroller::TouchGesture);
+        QScroller::grabGesture(scroll->viewport(),
+                               QScroller::LeftMouseButtonGesture);
         connect(filter,&QLineEdit::textChanged,&dialog,
                 [entries](const QString &text) {
             for(QToolButton *button:entries)
@@ -1218,8 +1241,11 @@ private:
                     text,Qt::CaseInsensitive) || button->toolTip().contains(
                     text,Qt::CaseInsensitive));
         });
-        dialog.resize(qMin(530,m_surface->width()-20),
-                      qMin(700,m_surface->height()-20));
+        const int desiredWidth=columns*(tileWidth+5)+22;
+        const int desiredHeight=grid->sizeHint().height()+
+                                filter->sizeHint().height()+35;
+        dialog.resize(qMin(m_surface->width()-16,desiredWidth),
+                      qMin(m_surface->height()-22,desiredHeight));
         dialog.exec();
     }
     void organizeDefaultToolbars() {
