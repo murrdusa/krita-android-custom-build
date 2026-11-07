@@ -22,6 +22,9 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
+#include <QInputDialog>
+#include <QLineEdit>
+#include "KisDocument.h"
 #include <QListWidget>
 #include <QMainWindow>
 #include <QMessageBox>
@@ -236,6 +239,8 @@ public:
         m_layerName->setFixedHeight(34);
         m_layerName->setStyleSheet("color:white;font-size:9px;");
         rail->addWidget(m_layerName);
+        m_layerName->setToolTip(i18n("Double-tap to rename selected layer"));
+        m_layerName->installEventFilter(this);
         updateLayerWidth();
         m_layerExpanded=m_layerPinned;
 
@@ -282,13 +287,30 @@ public:
         optionsAction->setToolTip(i18n("Open current tool options"));
         m_main->actionCollection()->addAction(QStringLiteral("tablet_tool_options_popup"),optionsAction);
         connect(optionsAction, &QAction::triggered, this, [this]() {
-            QAction *native = m_main->actionCollection()->action(QStringLiteral("show_tool_options"));
-            if (native) native->trigger();
-            else if(m_toolOptionsDocker) {
-                const bool wasVisible=m_toolOptionsDocker->isVisible();
-                m_toolOptionsDocker->setVisible(!wasVisible);
-                if(!wasVisible) m_toolOptionsDocker->raise();
-            }
+            if(QAction *native=m_main->actionCollection()->action(
+                    QStringLiteral("show_tool_options")))
+                native->trigger();
+        });
+        auto *saveClose = m_topBar->addAction(
+            KisIconUtils::loadIcon("document-save"), i18n("Save and Close"));
+        saveClose->setToolTip(i18n("Save artwork and return to Krita home"));
+        m_main->actionCollection()->addAction(
+            QStringLiteral("tablet_save_and_close"),saveClose);
+        connect(saveClose,&QAction::triggered,this,[this]() {
+            QPointer<KisDocument> document=m_vm->document();
+            if(!document)return;
+            const bool needsName=document->localFilePath().isEmpty();
+            QAction *saveAction=m_main->actionCollection()->action(
+                needsName?QStringLiteral("file_save_as"):QStringLiteral("file_save"));
+            if(!saveAction)return;
+            saveAction->trigger();
+            QTimer::singleShot(0,this,[this,document]() {
+                if(!document || document->localFilePath().isEmpty() ||
+                   document->isModified())return;
+                if(QAction *closeAction=m_main->actionCollection()->action(
+                        QStringLiteral("file_close")))
+                    closeAction->trigger();
+            });
         });
         // Tool actions attach to mainToolBar in both UI modes.
 
@@ -341,6 +363,19 @@ public:
     }
 
     bool eventFilter(QObject *watched,QEvent *event) override {
+        if(watched==m_layerName &&
+           event->type()==QEvent::MouseButtonDblClick && m_vm->activeNode()) {
+            const KisNodeSP node=m_vm->activeNode();
+            bool ok=false;
+            const QString name=QInputDialog::getText(
+                m_main,i18n("Rename Layer"),i18n("Layer name:"),
+                QLineEdit::Normal,node->name(),&ok);
+            if(ok && !name.trimmed().isEmpty() && name!=node->name()) {
+                m_vm->nodeManager()->setNodeName(node,name.trimmed());
+                refreshLayers();
+            }
+            return true;
+        }
         if ((watched==m_surface || watched==m_mdi) &&
              (event->type()==QEvent::Resize || event->type()==QEvent::Show)) {
             QTimer::singleShot(0,this,[this](){positionOverlays();});
@@ -578,9 +613,9 @@ private:
         for(QAction *action:m_topBar->actions())
             if(!mainBar->actions().contains(action))mainBar->addAction(action);
         // One-time defaults, never undo changes made in Configure Toolbars.
-        if(QSettings().value(QStringLiteral("TabletUi/toolbarDefaultsV10"),false).toBool())
+        if(QSettings().value(QStringLiteral("TabletUi/toolbarDefaultsV11"),false).toBool())
             return;
-        QSettings().setValue(QStringLiteral("TabletUi/toolbarDefaultsV10"),true);
+        QSettings().setValue(QStringLiteral("TabletUi/toolbarDefaultsV11"),true);
         for(QToolBar *bar:bars) {
             const auto items=bar->actions();
             for(QAction *action:items) {
@@ -730,8 +765,8 @@ private:
         dialog.setWindowTitle(i18n("Choose %1 preset",QStringList{
             i18n("Paint"),i18n("Erase"),i18n("Blend")}.at(slot)));
         dialog.setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
-        dialog.resize(qMax(270,qMin(425,m_surface->width()-24)),
-                      qMax(240,qMin(440,m_surface->height()-35)));
+        dialog.resize(qMax(310,qMin(670,m_surface->width()-20)),
+                      qMax(390,qMin(790,m_surface->height()-24)));
         auto *layout=new QVBoxLayout(&dialog);
         auto *all=new QCheckBox(i18n("Show all Krita brushes"),&dialog);
         layout->addWidget(all);
@@ -872,6 +907,8 @@ private:
     }
     void updateLayerWidth() {
         m_layerRail->setFixedWidth(m_layerTileSize+10);
+        m_addLayer->setText(m_layerTileSize<110 ? QStringLiteral("+") :
+                                                   i18n("+ Add Layer"));
         if(m_layerRail->isVisible())positionOverlays();
     }
     static QIcon lockIcon(bool locked) {
