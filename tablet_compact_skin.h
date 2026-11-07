@@ -661,6 +661,10 @@ public:
             if(m_layerTouches.size()==1 && !m_touchLayerScrolling &&
                !m_touchLayerPinching) {
                 m_touchLayerArmed=true;
+                if(m_layersScroll && m_layersScroll->viewport()) {
+                    if(QScroller *scroller=QScroller::scroller(
+                            m_layersScroll->viewport()))scroller->stop();
+                }
                 if(m_layerEdgeScrollTimer)m_layerEdgeScrollTimer->start();
                 showLayerDragPreview(m_touchLayerPrimary,m_touchLayerLast);
                 feedbackForHold();
@@ -698,6 +702,37 @@ public:
         // click or feed it to the layer scroller. This supports both finger
         // reorder and pinching two separate layer thumbnails into a group.
         if(handleLayerTouch(watched,event))return true;
+        // Native Android stylus events don't reliably synthesize QToolButton
+        // press/move/release. Start the hold directly from TabletPress.
+        if(m_compact && event->type()==QEvent::TabletPress &&
+           m_layerRail && m_layerRail->isVisible()) {
+            QTabletEvent *pen=static_cast<QTabletEvent*>(event);
+            const QPoint p=pen->globalPos();
+            const CompactLayerRow *row=touchLayerAt(p);
+            if(row && row->tile) {
+                m_layerPenTracking=true;
+                m_layerDragNode=row->node;
+                m_layerDragTile=row->tile;
+                m_layerDragStart=p;
+                m_layerDragLast=p;
+                m_layerDragArmed=false;
+                m_layerDragMoved=false;
+                const KisNodeSP heldNode=row->node;
+                QTimer::singleShot(holdMs(),this,[this,heldNode]() {
+                    if(!m_layerPenTracking || m_layerDragNode!=heldNode)
+                        return;
+                    m_layerDragArmed=true;
+                    if(m_layerEdgeScrollTimer)m_layerEdgeScrollTimer->start();
+                    if(m_layersScroll && m_layersScroll->viewport()) {
+                        QScroller *scroller=QScroller::scroller(
+                            m_layersScroll->viewport());
+                        if(scroller)scroller->stop();
+                    }
+                    showLayerDragPreview(heldNode,m_layerDragLast);
+                    feedbackForHold();
+                });
+            }
+        }
         // Track native stylus packets even if the pen leaves the thumbnail
         // or Qt delivers them to the canvas viewport instead of the tile.
         const bool penPacket=event->type()==QEvent::TabletMove ||
@@ -710,19 +745,19 @@ public:
                 m_layerDragMoved=true;
                 showLayerDragPreview(m_layerDragNode,m_layerDragLast);
             }
-            // A pen release might not synthesize a QToolButton::released.
-            if(event->type()==QEvent::TabletRelease) {
+            // Complete pen gestures at TabletRelease rather than waiting for
+            // a synthesized Qt mouse release that Android may never send.
+            if(event->type()==QEvent::TabletRelease && m_layerPenTracking) {
                 const KisNodeSP source=m_layerDragNode;
                 const QPoint last=m_layerDragLast;
-                const bool moved=m_layerDragMoved;
+                const bool moved=m_layerDragArmed && m_layerDragMoved;
                 const bool held=m_layerDragArmed;
-                QTimer::singleShot(0,this,[this,source,last,moved,held]() {
-                    if(m_layerDragNode!=source)return; // mouse release handled it
-                    if(moved)moveLayerAtFinger(source,last);
-                    else if(held)openLayerActions(source);
-                    else m_vm->nodeManager()->slotUiActivatedNode(source);
-                    finishLayerDrag();
-                });
+                finishLayerDrag();
+                if(moved)moveLayerAtFinger(source,last);
+                else if(held) {
+                    m_vm->nodeManager()->slotUiActivatedNode(source);
+                    openLayerActions(source);
+                } else m_vm->nodeManager()->slotUiActivatedNode(source);
             }
         }
         if(watched==m_layerDragTile && m_layerDragNode &&
@@ -840,6 +875,14 @@ public:
         if (m_compact==active) return;
         m_compact=active;
         if (active) {
+            // Record the actual normal-mode chrome, not its hidden compact
+            // state. restoreState() does not restore menu/status bar visibility.
+            if(!m_startupCompact) {
+                m_normalMenuVisible=m_main->menuBar() &&
+                    m_main->menuBar()->isVisible();
+                m_normalStatusVisible=m_main->statusBar() &&
+                    m_main->statusBar()->isVisible();
+            }
             // Snapshot the real Krita workspace before hiding a single toolbar.
             rememberDockers();
             rememberCompactToolbarState(true);
@@ -1002,6 +1045,22 @@ public:
             // restoreState() also restores toolbar visibility. Do the
             // normal-bar restore *after* it, keeping Compact shortcuts hidden.
             rememberCompactToolbarState(false);
+            if(m_main->menuBar() && m_normalMenuVisible)
+                m_main->menuBar()->show();
+            if(m_main->statusBar() && m_normalStatusVisible)
+                m_main->statusBar()->show();
+            // Delayed workspace restoration sometimes runs after the toggle;
+            // reassert normal-mode chrome without touching user preferences.
+            QTimer::singleShot(120,this,[this]() {
+                if(m_compact)return;
+                if(m_main->menuBar() && m_normalMenuVisible)
+                    m_main->menuBar()->show();
+                if(m_main->statusBar() && m_normalStatusVisible)
+                    m_main->statusBar()->show();
+                for(QToolBar *bar:m_main->findChildren<QToolBar*>())
+                    if(bar && bar->objectName()==QStringLiteral("mainToolBar"))
+                        bar->show();
+            });
             organizeDefaultToolbars();
             if(m_recoverLegacyNormalLayout) {
                 for(QDockWidget *dock : {m_layerDocker.data(),m_brushDocker.data(),
@@ -2231,6 +2290,7 @@ private:
     }
 
     void finishLayerDrag() {
+        m_layerPenTracking=false;
         hideLayerDragPreview();
         if(m_layerEdgeScrollTimer)m_layerEdgeScrollTimer->stop();
         m_layerDragNode.clear();
@@ -2506,6 +2566,7 @@ private:
                 tile->installEventFilter(this);
                 connect(tile,&QToolButton::pressed,tile,
                         [this,tileHold,held,tile,node]() {
+                    if(m_layerPenTracking && m_layerDragNode==node)return;
                     *held=false;
                     m_layerDragNode=node;
                     m_layerDragTile=tile;
@@ -2524,6 +2585,7 @@ private:
                 });
                 connect(tile,&QToolButton::released,tile,
                         [this,tileHold,held,node]() {
+                    if(m_layerPenTracking && m_layerDragNode==node)return;
                     tileHold->stop();
                     const bool moved=m_layerDragMoved;
                     const QPoint drop=m_layerDragLast;
@@ -3040,6 +3102,9 @@ private:
     };
     QList<HiddenToolbarAction> m_hiddenActions;
     bool m_startupCompact=false;
+    bool m_normalMenuVisible=true;
+    bool m_normalStatusVisible=true;
+    bool m_layerPenTracking=false;
     bool m_recoverLegacyNormalLayout=false;
     bool m_compact=false;
     bool m_colorExpanded=false;
