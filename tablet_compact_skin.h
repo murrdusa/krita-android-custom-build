@@ -55,6 +55,8 @@
 #include <utility>
 #include <initializer_list>
 #include <QScrollBar>
+#include <QRegularExpression>
+#include "KisVisualColorSelectorShape.h"
 #include <QScroller>
 #include <QCursor>
 #include <QAction>
@@ -701,7 +703,7 @@ public:
         if(handleLayerTouch(watched,event))return true;
         // Native Android stylus events don't reliably synthesize QToolButton
         // press/move/release. Start the hold directly from TabletPress.
-        if(m_compact && event->type()==QEvent::TabletPress &&
+        if(m_compact && !m_clipTransactionBusy && event->type()==QEvent::TabletPress &&
            m_layerRail && m_layerRail->isVisible()) {
             QTabletEvent *pen=static_cast<QTabletEvent*>(event);
             const QPoint p=pen->globalPos();
@@ -2048,7 +2050,7 @@ private:
         });
     }
     bool handleLayerTouch(QObject *watched,QEvent *event) {
-        if(!m_compact || !m_layerRail || !m_layerRail->isVisible())return false;
+        if(!m_compact || m_clipTransactionBusy || !m_layerRail || !m_layerRail->isVisible())return false;
         const QEvent::Type type=event->type();
         if(type!=QEvent::TouchBegin && type!=QEvent::TouchUpdate &&
            type!=QEvent::TouchEnd && type!=QEvent::TouchCancel)return false;
@@ -2189,11 +2191,23 @@ private:
         return true;
     }
 
-    // Compact clip groups contain real native Krita layers. Only our own
-    // specially-named wrapper is hidden; ordinary groups stay visible.
+    // Krita still stores true groups for alpha inheritance, but Compact
+    // omits the wrapper. Detect older unrenamed Group N wrappers only if
+    // they contain exactly one base and clipped children above it.
     static bool isCompactClipGroup(KisNodeSP node) {
-        return node && node->inherits("KisGroupLayer") &&
-            node->name().startsWith(QStringLiteral("[Compact Clip] "));
+        if(!node || !node->inherits("KisGroupLayer"))return false;
+        if(node->name().startsWith(QStringLiteral("[Compact Clip] ")))return true;
+        static const QRegularExpression defaultName(QStringLiteral(
+            "^(?:Group|Clipping Group)(?: [0-9]+)?$"),
+            QRegularExpression::CaseInsensitiveOption);
+        if(!defaultName.match(node->name()).hasMatch() ||
+           node->childCount()<2)return false;
+        KisNodeSP base=node->firstChild();
+        if(!base || !base->inherits("KisLayer") ||
+           compactInheritsAlpha(base))return false;
+        for(KisNodeSP n=base->nextSibling();n;n=n->nextSibling())
+            if(!compactInheritsAlpha(n))return false;
+        return true;
     }
     static bool compactInheritsAlpha(KisNodeSP node) {
         return node && node->inherits("KisLayer") &&
@@ -2205,55 +2219,135 @@ private:
         KisNodeSP parent=node->parent();
         return isCompactClipGroup(parent)?parent->parent():parent;
     }
-    // Undo-aware: these call Krita's native Quick Ungroup/Group commands.
-    // They never delete any artwork node; only our generated wrapper groups.
-    void rebuildCompactClips(KisNodeSP parent) {
-        if(!parent || !m_vm || !m_vm->nodeManager())return;
-        auto *manager=m_vm->nodeManager();
-        ungroupCompactClips(parent);
-        // Native juggler operations can settle on a later event-loop pass.
-        QTimer::singleShot(160,this,[this,parent]() mutable {
-            if(!m_vm || !m_vm->nodeManager() || !parent)return;
-            auto *manager=m_vm->nodeManager();
+    bool containsCompactClipGroups(KisNodeSP parent) const {
+        if(!parent)return false;
+        for(KisNodeSP n=parent->firstChild();n;n=n->nextSibling())
+            if(isCompactClipGroup(n))return true;
+        return false;
+    }
+    // Krita's compressed node juggler runs on the image thread. Do not
+    // issue the next grouping operation until its actual nodes have moved.
+    void finishCompactClipTransaction() {
+        if(m_vm && m_vm->nodeManager()) {
+            if(m_clipRestoreActive && m_clipRestoreActive->parent()) {
+                m_vm->nodeManager()->slotUiActivatedNode(m_clipRestoreActive);
+                m_vm->nodeManager()->slotSetSelectedNodes(
+                    KisNodeList{m_clipRestoreActive});
+            } else {
+                m_vm->nodeManager()->slotSetSelectedNodes(KisNodeList());
+            }
+        }
+        m_clipRebuildParents.clear();
+        m_clipRestoreActive.clear();
+        m_clipWorkingImage.clear();
+        m_clipTransactionBusy=false;
+        QTimer::singleShot(120,this,[this](){refreshLayers();});
+    }
+    void waitForCompactGroup(KisNodeSP parent,KisNodeSP base,
+                             KisNodeList cluster,int attempt) {
+        if(!m_clipTransactionBusy || !m_vm ||
+           m_vm->image().toStrongRef()!=m_clipWorkingImage)return;
+        KisNodeSP group=base?base->parent():KisNodeSP();
+        bool settled=group && group!=parent &&
+            group->parent()==parent && group->inherits("KisGroupLayer");
+        for(KisNodeSP item:cluster)
+            if(!item || item->parent()!=group)settled=false;
+        if(settled) {
+            m_vm->nodeManager()->setNodeName(
+                group,QStringLiteral("[Compact Clip] ")+base->name());
+            group->setCollapsed(false);
+            QTimer::singleShot(120,this,[this](){continueCompactClipRebuild();});
+        } else if(attempt<35) {
+            QTimer::singleShot(110,this,[this,parent,base,cluster,attempt]() {
+                waitForCompactGroup(parent,base,cluster,attempt+1);
+            });
+        } else {
+            finishCompactClipTransaction();
+        }
+    }
+    void continueCompactClipRebuild() {
+        if(!m_clipTransactionBusy || !m_vm || !m_vm->nodeManager() ||
+           m_vm->image().toStrongRef()!=m_clipWorkingImage) {
+            finishCompactClipTransaction();return;
+        }
+        while(!m_clipRebuildParents.isEmpty()) {
+            KisNodeSP parent=m_clipRebuildParents.first();
+            if(!parent) {m_clipRebuildParents.removeFirst();continue;}
             KisNodeList ordered;
             for(KisNodeSP n=parent->firstChild();n;n=n->nextSibling())
                 ordered.append(n);
-            // Bottom-to-top: each non-clipped layer is the alpha base for
-            // every consecutive clipped layer immediately above it.
+            // Sibling order is bottom-to-top. Each consecutive inherited-
+            // alpha run belongs to the first non-clipped base below it.
             for(int i=0;i<ordered.size();) {
                 KisNodeSP base=ordered.at(i);
-                if(compactInheritsAlpha(base) || !base->inherits("KisLayer")) {
-                    ++i;continue;
-                }
-                KisNodeList cluster;
-                cluster.append(base);
+                if(isCompactClipGroup(base) || compactInheritsAlpha(base) ||
+                   !base->inherits("KisLayer")){++i;continue;}
+                KisNodeList cluster{base};
                 int j=i+1;
-                while(j<ordered.size() && compactInheritsAlpha(ordered.at(j))) {
+                while(j<ordered.size() &&
+                      compactInheritsAlpha(ordered.at(j))) {
                     cluster.append(ordered.at(j));++j;
                 }
-                if(cluster.size()>1 && manager->canMoveLayers(cluster,false)) {
-                    manager->slotUiActivatedNode(base);
-                    manager->slotSetSelectedNodes(cluster);
-                    manager->createQuickGroup();
-                    KisNodeSP group=base->parent();
-                    if(group && group!=parent && group->inherits("KisGroupLayer")) {
-                        manager->setNodeName(group,QStringLiteral("[Compact Clip] ")
-                                                   +base->name());
-                        group->setCollapsed(false);
-                    }
+                if(cluster.size()>1 &&
+                   m_vm->nodeManager()->canMoveLayers(cluster,false)) {
+                    m_vm->nodeManager()->slotUiActivatedNode(base);
+                    m_vm->nodeManager()->slotSetSelectedNodes(cluster);
+                    m_vm->nodeManager()->createQuickGroup();
+                    QTimer::singleShot(120,this,[this,parent,base,cluster]() {
+                        waitForCompactGroup(parent,base,cluster,0);
+                    });
+                    return; // The next group must not race this one.
                 }
                 i=j;
             }
-            manager->slotSetSelectedNodes(KisNodeList());
-            QTimer::singleShot(180,this,[this](){refreshLayers();});
+            m_clipRebuildParents.removeFirst();
+        }
+        finishCompactClipTransaction();
+    }
+    void waitForCompactFlatten(int attempt,
+                                const std::function<void()> &afterFlatten) {
+        if(!m_clipTransactionBusy || !m_vm || !m_vm->nodeManager() ||
+           m_vm->image().toStrongRef()!=m_clipWorkingImage) {
+            finishCompactClipTransaction();return;
+        }
+        bool hasWrappers=false;
+        for(KisNodeSP parent:m_clipRebuildParents)
+            if(containsCompactClipGroups(parent))hasWrappers=true;
+        if(hasWrappers && attempt<35) {
+            QTimer::singleShot(110,this,[this,attempt,afterFlatten]() {
+                waitForCompactFlatten(attempt+1,afterFlatten);
+            });
+            return;
+        }
+        if(hasWrappers) {finishCompactClipTransaction();return;}
+        if(afterFlatten)afterFlatten();
+        QTimer::singleShot(afterFlatten?300:180,this,[this]() {
+            continueCompactClipRebuild();
+        });
+    }
+    void beginCompactClipRebuild(KisNodeSP first,
+                                 KisNodeSP second=KisNodeSP(),
+                                 std::function<void()> afterFlatten={}) {
+        if(m_clipTransactionBusy || !first || !m_vm ||
+           !m_vm->nodeManager())return;
+        m_clipWorkingImage=m_vm->image().toStrongRef();
+        if(!m_clipWorkingImage)return;
+        m_clipRestoreActive=m_vm->activeNode();
+        m_clipTransactionBusy=true;
+        m_clipRebuildParents.clear();
+        m_clipRebuildParents.append(first);
+        if(second && second!=first)m_clipRebuildParents.append(second);
+        ungroupCompactClips(first);
+        if(second && second!=first)ungroupCompactClips(second);
+        QTimer::singleShot(120,this,[this,afterFlatten]() {
+            waitForCompactFlatten(0,afterFlatten);
         });
     }
     void setCompactClip(KisNodeSP node,bool enabled) {
-        if(!node || !node->inherits("KisLayer"))return;
+        if(m_clipTransactionBusy || !node || !node->inherits("KisLayer"))return;
         KisNodeSP parent=compactLogicalParent(node);
         if(!parent)return;
         if(enabled) {
-            // A clipped node needs an underlying non-clipped layer to mask to.
             bool foundBase=false;
             bool after=false;
             for(const CompactLayerRow &row:m_compactLayerRows) {
@@ -2273,7 +2367,7 @@ private:
         if(auto image=m_vm->image().toStrongRef()) {
             KisLayerPropertiesIcons::setNodePropertyAutoUndo(
                 node,KisLayerPropertiesIcons::inheritAlpha,enabled,image);
-            rebuildCompactClips(parent);
+            beginCompactClipRebuild(parent);
         }
     }
     bool canMoveCompactNode(KisNodeSP node,KisNodeSP newParent) const {
@@ -2381,9 +2475,17 @@ private:
     }
     void ungroupCompactClips(KisNodeSP parent) {
         if(!parent || !m_vm || !m_vm->nodeManager())return;
+        // Deepest wrapper first; leave ordinary named user groups intact.
         QList<KisNodeSP> wrappers;
-        for(KisNodeSP n=parent->firstChild();n;n=n->nextSibling())
-            if(isCompactClipGroup(n))wrappers.append(n);
+        std::function<void(KisNodeSP)> collect=[&](KisNodeSP container) {
+            for(KisNodeSP n=container->firstChild();n;n=n->nextSibling()) {
+                if(isCompactClipGroup(n)) {
+                    collect(n);
+                    wrappers.append(n);
+                }
+            }
+        };
+        collect(parent);
         for(KisNodeSP wrapper:wrappers) {
             m_vm->nodeManager()->slotUiActivatedNode(wrapper);
             m_vm->nodeManager()->slotSetSelectedNodes(KisNodeList{wrapper});
@@ -2391,7 +2493,8 @@ private:
         }
     }
     void moveLayerAtFinger(KisNodeSP source,const QPoint &screenPos) {
-        if(!source || !m_vm || !m_vm->image().toStrongRef())return;
+        if(m_clipTransactionBusy || !source || !m_vm ||
+           !m_vm->image().toStrongRef())return;
         const CompactLayerRow *row=compactDropRowAt(screenPos,source);
         if(!row || !row->widget || !row->node)return;
         const KisNodeSP target=row->node;
@@ -2406,35 +2509,23 @@ private:
             m_layerName->setText(i18n("Layer cannot move to that location"));
             return;
         }
-        // Flatten only our automatic clip wrappers. We then reorder the real
-        // nodes and rebuild the wrappers from the NEW consecutive alpha runs.
-        // This makes clipping follow whatever un-clipped base is below it.
-        ungroupCompactClips(previous);
-        if(destination!=previous)ungroupCompactClips(destination);
-        QTimer::singleShot(140,this,[this,source,target,destination,previous,
-                                      intoGroup,upper]() mutable {
-            if(!source || !target || !destination ||
-               !m_vm || !m_vm->nodeManager())return;
-            KisNodeSP above;
-            if(intoGroup)above=destination->lastChild();
-            else above=upper?target:target->prevSibling();
-            if(above==source && source->parent()==destination)return;
-            if(!canMoveCompactNode(source,destination))return;
-            m_vm->nodeManager()->moveNodesDirect(
-                KisNodeList{source},destination,above);
-            // Let Krita's compressed node mover settle before rewrapping.
-            QTimer::singleShot(150,this,[this,previous,destination]() mutable {
-                rebuildCompactClips(previous);
-                if(destination!=previous)
-                    QTimer::singleShot(400,this,[this,destination]() mutable {
-                        rebuildCompactClips(destination);
-                    });
+        // The Compact order is authoritative; native groups are rebuilt
+        // around whichever unclipped base is below each clipped layer NOW.
+        beginCompactClipRebuild(previous,destination,
+            [this,source,target,destination,intoGroup,upper]() {
+                if(!source || !target || !destination || !m_vm ||
+                   !m_vm->nodeManager())return;
+                KisNodeSP above=intoGroup?destination->lastChild():
+                    (upper?target:target->prevSibling());
+                if(above==source && source->parent()==destination)return;
+                if(!canMoveCompactNode(source,destination))return;
+                m_vm->nodeManager()->moveNodesDirect(
+                    KisNodeList{source},destination,above);
             });
-        });
     }
 
     void refreshLayers() {
-        if(!m_compact || !m_vm->activeNode() || m_layerDragNode ||
+        if(!m_compact || m_clipTransactionBusy || !m_vm->activeNode() || m_layerDragNode ||
            !m_layerTouches.isEmpty())return;
         const auto image=m_vm->image().toStrongRef();
         if(!image || !image->root())return;
@@ -2464,22 +2555,21 @@ private:
                     node,KisLayerPropertiesIcons::inheritAlpha,false).toBool();
                 const bool passThrough=isGroup &&
                     qobject_cast<KisGroupLayer*>(node.data())->passThroughMode();
-                // A folder or inherited-alpha layer is one compact strip,
-                // not a second full thumbnail-sized card. A mask lives within
-                // the visual hierarchy of its owning layer.
+                // Only real folders and masks are short rows; clipped
+                // paint layers keep the same dimensions as ordinary layers.
                 const int rowWidth=m_layerTileSize;
-                const bool compactRow=isGroup || isMask || inheritsAlpha;
+                const bool compactRow=isGroup || isMask;
                 const int rowHeight=compactRow?qMax(42,rowWidth*53/100):rowWidth;
                 const int iconPx=compactRow?qMax(25,rowHeight-9):rowWidth-12;
                 m_compactLayerHeight+=rowHeight+7;
                 auto *frame=new QFrame(m_layersContent);
                 frame->setFixedSize(rowWidth+4,rowHeight+4);
-                // A clipped layer is visibly attached to the base below it,
-                // rather than floating as another oversized independent tile.
+                // Full-size clipped tiles receive a distinct inset alpha edge;
+                // no artificial folder is shown to the Compact user.
                 if(inheritsAlpha) {
                     frame->setObjectName(QStringLiteral("compactClippedLayer"));
                     frame->setStyleSheet(
-                        "QFrame#compactClippedLayer{border-left:4px solid #4aafa1;"
+                        "QFrame#compactClippedLayer{border-left:8px solid #4aafa1;"
                         "background:#454b4b;border-radius:3px;}");
                 } else if(node->nextSibling() &&
                           KisLayerPropertiesIcons::nodeProperty(
@@ -2560,8 +2650,8 @@ private:
                 if(inheritsAlpha || passThrough) {
                     auto *clip=new QLabel(frame);
                     clip->setText(passThrough?QStringLiteral("⇢"):
-                                             QStringLiteral("α↓"));
-                    clip->setGeometry(4,qMax(2,rowHeight-25),27,22);
+                                             QStringLiteral("↳α"));
+                    clip->setGeometry(7,qMax(2,rowHeight-27),30,24);
                     clip->setAlignment(Qt::AlignCenter);
                     clip->setToolTip(passThrough?i18n("Pass-through group"):
                                                   i18n("Inherit alpha / clipped"));
@@ -2966,6 +3056,25 @@ private:
                     docker.data(),"slotOpenSettings",Qt::DirectConnection);
             });
         });
+        layout->addWidget(new QLabel(i18n("Rotate hue ring"),&dialog));
+        auto *rotation=new QSlider(Qt::Horizontal,&dialog);
+        rotation->setRange(0,359);
+        const int initialRotation=QSettings().value(
+            QStringLiteral("TabletUi/colorHueRotationDegrees"),0).toInt();
+        rotation->setValue(qBound(0,initialRotation,359));
+        rotation->setToolTip(i18n(
+            "Rotate the hue ring without changing the selected paint color"));
+        layout->addWidget(rotation);
+        auto *rotationValue=new QLabel(
+            QStringLiteral("%1°").arg(rotation->value()),&dialog);
+        layout->addWidget(rotationValue);
+        connect(rotation,&QSlider::valueChanged,&dialog,
+                [this,rotationValue](int degrees) {
+            rotationValue->setText(QStringLiteral("%1°").arg(degrees));
+            QSettings().setValue(
+                QStringLiteral("TabletUi/colorHueRotationDegrees"),degrees);
+            refreshNativeColorSelectorLayout();
+        });
         layout->addWidget(new QLabel(i18n("Color wheel size"),&dialog));
         auto *size=new QSlider(Qt::Horizontal,&dialog);
         size->setRange(190,380);
@@ -2992,9 +3101,17 @@ private:
         refreshColorControls();
     }
     void refreshNativeColorSelectorLayout() {
-        if(m_colorDocker)
+        if(m_colorDocker) {
             QMetaObject::invokeMethod(m_colorDocker.data(),
                 "slotConfigurationChanged",Qt::DirectConnection);
+            // Wide Gamut caches the ring image; force a new gradient after
+            // the saved hue angle changes.
+            for(KisVisualColorSelectorShape *shape:
+                m_colorDocker->findChildren<KisVisualColorSelectorShape*>()) {
+                shape->forceImageUpdate();
+                shape->update();
+            }
+        }
         if(m_compact && m_colorExpanded)
             QTimer::singleShot(0,this,[this](){updateColorDock();});
     }
@@ -3118,6 +3235,10 @@ private:
     bool m_normalMenuVisible=true;
     bool m_normalStatusVisible=true;
     bool m_layerPenTracking=false;
+    bool m_clipTransactionBusy=false;
+    KisImageSP m_clipWorkingImage;
+    KisNodeSP m_clipRestoreActive;
+    QList<KisNodeSP> m_clipRebuildParents;
     bool m_layerScrollerSuspended=false;
     bool m_recoverLegacyNormalLayout=false;
     bool m_compact=false;
