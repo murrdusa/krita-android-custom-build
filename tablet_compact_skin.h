@@ -30,6 +30,7 @@
 #include <QMessageBox>
 #include <QDateTime>
 #include <QMdiArea>
+#include <QMdiSubWindow>
 #include <QMenu>
 #include <QPointer>
 #include <QPainter>
@@ -189,7 +190,21 @@ public:
         m_brushControlTimer=new QTimer(this);
         m_brushControlTimer->setInterval(350);
         connect(m_brushControlTimer,&QTimer::timeout,this,
-                [this](){refreshBrushControls();});
+                [this]() {
+                    refreshBrushControls();
+                    // The contextual selection bar may cause Qt to recreate
+                    // subwindow chrome after it is pinned/unpinned.
+                    if(m_compact && m_mdi->viewMode()==QMdiArea::SubWindowView) {
+                        for(QMdiSubWindow *subwin:m_mdi->subWindowList()) {
+                            if(subwin && !(subwin->windowFlags() &
+                                           Qt::FramelessWindowHint)) {
+                                subwin->setWindowFlags(
+                                    subwin->windowFlags()|Qt::FramelessWindowHint);
+                                subwin->showMaximized();
+                            }
+                        }
+                    }
+                });
 
         m_layerRail = new QFrame(m_surface);
         m_layerRail->setObjectName(QStringLiteral("tabletLayerRail"));
@@ -399,6 +414,28 @@ public:
             QStringLiteral("tablet_all_tools_popup"),m_toolsAction);
         m_main->actionCollection()->addAction(
             QStringLiteral("tablet_customize_compact"),m_customizeAction);
+        m_sampleModeAction=new QAction(
+            KisIconUtils::loadIcon("krita_tool_color_sampler"),
+            i18n("Sample all visible layers"),this);
+        m_sampleModeAction->setCheckable(true);
+        m_sampleModeAction->setChecked(QSettings().value(
+            QStringLiteral("TabletUi/sampleAllVisibleLayers"),true).toBool());
+        m_main->actionCollection()->addAction(
+            QStringLiteral("tablet_sample_all_layers"),m_sampleModeAction);
+        connect(m_sampleModeAction,&QAction::toggled,this,[this](bool all) {
+            QSettings().setValue(QStringLiteral("TabletUi/sampleAllVisibleLayers"),all);
+            m_sampleModeAction->setToolTip(all ?
+                i18n("Sample all visible layers") :
+                i18n("Sample current layer only"));
+            if(m_vm->canvasBase()) {
+                if(KoToolBase *tool=KoToolManager::instance()->toolById(
+                        m_vm->canvasBase(),
+                        QStringLiteral("KritaSelected/KisToolColorSampler"))) {
+                    QMetaObject::invokeMethod(tool,"slotSetColorSource",
+                                              Qt::DirectConnection,Q_ARG(int,all?0:1));
+                }
+            }
+        });
         m_toolOptionsFloating=new QToolButton(m_surface);
         m_toolOptionsFloating->setIcon(KisIconUtils::loadIcon("configure"));
         m_toolOptionsFloating->setIconSize(QSize(28,28));
@@ -783,6 +820,7 @@ private:
         return {QStringLiteral("tablet_quick_actions"),
                 QStringLiteral("tablet_save_and_close"),
                 QStringLiteral("tablet_all_brush_presets"),
+                QStringLiteral("tablet_sample_all_layers"),
                 QStringLiteral("view_toggle_reference_images"),
                 QStringLiteral("erase_action"),
                 QStringLiteral("tablet_all_tools_popup")};
@@ -815,6 +853,7 @@ private:
             QStringLiteral("tablet_save_and_close"),
             QStringLiteral("tablet_all_brush_presets"),
             QStringLiteral("tablet_all_tools_popup"),
+            QStringLiteral("tablet_sample_all_layers"),
             QStringLiteral("view_toggle_reference_images"),
             QStringLiteral("erase_action"),
             QStringLiteral("file_save"),
@@ -975,7 +1014,21 @@ private:
                 nullptr:mainBar->actions().first(),compact);
         }
 
-        // One-time defaults, never undo changes made in Configure Toolbars.
+        // Preserve the user's normal Krita toolbar layout. The Compact-only
+        // controls no longer belong on mainToolBar.
+        if(QSettings().value(QStringLiteral("TabletUi/dedicatedToolbarV1"),false).toBool())
+            return;
+        QSettings().setValue(QStringLiteral("TabletUi/dedicatedToolbarV1"),true);
+        for(QToolBar *bar:bars) {
+            if(bar==m_compactBar)continue;
+            for(const char *name:{"tablet_save_and_close",
+                    "tablet_all_brush_presets","tablet_tool_options_popup"}) {
+                if(QAction *action=actions->action(QString::fromLatin1(name)))
+                    bar->removeAction(action);
+            }
+        }
+        return;
+        // Legacy setup below is disabled: it changed normal Krita toolbars.
         if(QSettings().value(QStringLiteral("TabletUi/toolbarDefaultsV12"),false).toBool())
             return;
         QSettings().setValue(QStringLiteral("TabletUi/toolbarDefaultsV12"),true);
@@ -1892,6 +1945,7 @@ private:
     QToolBar *m_compactBar=nullptr;
     QAction *m_customizeAction=nullptr;
     QAction *m_toolsAction=nullptr;
+    QAction *m_sampleModeAction=nullptr;
     QToolButton *m_toolOptionsFloating=nullptr;
     QList<QPointer<QToolBar>> m_originalToolbars;
     QTimer *m_layerRefreshTimer=nullptr;
