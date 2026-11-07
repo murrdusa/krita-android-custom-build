@@ -268,7 +268,7 @@ public:
         layerPinTimer->setInterval(holdMs());
         connect(m_layerPinButton,&QToolButton::pressed,this,[this,layerPinTimer]() {
             m_layerPinLongPressed=false;
-            layerPinTimer->start();
+            layerPinTimer->start(holdMs());
         });
         connect(layerPinTimer,&QTimer::timeout,this,[this]() {
             m_layerPinLongPressed=true;
@@ -293,7 +293,7 @@ public:
         m_addLayerHoldTimer->setInterval(holdMs());
         connect(m_addLayer, &QToolButton::pressed, this, [this]() {
             m_addLayerLongPressed = false;
-            m_addLayerHoldTimer->start();
+            m_addLayerHoldTimer->start(holdMs());
         });
         connect(m_addLayer, &QToolButton::released, this, [this]() {
             m_addLayerHoldTimer->stop();
@@ -693,7 +693,7 @@ public:
                     connect(m_colorPinButton,&QToolButton::pressed,this,
                             [this,pinTimer]() {
                         m_colorPinLongPressed=false;
-                        pinTimer->start();
+                        pinTimer->start(holdMs());
                     });
                     connect(pinTimer,&QTimer::timeout,this,[this]() {
                         m_colorPinLongPressed=true;
@@ -1551,7 +1551,7 @@ private:
             connect(tile,&QObject::destroyed,this,[held]() {delete held;});
             connect(tile,&QToolButton::pressed,tile,[tileHold,held]() {
                 *held=false;
-                tileHold->start();
+                tileHold->start(holdMs());
             });
             connect(tileHold,&QTimer::timeout,tile,[this,held]() {
                 *held=true;

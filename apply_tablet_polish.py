@@ -368,6 +368,23 @@ QHash<KisInputManager*, TabletReferenceDrag> tabletReferenceDrags;""")
            """    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />""")
 
+    # Use the same user-adjustable hold time for Krita's native Android
+    # context-menu long press, not just the Compact UI custom buttons.
+    p = "libs/ui/KisLongPressEventFilter.cpp"
+    sub(p, "#include <QTimer>\n", "#include <QTimer>\n#include <QSettings>\n")
+    sub(p, """            int longPressInterval = m_longPressTimeout;""",
+           """            int longPressInterval=qBound(160,QSettings().value(
+                QStringLiteral("TabletUi/longPressMs"),260).toInt(),600);""")
+    sub(p, """    if (!m_handlingEvent && isContextMenuTarget(target)) {
+        QScopedValueRollback rollback(m_handlingEvent, true);""",
+           """    if (!m_handlingEvent && isContextMenuTarget(target)) {
+        QScopedValueRollback rollback(m_handlingEvent, true);
+#ifdef Q_OS_ANDROID
+        if(QSettings().value(QStringLiteral("TabletUi/hapticLongPress"),false).toBool())
+            QAndroidJniObject::callStaticMethod<void>(
+                "org/krita/android/MainActivity","vibrateHold","()V");
+#endif""")
+
     # The XML GUI configuration is identical to v3, but moving to v4 bumps
     # Krita's XMLGUI version so the corrected toolbar is reloaded on upgrades.
     p = "krita/CMakeLists.txt"
