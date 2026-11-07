@@ -102,6 +102,39 @@
 #include <brushengine/kis_paintop_registry.h>
 #include <klocalizedstring.h>
 
+// Draw one nested outline per real group, with separate colors and
+// inset bounds. The overlay never intercepts pen or finger input.
+class TabletCompactGroupOverlay final : public QWidget {
+public:
+    explicit TabletCompactGroupOverlay(QWidget *parent):QWidget(parent) {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setAttribute(Qt::WA_NoSystemBackground);
+        setFocusPolicy(Qt::NoFocus);
+    }
+    void setOutlines(const QVector<QPair<QRect,int>> &ranges) {
+        m_ranges=ranges; update();
+    }
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        static const QColor colors[]={
+            QColor(77,178,255),QColor(168,128,250),
+            QColor(68,201,182),QColor(242,180,94)};
+        for(const auto &range:m_ranges) {
+            const int depth=qMin(range.second,6);
+            const int inset=2+depth*5;
+            QRectF rect=range.first.adjusted(inset,1,-inset,-1);
+            if(rect.width()<14 || rect.height()<8)continue;
+            p.setPen(QPen(colors[depth%4],2.4));
+            p.setBrush(Qt::NoBrush);
+            p.drawRoundedRect(rect,5,5);
+        }
+    }
+private:
+    QVector<QPair<QRect,int>> m_ranges;
+};
+
 class TabletCompactSkin final : public QObject
 {
 public:
@@ -152,20 +185,7 @@ public:
         auto *controlLayout=new QVBoxLayout(m_brushControls);
         controlLayout->setContentsMargins(8,6,8,6);
         controlLayout->setSpacing(2);
-        auto *header=new QHBoxLayout;
-        auto *headerLabel=new QLabel(i18n("Brush controls"),m_brushControls);
-        headerLabel->setStyleSheet(QStringLiteral("color:#e6e6e6;font-weight:bold;"));
-        header->addWidget(headerLabel);
-        header->addStretch(1);
-        auto *controlSettings=new QToolButton(m_brushControls);
-        controlSettings->setIcon(KisIconUtils::loadIcon("configure"));
-        controlSettings->setIconSize(QSize(17,17));
-        controlSettings->setFixedSize(29,26);
-        controlSettings->setToolTip(i18n("Customize brush controls"));
-        header->addWidget(controlSettings);
-        controlLayout->addLayout(header);
-        connect(controlSettings,&QToolButton::clicked,this,
-                [this](){configureBrushControls();});
+        // Brush controls settings are available in the Compact UI hub.
         // Use the same touch-friendly native Krita slider/spinbox widget
         // used in the standard brush toolbar (including its size curve).
         auto createSlider=[this,controlLayout](const QString &title,qreal minimum,
@@ -277,35 +297,7 @@ public:
         m_addLayer->setFixedHeight(38);
         m_addLayer->setToolTip(i18n("Tap: new paint layer. Hold: layer and mask types"));
         layerHeader->addWidget(m_addLayer,1);
-        m_layerPinButton = new QToolButton(m_layerRail);
-        m_layerPinButton->setFixedSize(38,38);
-        m_layerPinButton->setToolTip(i18n("Tap: pin/unpin. Hold: layer settings"));
-        layerHeader->addWidget(m_layerPinButton);
-        auto *layerPinTimer=new QTimer(this);
-        layerPinTimer->setSingleShot(true);
-        layerPinTimer->setInterval(holdMs());
-        connect(m_layerPinButton,&QToolButton::pressed,this,[this,layerPinTimer]() {
-            m_layerPinLongPressed=false;
-            layerPinTimer->start(holdMs());
-        });
-        connect(layerPinTimer,&QTimer::timeout,this,[this]() {
-            m_layerPinLongPressed=true;
-            feedbackForHold();
-        });
-        // Opening a nested popup on timeout swallows the release/click event
-        // on Android. Open it only after the finger is lifted.
-        connect(m_layerPinButton,&QToolButton::released,this,[this,layerPinTimer]() {
-            layerPinTimer->stop();
-            if(m_layerPinLongPressed)
-                QTimer::singleShot(0,this,[this]() {openLayerSettings();});
-        });
-        connect(m_layerPinButton,&QToolButton::clicked,this,[this]() {
-            if(m_layerPinLongPressed){m_layerPinLongPressed=false;return;}
-            m_layerPinned=!m_layerPinned;
-            m_layerExpanded=m_layerPinned;
-            QSettings().setValue(QStringLiteral("TabletUi/layerPinned"),m_layerPinned);
-            refreshLayerControls();
-        });
+        // Pin and settings are configured in the Compact UI hub.
         m_addLayerHoldTimer = new QTimer(this);
         m_addLayerHoldTimer->setSingleShot(true);
         m_addLayerHoldTimer->setInterval(holdMs());
@@ -369,6 +361,8 @@ public:
         m_layersLayout->setContentsMargins(0,0,0,0);
         m_layersLayout->setSpacing(3);
         m_layersScroll->setWidget(m_layersContent);
+        m_groupOutline=new TabletCompactGroupOverlay(m_layersContent);
+        m_layersContent->installEventFilter(this);
         // Coalesce scroll-triggered thumbnail loads. Building thumbnails for
         // offscreen layers is deferred until they enter the viewport.
         m_layerPreviewTimer=new QTimer(this);
@@ -816,6 +810,9 @@ public:
             }
             return true;
         }
+        if(watched==m_layersContent && event->type()==QEvent::Resize) {
+            QTimer::singleShot(0,this,[this](){updateGroupOutlines();});
+        }
         if ((watched==m_surface || watched==m_mdi) &&
              (event->type()==QEvent::Resize || event->type()==QEvent::Show)) {
             QTimer::singleShot(0,this,[this](){positionOverlays();});
@@ -974,50 +971,8 @@ public:
                 const int wheelWidth=m_colorWheelPixels;
                 m_colorDocker->resize(QSize(wheelWidth,
                     wheelWidth+8+m_recent->height()));
-                if(!m_colorPinButton) {
-                    // Pin and settings live in the attached history footer.
-                    m_colorPinButton=new QToolButton(m_recent);
-                    m_colorPinButton->setFixedSize(36,36);
-                    m_colorPinButton->setIconSize(QSize(28,28));
-                    m_colorPinButton->setStyleSheet(
-                        "QToolButton{background:#242428;color:white;"
-                        "border:1px solid #aaa;border-radius:6px;font-size:18px;}");
-                    m_colorPinButton->setToolTip(i18n("Tap: pin. Hold: color wheel settings"));
-                    m_colorPinButton->setAutoRaise(false);
-                    m_colorDocker->installEventFilter(this);
-                    auto *pinTimer=new QTimer(this);
-                    pinTimer->setSingleShot(true);
-                    pinTimer->setInterval(holdMs());
-                    connect(m_colorPinButton,&QToolButton::pressed,this,
-                            [this,pinTimer]() {
-                        m_colorPinLongPressed=false;
-                        pinTimer->start(holdMs());
-                    });
-                    connect(pinTimer,&QTimer::timeout,this,[this]() {
-                        m_colorPinLongPressed=true;
-                        feedbackForHold();
-                    });
-                    connect(m_colorPinButton,&QToolButton::released,this,
-                            [this,pinTimer]() {
-                        pinTimer->stop();
-                        if(m_colorPinLongPressed)
-                            QTimer::singleShot(0,this,[this](){openColorSettings();});
-                    });
-                    connect(m_colorPinButton,&QToolButton::clicked,this,[this]() {
-                        if(m_colorPinLongPressed) {
-                            m_colorPinLongPressed=false;
-                            return;
-                        }
-                        m_colorPinned=!m_colorPinned;
-                        QSettings().setValue(QStringLiteral("TabletUi/colorPinned"),
-                                             m_colorPinned);
-                        m_colorExpanded=m_colorPinned;
-                        updateColorDock();
-                        refreshColorControls();
-                    });
-                }
-                m_colorPinButton->setText(QString());
-                m_colorPinButton->setIcon(lockIcon(m_colorPinned));
+                // Color pin and settings now live in the Compact UI hub.
+                m_colorDocker->installEventFilter(this);
             }
              m_layerRefreshTimer->start();
             m_brushControlTimer->start();
@@ -1971,6 +1926,15 @@ private:
         QDialog dialog(m_main);
         dialog.setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
         auto *layout=new QVBoxLayout(&dialog);
+        auto *pin=new QCheckBox(i18n("Keep layers panel open"),&dialog);
+        pin->setChecked(m_layerPinned);
+        layout->addWidget(pin);
+        connect(pin,&QCheckBox::toggled,&dialog,[this](bool value) {
+            m_layerPinned=value;
+            m_layerExpanded=value;
+            QSettings().setValue(QStringLiteral("TabletUi/layerPinned"),value);
+            refreshLayerControls();
+        });
         layout->addWidget(new QLabel(i18n("Layer thumbnail size"),&dialog));
         auto *size=new QSlider(Qt::Horizontal,&dialog);
         size->setRange(64,160);
@@ -2010,15 +1974,30 @@ private:
         dialog.setMinimumWidth(260);
         dialog.exec();
     }
+    void updateGroupOutlines() {
+        if(!m_groupOutline || !m_layersContent)return;
+        if(m_groupOutline->geometry()!=m_layersContent->rect())
+            m_groupOutline->setGeometry(m_layersContent->rect());
+        QVector<QPair<QRect,int>> outlines;
+        for(const GroupSpan &span:m_groupSpans) {
+            if(span.first<0 || span.last>=m_compactLayerRows.size() ||
+               span.first>span.last)continue;
+            QWidget *top=m_compactLayerRows.at(span.first).widget;
+            QWidget *last=m_compactLayerRows.at(span.last).widget;
+            if(!top || !last)continue;
+            const int y=top->y()-1;
+            const int bottom=last->geometry().bottom()+2;
+            outlines.append(qMakePair(
+                QRect(0,y,m_layerTileSize+4,qMax(1,bottom-y)),
+                span.depth));
+        }
+        m_groupOutline->setOutlines(outlines);
+        m_groupOutline->raise();
+    }
     void refreshLayerControls() {
         const bool show=m_compact && m_vm->activeNode() && m_surface->isVisible();
         m_layerRail->setVisible(show && (m_layerPinned || m_layerExpanded));
         m_layerToggleButton->setVisible(show && !m_layerPinned && !m_layerExpanded);
-        m_layerPinButton->setText(QString());
-        m_layerPinButton->setIcon(lockIcon(m_layerPinned));
-        m_layerPinButton->setIconSize(QSize(26,26));
-        m_layerPinButton->setToolTip(m_layerPinned ?
-            i18n("Unpin and collapse layers") : i18n("Pin layers open"));
         if(show)positionOverlays();
     }
     void clearLayerRows() {
@@ -2028,6 +2007,7 @@ private:
             delete item;
         }
     }
+    struct GroupSpan {int depth=0;int first=0;int last=0;};
     struct CompactLayerRow {
         KisNodeSP node;
         QPointer<QWidget> widget;
@@ -2722,6 +2702,7 @@ private:
         }
         const int oldScroll=m_layersScroll->verticalScrollBar()->value();
         m_compactLayerRows.clear();
+        m_groupSpans.clear();
         m_compactLayerHeight=0;
         clearLayerRows();
         int count=0;
@@ -2956,10 +2937,13 @@ private:
                     });
                 }
                 m_layersLayout->addWidget(frame);
+                const int first=m_compactLayerRows.size();
                 m_compactLayerRows.append({
                     node,frame,tile,depth,layerAppearanceKey(node),isGroup});
                 if(node->childCount() && (!isGroup || !node->collapsed()))
                     appendChildren(node,depth+1);
+                if(isGroup)m_groupSpans.append({
+                    depth,first,m_compactLayerRows.size()-1});
             }
         };
         appendChildren(image->root(),0);
@@ -2970,6 +2954,7 @@ private:
         QTimer::singleShot(0,this,[this,oldScroll]() {
             if(m_layersScroll)m_layersScroll->verticalScrollBar()->setValue(oldScroll);
             refreshVisibleLayerThumbnails(false);
+            updateGroupOutlines();
         });
         m_layerName->setText(active?active->name().left(14):QString());
         positionOverlays();
@@ -3016,6 +3001,28 @@ private:
             });
         }
         if(node->inherits("KisGroupLayer")) {
+            auto *groupControls=new QHBoxLayout;
+            auto *fold=new QPushButton(node->collapsed()?
+                i18n("Expand group"):i18n("Collapse group"),&dialog);
+            auto *ungroup=new QPushButton(i18n("Ungroup"),&dialog);
+            fold->setMinimumHeight(44);
+            ungroup->setMinimumHeight(44);
+            groupControls->addWidget(fold);
+            groupControls->addWidget(ungroup);
+            layout->addLayout(groupControls);
+            connect(fold,&QPushButton::clicked,&dialog,[this,node,&dialog]() {
+                node->setCollapsed(!node->collapsed());
+                dialog.accept();
+                refreshLayers();
+            });
+            connect(ungroup,&QPushButton::clicked,&dialog,[this,node,&dialog]() {
+                if(!node->parent() || !m_vm || !m_vm->nodeManager())return;
+                m_vm->nodeManager()->slotUiActivatedNode(node);
+                m_vm->nodeManager()->slotSetSelectedNodes(KisNodeList{node});
+                m_vm->nodeManager()->quickUngroup();
+                dialog.accept();
+                QTimer::singleShot(240,this,[this](){refreshLayers();});
+            });
             const bool pass=KisLayerPropertiesIcons::nodeProperty(
                 node,KisLayerPropertiesIcons::passThrough,false).toBool();
             auto *through=new QCheckBox(i18n("Pass-through group"),&dialog);
@@ -3167,14 +3174,9 @@ private:
         }
         const int columns=8;
         const int swatchSize=qMax(16,(m_colorWheelPixels-20)/columns);
-        if(m_colorPinButton) {
-            m_colorPinButton->setFixedSize(swatchSize,swatchSize);
-            m_colorPinButton->setIconSize(QSize(swatchSize-3,swatchSize-3));
-            m_recentLayout->addWidget(m_colorPinButton,0,7);
-        }
         const QList<KoColor> colors=provider->colorHistory();
         const int maxColors=m_colorShowHistory ?
-            qMin(7+columns*(m_colorHistoryRows-1),colors.size()) : 0;
+            qMin(columns*m_colorHistoryRows,colors.size()) : 0;
         for(int i=0;i<maxColors;++i) {
             const QColor color=colors.at(i).toQColor();
             auto *swatch=new QToolButton(m_recent);
@@ -3186,8 +3188,8 @@ private:
             connect(swatch,&QToolButton::clicked,this,[provider,color]() {
                 provider->setFGColor(KoColor(color,provider->fgColor().colorSpace()));
             });
-            const int row=i<7?0:1+(i-7)/columns;
-            const int col=i<7?i:(i-7)%columns;
+            const int row=i/columns;
+            const int col=i%columns;
             m_recentLayout->addWidget(swatch,row,col);
         }
         m_recent->setFixedWidth(m_colorWheelPixels);
@@ -3201,6 +3203,16 @@ private:
         QDialog dialog(m_main);
         dialog.setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
         auto *layout=new QVBoxLayout(&dialog);
+        auto *pin=new QCheckBox(i18n("Keep color wheel open"),&dialog);
+        pin->setChecked(m_colorPinned);
+        layout->addWidget(pin);
+        connect(pin,&QCheckBox::toggled,&dialog,[this](bool value) {
+            m_colorPinned=value;
+            m_colorExpanded=value;
+            QSettings().setValue(QStringLiteral("TabletUi/colorPinned"),value);
+            refreshColorControls();
+            updateColorDock();
+        });
         auto *history=new QCheckBox(i18n("Show recent colors"),&dialog);
         history->setChecked(m_colorShowHistory);
         layout->addWidget(history);
@@ -3312,15 +3324,6 @@ private:
         const bool show=m_compact && m_vm->activeNode() && m_surface->isVisible();
         m_colorButton->setVisible(show && !m_colorExpanded);
         m_recent->setVisible(show && m_colorExpanded);
-        if(m_colorPinButton) {
-            m_colorPinButton->setText(QString());
-            m_colorPinButton->setIcon(lockIcon(m_colorPinned));
-            m_colorPinButton->setToolTip(m_colorPinned ?
-                i18n("Unpin and collapse color wheel") :
-                i18n("Pin color wheel to bottom-right corner"));
-            m_colorPinButton->setVisible(show && m_colorExpanded);
-            if(show && m_colorExpanded)m_colorPinButton->raise();
-        }
     }
     void updateColorDock() {
         if(!m_colorDocker)return;
@@ -3487,6 +3490,8 @@ private:
     int m_visibleLayerCount=1;
     int m_compactLayerHeight=0;
     QList<CompactLayerRow> m_compactLayerRows;
+    QList<GroupSpan> m_groupSpans;
+    TabletCompactGroupOverlay *m_groupOutline=nullptr;
     const KisImage *m_lastLayerImage=nullptr;
     KisNodeSP m_lastLayerActive;
     QTimer *m_layerPreviewTimer=nullptr;
