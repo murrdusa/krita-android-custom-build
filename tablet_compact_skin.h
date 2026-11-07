@@ -2623,7 +2623,10 @@ private:
                 auto *tile=new QToolButton(frame);
                 tile->setObjectName(QStringLiteral("compactLayerTouchTile"));
                 tile->setAttribute(Qt::WA_AcceptTouchEvents,true);
-                tile->setGeometry(1,1,rowWidth,rowHeight);
+                // Same overall row size, with a small visible left inset for
+                // clipped layers instead of shrinking them to a short card.
+                tile->setGeometry(inheritsAlpha?7:1,1,
+                                  rowWidth-(inheritsAlpha?6:0),rowHeight);
                 tile->setToolButtonStyle(compactRow ?
                     Qt::ToolButtonTextBesideIcon:Qt::ToolButtonIconOnly);
                 tile->setIconSize(QSize(iconPx,iconPx));
