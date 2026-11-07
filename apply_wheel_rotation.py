@@ -28,7 +28,7 @@ def main(root: Path):
             getDimensions() == KisVisualColorSelectorShape::onedimensional &&
             m_type == KisVisualEllipticalSelectorShape::border &&
             QSettings().value(QStringLiteral("TabletUi/compact"),false).toBool()) {
-            angle = fmod(angle -
+            angle = fmod(angle +
                 QSettings().value(QStringLiteral(
                     "TabletUi/colorHueRotationDegrees"),0).toDouble()
                 + 720.0, 360.0);
