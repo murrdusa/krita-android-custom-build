@@ -83,8 +83,8 @@ def report_completed(watcher):
     if report_path.is_file():
         body = report_path.read_text(encoding="utf-8", errors="replace")
     else:
-        body = f"# Local Android build: {'SUCCESS' if success else 'FAILED'}\n\nRevision: \`{sha}\`\n"
-    body = (f"**Commit:** \`{sha}\`\n\n"
+        body = f"# Local Android build: {'SUCCESS' if success else 'FAILED'}\n\nRevision: `{sha}`\n"
+    body = (f"**Commit:** `{sha}`\n\n"
             f"**Outcome:** {'SUCCESS' if success else 'FAILED'}\n\n"
             f"**Completed UTC:** {watcher.get('completed_at', 'unknown')}\n\n" + body)
     issue_url = ""
@@ -122,7 +122,8 @@ def process_once():
             state["last_pending"] = key
             save(STATE, state)
             return f"Pending status posted for {sha[:12]}"
-    elif watcher.get("result") in ("success", "failure") and watcher.get("completed_at"):
+    elif (watcher.get("phase") == "idle" and watcher.get("result") in ("success", "failure")
+          and watcher.get("completed_at")):
         key = f"{sha}:{watcher['completed_at']}"
         if key != state.get("last_complete"):
             url = report_completed(watcher)
