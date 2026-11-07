@@ -352,9 +352,13 @@ public:
         m_layersScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         m_layersScroll->verticalScrollBar()->setSingleStep(16);
         m_layersScroll->setStyleSheet("QScrollArea{background:transparent;border:none;}");
-        m_layersScroll->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
+        // The old LeftMouseButtonGesture stole pen/finger-generated mouse
+        // release events from the layer tiles, preventing drag-to-reorder.
+        // The tile gesture handler owns thumbnail touches; Qt's scroller
+        // handles touches on empty scrollbar space only.
+        m_layersScroll->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,true);
         QScroller::grabGesture(m_layersScroll->viewport(),
-                              QScroller::LeftMouseButtonGesture);
+                              QScroller::TouchGesture);
         m_layersContent = new QWidget(m_layersScroll);
         m_layersLayout = new QVBoxLayout(m_layersContent);
         m_layersLayout->setContentsMargins(0,0,0,0);
