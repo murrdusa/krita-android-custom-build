@@ -896,6 +896,14 @@ private:
             if(QAction *action=collection->action(id))
                 m_compactBar->addAction(action);
         }
+        if(QAction *quick=collection->action(
+                QStringLiteral("tablet_quick_actions"))) {
+            if(QToolButton *button=qobject_cast<QToolButton*>(
+                    m_compactBar->widgetForAction(quick))) {
+                button->setPopupMode(QToolButton::InstantPopup);
+                button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+            }
+        }
     }
     void configureCompactToolbar() {
         QDialog dialog(m_main);
