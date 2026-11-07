@@ -219,7 +219,11 @@ public:
                     refreshBrushControls();
                     // The contextual selection bar may cause Qt to recreate
                     // subwindow chrome after it is pinned/unpinned.
-                    if(m_compact && m_mdi->viewMode()==QMdiArea::SubWindowView) {
+                    if(m_compact) {
+                        // Krita may restore its saved tabbed MDI mode when
+                        // pinning Selection Actions notifies configuration.
+                        if(m_mdi->viewMode()!=QMdiArea::SubWindowView)
+                            m_mdi->setViewMode(QMdiArea::SubWindowView);
                         for(QMdiSubWindow *subwin:m_mdi->subWindowList()) {
                             if(subwin && !(subwin->windowFlags() &
                                            Qt::FramelessWindowHint)) {
