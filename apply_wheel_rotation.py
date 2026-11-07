@@ -19,8 +19,7 @@ def main(root: Path):
         getDimensions() == KisVisualColorSelectorShape::onedimensional &&
         m_type == KisVisualEllipticalSelectorShape::border &&
         QSettings().value(QStringLiteral("TabletUi/compact"),false).toBool()) {
-        angle += QSettings().value(
-            QStringLiteral("TabletUi/colorHueRotationDegrees"),0).toDouble();
+        angle += m_lastHueRotation < 0 ? 0 : m_lastHueRotation;
     }
     line.setAngle(angle);
 """, "forward mapping")
@@ -29,8 +28,7 @@ def main(root: Path):
             m_type == KisVisualEllipticalSelectorShape::border &&
             QSettings().value(QStringLiteral("TabletUi/compact"),false).toBool()) {
             angle = fmod(angle +
-                QSettings().value(QStringLiteral(
-                    "TabletUi/colorHueRotationDegrees"),0).toDouble()
+                (m_lastHueRotation < 0 ? 0 : m_lastHueRotation)
                 + 720.0, 360.0);
         }
         x = angle/360.0;

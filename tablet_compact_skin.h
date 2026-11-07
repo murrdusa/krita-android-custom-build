@@ -236,7 +236,7 @@ public:
         m_brushControls->adjustSize();
         // Follow changes made through pen, shortcuts or Krita's own sliders.
         m_brushControlTimer=new QTimer(this);
-        m_brushControlTimer->setInterval(350);
+        m_brushControlTimer->setInterval(650);
         connect(m_brushControlTimer,&QTimer::timeout,this,[this]() {
             refreshBrushControls();
             refreshCompactToolbarIconSize();
@@ -369,6 +369,17 @@ public:
         m_layersLayout->setContentsMargins(0,0,0,0);
         m_layersLayout->setSpacing(3);
         m_layersScroll->setWidget(m_layersContent);
+        // Coalesce scroll-triggered thumbnail loads. Building thumbnails for
+        // offscreen layers is deferred until they enter the viewport.
+        m_layerPreviewTimer=new QTimer(this);
+        m_layerPreviewTimer->setSingleShot(true);
+        connect(m_layerPreviewTimer,&QTimer::timeout,this,[this]() {
+            refreshVisibleLayerThumbnails(false);
+        });
+        connect(m_layersScroll->verticalScrollBar(),&QScrollBar::valueChanged,
+                this,[this](int) {
+            if(m_compact)m_layerPreviewTimer->start(95);
+        });
         m_layerDropMarker=new QFrame(m_layersContent);
         m_layerDropMarker->setFixedHeight(4);
         m_layerDropMarker->setStyleSheet(
@@ -669,9 +680,13 @@ public:
             }
         });
         m_layerRefreshTimer = new QTimer(this);
-        m_layerRefreshTimer->setInterval(5000);
+        m_layerRefreshTimer->setInterval(3200);
         connect(m_layerRefreshTimer, &QTimer::timeout,this,[this]() {
-            if(m_compact && m_vm->activeNode()) refreshLayers();
+            if(!m_compact || !m_vm->activeNode())return;
+            // The model comparison is cheap when nothing structural changed.
+            // Only the active visible painting thumbnail needs a live refresh.
+            refreshLayers();
+            refreshVisibleLayerThumbnails(true);
         });
         for(int i=0;i<3;++i) {
             m_lastPreset[i] = QSettings().value(
@@ -881,12 +896,14 @@ public:
             rememberDockers();
             rememberCompactToolbarState(true);
             enforceCompactChrome();
-            QTimer::singleShot(120,this,[this](){refreshVisibility();});
-            QTimer::singleShot(600,this,[this](){refreshVisibility();});
-            QTimer::singleShot(0,this,[this](){refreshVisibility();});
-            QTimer::singleShot(0,this,[this](){enforceCompactChrome();});
-            QTimer::singleShot(350,this,[this](){enforceCompactChrome();});
-            QTimer::singleShot(1000,this,[this](){enforceCompactChrome();});
+            // One deferred pass is enough for Qt's asynchronous dock/MDI
+            // changes. The immediate pass happens at the end of this method.
+            QTimer::singleShot(420,this,[this]() {
+                if(m_compact) {
+                    enforceCompactChrome();
+                    refreshVisibility();
+                }
+            });
             const QByteArray storedNormal=QSettings().value(
                 QStringLiteral("TabletUi/normalWindowStateV2")).toByteArray();
             if(m_startupCompact && !storedNormal.isEmpty()) {
@@ -1216,10 +1233,12 @@ private:
         connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);
         connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
         if(dialog.exec()!=QDialog::Accepted)return;
-        for(int i=0;i<keys.size();++i)
+        for(int i=0;i<keys.size();++i) {
+            m_brushControlEnabled[i]=toggles.at(i)->isChecked();
             QSettings().setValue(
                 QStringLiteral("TabletUi/brushControl/")+keys.at(i),
-                toggles.at(i)->isChecked());
+                m_brushControlEnabled[i]);
+        }
         refreshBrushControls();
         positionOverlays();
     }
@@ -1235,18 +1254,32 @@ private:
         const auto preset=provider->currentPreset();
         if(preset && preset->settings())
             hasFlow=preset->settings()->hasProperty(QStringLiteral("FlowValue"));
-        auto enabled=[](const QString &key) {
-            return QSettings().value(
-                QStringLiteral("TabletUi/brushControl/")+key,true).toBool();
-        };
-        m_sizeRow->setVisible(enabled(QStringLiteral("size")));
-        m_opacityRow->setVisible(enabled(QStringLiteral("opacity")));
-        m_flowRow->setVisible(hasFlow && enabled(QStringLiteral("flow")));
-        m_compositeRow->setVisible(enabled(QStringLiteral("composite")));
+        if(!m_brushPrefsLoaded) {
+            const QStringList keys={QStringLiteral("size"),
+                QStringLiteral("opacity"),QStringLiteral("flow"),
+                QStringLiteral("composite")};
+            for(int i=0;i<4;++i)
+                m_brushControlEnabled[i]=QSettings().value(
+                    QStringLiteral("TabletUi/brushControl/")+keys.at(i),
+                    true).toBool();
+            m_brushPrefsLoaded=true;
+        }
+        const bool sizeVisible=m_sizeRow->isVisible();
+        const bool opacityVisible=m_opacityRow->isVisible();
+        const bool flowVisible=m_flowRow->isVisible();
+        const bool compositeVisible=m_compositeRow->isVisible();
+        m_sizeRow->setVisible(m_brushControlEnabled[0]);
+        m_opacityRow->setVisible(m_brushControlEnabled[1]);
+        m_flowRow->setVisible(hasFlow && m_brushControlEnabled[2]);
+        m_compositeRow->setVisible(m_brushControlEnabled[3]);
         const int index=m_brushComposite->findData(provider->currentCompositeOp());
         if(index>=0)m_brushComposite->setCurrentIndex(index);
         m_syncingBrushControls=false;
-        m_brushControls->adjustSize();
+        if(sizeVisible!=m_sizeRow->isVisible() ||
+           opacityVisible!=m_opacityRow->isVisible() ||
+           flowVisible!=m_flowRow->isVisible() ||
+           compositeVisible!=m_compositeRow->isVisible())
+            m_brushControls->adjustSize();
     }
     void refreshCompactToolbarIconSize() {
         if(!m_compactBar)return;
@@ -1729,13 +1762,25 @@ private:
         for(int i=0;i<3;++i) {
             QToolButton *button=m_brushButtons[i];
             if(!button)continue;
-            auto preset=findPreset(m_lastPreset[i]);
-            if(preset && !preset->image().isNull())
-                button->setIcon(QIcon(QPixmap::fromImage(preset->image())));
-            button->setStyleSheet(i==m_slot && m_slotReady ?
-                "QToolButton{color:white;border:2px solid #e56c6c;"
-                "border-radius:5px;background:#38383d;}" :
-                "QToolButton{color:white;border:none;border-radius:5px;}");
+            // Searching the entire Krita brush resource DB on every UI
+            // visibility pass is expensive, especially on Android storage.
+            if(m_cachedSlotIconNames[i]!=m_lastPreset[i] ||
+               !m_cachedSlotIconInitialized[i]) {
+                auto preset=findPreset(m_lastPreset[i]);
+                if(preset && !preset->image().isNull())
+                    button->setIcon(QIcon(QPixmap::fromImage(preset->image())));
+                m_cachedSlotIconNames[i]=m_lastPreset[i];
+                m_cachedSlotIconInitialized[i]=true;
+            }
+            if(m_cachedPaintHighlighted[i]!=(i==m_slot && m_slotReady) ||
+               !m_cachedPaintStyleInitialized[i]) {
+                button->setStyleSheet(i==m_slot && m_slotReady ?
+                    "QToolButton{color:white;border:2px solid #e56c6c;"
+                    "border-radius:5px;background:#38383d;}" :
+                    "QToolButton{color:white;border:none;border-radius:5px;}");
+                m_cachedPaintHighlighted[i]=i==m_slot && m_slotReady;
+                m_cachedPaintStyleInitialized[i]=true;
+            }
         }
     }
     void openPresetGrid(int slot) {
@@ -1988,7 +2033,73 @@ private:
         QPointer<QWidget> widget;
         QPointer<QToolButton> tile;
         int depth=0;
+        QString appearance;
+        bool thumbnailReady=false;
     };
+    QString layerAppearanceKey(KisNodeSP node) const {
+        if(!node)return QString();
+        const bool group=node->inherits("KisGroupLayer");
+        const bool clipped=compactInheritsAlpha(node);
+        QString key=node->name();
+        key+=QLatin1Char('\x1f');
+        key+=QLatin1Char(node->visible()?'1':'0');
+        key+=QLatin1Char(node->userLocked()?'1':'0');
+        key+=QLatin1Char(clipped?'1':'0');
+        key+=QLatin1Char(group?'1':'0');
+        key+=QLatin1Char(node->inherits("KisMask")?'1':'0');
+        key+=QLatin1Char(group && node->collapsed()?'1':'0');
+        key+=QLatin1Char(group &&
+            qobject_cast<KisGroupLayer*>(node.data())->passThroughMode()?'1':'0');
+        key+=QLatin1Char(node->nextSibling() &&
+            compactInheritsAlpha(node->nextSibling())?'1':'0');
+        if(auto *paint=qobject_cast<KisPaintLayer*>(node.data()))
+            key+=QLatin1Char(paint->alphaLocked()?'1':'0');
+        return key;
+    }
+    void refreshVisibleLayerThumbnails(bool forceActive) {
+        if(!m_compact || m_clipTransactionBusy || !m_layersScroll ||
+           !m_layersScroll->viewport() || !m_layerRail->isVisible())return;
+        // Don't decode new thumbnails under a finger during kinetic scroll
+        // or stylus reordering. Display them when movement has settled.
+        if(!m_layerTouches.isEmpty() || m_layerDragNode) {
+            if(m_layerPreviewTimer)m_layerPreviewTimer->start(160);
+            return;
+        }
+        QWidget *viewport=m_layersScroll->viewport();
+        QRect view(viewport->mapToGlobal(QPoint()),viewport->size());
+        view.adjust(0,-50,0,50);
+        const KisNodeSP active=m_vm->activeNode();
+        for(CompactLayerRow &row:m_compactLayerRows) {
+            if(!row.widget || !row.tile || !row.node)continue;
+            if(row.node->inherits("KisGroupLayer")) {
+                row.thumbnailReady=true;continue;
+            }
+            if(forceActive && row.node!=active)continue;
+            if(row.thumbnailReady && !forceActive)continue;
+            const QRect bounds(row.widget->mapToGlobal(QPoint()),
+                               row.widget->size());
+            if(!bounds.intersects(view))continue;
+            const QSize size=row.tile->iconSize();
+            const QImage thumb=row.node->createThumbnail(
+                size.width(),size.height(),Qt::KeepAspectRatio);
+            if(!thumb.isNull())
+                row.tile->setIcon(QIcon(QPixmap::fromImage(thumb)));
+            row.thumbnailReady=true;
+        }
+    }
+    void refreshSelectedLayerTiles(KisNodeSP active) {
+        if(m_lastLayerActive==active)return;
+        for(const CompactLayerRow &row:m_compactLayerRows) {
+            if(!row.tile || (row.node!=active &&
+               row.node!=m_lastLayerActive))continue;
+            row.tile->setStyleSheet(row.node==active ?
+                "QToolButton{border:3px solid #e86c79;border-radius:5px;"
+                "background:#a4a4a4;}" :
+                "QToolButton{border:2px solid #808080;border-radius:5px;"
+                "background:#a4a4a4;}");
+        }
+        m_lastLayerActive=active;
+    }
     struct CompactTouchPoint {
         KisNodeSP node;
         QPoint start;
@@ -2565,11 +2676,54 @@ private:
            !m_layerTouches.isEmpty())return;
         const auto image=m_vm->image().toStrongRef();
         if(!image || !image->root())return;
+        const KisNodeSP active=m_vm->activeNode();
+        // A selection or painting update must not destroy and rebuild the
+        // whole UI. First compare inexpensive node identities/properties.
+        // Rebuild only for real stacking, grouping, property or size changes.
+        bool identical=m_lastLayerImage.toStrongRef()==image;
+        if(identical) {
+            QList<QPair<KisNodeSP,int>> layoutNodes;
+            std::function<void(KisNodeSP,int)> collect;
+            collect=[&](KisNodeSP parent,int depth) {
+                if(!parent || layoutNodes.size()>=180)return;
+                for(KisNodeSP node=parent->lastChild();node &&
+                    layoutNodes.size()<180;node=node->prevSibling()) {
+                    if(node->inherits("KisReferenceImagesLayer"))continue;
+                    if(isCompactClipGroup(node)) {
+                        collect(node,depth);continue;
+                    }
+                    layoutNodes.append(qMakePair(node,depth));
+                    if(node->childCount() &&
+                       (!node->inherits("KisGroupLayer") ||
+                        !node->collapsed()))
+                        collect(node,depth+1);
+                }
+            };
+            collect(image->root(),0);
+            identical=layoutNodes.size()==m_compactLayerRows.size();
+            if(identical) {
+                for(int i=0;i<layoutNodes.size();++i) {
+                    const CompactLayerRow &row=m_compactLayerRows.at(i);
+                    if(!row.widget || !row.tile ||
+                       row.node!=layoutNodes.at(i).first ||
+                       row.depth!=layoutNodes.at(i).second ||
+                       row.widget->width()!=m_layerTileSize+4 ||
+                       row.appearance!=layerAppearanceKey(row.node)) {
+                        identical=false;break;
+                    }
+                }
+            }
+            if(identical) {
+                refreshSelectedLayerTiles(active);
+                m_layerName->setText(active->name().left(14));
+                refreshVisibleLayerThumbnails(false);
+                return;
+            }
+        }
         const int oldScroll=m_layersScroll->verticalScrollBar()->value();
         m_compactLayerRows.clear();
         m_compactLayerHeight=0;
         clearLayerRows();
-        const KisNodeSP active=m_vm->activeNode();
         int count=0;
         std::function<void(KisNodeSP,int)> appendChildren;
         appendChildren=[this,&appendChildren,&count,active](KisNodeSP parent,int depth) {
@@ -2630,10 +2784,9 @@ private:
                 tile->setToolButtonStyle(compactRow ?
                     Qt::ToolButtonTextBesideIcon:Qt::ToolButtonIconOnly);
                 tile->setIconSize(QSize(iconPx,iconPx));
-                const QImage thumb=node->createThumbnail(
-                    iconPx,iconPx,Qt::KeepAspectRatio);
+                // Actual image thumbnails are decoded only after Qt lays out
+                // the rows, and only for tiles near the visible viewport.
                 if(isGroup)tile->setIcon(KisIconUtils::loadIcon("folder"));
-                else if(!thumb.isNull())tile->setIcon(QIcon(QPixmap::fromImage(thumb)));
                 tile->setText(compactRow ?
                     QFontMetrics(tile->font()).elidedText(node->name(),
                         Qt::ElideRight,qMax(20,rowWidth-iconPx-22)):node->name());
@@ -2803,7 +2956,8 @@ private:
                     });
                 }
                 m_layersLayout->addWidget(frame);
-                m_compactLayerRows.append({node,frame,tile,depth});
+                m_compactLayerRows.append({
+                    node,frame,tile,depth,layerAppearanceKey(node),isGroup});
                 if(node->childCount() && (!isGroup || !node->collapsed()))
                     appendChildren(node,depth+1);
             }
@@ -2811,8 +2965,11 @@ private:
         appendChildren(image->root(),0);
         m_layersLayout->addStretch(1);
         m_visibleLayerCount=count;
+        m_lastLayerImage=image.toWeakRef();
+        m_lastLayerActive=active;
         QTimer::singleShot(0,this,[this,oldScroll]() {
             if(m_layersScroll)m_layersScroll->verticalScrollBar()->setValue(oldScroll);
+            refreshVisibleLayerThumbnails(false);
         });
         m_layerName->setText(active?active->name().left(14):QString());
         positionOverlays();
@@ -3312,6 +3469,12 @@ private:
     QComboBox *m_brushComposite=nullptr;
     QTimer *m_brushControlTimer=nullptr;
     bool m_syncingBrushControls=false;
+    bool m_brushPrefsLoaded=false;
+    bool m_brushControlEnabled[4]={true,true,true,true};
+    QString m_cachedSlotIconNames[3];
+    bool m_cachedSlotIconInitialized[3]={false,false,false};
+    bool m_cachedPaintHighlighted[3]={false,false,false};
+    bool m_cachedPaintStyleInitialized[3]={false,false,false};
     QToolButton *m_brushButtons[3]={nullptr,nullptr,nullptr};
     QFrame *m_layerRail=nullptr;
     QToolButton *m_layerToggleButton=nullptr;
@@ -3324,6 +3487,9 @@ private:
     int m_visibleLayerCount=1;
     int m_compactLayerHeight=0;
     QList<CompactLayerRow> m_compactLayerRows;
+    KisImageWSP m_lastLayerImage;
+    KisNodeSP m_lastLayerActive;
+    QTimer *m_layerPreviewTimer=nullptr;
     QHash<int,CompactTouchPoint> m_layerTouches;
     QTimer *m_layerTouchHoldTimer=nullptr;
     QTimer *m_layerEdgeScrollTimer=nullptr;
