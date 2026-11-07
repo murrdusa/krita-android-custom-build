@@ -1842,7 +1842,16 @@ private:
         m_vm->nodeManager()->slotUiActivatedNode(start);
         m_vm->nodeManager()->slotSetSelectedNodes(selected);
         m_vm->nodeManager()->createQuickGroup();
-        QTimer::singleShot(250,this,[this]() {refreshLayers();});
+        // Match the pinch-to-folder interaction: the newly-created group
+        // starts collapsed, but native Krita grouping remains fully undoable.
+        QTimer::singleShot(250,this,[this,start,finish,parent]() mutable {
+            const KisNodeSP newParent=start->parent();
+            if(newParent && newParent!=parent &&
+               newParent==finish->parent() &&
+               newParent->inherits("KisGroupLayer"))
+                newParent->setCollapsed(true);
+            refreshLayers();
+        });
     }
     bool handleLayerTouch(QObject *watched,QEvent *event) {
         if(!m_compact || !m_layerRail || !m_layerRail->isVisible())return false;
