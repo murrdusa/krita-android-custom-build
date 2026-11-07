@@ -506,8 +506,13 @@ public:
             m_hubMenu->addSection(i18n("Compact UI settings"));
             // Keep Tablet Controls and toolbar customization in this
             // always-present settings group, not in optional quick actions.
-            if(QAction *tablet=collection->action(QStringLiteral("tablet_settings")))
-                m_hubMenu->addAction(tablet);
+            QAction *tabletSettings=m_hubMenu->addAction(i18n("Tablet Controls..."));
+            tabletSettings->setIcon(KisIconUtils::loadIcon("configure"));
+            connect(tabletSettings,&QAction::triggered,this,[this]() {
+                if(QAction *native=m_main->actionCollection()->action(
+                        QStringLiteral("tablet_settings")))
+                    native->trigger();
+            });
             m_hubMenu->addAction(m_customizeAction);
             QAction *brush=m_hubMenu->addAction(i18n("Brush controls..."));
             connect(brush,&QAction::triggered,this,
