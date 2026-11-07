@@ -11,6 +11,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QBoxLayout>
 #include <QColor>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -662,8 +663,12 @@ public:
                 }
                 // The footer must share the floating dock's window to
                 // receive finger and pen input above the canvas.
-                if(m_recent->parentWidget()!=m_colorDocker)
-                    m_recent->setParent(m_colorDocker);
+                if(QWidget *selector=m_colorDocker->widget()) {
+                    if(m_recent->parentWidget()!=selector)
+                        m_recent->setParent(selector);
+                    if(auto *layout=dynamic_cast<QBoxLayout*>(selector->layout()))
+                        layout->addWidget(m_recent);
+                }
                 const int wheelWidth=m_colorWheelPixels;
                 m_colorDocker->resize(QSize(wheelWidth,
                     wheelWidth+24+m_recent->height()));
@@ -731,6 +736,12 @@ public:
                         bodyLayout->setSpacing(m_nativeColorSpacing);
                     }
                 }
+                if(QWidget *selector=m_colorDocker->widget()) {
+                    if(QLayout *layout=selector->layout())
+                        layout->removeWidget(m_recent);
+                }
+                m_recent->hide();
+                m_recent->setParent(m_surface);
                 if(m_nativeSelectorMenuButton)m_nativeSelectorMenuButton->show();
             }
             if(!m_previousWindowState.isEmpty())
@@ -1745,7 +1756,7 @@ private:
             delete item;
         }
         const int columns=8;
-        const int swatchSize=qMax(16,(m_colorWheelPixels-22)/columns-2);
+        const int swatchSize=qMax(16,(m_colorWheelPixels-20)/columns);
         if(m_colorPinButton) {
             m_colorPinButton->setFixedSize(swatchSize,swatchSize);
             m_colorPinButton->setIconSize(QSize(swatchSize-3,swatchSize-3));
@@ -1881,12 +1892,17 @@ private:
             QPoint(qMax(0,m_surface->width()-m_colorDocker->width()-8),
                    qMax(0,m_surface->height()-m_colorDocker->height()-bottomGap)));
         m_colorDocker->move(global);
-        m_recent->setGeometry(0,
-            m_colorHistoryOnTop ? 0 :
-                qMax(0,m_colorDocker->height()-m_recent->height()),
-            m_colorWheelPixels,m_recent->height());
+        if(QWidget *selector=m_colorDocker->widget()) {
+            if(auto *layout=dynamic_cast<QBoxLayout*>(selector->layout())) {
+                const int desired=m_colorHistoryOnTop?0:layout->count()-1;
+                if(layout->indexOf(m_recent)!=desired) {
+                    layout->removeWidget(m_recent);
+                    layout->insertWidget(
+                        m_colorHistoryOnTop?0:layout->count(),m_recent);
+                }
+            }
+        }
         m_recent->show();
-        m_recent->raise();
         if(m_colorPinButton)m_colorPinButton->show();
     }
     void positionOverlays() {
