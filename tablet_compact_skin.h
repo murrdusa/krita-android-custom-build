@@ -979,8 +979,8 @@ private:
         p.drawEllipse(QRectF(23,1,8,8));
         for(int i=0;i<8;++i) {
             const double rad=i*3.141592653589793/4.0;
-            p.drawLine(QPointF(27+4*cos(rad),5+4*sin(rad)),
-                       QPointF(27+5.5*cos(rad),5+5.5*sin(rad)));
+            p.drawLine(QPointF(27+4*std::cos(rad),5+4*std::sin(rad)),
+                       QPointF(27+5.5*std::cos(rad),5+5.5*std::sin(rad)));
         }
         p.setPen(Qt::NoPen);
         p.setBrush(Qt::white);
