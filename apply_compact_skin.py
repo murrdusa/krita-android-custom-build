@@ -19,6 +19,21 @@ def main(root: Path):
     if s.count(old)!=1 or 'tablet_compact_skin.h' in s:
         raise RuntimeError("v7: mainwindow include anchor mismatch")
     s=s.replace(old,new)
+    # The native popup must be initialized before KisViewManager and
+    # KisPaintopBox are constructed; changing the setting later only leaves
+    # the docker mode active for the current session.
+    startup='''    KisScopedPerformanceLogger perfLog(QStringLiteral("KisMainWindow::KisMainWindow"));'''
+    setup='''    KisScopedPerformanceLogger perfLog(QStringLiteral("KisMainWindow::KisMainWindow"));
+#ifdef Q_OS_ANDROID
+    if(!QSettings().value(QStringLiteral("TabletUi/nativeToolOptionsV1"),false).toBool()) {
+        KisConfig tabletCfg(false);
+        tabletCfg.setToolOptionsInDocker(false);
+        QSettings().setValue(QStringLiteral("TabletUi/nativeToolOptionsV1"),true);
+    }
+#endif'''
+    if s.count(startup)!=1:
+        raise RuntimeError("Native Tool Options startup anchor mismatch")
+    s=s.replace(startup,setup)
     old='''    QTimer::singleShot(0, this, [this, tabletCompact]() {'''
     new='''    // Separate presentation layer; Krita's normal dockers/actions are restored.
     auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);
