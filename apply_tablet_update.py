@@ -566,7 +566,6 @@ QSet<KisInputManager*> tabletReferencePenPresses;
         galleryButton->setToolTip(i18n("Switch between recent projects and the folder gallery"));
         horizontalLayout_10->addWidget(galleryButton);
         QStackedWidget *pages = recentDocsStackedWidget;
-        QWidget *recentPage = pages->currentWidget();
         QWidget *galleryPage = new QWidget(pages);
         QVBoxLayout *galleryLayout = new QVBoxLayout(galleryPage);
         auto *galleryControls = new QHBoxLayout;
@@ -650,9 +649,16 @@ QSet<KisInputManager*> tabletReferencePenPresses;
             }
         };
         connect(galleryButton, &QToolButton::clicked, this,
-                [pages, recentPage, galleryPage, galleryButton, populate, this]() {
+                [pages, galleryPage, galleryButton, populate, this]() {
             if (pages->currentWidget() == galleryPage) {
-                pages->setCurrentWidget(recentPage);
+                // Krita's recent-file model loads asynchronously and may
+                // replace the initially saved placeholder with the real list.
+                // Always restore based on the live model, not recentPage.
+                const bool hasRecent=recentDocumentsListView->model() &&
+                    recentDocumentsListView->model()->rowCount()>0;
+                pages->setCurrentWidget(hasRecent ?
+                    static_cast<QWidget*>(recentDocumentsListView) :
+                    static_cast<QWidget*>(labelNoRecentDocs));
                 galleryButton->setText(i18n("Project Gallery"));
                 recentDocumentsLabel->setText(i18n("Recent Images"));
                 clearRecentFilesLink->show();
