@@ -427,7 +427,7 @@ KisInputManager::KisInputManager(QObject *parent)
             const auto &points = touchEvent->touchPoints();
             qreal distance = QLineF(points.at(0).pos(), points.at(1).pos()).length();
             TabletPinchTracking &tracker = tabletPinches[this];
-            if (!tracker.tracked && distance > 140) {
+            if (!tracker.tracked && distance > 115) {
                 tracker.tracked = true;
                 tracker.startDistance = distance;
                 tracker.smallestDistance = distance;
@@ -446,9 +446,9 @@ KisInputManager::KisInputManager(QObject *parent)
         if (tracker.tracked && tracker.age.isValid() &&
             tracker.age.elapsed() <= qBound(120, QSettings().value(
                 QStringLiteral("TabletUi/pinchMs"), 250).toInt(), 500) &&
-            tracker.startDistance - tracker.smallestDistance > 110 &&
-            tracker.smallestDistance < tracker.startDistance * 0.38 &&
-            tracker.smallestDistance < 65) {
+            tracker.startDistance - tracker.smallestDistance > 82 &&
+            tracker.smallestDistance < tracker.startDistance * 0.51 &&
+            tracker.smallestDistance < 78) {
             QTimer::singleShot(0, this, []() {
                 if (!KisPart::exists()) return;
                 KisMainWindow *window = KisPart::instance()->currentMainwindow();
