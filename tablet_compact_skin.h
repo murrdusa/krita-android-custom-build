@@ -2680,7 +2680,7 @@ private:
         // A selection or painting update must not destroy and rebuild the
         // whole UI. First compare inexpensive node identities/properties.
         // Rebuild only for real stacking, grouping, property or size changes.
-        bool identical=m_lastLayerImage.toStrongRef()==image;
+        bool identical=m_lastLayerImage==image.data();
         if(identical) {
             QList<QPair<KisNodeSP,int>> layoutNodes;
             std::function<void(KisNodeSP,int)> collect;
@@ -2965,7 +2965,7 @@ private:
         appendChildren(image->root(),0);
         m_layersLayout->addStretch(1);
         m_visibleLayerCount=count;
-        m_lastLayerImage=image.toWeakRef();
+        m_lastLayerImage=image.data();
         m_lastLayerActive=active;
         QTimer::singleShot(0,this,[this,oldScroll]() {
             if(m_layersScroll)m_layersScroll->verticalScrollBar()->setValue(oldScroll);
@@ -3487,7 +3487,7 @@ private:
     int m_visibleLayerCount=1;
     int m_compactLayerHeight=0;
     QList<CompactLayerRow> m_compactLayerRows;
-    KisImageWSP m_lastLayerImage;
+    KisImage *m_lastLayerImage=nullptr;
     KisNodeSP m_lastLayerActive;
     QTimer *m_layerPreviewTimer=nullptr;
     QHash<int,CompactTouchPoint> m_layerTouches;
