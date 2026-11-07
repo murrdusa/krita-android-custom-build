@@ -31,6 +31,8 @@
 #include <QPointer>
 #include <QPainter>
 #include <QTabletEvent>
+#include <QMouseEvent>
+#include <QTouchEvent>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -350,28 +352,48 @@ public:
             event->type()==QEvent::TabletPress ||
             (event->type()==QEvent::TabletMove &&
              static_cast<QTabletEvent*>(event)->pressure()>0.0);
-        if (m_compact && !m_layerPinned && m_layerExpanded &&
-            pointerStart) {
+        // Dismiss temporary overlays only when the user actually begins
+        // drawing on the canvas. Android delivers some synthesized pointer
+        // events to the MDI viewport even when fingers are over an overlay.
+        // Those must not collapse the layer panel during a long-press.
+        if(pointerStart && m_compact) {
             QWidget *target=qobject_cast<QWidget*>(watched);
-            const bool railTouch=target &&
-                (target==m_layerRail || m_layerRail->isAncestorOf(target));
-            if(target && !railTouch && target!=m_layerToggleButton) {
-                m_layerExpanded=false;
-                refreshLayerControls();
+            const bool canvasTarget=target && (
+                target==m_surface || m_surface->isAncestorOf(target));
+            QPoint globalPos;
+            bool hasPosition=false;
+            if(event->type()==QEvent::MouseButtonPress) {
+                globalPos=static_cast<QMouseEvent*>(event)->globalPos();
+                hasPosition=true;
+            } else if(event->type()==QEvent::TabletPress ||
+                      event->type()==QEvent::TabletMove) {
+                globalPos=static_cast<QTabletEvent*>(event)->globalPos();
+                hasPosition=true;
+            } else if(event->type()==QEvent::TouchBegin) {
+                const auto points=static_cast<QTouchEvent*>(event)->touchPoints();
+                if(!points.isEmpty()) {
+                    globalPos=points.first().screenPos().toPoint();
+                    hasPosition=true;
+                }
             }
-        }
-        if (m_compact && m_colorExpanded && !m_colorPinned &&
-            pointerStart) {
-            QWidget *target=qobject_cast<QWidget*>(watched);
-            // Keep interacting with the wheel, its pin or size controls.
-            const bool wheelTouch=m_colorDocker && target &&
-                (target==m_colorDocker || m_colorDocker->isAncestorOf(target));
-            const bool controlTouch=target &&
-                (target==m_colorButton);
-            if(target && !wheelTouch && !controlTouch) {
-                m_colorExpanded=false;
-                updateColorDock();
-                refreshColorControls();
+            const bool layerHit=m_layerRail->isVisible() &&
+                (target==m_layerRail || m_layerRail->isAncestorOf(target) ||
+                 (hasPosition && QRect(m_layerRail->mapToGlobal(QPoint(0,0)),
+                                       m_layerRail->size()).contains(globalPos)));
+            const bool colorHit=m_colorDocker && m_colorDocker->isVisible() &&
+                (target==m_colorDocker || m_colorDocker->isAncestorOf(target) ||
+                 (hasPosition && QRect(m_colorDocker->mapToGlobal(QPoint(0,0)),
+                                       m_colorDocker->size()).contains(globalPos)));
+            if(canvasTarget && hasPosition && !layerHit && !colorHit) {
+                if(!m_layerPinned && m_layerExpanded) {
+                    m_layerExpanded=false;
+                    refreshLayerControls();
+                }
+                if(!m_colorPinned && m_colorExpanded) {
+                    m_colorExpanded=false;
+                    updateColorDock();
+                    refreshColorControls();
+                }
             }
         }
         return QObject::eventFilter(watched,event);
@@ -967,33 +989,64 @@ private:
                 "background:#a4a4a4;}" :
                 "QToolButton{border:2px solid #808080;border-radius:5px;"
                 "background:#a4a4a4;}");
-            connect(tile,&QToolButton::clicked,this,[this,node]() {
+            auto *tileHold=new QTimer(tile);
+            tileHold->setSingleShot(true);
+            tileHold->setInterval(330);
+            auto *held=new bool(false);
+            connect(tile,&QObject::destroyed,this,[held]() {delete held;});
+            connect(tile,&QToolButton::pressed,tile,[tileHold,held]() {
+                *held=false;
+                tileHold->start();
+            });
+            connect(tileHold,&QTimer::timeout,tile,[held]() {
+                *held=true;
+            });
+            connect(tile,&QToolButton::released,tile,[this,tileHold,held,node]() {
+                tileHold->stop();
+                if(*held) QTimer::singleShot(0,this,[this,node]() {
+                    m_vm->nodeManager()->slotUiActivatedNode(node);
+                    openLayerActions(node);
+                });
+            });
+            connect(tile,&QToolButton::clicked,this,[this,node,held]() {
+                if(*held) {
+                    *held=false;
+                    return;
+                }
                 const bool wasActive=m_vm->activeNode()==node;
                 m_vm->nodeManager()->slotUiActivatedNode(node);
                 if(wasActive)openLayerActions(node);
                 else QTimer::singleShot(0,this,[this](){refreshLayers();});
             });
             auto *eye=new QToolButton(frame);
-            eye->setGeometry(rowWidth-22,2,20,20);
+            const int overlaySize=qBound(20,rowWidth/4,38);
+            const int iconX=rowWidth-overlaySize+1;
+            const int iconGap=qMax(2,(rowWidth-3*overlaySize)/4);
+            eye->setGeometry(iconX,iconGap,overlaySize,overlaySize);
+            eye->setIconSize(QSize(overlaySize-5,overlaySize-5));
             eye->setIcon(KisIconUtils::loadIcon(
                 node->visible()?QStringLiteral("visible"):
                                 QStringLiteral("hidden")));
             eye->setText(node->visible()?QStringLiteral("◉"):QStringLiteral("○"));
             eye->setToolTip(i18n("Toggle layer visibility"));
-            eye->setStyleSheet("QToolButton{border:none;background:#777;"
-                "color:white;border-radius:10px;}");
+            eye->setStyleSheet(node->visible() ?
+                "QToolButton{border:none;background:#777;color:white;border-radius:5px;}" :
+                "QToolButton{border:1px solid #ccc;background:#555;color:white;border-radius:5px;}");
             connect(eye,&QToolButton::clicked,this,[this,node]() {
                 m_vm->nodeManager()->slotUiActivatedNode(node);
                 m_vm->nodeManager()->toggleVisibility();
                 QTimer::singleShot(0,this,[this](){refreshLayers();});
             });
             auto *lock=new QToolButton(frame);
-            lock->setGeometry(rowWidth-22,24,20,20);
-            lock->setText(node->userLocked()?QStringLiteral("🔒"):
-                                             QStringLiteral("🔓"));
+            lock->setGeometry(iconX,iconGap*2+overlaySize,
+                              overlaySize,overlaySize);
+            lock->setText(QString());
+            lock->setIcon(lockIcon(node->userLocked()));
+            lock->setIconSize(QSize(overlaySize-4,overlaySize-4));
             lock->setToolTip(i18n("Toggle layer lock"));
-            lock->setStyleSheet("QToolButton{background:#666;color:white;"
-                                "border:0;border-radius:5px;}");
+            lock->setStyleSheet(node->userLocked() ?
+                "QToolButton{background:#417a89;border:1px solid white;border-radius:5px;}" :
+                "QToolButton{background:#666;border:0;border-radius:5px;}");
             connect(lock,&QToolButton::clicked,this,[this,node]() {
                 m_vm->nodeManager()->slotUiActivatedNode(node);
                 m_vm->nodeManager()->toggleLock();
@@ -1001,12 +1054,17 @@ private:
             });
             if(auto *layer=qobject_cast<KisPaintLayer*>(node.data())) {
                 auto *alpha=new QToolButton(frame);
-                alpha->setGeometry(rowWidth-22,46,20,20);
+                alpha->setGeometry(iconX,iconGap*3+overlaySize*2,
+                                   overlaySize,overlaySize);
                 alpha->setText(layer->alphaLocked()?QStringLiteral("α"):
                                                    QStringLiteral("α̸"));
                 alpha->setToolTip(i18n("Toggle alpha lock"));
-                alpha->setStyleSheet("QToolButton{background:#666;color:white;"
-                                     "border:0;border-radius:5px;}");
+                alpha->setStyleSheet(layer->alphaLocked() ?
+                    "QToolButton{background:#417a89;color:white;border:1px solid white;"
+                    "border-radius:5px;font-weight:bold;}" :
+                    "QToolButton{background:#666;color:white;border:0;"
+                    "border-radius:5px;}");
+
                 connect(alpha,&QToolButton::clicked,this,[this,node]() {
                     m_vm->nodeManager()->slotUiActivatedNode(node);
                     m_vm->nodeManager()->toggleAlphaLock();
@@ -1053,6 +1111,31 @@ private:
             m_vm->nodeManager()->setNodeOpacity(node,qRound(opacity->value()*255.0/100.0));
         });
         auto *grid=new QGridLayout();
+        QToolButton *toggleButtons[3]={nullptr,nullptr,nullptr};
+        auto refreshToggles=[this,node,&toggleButtons]() {
+            auto *paint=qobject_cast<KisPaintLayer*>(node.data());
+            if(toggleButtons[0]) {
+                toggleButtons[0]->setText(node->visible()?i18n("Visible"):i18n("Hidden"));
+                toggleButtons[0]->setStyleSheet(node->visible() ?
+                    "QToolButton{border:2px solid #87b0c4;}" :
+                    "QToolButton{border:2px solid #a0a0a0;}");
+            }
+            if(toggleButtons[1]) {
+                toggleButtons[1]->setText(node->userLocked()?i18n("Unlock layer"):i18n("Lock layer"));
+                toggleButtons[1]->setIcon(lockIcon(node->userLocked()));
+                toggleButtons[1]->setStyleSheet(node->userLocked() ?
+                    "QToolButton{border:2px solid #87b0c4;}" :
+                    "QToolButton{border:2px solid #a0a0a0;}");
+            }
+            if(toggleButtons[2]) {
+                const bool locked=paint && paint->alphaLocked();
+                toggleButtons[2]->setText(locked?i18n("Unlock Alpha"):i18n("Lock Alpha"));
+                toggleButtons[2]->setStyleSheet(locked ?
+                    "QToolButton{border:2px solid #87b0c4;}" :
+                    "QToolButton{border:2px solid #a0a0a0;}");
+                toggleButtons[2]->setEnabled(paint!=nullptr);
+            }
+        };
         struct Command {const char *label;const char *action;};
         const Command commands[]={
             {"Hide","visibility"},{"Duplicate","duplicatelayer"},{"Clear","clear"},
@@ -1068,7 +1151,11 @@ private:
             QAction *action=m_main->actionCollection()->action(QLatin1String(commands[i].action));
             if(action)btn->setIcon(action->icon());
             grid->addWidget(btn,i/3,i%3);
-            connect(btn,&QToolButton::clicked,&dialog,[this,node,i,&dialog]() {
+            if(i==0)toggleButtons[0]=btn;
+            else if(i==3)toggleButtons[1]=btn;
+            else if(i==9)toggleButtons[2]=btn;
+            connect(btn,&QToolButton::clicked,&dialog,
+                    [this,node,i,&dialog,refreshToggles]() {
                 m_vm->nodeManager()->slotUiActivatedNode(node);
                 if(i==0)m_vm->nodeManager()->toggleVisibility();
                 else if(i==1)m_vm->nodeManager()->duplicateActiveNode();
@@ -1111,11 +1198,17 @@ private:
                         QStringLiteral(""),QStringLiteral(""),QStringLiteral("add_new_transparency_mask")};
                     trigger(actions.at(i));
                 }
-                dialog.accept();
-                QTimer::singleShot(0,this,[this](){refreshLayers();});
+                if(i==0 || i==3 || i==9) {
+                    refreshToggles();
+                    QTimer::singleShot(0,this,[this](){refreshLayers();});
+                } else {
+                    dialog.accept();
+                    QTimer::singleShot(0,this,[this](){refreshLayers();});
+                }
             });
         }
         layout->addLayout(grid);
+        refreshToggles();
         auto *done=new QPushButton(i18n("Close"),&dialog);
         layout->addWidget(done);
         connect(done,&QPushButton::clicked,&dialog,&QDialog::accept);
