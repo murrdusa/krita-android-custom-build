@@ -50,6 +50,7 @@
 #include <QHeaderView>
 #include <KoToolManager.h>
 #include <KoToolBase.h>
+#include <KoToolDocker.h>
 #include <kis_canvas2.h>
 #include <utility>
 #include <initializer_list>
@@ -908,13 +909,9 @@ public:
         } else {
             hideLayerDragPreview();
             if(m_compactToolPopup)m_compactToolPopup->hide();
-            // Revert real option widgets to Krita's configured normal
-            // Tool Options docker/toolbar when leaving Compact UI.
-            QTimer::singleShot(0,this,[]() {
-                if(KoCanvasController *controller=
-                        KoToolManager::instance()->activeCanvasController())
-                    KoToolManager::instance()->requestToolActivation(controller);
-            });
+            // Reparent the actual option widgets to the normal native
+            // container; requesting activation of the same tool is a no-op.
+            QTimer::singleShot(0,this,[this]() {restoreNormalToolOptions();});
             m_layerRefreshTimer->stop();
             m_brushControlTimer->stop();
              if(m_colorDocker) {
@@ -972,13 +969,27 @@ public:
     }
 
 private:
+    KoToolBase *activeCompactTool() const {
+        if(!m_vm || !m_vm->canvasBase())return nullptr;
+        KoToolManager *tools=KoToolManager::instance();
+        return tools->toolById(m_vm->canvasBase(),tools->activeToolId());
+    }
+    void restoreNormalToolOptions() {
+        KoToolBase *tool=activeCompactTool();
+        if(!tool)return;
+        const QList<QPointer<QWidget>> widgets=tool->optionWidgets();
+        if(auto *native=qobject_cast<KoToolDocker*>(m_toolOptionsDocker.data()))
+            native->setOptionWidgets(widgets);
+        else if(m_vm && m_vm->paintOpBox())
+            m_vm->paintOpBox()->newOptionWidgets(widgets);
+    }
     void showCompactToolOptions() {
         if(!m_compact || !m_vm->activeNode() || !m_compactToolPopup)return;
-        // Re-emit the active tool's existing widget list regardless of the
-        // user's normal-mode Tool Options in Docker/Toolbar preference.
-        if(KoCanvasController *controller=
-                KoToolManager::instance()->activeCanvasController())
-            KoToolManager::instance()->requestToolActivation(controller);
+        // requestToolActivation() returns early when this tool is already
+        // selected. Read its live option widgets instead; this also works
+        // when normal Krita uses the Tool Options docker.
+        if(KoToolBase *tool=activeCompactTool())
+            m_compactToolPopup->newOptionWidgets(tool->optionWidgets());
         QTimer::singleShot(0,this,[this]() {
             if(!m_compact || !m_compactToolPopup)return;
             m_compactToolPopup->adjustSize();
