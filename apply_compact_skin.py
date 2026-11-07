@@ -57,12 +57,12 @@ def main(root: Path):
     if source_xml.count(toolbar_anchor)!=1:
         raise RuntimeError("Stock Krita toolbar XML anchor mismatch")
     native_xml=source_xml.replace(toolbar_anchor,toolbar_anchor+
-        '    <Action name="tablet_compact_ui"/>\\n',1)
+        '    <Action name="tablet_compact_ui"/>\n',1)
     (root/"krita/krita5.xmlgui").write_text(native_xml,encoding="utf-8")
     cmake_file=root/"krita/CMakeLists.txt"
     cmake_text=cmake_file.read_text(encoding="utf-8")
-    version_pattern=r'set\\(KRITA5_XMLGUI_VERSION [0-9]+\\)'
-    checksum_pattern=r'set\\(krita5_xmlgui_hash_expected "[0-9a-f]+"\\)'
+    version_pattern=r'set\(KRITA5_XMLGUI_VERSION [0-9]+\)'
+    checksum_pattern=r'set\(krita5_xmlgui_hash_expected "[0-9a-f]+"\)'
     if len(re.findall(version_pattern,cmake_text))!=1 or len(
             re.findall(checksum_pattern,cmake_text))!=1:
         raise RuntimeError("Krita XMLGUI version/checksum anchor mismatch")
