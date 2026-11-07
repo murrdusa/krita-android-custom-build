@@ -169,9 +169,11 @@ def main(root: Path):
            """    <Action name="dual"/>""")
     sub(p, """    <Action name="brushslider2"/>
     <Action name="reload_preset_action"/>
-    <Action name="mirror_actions"/>""",
-           """    <Action name="brushslider2"/>
-    <Action name="mirror_actions"/>""")
+    <Action name="mirror_actions"/>
+    <Action name="expanding_spacer_1"/>
+    <Action name="select_layout"/>
+    <Action name="workspaces"/>""",
+           """    <Action name="brushslider2"/>""")
 
     # Reduce Tool Options minimum-width pressure; preserve the ability to
     # scroll vertically. Individual third-party tool widgets may still need
