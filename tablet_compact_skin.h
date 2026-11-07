@@ -494,7 +494,9 @@ public:
              if(m_colorDocker) {
                 m_colorDocker->hide();
                 m_colorDocker->setFloating(false);
+                QPointer<QWidget> customTitle=m_colorDocker->titleBarWidget();
                 m_colorDocker->setTitleBarWidget(nullptr);
+                if(customTitle)customTitle->deleteLater();
                 m_colorPinButton=nullptr;
             }
             if(!m_previousWindowState.isEmpty())
