@@ -26,6 +26,22 @@ if [[ ! -d "$ROOT/.git" ]]; then
     git clone --depth 1 https://invent.kde.org/dkazakov/krita-docker-env.git "$ROOT"
 fi
 mkdir -p "$ROOT/persistent"
+# A watcher tick or a docs-only commit must not trigger an APK rebuild.
+# Skip ONLY when a previous successful APK uses identical app inputs.
+APP_FINGERPRINT=""
+INPUT_STAMP="$ROOT/persistent/.krita-last-successful-app-inputs"
+if [[ "$MODE" == build ]]; then
+    APP_FINGERPRINT="$(python3 "$REPO/krita_build_cache.py" fingerprint "$REPO")"
+    if [[ "${KRITA_FORCE_BUILD:-0}" != 1 && -s "$INPUT_STAMP" ]] &&
+       [[ "$(cat "$INPUT_STAMP")" == "$APP_FINGERPRINT" ]] &&
+       [[ -d "$OUT" ]] &&
+       [[ -n "$(find "$OUT" -maxdepth 1 -type f -name '*.apk' -size +0c -print -quit)" ]]; then
+        say "No Android application changes; reusing previous successful APK"
+        echo "Skipped compilation and packaging. Override with KRITA_FORCE_BUILD=1."
+        exit 0
+    fi
+fi
+PATCH_MTIME_SNAPSHOT="$ROOT/persistent/.krita-patch-mtimes.json"
 if [[ ! -d "$SOURCE/.git" ]]; then
     [[ ! -e "$SOURCE" ]] || die "Existing non-Git Krita source: $SOURCE"
     say "First run: download Krita source v6.0.4"
@@ -35,7 +51,8 @@ else
     if [[ ! -f "$SOURCE/.krita_android_custom_patch_applied" ]] && [[ -n "$(git -C "$SOURCE" status --porcelain --untracked-files=no)" ]]; then
         die "Refusing to overwrite unrecognized source changes"
     fi
-    say "Restore managed source; keep the existing compiled CMake build directory"
+    say "Restore managed source; preserve unchanged file timestamps"
+    python3 "$REPO/krita_build_cache.py" snapshot "$SOURCE" "$PATCH_MTIME_SNAPSHOT"
     git -C "$SOURCE" restore .
 fi
 say "Apply customizations from this repository"
@@ -57,7 +74,11 @@ assert actual == expected, f'Toolbar checksum mismatch: {actual} != {expected}'
 print('Toolbar checksum validated')
 PY
 git -C "$SOURCE" diff --check
-cp "$REPO/build-in-krita-container.sh" "$SOURCE/build-in-krita-container.sh"
+# Avoid touching an unchanged generated build script.
+if ! cmp -s "$REPO/build-in-krita-container.sh" "$SOURCE/build-in-krita-container.sh"; then
+    cp "$REPO/build-in-krita-container.sh" "$SOURCE/build-in-krita-container.sh"
+fi
+python3 "$REPO/krita_build_cache.py" restore "$SOURCE" "$PATCH_MTIME_SNAPSHOT"
 touch "$SOURCE/.krita_android_custom_patch_applied"
 if [[ "$MODE" == patch ]]; then say "Done; run bash local-build.sh build next"; exit 0; fi
 if [[ ! -d "$SOURCE/krita-deps-management/.git" ]]; then
@@ -100,5 +121,9 @@ docker exec -i -u appimage -e "KRITA_BUILD_JOBS=$JOBS" "$NAME" \
     bash -lc 'bash "$HOME/persistent/krita/build-in-krita-container.sh"'
 say "APK output:"
 [[ -d "$OUT" ]] || die "APK output folder not created"
+if [[ "$MODE" == build ]]; then
+    printf '%s\n' "$APP_FINGERPRINT" > "$INPUT_STAMP.tmp"
+    mv "$INPUT_STAMP.tmp" "$INPUT_STAMP"
+fi
 find "$OUT" -maxdepth 1 -name '*.apk' -type f -printf '%p (%s bytes)\n'
 if command -v wslpath >/dev/null 2>&1; then echo "Windows folder: $(wslpath -w "$OUT")"; fi

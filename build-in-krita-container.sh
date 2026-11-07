@@ -49,6 +49,11 @@ echo "## FFmpeg libavfilter ready: $(pkg-config --modversion libavfilter)"
 
 mkdir -p "$BUILDDIR"
 cd "$BUILDDIR"
+# CMake's generated build system automatically reconfigures when CMake files
+# actually change. Avoid unconditional reconfigure on every incremental build.
+if [[ ! -f CMakeCache.txt || "${KRITA_RECONFIGURE:-0}" == 1 ]]; then
+  echo '## Configuring Android CMake build tree'
+
 cmake \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
   -DBUILD_TESTING=OFF \
@@ -57,6 +62,9 @@ cmake \
   -DCMAKE_TOOLCHAIN_FILE="$SOURCE/krita-deps-management/tools/android-toolchain-krita.cmake" \
   -DANDROID_ENABLE_STDIO_FORWARDING=ON \
   "$SOURCE"
+else
+  echo "## Reusing configured Android CMake build tree"
+fi
 cmake --build . --target install --parallel "${KRITA_BUILD_JOBS:-2}"
 cd "$SOURCE"
 python3 build-tools/ci-scripts/build-android-package.py --package-type debug
