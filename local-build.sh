@@ -65,6 +65,7 @@ python3 "$REPO/apply_reference_touch_fix.py" "$SOURCE"
 python3 "$REPO/apply_compact_skin.py" "$SOURCE"
 python3 "$REPO/apply_wheel_rotation.py" "$SOURCE"
 python3 "$REPO/apply_gallery_tabs.py" "$SOURCE"
+python3 "$REPO/apply_home_mobile.py" "$SOURCE"
 python3 - "$SOURCE" <<'PY'
 import hashlib, pathlib, sys
 root=pathlib.Path(sys.argv[1])
