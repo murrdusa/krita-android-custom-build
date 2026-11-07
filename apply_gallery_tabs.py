@@ -232,6 +232,22 @@ def main(root):
             if(galleryTabs->currentIndex()==1)populateDevice();
             else populate();
         });''',"sort current tab")
+    # The selected-folder tab previously opened up to 2,000 KRA zip files
+    # synchronously for thumbnails. Limit candidates and decode only visible
+    # previews; the user can refine the selected folder if needed.
+    s=sub(s,"while (iter.hasNext() && files.size() < 2000)",
+            "while (iter.hasNext() && files.size() < 350)","folder scan cap")
+    s=sub(s,"for (const QFileInfo &file : files) {",
+            """int rendered=0;
+                for (const QFileInfo &file : files) {
+                    if (rendered>=120)break;
+                    if (!QRegularExpression(QStringLiteral(
+                            "(?i)\\\\.(?:kra|krz)(?: \\\\([0-9]+\\\\))?$"))
+                            .match(file.fileName()).hasMatch())continue;
+                    ++rendered;""","visible folder cap")
+    s=sub(s,"if (store && !store->bad()) {",
+            "if (rendered<=48 && store && !store->bad()) {",
+            "defer large folder previews")
     path.write_text(s,encoding="utf-8")
 
     # Android MediaStore query complements filesystem scanning; use only
