@@ -472,13 +472,25 @@ public:
             // The active MDI subwindow may become null after a normal <->
             // Compact workspace switch. Close through the live KisView
             // instead; never close a different tab by guessing an index.
-            QPointer<KisView> view=m_main?m_main->activeKisView():nullptr;
-            if(!view && m_mdi) {
-                QMdiSubWindow *sub=m_mdi->activeSubWindow();
-                if(!sub)sub=m_mdi->currentSubWindow();
-                if(!sub && m_mdi->subWindowList().size()==1)
-                    sub=m_mdi->subWindowList().first();
-                if(sub)view=qobject_cast<KisView*>(sub->widget());
+            QPointer<KisView> view;
+            KisDocument *selectedDoc=m_vm?m_vm->document():nullptr;
+            if(m_mdi) {
+                auto useIfMatching=[&](QMdiSubWindow *sub) {
+                    if(!sub || view)return;
+                    KisView *candidate=qobject_cast<KisView*>(sub->widget());
+                    if(candidate && candidate->document()==selectedDoc)
+                        view=candidate;
+                };
+                useIfMatching(m_mdi->activeSubWindow());
+                useIfMatching(m_mdi->currentSubWindow());
+                for(QMdiSubWindow *sub:m_mdi->subWindowList())
+                    useIfMatching(sub);
+                // Only one view may safely be used when the view manager
+                // has temporarily lost its document during a mode change.
+                if(!view && !selectedDoc &&
+                   m_mdi->subWindowList().size()==1)
+                    view=qobject_cast<KisView*>(
+                        m_mdi->subWindowList().first()->widget());
             }
             if(!view || !view->document())return;
             KisDocument *document=view->document();
