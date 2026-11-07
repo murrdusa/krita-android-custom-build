@@ -704,7 +704,7 @@ public:
                              event->type()==QEvent::TabletRelease;
         if(m_compact && m_layerDragNode && penPacket) {
             QTabletEvent *tablet=static_cast<QTabletEvent*>(event);
-            m_layerDragLast=tablet->globalPos().toPoint();
+            m_layerDragLast=tablet->globalPos();
             if(m_layerDragArmed &&
                (m_layerDragLast-m_layerDragStart).manhattanLength()>16) {
                 m_layerDragMoved=true;
