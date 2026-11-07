@@ -46,6 +46,9 @@ def state():
 
 
 def alive(pid):
+    """Return False for absent/stale PIDs without crashing the live viewer."""
+    if pid is None or pid == "":
+        return False
     try:
         pid = int(pid)
         if pid <= 0:
@@ -53,7 +56,7 @@ def alive(pid):
         os.kill(pid, 0)
         proc = Path(f"/proc/{pid}/stat")
         return not proc.exists() or proc.read_text().split()[2] != "Z"
-    except (OSError, ValueError, IndexError):
+    except (OSError, ValueError, TypeError, IndexError):
         return False
 
 
@@ -170,7 +173,9 @@ def main():
                 if now - last_heartbeat >= 25:
                     active = alive(data.get("build_pid"))
                     pct = f" | compiler {latest_progress}%" if latest_progress is not None else ""
-                    running = "running" if active else "not found"
+                    pid = data.get("build_pid")
+                    running = ("not reported" if pid in (None, "") else
+                               "running" if active else "not found")
                     out(f"BUILD {short} | elapsed {elapsed}{pct} | build PID {running}", "cyan")
                     last_heartbeat = now
                 if (last_output_time is not None and
