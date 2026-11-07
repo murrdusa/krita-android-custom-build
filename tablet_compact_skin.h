@@ -2134,6 +2134,100 @@ private:
         return true;
     }
 
+    // Compact clip groups contain real native Krita layers. Only our own
+    // specially-named wrapper is hidden; ordinary groups stay visible.
+    static bool isCompactClipGroup(KisNodeSP node) {
+        return node && node->inherits("KisGroupLayer") &&
+            node->name().startsWith(QStringLiteral("[Compact Clip] "));
+    }
+    static bool compactInheritsAlpha(KisNodeSP node) {
+        return node && node->inherits("KisLayer") &&
+            KisLayerPropertiesIcons::nodeProperty(
+                node,KisLayerPropertiesIcons::inheritAlpha,false).toBool();
+    }
+    static KisNodeSP compactLogicalParent(KisNodeSP node) {
+        if(!node)return KisNodeSP();
+        KisNodeSP parent=node->parent();
+        return isCompactClipGroup(parent)?parent->parent():parent;
+    }
+    // Undo-aware: these call Krita's native Quick Ungroup/Group commands.
+    // They never delete any artwork node; only our generated wrapper groups.
+    void rebuildCompactClips(KisNodeSP parent) {
+        if(!parent || !m_vm || !m_vm->nodeManager())return;
+        auto *manager=m_vm->nodeManager();
+        QList<KisNodeSP> wrappers;
+        for(KisNodeSP n=parent->firstChild();n;n=n->nextSibling())
+            if(isCompactClipGroup(n))wrappers.append(n);
+        for(KisNodeSP group:wrappers) {
+            manager->slotUiActivatedNode(group);
+            manager->slotSetSelectedNodes(KisNodeList{group});
+            manager->quickUngroup();
+        }
+        // Native juggler operations can settle on a later event-loop pass.
+        QTimer::singleShot(160,this,[this,parent]() mutable {
+            if(!m_vm || !m_vm->nodeManager() || !parent)return;
+            auto *manager=m_vm->nodeManager();
+            KisNodeList ordered;
+            for(KisNodeSP n=parent->firstChild();n;n=n->nextSibling())
+                ordered.append(n);
+            // Bottom-to-top: each non-clipped layer is the alpha base for
+            // every consecutive clipped layer immediately above it.
+            for(int i=0;i<ordered.size();) {
+                KisNodeSP base=ordered.at(i);
+                if(compactInheritsAlpha(base) || !base->inherits("KisLayer")) {
+                    ++i;continue;
+                }
+                KisNodeList cluster;
+                cluster.append(base);
+                int j=i+1;
+                while(j<ordered.size() && compactInheritsAlpha(ordered.at(j))) {
+                    cluster.append(ordered.at(j));++j;
+                }
+                if(cluster.size()>1 && manager->canMoveLayers(cluster,false)) {
+                    manager->slotUiActivatedNode(base);
+                    manager->slotSetSelectedNodes(cluster);
+                    manager->createQuickGroup();
+                    KisNodeSP group=base->parent();
+                    if(group && group!=parent && group->inherits("KisGroupLayer")) {
+                        manager->setNodeName(group,QStringLiteral("[Compact Clip] ")
+                                                   +base->name());
+                        group->setCollapsed(false);
+                    }
+                }
+                i=j;
+            }
+            manager->slotSetSelectedNodes(KisNodeList());
+            QTimer::singleShot(180,this,[this](){refreshLayers();});
+        });
+    }
+    void setCompactClip(KisNodeSP node,bool enabled) {
+        if(!node || !node->inherits("KisLayer"))return;
+        KisNodeSP parent=compactLogicalParent(node);
+        if(!parent)return;
+        if(enabled) {
+            // A clipped node needs an underlying non-clipped layer to mask to.
+            bool foundBase=false;
+            bool after=false;
+            for(const CompactLayerRow &row:m_compactLayerRows) {
+                if(row.node==node){after=true;continue;}
+                if(after && compactLogicalParent(row.node)==parent &&
+                   row.node->inherits("KisLayer") &&
+                   !compactInheritsAlpha(row.node)) {
+                    foundBase=true;break;
+                }
+            }
+            if(!foundBase) {
+                if(m_layerName)m_layerName->setText(
+                    i18n("Add a non-clipped layer below this layer first"));
+                return;
+            }
+        }
+        if(auto image=m_vm->image().toStrongRef()) {
+            KisLayerPropertiesIcons::setNodePropertyAutoUndo(
+                node,KisLayerPropertiesIcons::inheritAlpha,enabled,image);
+            rebuildCompactClips(parent);
+        }
+    }
     bool canMoveCompactNode(KisNodeSP node,KisNodeSP newParent) const {
         if(!node || !newParent || !node->parent() || node==newParent)
             return false;
@@ -2255,6 +2349,12 @@ private:
             for(KisNodeSP node=parent->lastChild();node && count<180;
                 node=node->prevSibling()) {
                 if(node->inherits("KisReferenceImagesLayer"))continue;
+                if(isCompactClipGroup(node)) {
+                    // Flatten the internal group in Compact only; normal Krita
+                    // retains the actual folder for native editing and undo.
+                    appendChildren(node,depth);
+                    continue;
+                }
                 ++count;
                 const bool isGroup=node->inherits("KisGroupLayer");
                 const bool isMask=node->inherits("KisMask");
@@ -2517,15 +2617,11 @@ private:
         if(node->inherits("KisLayer")) {
             const bool inherit=KisLayerPropertiesIcons::nodeProperty(
                 node,KisLayerPropertiesIcons::inheritAlpha,false).toBool();
-            auto *clip=new QCheckBox(i18n("Inherit alpha (clipping)"),&dialog);
+            auto *clip=new QCheckBox(i18n("Clip to nearest layer below"),&dialog);
             clip->setChecked(inherit);
             layout->addWidget(clip);
             connect(clip,&QCheckBox::toggled,&dialog,[this,node](bool checked) {
-                if(auto image=m_vm->image().toStrongRef())
-                    KisLayerPropertiesIcons::setNodePropertyAutoUndo(
-                        node,KisLayerPropertiesIcons::inheritAlpha,
-                        checked,image);
-                QTimer::singleShot(100,this,[this](){refreshLayers();});
+                setCompactClip(node,checked);
             });
         }
         if(node->inherits("KisGroupLayer")) {
@@ -2572,7 +2668,7 @@ private:
         const Command commands[]={
             {"Hide","visibility"},{"Duplicate","duplicatelayer"},{"Clear","clear"},
             {"Lock","lock"},{"Merge","merge_layer"},{"Delete","remove_layer"},
-            {"Clip","create_quick_clipping_group"},{"Select","select_opaque"},{"Mask","add_new_transparency_mask"},
+            {"Clip","toggle_layer_inherit_alpha"},{"Select","select_opaque"},{"Mask","add_new_transparency_mask"},
             {"Alpha Lock","toggle_layer_alpha_lock"},{"More...",""}
         };
         for(int i=0;i<11;++i) {
@@ -2593,7 +2689,7 @@ private:
                 else if(i==1)m_vm->nodeManager()->duplicateActiveNode();
                 else if(i==3)m_vm->nodeManager()->toggleLock();
                 else if(i==5)m_vm->nodeManager()->removeNode();
-                else if(i==6)m_vm->nodeManager()->createQuickClippingGroup();
+                else if(i==6)setCompactClip(node,!compactInheritsAlpha(node));
                 else if(i==9)trigger(QStringLiteral("toggle_layer_alpha_lock"));
                 else if(i==10) {
                     QMenu options(m_main);
