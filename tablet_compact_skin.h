@@ -17,6 +17,8 @@
 #include <QColor>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QElapsedTimer>
+#include <QProgressBar>
 #include <QDockWidget>
 #include <QEvent>
 #include <QFormLayout>
@@ -295,8 +297,16 @@ public:
         rail->addLayout(layerHeader);
         m_addLayer = new QToolButton(m_layerRail);
         m_addLayer->setText(i18n("+ Add Layer"));
-        m_addLayer->setFixedHeight(38);
-        m_addLayer->setToolTip(i18n("Tap: new paint layer. Hold: layer and mask types"));
+        m_addLayer->setFixedHeight(60);
+        m_addLayer->setIcon(KisIconUtils::loadIcon("list-add"));
+        m_addLayer->setIconSize(QSize(22,22));
+        m_addLayer->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        m_addLayer->setStyleSheet(
+            "QToolButton{background:#3d6985;color:#f9fbff;"
+            "border:1px solid #79a9c9;border-radius:9px;"
+            "font-size:13px;font-weight:600;padding:5px;}"
+            "QToolButton:pressed{background:#567e97;}");
+        m_addLayer->setToolTip(i18n("Tap to add a paint layer; hold for more types"));
         layerHeader->addWidget(m_addLayer,1);
         // Pin and settings are configured in the Compact UI hub.
         m_addLayerHoldTimer = new QTimer(this);
@@ -1942,8 +1952,7 @@ private:
     }
     void updateLayerWidth() {
         m_layerRail->setFixedWidth(m_layerTileSize+10);
-        m_addLayer->setText(m_layerTileSize<110 ? QStringLiteral("+") :
-                                                   i18n("+ Add Layer"));
+        m_addLayer->setText(i18n("Add"));
         if(m_layerRail->isVisible())positionOverlays();
     }
     static QIcon lockIcon(bool locked) {
@@ -3190,8 +3199,7 @@ private:
             {"Lock","lock"},{"Group","quick_group"},
             {"Merge","merge_layer"},{"Delete","remove_layer"},
             {"Alpha Lock","toggle_layer_alpha_lock"},
-            {"Select","select_opaque"},{"Mask","add_new_transparency_mask"},
-            {"More",""}
+            {"Mask","add_new_transparency_mask"},{"More",""}
         };
         const auto refreshToggles=[node,&toggleButtons]() {
             const auto *paint=qobject_cast<const KisPaintLayer*>(node.data());
@@ -3212,7 +3220,7 @@ private:
                 if(k==2)toggleButtons[k]->setEnabled(paint!=nullptr);
             }
         };
-        for(int i=0;i<10;++i) {
+        for(int i=0;i<9;++i) {
             auto *button=new QToolButton(page);
             button->setText(i==3 && isGroup ?
                 i18n("Ungroup"):i18n(buttons[i].label));
@@ -3223,7 +3231,11 @@ private:
             if(QAction *native=m_main->actionCollection()->action(
                     QString::fromLatin1(buttons[i].native)))
                 button->setIcon(native->icon());
-            grid->addWidget(button,i/2,i%2);
+            if(i==8) {
+                button->setMinimumHeight(58);
+                button->setText(i18n("More layer actions"));
+                grid->addWidget(button,4,0,1,2);
+            } else grid->addWidget(button,i/2,i%2);
             if(i==0)toggleButtons[0]=button;
             if(i==2)toggleButtons[1]=button;
             if(i==6)toggleButtons[2]=button;
@@ -3247,11 +3259,8 @@ private:
                 } else if(i==4)trigger(QStringLiteral("merge_layer"));
                 else if(i==5)m_vm->nodeManager()->removeNode();
                 else if(i==6)trigger(QStringLiteral("toggle_layer_alpha_lock"));
-                else if(i==7 && m_layerDocker)
-                    QMetaObject::invokeMethod(m_layerDocker,"slotSelectOpaque",
-                                              Qt::DirectConnection);
-                else if(i==8)trigger(QStringLiteral("add_new_transparency_mask"));
-                else if(i==9) {
+                else if(i==7)trigger(QStringLiteral("add_new_transparency_mask"));
+                else if(i==8) {
                     QDialog extras(&dialog);
                     extras.setWindowTitle(i18n("More layer actions"));
                     extras.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
@@ -3273,6 +3282,7 @@ private:
                     const Extra choices[]={
                         {"Properties","layer_properties"},
                         {"Clear layer","clear"},
+                        {"Select painted pixels","select_opaque"},
                         {"Move up","raise_layer"},
                         {"Move down","lower_layer"},
                         {"Flatten layer","flatten_layer"},
@@ -3588,7 +3598,7 @@ private:
         const int layerX=m_layerOnRight?qMax(4,w-m_layerRail->width()-4):4;
         const int layerY=35;
         const int rowsHeight=qMax(m_layerTileSize+4,m_compactLayerHeight);
-        const int desired=5+38+3+rowsHeight+3+34+5+12;
+        const int desired=5+60+3+rowsHeight+3+34+5+12;
         // Keep the rail above the brush panel when both share the left side.
         // On the right, also avoid a pinned color selector at the bottom.
         int availableBottom=h-8;

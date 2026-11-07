@@ -425,7 +425,9 @@ def main(root):
             const QFileInfo info(path);
             const bool local=info.isFile();
             QDialog sheet(this);
-            sheet.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
+            // Qt::Popup dismisses on outside tap, like a mobile bottom sheet.
+            // The underlying project remains unopened until Open is pressed.
+            sheet.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
             sheet.setWindowTitle(name);
             sheet.resize(qMax(300,qMin(410,width()-30)),
                          qMax(390,qMin(600,height()-40)));
