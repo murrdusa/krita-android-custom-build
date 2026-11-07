@@ -1318,7 +1318,10 @@ private:
     void configureBrushControls() {
         QDialog dialog(m_main);
         dialog.setWindowTitle(i18n("Brush Control Settings"));
+        styleTouchDialog(dialog);
         auto *layout=new QVBoxLayout(&dialog);
+        layout->setContentsMargins(16,14,16,14);
+        layout->setSpacing(10);
         QStringList names={i18n("Size"),i18n("Opacity"),
                            i18n("Flow (when supported)"),i18n("Blend mode")};
         QStringList keys={QStringLiteral("size"),QStringLiteral("opacity"),
@@ -1334,8 +1337,12 @@ private:
         auto *buttons=new QDialogButtonBox(
             QDialogButtonBox::Ok|QDialogButtonBox::Cancel,&dialog);
         layout->addWidget(buttons);
+        for(QAbstractButton *button:buttons->buttons())
+            button->setMinimumHeight(50);
         connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);
         connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
+        dialog.resize(qMax(290,qMin(430,m_surface->width()-24)),
+                      qMax(290,qMin(475,m_surface->height()-36)));
         if(dialog.exec()!=QDialog::Accepted)return;
         for(int i=0;i<keys.size();++i) {
             m_brushControlEnabled[i]=toggles.at(i)->isChecked();
@@ -1466,7 +1473,10 @@ private:
         QDialog dialog(m_main);
         dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
         dialog.setWindowTitle(i18n("Customize Compact UI Toolbar"));
+        styleTouchDialog(dialog);
         auto *layout=new QVBoxLayout(&dialog);
+        layout->setContentsMargins(12,12,12,12);
+        layout->setSpacing(9);
         auto *tabs=new QTabWidget(&dialog);
         layout->addWidget(tabs);
         // Common drawing actions: file, history, brushes, selections,
@@ -1547,6 +1557,8 @@ private:
         auto *moveBar=new QHBoxLayout;
         auto *upButton=new QPushButton(i18n("Move up"),&dialog);
         auto *downButton=new QPushButton(i18n("Move down"),&dialog);
+        upButton->setMinimumHeight(50);
+        downButton->setMinimumHeight(50);
         moveBar->addWidget(upButton);
         moveBar->addWidget(downButton);
         layout->addLayout(moveBar);
@@ -1565,6 +1577,7 @@ private:
         auto *allPage=new QWidget(tabs);
         auto *allLayout=new QVBoxLayout(allPage);
         auto *search=new QLineEdit(allPage);
+        search->setMinimumHeight(50);
         search->setPlaceholderText(i18n("Search Krita actions..."));
         allLayout->addWidget(search);
         auto *all=new QListWidget(allPage);
@@ -2072,8 +2085,7 @@ private:
     }
     void openLayerSettings() {
         QDialog dialog(m_main);
-        dialog.setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
-        auto *layout=new QVBoxLayout(&dialog);
+        auto *layout=makeTouchSettingsPage(dialog,i18n("Layers display"));
         auto *pin=new QCheckBox(i18n("Keep layers panel open"),&dialog);
         pin->setChecked(m_layerPinned);
         layout->addWidget(pin);
@@ -2088,7 +2100,7 @@ private:
         size->setRange(64,160);
         size->setSingleStep(4);
         size->setValue(m_layerTileSize);
-        layout->addWidget(size);
+        addTouchSliderRow(layout,size,8);
         auto *value=new QLabel(QStringLiteral("%1 × %1").arg(m_layerTileSize),&dialog);
         layout->addWidget(value);
         connect(size,&QSlider::valueChanged,&dialog,[this,value](int newSize) {
@@ -2103,6 +2115,7 @@ private:
         side->addItem(i18n("Left"),false);
         side->addItem(i18n("Right"),true);
         side->setCurrentIndex(m_layerOnRight?1:0);
+        side->setMinimumHeight(52);
         layout->addWidget(side);
         auto *pinchGrouping=new QCheckBox(
             i18n("Pinch two layer thumbnails together to create a group"),&dialog);
@@ -2119,7 +2132,6 @@ private:
             QSettings().setValue(QStringLiteral("TabletUi/layerOnRight"),m_layerOnRight);
             positionOverlays();
         });
-        dialog.setMinimumWidth(260);
         dialog.exec();
     }
     void updateGroupOutlines() {
@@ -3467,8 +3479,7 @@ private:
     }
     void openColorSettings() {
         QDialog dialog(m_main);
-        dialog.setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
-        auto *layout=new QVBoxLayout(&dialog);
+        auto *layout=makeTouchSettingsPage(dialog,i18n("Color selector settings"));
         auto *pin=new QCheckBox(i18n("Keep color wheel open"),&dialog);
         pin->setChecked(m_colorPinned);
         layout->addWidget(pin);
@@ -3493,6 +3504,7 @@ private:
         historySide->addItem(i18n("Below color wheel"));
         historySide->addItem(i18n("Above color wheel"));
         historySide->setCurrentIndex(m_colorHistoryOnTop?1:0);
+        historySide->setMinimumHeight(52);
         layout->addWidget(historySide);
         connect(historySide,QOverload<int>::of(&QComboBox::currentIndexChanged),
                 &dialog,[this](int index) {
@@ -3505,7 +3517,13 @@ private:
         auto *rows=new QSlider(Qt::Horizontal,&dialog);
         rows->setRange(1,4);
         rows->setValue(m_colorHistoryRows);
-        layout->addWidget(rows);
+        addTouchSliderRow(layout,rows,1);
+        auto *rowsValue=new QLabel(
+            i18np("%1 row","%1 rows",m_colorHistoryRows),&dialog);
+        layout->addWidget(rowsValue);
+        connect(rows,&QSlider::valueChanged,&dialog,[rowsValue](int n) {
+            rowsValue->setText(i18np("%1 row","%1 rows",n));
+        });
         connect(rows,&QSlider::valueChanged,&dialog,[this](int value) {
             m_colorHistoryRows=value;
             QSettings().setValue(QStringLiteral("TabletUi/colorHistoryRows"),value);
@@ -3522,6 +3540,8 @@ private:
         });
         auto *nativeSettings=new QPushButton(
             i18n("Krita wheel type, color model and selector settings..."),&dialog);
+        nativeSettings->setMinimumHeight(56);
+        nativeSettings->setToolTip(i18n("Advanced Krita color selector settings"));
         layout->addWidget(nativeSettings);
         connect(nativeSettings,&QPushButton::clicked,&dialog,[this]() {
             QPointer<QDockWidget> docker=m_colorDocker;
@@ -3538,7 +3558,7 @@ private:
         rotation->setValue(qBound(0,initialRotation,359));
         rotation->setToolTip(i18n(
             "Rotate the hue ring without changing the selected paint color"));
-        layout->addWidget(rotation);
+        addTouchSliderRow(layout,rotation,15);
         auto *rotationValue=new QLabel(
             QStringLiteral("%1°").arg(rotation->value()),&dialog);
         layout->addWidget(rotationValue);
@@ -3553,7 +3573,7 @@ private:
         auto *size=new QSlider(Qt::Horizontal,&dialog);
         size->setRange(190,380);
         size->setValue(m_colorWheelPixels);
-        layout->addWidget(size);
+        addTouchSliderRow(layout,size,15);
         auto *value=new QLabel(QStringLiteral("%1 px").arg(m_colorWheelPixels),&dialog);
         layout->addWidget(value);
         connect(size,&QSlider::valueChanged,&dialog,[this,value](int pixels) {
@@ -3564,7 +3584,6 @@ private:
             refreshColors();
             refreshColorControls();
         });
-        dialog.setMinimumWidth(260);
         dialog.exec();
     }
     void toggleColor() {
