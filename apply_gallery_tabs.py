@@ -17,6 +17,27 @@ def main(root):
           "#include <QComboBox>\n#include <QTabWidget>\n#include <QTimer>\n#include <QJsonArray>\n#include <QJsonObject>\n#include <QJsonDocument>\n",
           "includes")
     s=sub(s,
+'''QDirIterator iter(*folder, QStringList() << QStringLiteral("*.kra")
+                                                        << QStringLiteral("*.krz"),''',
+'''QDirIterator iter(*folder, QStringList()
+                                                        << QStringLiteral("*.kra*")
+                                                        << QStringLiteral("*.krz*")
+                                                        << QStringLiteral("*.ora")
+                                                        << QStringLiteral("*.psd")
+                                                        << QStringLiteral("*.png")
+                                                        << QStringLiteral("*.jpg")
+                                                        << QStringLiteral("*.jpeg")
+                                                        << QStringLiteral("*.webp")
+                                                        << QStringLiteral("*.tif")
+                                                        << QStringLiteral("*.tiff")
+                                                        << QStringLiteral("*.bmp")
+                                                        << QStringLiteral("*.gif")
+                                                        << QStringLiteral("*.svg")
+                                                        << QStringLiteral("*.exr")
+                                                        << QStringLiteral("*.xcf")
+                                                        << QStringLiteral("*.jxl"),''',
+          "folder compatible formats")
+    s=sub(s,
 '''        auto *galleryList = new QListWidget(galleryPage);''',
 '''        auto *galleryTabs = new QTabWidget(galleryPage);
         auto *galleryList = new QListWidget(galleryTabs);''',
@@ -56,7 +77,7 @@ def main(root):
         });
 
         const auto acceptedExtensions=QStringList{
-            QStringLiteral("*.kra"),QStringLiteral("*.krz"),
+            QStringLiteral("*.kra*"),QStringLiteral("*.krz*"),
             QStringLiteral("*.ora"),QStringLiteral("*.psd"),
             QStringLiteral("*.png"),QStringLiteral("*.jpg"),
             QStringLiteral("*.jpeg"),QStringLiteral("*.webp"),
@@ -237,7 +258,7 @@ def main(root):
             if(i>0)selection.append(" OR ");
             selection.append(android.provider.MediaStore.Files.FileColumns.DISPLAY_NAME)
                      .append(" LIKE ?");
-            args[i]="%."+suffixes[i];
+            args[i]="%."+suffixes[i]+(i<2?"%":"");
         }
         android.net.Uri base=android.provider.MediaStore.Files.getContentUri("external");
         String[] columns={
