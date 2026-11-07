@@ -491,6 +491,23 @@ public:
                 title->setFixedHeight(1);
                 title->setStyleSheet("background:#353538;");
                 m_colorDocker->setTitleBarWidget(title);
+                // The Wide Gamut selector also has an internal header with
+                // an FG/BG toggle and a hamburger menu. Its content is moved
+                // into our color footer/lock settings while compact.
+                if(QWidget *body=m_colorDocker->widget()) {
+                    if(QLayout *bodyLayout=body->layout()) {
+                        m_nativeColorMargins=bodyLayout->contentsMargins();
+                        m_nativeColorSpacing=bodyLayout->spacing();
+                        if(QLayoutItem *item=bodyLayout->itemAt(0)) {
+                            if(QWidget *header=item->widget()) {
+                                m_nativeSelectorHeader=header;
+                                header->hide();
+                            }
+                        }
+                        bodyLayout->setContentsMargins(0,0,0,0);
+                        bodyLayout->setSpacing(0);
+                    }
+                }
                 for(QToolButton *candidate:m_colorDocker->findChildren<QToolButton*>()) {
                     if(candidate->menu()) {
                         m_nativeSelectorMenuButton=candidate;
@@ -554,6 +571,13 @@ public:
                 m_colorDocker->setTitleBarWidget(nullptr);
                 if(customTitle)customTitle->deleteLater();
                 m_colorDocker->setFeatures(m_previousColorFeatures);
+                if(m_nativeSelectorHeader)m_nativeSelectorHeader->show();
+                if(QWidget *body=m_colorDocker->widget()) {
+                    if(QLayout *bodyLayout=body->layout()) {
+                        bodyLayout->setContentsMargins(m_nativeColorMargins);
+                        bodyLayout->setSpacing(m_nativeColorSpacing);
+                    }
+                }
                 if(m_nativeSelectorMenuButton)m_nativeSelectorMenuButton->show();
             }
             if(!m_previousWindowState.isEmpty())
@@ -1492,6 +1516,9 @@ private:
     bool m_colorPinned=false;
     QPointer<QToolButton> m_colorPinButton;
     QPointer<QToolButton> m_nativeSelectorMenuButton;
+    QPointer<QWidget> m_nativeSelectorHeader;
+    QMargins m_nativeColorMargins;
+    int m_nativeColorSpacing=0;
     QToolButton *m_fgColorChip=nullptr;
     QToolButton *m_bgColorChip=nullptr;
     QDockWidget::DockWidgetFeatures m_previousColorFeatures=QDockWidget::DockWidgetFeatures();
