@@ -978,10 +978,14 @@ private:
     }
     void configureCompactToolbar() {
         QDialog dialog(m_main);
+        dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
         dialog.setWindowTitle(i18n("Customize Compact UI Toolbar"));
         auto *layout=new QVBoxLayout(&dialog);
         auto *tabs=new QTabWidget(&dialog);
         layout->addWidget(tabs);
+        // Common drawing actions: file, history, brushes, selections,
+        // layer operations, transforms, navigation and canvas controls.
+        // Unavailable actions are naturally omitted for this Krita build.
         const QStringList frequent={
             QStringLiteral("tablet_quick_actions"),
             QStringLiteral("tablet_save_and_close"),
@@ -990,26 +994,100 @@ private:
             QStringLiteral("tablet_sample_all_layers"),
             QStringLiteral("view_toggle_reference_images"),
             QStringLiteral("erase_action"),
+            QStringLiteral("tablet_settings"),
+            QStringLiteral("file_new"),
+            QStringLiteral("file_open"),
             QStringLiteral("file_save"),
+            QStringLiteral("file_save_as"),
+            QStringLiteral("file_export_file"),
+            QStringLiteral("file_close"),
             QStringLiteral("edit_undo"),
             QStringLiteral("edit_redo"),
+            QStringLiteral("edit_cut"),
+            QStringLiteral("edit_copy"),
+            QStringLiteral("edit_paste"),
+            QStringLiteral("copy_merged"),
+            QStringLiteral("clear"),
+            QStringLiteral("fill_selection_foreground_color"),
+            QStringLiteral("fill_selection_background_color"),
             QStringLiteral("select_all"),
             QStringLiteral("deselect"),
-            QStringLiteral("tool_crop"),
-            QStringLiteral("tablet_settings")};
+            QStringLiteral("reselect"),
+            QStringLiteral("invert_selection"),
+            QStringLiteral("feather"),
+            QStringLiteral("similar"),
+            QStringLiteral("toggle_display_selection"),
+            QStringLiteral("add_new_paint_layer"),
+            QStringLiteral("add_new_group_layer"),
+            QStringLiteral("duplicatelayer"),
+            QStringLiteral("merge_layer"),
+            QStringLiteral("merge_selected_layers"),
+            QStringLiteral("flatten_image"),
+            QStringLiteral("new_from_visible"),
+            QStringLiteral("create_quick_group"),
+            QStringLiteral("create_quick_clipping_group"),
+            QStringLiteral("quick_ungroup"),
+            QStringLiteral("layer_style"),
+            QStringLiteral("mirrorNodeX"),
+            QStringLiteral("mirrorNodeY"),
+            QStringLiteral("imagesize"),
+            QStringLiteral("canvassize"),
+            QStringLiteral("rotate_canvas_left"),
+            QStringLiteral("rotate_canvas_right"),
+            QStringLiteral("reset_canvas_rotation"),
+            QStringLiteral("mirror_canvas"),
+            QStringLiteral("view_zoom_in"),
+            QStringLiteral("view_zoom_out"),
+            QStringLiteral("zoom_to_100pct"),
+            QStringLiteral("zoom_to_fit"),
+            QStringLiteral("wrap_around_mode"),
+            QStringLiteral("view_show_canvas_only"),
+            QStringLiteral("view_grid"),
+            QStringLiteral("view_toggle_painting_assistants"),
+            QStringLiteral("view_toggle_assistant_previews"),
+            QStringLiteral("sample_screen_color")
+        };
         const QStringList original=QSettings().value(
             QStringLiteral("TabletUi/compactActionOrderV1"),
             compactDefaultActions()).toStringList();
         auto *favorites=new QListWidget(tabs);
-        favorites->setDragDropMode(QAbstractItemView::InternalMove);
-        favorites->setDefaultDropAction(Qt::MoveAction);
+        // Finger drag scroll; use explicit move buttons to reorder instead
+        // of stealing swipe gestures for item drag-and-drop.
+        favorites->setDragDropMode(QAbstractItemView::NoDragDrop);
+        favorites->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        favorites->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        QScroller::grabGesture(favorites->viewport(),
+                               QScroller::LeftMouseButtonGesture);
         tabs->addTab(favorites,i18n("Frequently used"));
+        auto *moveBar=new QHBoxLayout;
+        auto *upButton=new QPushButton(i18n("Move up"),&dialog);
+        auto *downButton=new QPushButton(i18n("Move down"),&dialog);
+        moveBar->addWidget(upButton);
+        moveBar->addWidget(downButton);
+        layout->addLayout(moveBar);
+        auto moveSelected=[favorites](int direction) {
+            const int row=favorites->currentRow();
+            const int destination=row+direction;
+            if(row<0 || destination<0 || destination>=favorites->count())return;
+            auto *item=favorites->takeItem(row);
+            favorites->insertItem(destination,item);
+            favorites->setCurrentRow(destination);
+        };
+        connect(upButton,&QPushButton::clicked,&dialog,
+                [moveSelected](){moveSelected(-1);});
+        connect(downButton,&QPushButton::clicked,&dialog,
+                [moveSelected](){moveSelected(1);});
         auto *allPage=new QWidget(tabs);
         auto *allLayout=new QVBoxLayout(allPage);
         auto *search=new QLineEdit(allPage);
         search->setPlaceholderText(i18n("Search Krita actions..."));
         allLayout->addWidget(search);
         auto *all=new QListWidget(allPage);
+        all->setDragDropMode(QAbstractItemView::NoDragDrop);
+        all->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        all->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        QScroller::grabGesture(all->viewport(),
+                               QScroller::LeftMouseButtonGesture);
         allLayout->addWidget(all);
         tabs->addTab(allPage,i18n("All Krita actions"));
         auto *collection=m_main->actionCollection();
@@ -1043,6 +1121,7 @@ private:
             auto *item=source->item(row);
             const QString id=item->data(Qt::UserRole).toString();
             QListWidget *other=source==favorites?all:favorites;
+            const QSignalBlocker blocker(other);
             for(int j=0;j<other->count();++j)
                 if(other->item(j)->data(Qt::UserRole).toString()==id)
                     other->item(j)->setCheckState(item->checkState());
