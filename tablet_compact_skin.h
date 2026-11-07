@@ -78,6 +78,10 @@
 #include "kis_node_manager.h"
 #include "kis_node.h"
 #include "kis_paint_layer.h"
+#include "kis_group_layer.h"
+#include "kis_mask.h"
+#include "kis_layer_properties_icons.h"
+#include <functional>
 #include "kis_base_node.h"
 #include "kis_image.h"
 #include "kis_icon_utils.h"
@@ -604,6 +608,17 @@ public:
     }
 
     bool eventFilter(QObject *watched,QEvent *event) override {
+        // The touch-generated mouse stream remains captured by the pressed
+        // layer tile. Track its global position for a hold-then-drag move.
+        if(watched==m_layerDragTile && m_layerDragNode &&
+           (event->type()==QEvent::MouseMove ||
+            event->type()==QEvent::MouseButtonRelease)) {
+            const QPoint global=static_cast<QMouseEvent*>(event)->globalPos();
+            m_layerDragLast=global;
+            if(m_layerDragArmed &&
+               (global-m_layerDragStart).manhattanLength()>22)
+                m_layerDragMoved=true;
+        }
         // Krita's startup/welcome-page layout may re-show menu/status bars
         // after the restored Compact UI action fires. Keep chrome hidden
         // without altering the stored normal workspace visibility.
@@ -1738,128 +1753,264 @@ private:
             delete item;
         }
     }
+    struct CompactLayerRow {
+        KisNodeSP node;
+        QPointer<QWidget> widget;
+        int depth=0;
+    };
+
+    bool canMoveCompactNode(KisNodeSP node,KisNodeSP newParent) const {
+        if(!node || !newParent || !node->parent() || node==newParent)
+            return false;
+        // Reject self-parenting and putting a group into its own descendants.
+        for(KisNodeSP p=newParent;p;p=p->parent())
+            if(p==node)return false;
+        return newParent->allowAsChild(node);
+    }
+
+    void moveLayerAtFinger(KisNodeSP source,const QPoint &screenPos) {
+        if(!source || !m_vm->image().toStrongRef())return;
+        for(const CompactLayerRow &row:m_compactLayerRows) {
+            if(!row.widget || !row.node)continue;
+            const QRect bounds(row.widget->mapToGlobal(QPoint()),row.widget->size());
+            if(!bounds.contains(screenPos))continue;
+            const KisNodeSP target=row.node;
+            if(target==source)return;
+            const bool intoGroup=target->inherits("KisGroupLayer") &&
+                screenPos.x()>bounds.center().x();
+            KisNodeSP parent=intoGroup?target:target->parent();
+            if(!canMoveCompactNode(source,parent)) {
+                m_layerName->setText(i18n("Incompatible layer or mask target"));
+                return;
+            }
+            KisNodeSP above;
+            if(intoGroup) {
+                // Right half of a folder tile: move inside, at the top.
+                above=parent->firstChild();
+            } else {
+                // Upper/lower half: place above/below this sibling.
+                above=screenPos.y()<bounds.center().y() ?
+                    target:target->nextSibling();
+            }
+            if(above==source && parent==source->parent())return;
+            KisNodeList moving;
+            moving.append(source);
+            m_vm->nodeManager()->moveNodesDirect(moving,parent,above);
+            QTimer::singleShot(300,this,[this](){refreshLayers();});
+            return;
+        }
+    }
+
     void refreshLayers() {
-        if(!m_compact || !m_vm->activeNode())return;
-        auto image=m_vm->image().toStrongRef();
+        if(!m_compact || !m_vm->activeNode() || m_layerDragNode)return;
+        const auto image=m_vm->image().toStrongRef();
         if(!image || !image->root())return;
         const int oldScroll=m_layersScroll->verticalScrollBar()->value();
+        m_compactLayerRows.clear();
         clearLayerRows();
         const KisNodeSP active=m_vm->activeNode();
         int count=0;
-        for(KisNodeSP node=image->root()->lastChild();node && count<100;
-            node=node->prevSibling()) {
-            if(node->inherits("KisReferenceImagesLayer"))continue;
-            ++count;
-            auto *frame=new QFrame(m_layersContent);
-            const int rowWidth=m_layerTileSize;
-            frame->setFixedSize(rowWidth+4,rowWidth+4);
-            auto *tile=new QToolButton(frame);
-            tile->setGeometry(1,1,rowWidth,rowWidth);
-            tile->setToolButtonStyle(Qt::ToolButtonIconOnly);
-            tile->setIconSize(QSize(rowWidth-12,rowWidth-12));
-            QImage thumb=node->createThumbnail(rowWidth-12,rowWidth-12,
-                                               Qt::KeepAspectRatio);
-            if(!thumb.isNull())tile->setIcon(QIcon(QPixmap::fromImage(thumb)));
-            tile->setText(node->name());
-            tile->setToolTip(node->name());
-            tile->setStyleSheet(node==active ?
-                "QToolButton{border:3px solid #e86c79;border-radius:5px;"
-                "background:#a4a4a4;}" :
-                "QToolButton{border:2px solid #808080;border-radius:5px;"
-                "background:#a4a4a4;}");
-            auto *tileHold=new QTimer(tile);
-            tileHold->setSingleShot(true);
-            tileHold->setInterval(holdMs());
-            auto *held=new bool(false);
-            connect(tile,&QObject::destroyed,this,[held]() {delete held;});
-            connect(tile,&QToolButton::pressed,tile,[this,tileHold,held]() {
-                *held=false;
-                tileHold->start(holdMs());
-            });
-            connect(tileHold,&QTimer::timeout,tile,[this,held]() {
-                *held=true;
-                feedbackForHold();
-            });
-            connect(tile,&QToolButton::released,tile,[this,tileHold,held,node]() {
-                tileHold->stop();
-                if(*held) QTimer::singleShot(0,this,[this,node]() {
-                    m_vm->nodeManager()->slotUiActivatedNode(node);
-                    openLayerActions(node);
-                });
-            });
-            connect(tile,&QToolButton::clicked,this,[this,node,held]() {
-                if(*held) {
-                    *held=false;
-                    return;
+        std::function<void(KisNodeSP,int)> appendChildren;
+        appendChildren=[this,&appendChildren,&count,active](KisNodeSP parent,int depth) {
+            if(!parent || count>=180)return;
+            // Krita's node list is ordered topmost first.
+            for(KisNodeSP node=parent->firstChild();node && count<180;
+                node=node->nextSibling()) {
+                if(node->inherits("KisReferenceImagesLayer"))continue;
+                ++count;
+                const int rowWidth=m_layerTileSize;
+                auto *frame=new QFrame(m_layersContent);
+                frame->setFixedSize(rowWidth+4,rowWidth+4);
+                auto *tile=new QToolButton(frame);
+                tile->setGeometry(1,1,rowWidth,rowWidth);
+                tile->setToolButtonStyle(Qt::ToolButtonIconOnly);
+                tile->setIconSize(QSize(rowWidth-12,rowWidth-12));
+                const QImage thumb=node->createThumbnail(
+                    rowWidth-12,rowWidth-12,Qt::KeepAspectRatio);
+                if(!thumb.isNull())
+                    tile->setIcon(QIcon(QPixmap::fromImage(thumb)));
+                tile->setText(node->name());
+                const bool isGroup=node->inherits("KisGroupLayer");
+                const bool isMask=node->inherits("KisMask");
+                const bool inheritsAlpha=KisLayerPropertiesIcons::nodeProperty(
+                    node,KisLayerPropertiesIcons::inheritAlpha,false).toBool();
+                const bool passThrough=isGroup &&
+                    qobject_cast<KisGroupLayer*>(node.data())->passThroughMode();
+                const QString type=isGroup?i18n("Group"):
+                    isMask?i18n("Mask"):i18n("Layer");
+                QString tooltip=node->name()+QStringLiteral(" — ")+type;
+                if(depth)tooltip+=i18n(" (nested %1 levels)",depth);
+                if(inheritsAlpha)tooltip+=i18n(" — Inherit alpha / clipped");
+                if(passThrough)tooltip+=i18n(" — pass-through group");
+                tile->setToolTip(tooltip+i18n(
+                    "\nTap: select. Hold: options. Hold and drag: reorder."));
+                tile->setStyleSheet(node==active ?
+                    "QToolButton{border:3px solid #e86c79;border-radius:5px;"
+                    "background:#a4a4a4;}" :
+                    "QToolButton{border:2px solid #808080;border-radius:5px;"
+                    "background:#a4a4a4;}");
+                // Hierarchy stripes stay within the square thumbnail.
+                for(int d=0;d<qMin(depth,4);++d) {
+                    auto *stripe=new QFrame(frame);
+                    stripe->setGeometry(1+d*2,2,2,rowWidth-2);
+                    stripe->setStyleSheet(
+                        "background:#5a9db7;border:none;");
+                    stripe->setAttribute(Qt::WA_TransparentForMouseEvents);
                 }
-                const bool wasActive=m_vm->activeNode()==node;
-                m_vm->nodeManager()->slotUiActivatedNode(node);
-                if(wasActive)openLayerActions(node);
-                else QTimer::singleShot(0,this,[this](){refreshLayers();});
-            });
-            auto *eye=new QToolButton(frame);
-            const int overlaySize=qBound(20,rowWidth/4,38);
-            const int iconX=rowWidth-overlaySize+1;
-            const int iconGap=qMax(2,(rowWidth-3*overlaySize)/4);
-            eye->setGeometry(iconX,iconGap,overlaySize,overlaySize);
-            eye->setIconSize(QSize(overlaySize-5,overlaySize-5));
-            eye->setIcon(KisIconUtils::loadIcon(
-                node->visible()?QStringLiteral("visible"):
-                                QStringLiteral("hidden")));
-            eye->setText(node->visible()?QStringLiteral("◉"):QStringLiteral("○"));
-            eye->setToolTip(i18n("Toggle layer visibility"));
-            eye->setStyleSheet(node->visible() ?
-                "QToolButton{border:none;background:#777;color:white;border-radius:5px;}" :
-                "QToolButton{border:1px solid #ccc;background:#555;color:white;border-radius:5px;}");
-            connect(eye,&QToolButton::clicked,this,[this,node]() {
-                m_vm->nodeManager()->slotUiActivatedNode(node);
-                m_vm->nodeManager()->toggleVisibility();
-                QTimer::singleShot(0,this,[this](){refreshLayers();});
-            });
-            auto *lock=new QToolButton(frame);
-            lock->setGeometry(iconX,iconGap*2+overlaySize,
-                              overlaySize,overlaySize);
-            lock->setText(QString());
-            lock->setIcon(lockIcon(node->userLocked()));
-            lock->setIconSize(QSize(overlaySize-4,overlaySize-4));
-            lock->setToolTip(i18n("Toggle layer lock"));
-            lock->setStyleSheet(node->userLocked() ?
-                "QToolButton{background:#417a89;border:1px solid white;border-radius:5px;}" :
-                "QToolButton{background:#666;border:0;border-radius:5px;}");
-            connect(lock,&QToolButton::clicked,this,[this,node]() {
-                m_vm->nodeManager()->slotUiActivatedNode(node);
-                m_vm->nodeManager()->toggleLock();
-                QTimer::singleShot(0,this,[this](){refreshLayers();});
-            });
-            if(auto *layer=qobject_cast<KisPaintLayer*>(node.data())) {
-                auto *alpha=new QToolButton(frame);
-                alpha->setGeometry(iconX,iconGap*3+overlaySize*2,
-                                   overlaySize,overlaySize);
-                alpha->setText(layer->alphaLocked()?QStringLiteral("α"):
-                                                   QStringLiteral("α̸"));
-                alpha->setToolTip(i18n("Toggle alpha lock"));
-                alpha->setStyleSheet(layer->alphaLocked() ?
-                    "QToolButton{background:#417a89;color:white;border:1px solid white;"
-                    "border-radius:5px;font-weight:bold;}" :
-                    "QToolButton{background:#666;color:white;border:0;"
-                    "border-radius:5px;}");
-
-                connect(alpha,&QToolButton::clicked,this,[this,node]() {
+                auto *typeBadge=new QLabel(frame);
+                typeBadge->setGeometry(3+qMin(depth,4)*2,3,22,20);
+                typeBadge->setAlignment(Qt::AlignCenter);
+                typeBadge->setText(isGroup?QStringLiteral("▣"):
+                                   isMask?QStringLiteral("M"):
+                                   inheritsAlpha?QStringLiteral("α"):QString());
+                typeBadge->setStyleSheet(isMask?
+                    "QLabel{background:#9b6caa;color:white;border-radius:3px;"
+                    "font-weight:bold;}" :
+                    "QLabel{background:#435767;color:white;border-radius:3px;"
+                    "font-weight:bold;}");
+                typeBadge->setVisible(isGroup || isMask || inheritsAlpha);
+                typeBadge->setAttribute(Qt::WA_TransparentForMouseEvents);
+                if(isGroup) {
+                    auto *expander=new QToolButton(frame);
+                    expander->setGeometry(3,3,24,24);
+                    expander->setText(node->collapsed()?
+                        QStringLiteral("▸"):QStringLiteral("▾"));
+                    expander->setToolTip(node->collapsed()?
+                        i18n("Expand group"):i18n("Collapse group"));
+                    expander->setStyleSheet(
+                        "QToolButton{background:#3c5c70;color:white;"
+                        "border:1px solid #ddd;border-radius:4px;}");
+                    connect(expander,&QToolButton::clicked,this,[this,node]() {
+                        node->setCollapsed(!node->collapsed());
+                        refreshLayers();
+                    });
+                }
+                if(inheritsAlpha || passThrough) {
+                    auto *clip=new QLabel(frame);
+                    clip->setText(passThrough?QStringLiteral("⇢"):
+                                             QStringLiteral("α↓"));
+                    clip->setGeometry(4,rowWidth-25,27,22);
+                    clip->setAlignment(Qt::AlignCenter);
+                    clip->setToolTip(passThrough?i18n("Pass-through group"):
+                                                  i18n("Inherit alpha / clipped"));
+                    clip->setStyleSheet(
+                        "QLabel{background:#326d68;color:white;border-radius:4px;"
+                        "font-weight:bold;}");
+                    clip->setAttribute(Qt::WA_TransparentForMouseEvents);
+                }
+                auto *tileHold=new QTimer(tile);
+                tileHold->setSingleShot(true);
+                tileHold->setInterval(holdMs());
+                auto *held=new bool(false);
+                connect(tile,&QObject::destroyed,this,[held]() {delete held;});
+                tile->installEventFilter(this);
+                connect(tile,&QToolButton::pressed,tile,
+                        [this,tileHold,held,tile,node]() {
+                    *held=false;
+                    m_layerDragNode=node;
+                    m_layerDragTile=tile;
+                    m_layerDragArmed=false;
+                    m_layerDragMoved=false;
+                    m_layerDragStart=QCursor::pos();
+                    m_layerDragLast=m_layerDragStart;
+                    tileHold->start(holdMs());
+                });
+                connect(tileHold,&QTimer::timeout,tile,[this,held]() {
+                    *held=true;
+                    m_layerDragArmed=true;
+                    feedbackForHold();
+                });
+                connect(tile,&QToolButton::released,tile,
+                        [this,tileHold,held,node]() {
+                    tileHold->stop();
+                    const bool moved=m_layerDragMoved;
+                    const QPoint drop=m_layerDragLast;
+                    m_layerDragNode.clear();
+                    m_layerDragTile.clear();
+                    m_layerDragArmed=false;
+                    m_layerDragMoved=false;
+                    if(*held)QTimer::singleShot(0,this,
+                        [this,node,moved,drop]() {
+                            if(moved)moveLayerAtFinger(node,drop);
+                            else {
+                                m_vm->nodeManager()->slotUiActivatedNode(node);
+                                openLayerActions(node);
+                            }
+                        });
+                });
+                connect(tile,&QToolButton::clicked,this,[this,node,held]() {
+                    if(*held) {*held=false;return;}
+                    const bool wasActive=m_vm->activeNode()==node;
                     m_vm->nodeManager()->slotUiActivatedNode(node);
-                    m_vm->nodeManager()->toggleAlphaLock();
+                    if(wasActive)openLayerActions(node);
+                    else QTimer::singleShot(0,this,[this](){refreshLayers();});
+                });
+                const int overlaySize=qBound(20,rowWidth/4,38);
+                const int iconX=rowWidth-overlaySize+1;
+                const int iconGap=qMax(2,(rowWidth-3*overlaySize)/4);
+                auto *eye=new QToolButton(frame);
+                eye->setGeometry(iconX,iconGap,overlaySize,overlaySize);
+                eye->setIconSize(QSize(overlaySize-5,overlaySize-5));
+                eye->setIcon(KisIconUtils::loadIcon(
+                    node->visible()?QStringLiteral("visible"):
+                                    QStringLiteral("hidden")));
+                eye->setToolTip(i18n("Toggle visibility"));
+                eye->setStyleSheet(node->visible()?
+                    "QToolButton{border:none;background:#777;border-radius:5px;}":
+                    "QToolButton{border:1px solid #ccc;background:#555;border-radius:5px;}");
+                connect(eye,&QToolButton::clicked,this,[this,node]() {
+                    m_vm->nodeManager()->slotUiActivatedNode(node);
+                    m_vm->nodeManager()->toggleVisibility();
                     QTimer::singleShot(0,this,[this](){refreshLayers();});
                 });
+                auto *lock=new QToolButton(frame);
+                lock->setGeometry(iconX,iconGap*2+overlaySize,
+                                   overlaySize,overlaySize);
+                lock->setIcon(lockIcon(node->userLocked()));
+                lock->setIconSize(QSize(overlaySize-4,overlaySize-4));
+                lock->setToolTip(i18n("Toggle layer lock"));
+                lock->setStyleSheet(node->userLocked()?
+                    "QToolButton{background:#417a89;border:1px solid white;border-radius:5px;}":
+                    "QToolButton{background:#666;border:0;border-radius:5px;}");
+                connect(lock,&QToolButton::clicked,this,[this,node]() {
+                    m_vm->nodeManager()->slotUiActivatedNode(node);
+                    m_vm->nodeManager()->toggleLock();
+                    QTimer::singleShot(0,this,[this](){refreshLayers();});
+                });
+                if(auto *paint=qobject_cast<KisPaintLayer*>(node.data())) {
+                    auto *alpha=new QToolButton(frame);
+                    alpha->setGeometry(iconX,iconGap*3+overlaySize*2,
+                                       overlaySize,overlaySize);
+                    alpha->setText(paint->alphaLocked()?
+                                   QStringLiteral("α"):QStringLiteral("α̸"));
+                    alpha->setToolTip(i18n("Toggle alpha lock"));
+                    alpha->setStyleSheet(paint->alphaLocked()?
+                        "QToolButton{background:#417a89;color:white;"
+                        "border:1px solid white;border-radius:5px;}":
+                        "QToolButton{background:#666;color:white;"
+                        "border:0;border-radius:5px;}");
+                    connect(alpha,&QToolButton::clicked,this,[this,node]() {
+                        m_vm->nodeManager()->slotUiActivatedNode(node);
+                        m_vm->nodeManager()->toggleAlphaLock();
+                        QTimer::singleShot(0,this,[this](){refreshLayers();});
+                    });
+                }
+                m_layersLayout->addWidget(frame);
+                m_compactLayerRows.append({node,frame,depth});
+                if(node->childCount() && (!isGroup || !node->collapsed()))
+                    appendChildren(node,depth+1);
             }
-            m_layersLayout->addWidget(frame);
-        }
+        };
+        appendChildren(image->root(),0);
         m_layersLayout->addStretch(1);
         m_visibleLayerCount=count;
         QTimer::singleShot(0,this,[this,oldScroll]() {
-            if(m_layersScroll) m_layersScroll->verticalScrollBar()->setValue(oldScroll);
+            if(m_layersScroll)m_layersScroll->verticalScrollBar()->setValue(oldScroll);
         });
-        m_layerName->setText(active ? active->name().left(14):QString());
+        m_layerName->setText(active?active->name().left(14):QString());
         positionOverlays();
     }
+
     void openLayerActions(KisNodeSP node) {
         if(!node)return;
         QDialog dialog(m_main);
@@ -1890,6 +2041,34 @@ private:
         connect(opacity,&QSlider::sliderReleased,&dialog,[this,node,opacity]() {
             m_vm->nodeManager()->setNodeOpacity(node,qRound(opacity->value()*255.0/100.0));
         });
+        if(node->inherits("KisLayer")) {
+            const bool inherit=KisLayerPropertiesIcons::nodeProperty(
+                node,KisLayerPropertiesIcons::inheritAlpha,false).toBool();
+            auto *clip=new QCheckBox(i18n("Inherit alpha (clipping)"),&dialog);
+            clip->setChecked(inherit);
+            layout->addWidget(clip);
+            connect(clip,&QCheckBox::toggled,&dialog,[this,node](bool checked) {
+                if(auto image=m_vm->image().toStrongRef())
+                    KisLayerPropertiesIcons::setNodePropertyAutoUndo(
+                        node,KisLayerPropertiesIcons::inheritAlpha,
+                        checked,image);
+                QTimer::singleShot(100,this,[this](){refreshLayers();});
+            });
+        }
+        if(node->inherits("KisGroupLayer")) {
+            const bool pass=KisLayerPropertiesIcons::nodeProperty(
+                node,KisLayerPropertiesIcons::passThrough,false).toBool();
+            auto *through=new QCheckBox(i18n("Pass-through group"),&dialog);
+            through->setChecked(pass);
+            layout->addWidget(through);
+            connect(through,&QCheckBox::toggled,&dialog,[this,node](bool checked) {
+                if(auto image=m_vm->image().toStrongRef())
+                    KisLayerPropertiesIcons::setNodePropertyAutoUndo(
+                        node,KisLayerPropertiesIcons::passThrough,
+                        checked,image);
+                QTimer::singleShot(100,this,[this](){refreshLayers();});
+            });
+        }
         auto *grid=new QGridLayout();
         QToolButton *toggleButtons[3]={nullptr,nullptr,nullptr};
         auto refreshToggles=[node,&toggleButtons]() {
@@ -1956,16 +2135,35 @@ private:
                     addNative(&options,QStringLiteral("flatten_layer"));
                     addNative(&options,QStringLiteral("select_opaque"));
                     addNative(&options,QStringLiteral("remove_layer"));
+                    addNative(&options,QStringLiteral("raise_layer"));
+                    addNative(&options,QStringLiteral("lower_layer"));
                     QMenu *addMenu=options.addMenu(i18n("Add layer or mask"));
                     addNative(addMenu,QStringLiteral("add_new_paint_layer"));
                     addNative(addMenu,QStringLiteral("add_new_group_layer"));
                     addNative(addMenu,QStringLiteral("add_new_clone_layer"));
                     addNative(addMenu,QStringLiteral("add_new_transparency_mask"));
                     addNative(addMenu,QStringLiteral("add_new_filter_mask"));
+                    addNative(addMenu,QStringLiteral("add_new_transform_mask"));
+                    addNative(addMenu,QStringLiteral("add_new_colorize_mask"));
+                    addNative(addMenu,QStringLiteral("add_new_selection_mask"));
+                    addNative(addMenu,QStringLiteral("add_new_vector_layer"));
+                    addNative(addMenu,QStringLiteral("add_new_fill_layer"));
+                    addNative(addMenu,QStringLiteral("add_new_file_layer"));
                     QMenu *groupMenu=options.addMenu(i18n("Group and clipping"));
                     addNative(groupMenu,QStringLiteral("create_quick_clipping_group"));
                     addNative(groupMenu,QStringLiteral("quick_group"));
                     addNative(groupMenu,QStringLiteral("quick_ungroup"));
+                    // Full original Layer menu, including plugins/operations
+                    // not mirrored by this Compact dialog.
+                    for(QAction *entry:m_main->menuBar()->actions()) {
+                        if(entry && entry->menu() &&
+                           entry->text().remove(QLatin1Char('&')).compare(
+                               i18n("Layer"),Qt::CaseInsensitive)==0) {
+                            options.addSeparator();
+                            options.addMenu(entry->menu());
+                            break;
+                        }
+                    }
                     options.exec(QCursor::pos());
                 }
                 else if(i==7 && m_layerDocker) {
@@ -2271,6 +2469,13 @@ private:
     bool m_layerOnRight=false;
     int m_layerTileSize=64;
     int m_visibleLayerCount=1;
+    QList<CompactLayerRow> m_compactLayerRows;
+    KisNodeSP m_layerDragNode;
+    QPointer<QWidget> m_layerDragTile;
+    QPoint m_layerDragStart;
+    QPoint m_layerDragLast;
+    bool m_layerDragArmed=false;
+    bool m_layerDragMoved=false;
     QScrollArea *m_layersScroll=nullptr;
     QWidget *m_layersContent=nullptr;
     QVBoxLayout *m_layersLayout=nullptr;
