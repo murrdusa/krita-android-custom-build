@@ -943,6 +943,7 @@ public:
         }
         refreshVisibility();
         refreshLayers();
+        QTimer::singleShot(0,this,[this](){refreshNativeColorSelectorLayout();});
         if(!active) {
             // Krita may apply deferred toolbar state after the mode changes.
             // Reassert only the normal toolbar's Compact toggle, not its
@@ -2589,22 +2590,24 @@ private:
             QSettings().setValue(QStringLiteral("TabletUi/colorHistoryRows"),value);
             refreshColors();
         });
-        auto *nativeSettings=new QPushButton(i18n("Krita Color Selector Options..."),&dialog);
+        auto *nativeBars=new QCheckBox(
+            i18n("Show native shade sliders and extra color patches"),&dialog);
+        nativeBars->setChecked(QSettings().value(
+            QStringLiteral("TabletUi/compactColorNativeExtras"),false).toBool());
+        layout->addWidget(nativeBars);
+        connect(nativeBars,&QCheckBox::toggled,&dialog,[this](bool on) {
+            QSettings().setValue(QStringLiteral("TabletUi/compactColorNativeExtras"),on);
+            refreshNativeColorSelectorLayout();
+        });
+        auto *nativeSettings=new QPushButton(
+            i18n("Krita wheel type, color model and selector settings..."),&dialog);
         layout->addWidget(nativeSettings);
         connect(nativeSettings,&QPushButton::clicked,&dialog,[this]() {
-            if(!m_colorDocker)return;
-            if(m_nativeSelectorMenuButton && m_nativeSelectorMenuButton->menu()) {
-                m_nativeSelectorMenuButton->menu()->exec(QCursor::pos());
-                return;
-            }
-            for(QToolButton *button:m_colorDocker->findChildren<QToolButton*>()) {
-                if(button->menu()) {
-                    button->menu()->exec(QCursor::pos());
-                    return;
-                }
-            }
-            QMessageBox::information(m_main,i18n("Color selector"),
-                i18n("Open Krita's selector menu from the selector widget."));
+            QPointer<QDockWidget> docker=m_colorDocker;
+            QTimer::singleShot(0,this,[docker]() {
+                if(docker)QMetaObject::invokeMethod(
+                    docker.data(),"slotOpenSettings",Qt::DirectConnection);
+            });
         });
         layout->addWidget(new QLabel(i18n("Color wheel size"),&dialog));
         auto *size=new QSlider(Qt::Horizontal,&dialog);
@@ -2630,6 +2633,13 @@ private:
         QSettings().setValue(QStringLiteral("TabletUi/colorExpanded"),m_colorExpanded);
         updateColorDock();
         refreshColorControls();
+    }
+    void refreshNativeColorSelectorLayout() {
+        if(m_colorDocker)
+            QMetaObject::invokeMethod(m_colorDocker.data(),
+                "slotConfigurationChanged",Qt::DirectConnection);
+        if(m_compact && m_colorExpanded)
+            QTimer::singleShot(0,this,[this](){updateColorDock();});
     }
     void refreshColorControls() {
         const bool show=m_compact && m_vm->activeNode() && m_surface->isVisible();

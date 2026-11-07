@@ -72,6 +72,28 @@ def main(root: Path):
         f'set(krita5_xmlgui_hash_expected "{actual}")',cmake_text)
     cmake_file.write_text(cmake_text,encoding="utf-8")
     print("v7 restored stock Krita normal toolbar + Compact toggle; XMLGUI",actual)
+    # Compact-only Wide Gamut UI: leave the normal Krita preferences intact.
+    wg_path=root/"plugins/dockers/widegamutcolorselector/WGColorSelectorDock.cpp"
+    wg=wg_path.read_text(encoding="utf-8")
+    def replace_wg(old,new):
+        if wg.count(old)!=1:
+            raise RuntimeError("Wide Gamut compact override anchor: "+old[:75])
+        return wg.replace(old,new,1)
+    wg=replace_wg("#include <QMenu>","#include <QMenu>\n#include <QSettings>")
+    wg=replace_wg(
+        "    bool historyEnabled = cfg.get(WGConfig::colorHistoryEnabled);",
+        """    const bool compactMinimal =
+        QSettings().value(QStringLiteral("TabletUi/compact"),false).toBool() &&
+        !QSettings().value(QStringLiteral("TabletUi/compactColorNativeExtras"),
+                           false).toBool();
+    bool historyEnabled = !compactMinimal && cfg.get(WGConfig::colorHistoryEnabled);""")
+    wg=replace_wg(
+        "    bool commonColorsEnabled = cfg.get(WGConfig::commonColorsEnabled);",
+        "    bool commonColorsEnabled = !compactMinimal && cfg.get(WGConfig::commonColorsEnabled);")
+    wg=replace_wg(
+        "    bool shadeSelectorEnabled = cfg.get(WGConfig::minimalShadeSelectorEnabled);",
+        "    bool shadeSelectorEnabled = !compactMinimal && cfg.get(WGConfig::minimalShadeSelectorEnabled);")
+    wg_path.write_text(wg,encoding="utf-8")
     target=root/"libs/ui/tablet_compact_skin.h"
     src=Path(__file__).resolve().parent/"tablet_compact_skin.h"
     if not src.is_file():
