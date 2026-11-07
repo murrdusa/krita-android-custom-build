@@ -360,8 +360,9 @@ public:
         // The tile gesture handler owns thumbnail touches; Qt's scroller
         // handles touches on empty scrollbar space only.
         m_layersScroll->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,true);
-        QScroller::grabGesture(m_layersScroll->viewport(),
-                              QScroller::TouchGesture);
+        // Finger scrolling is handled by handleLayerTouch(). Do not
+        // install a competing QScroller recognizer: once a long press
+        // arms a drag, only edge autoscroll may change the scroll offset.
         m_layersContent = new QWidget(m_layersScroll);
         m_layersLayout = new QVBoxLayout(m_layersContent);
         m_layersLayout->setContentsMargins(0,0,0,0);
@@ -627,12 +628,40 @@ public:
         connect(m_vm->canvasResourceProvider(), &KisCanvasResourceProvider::sigFGColorChanged,
                 this, [this](const KoColor&) {if(m_compact) refreshColors();});
 
+        // Krita/Qt may retarget pen TabletMove events to a viewport even
+        // though QToolButton received the initial synthesized press.
+        qApp->installEventFilter(this);
+        m_layerEdgeScrollTimer=new QTimer(this);
+        m_layerEdgeScrollTimer->setInterval(35);
+        connect(m_layerEdgeScrollTimer,&QTimer::timeout,this,[this]() {
+            if(!m_compact || !m_layersScroll || !m_layerRail)return;
+            const bool finger=m_touchLayerArmed && !m_touchLayerPinching &&
+                !m_touchLayerScrolling && !m_layerTouches.isEmpty();
+            const bool pen=m_layerDragArmed && bool(m_layerDragNode);
+            if(!finger && !pen){m_layerEdgeScrollTimer->stop();return;}
+            const QPoint pos=finger?m_touchLayerLast:m_layerDragLast;
+            const QRect bounds(m_layersScroll->viewport()->mapToGlobal(QPoint()),
+                               m_layersScroll->viewport()->size());
+            if(pos.x()<bounds.left()-24 || pos.x()>bounds.right()+24)return;
+            const int edge=qMin(52,qMax(28,bounds.height()/7));
+            int delta=0;
+            if(pos.y()<=bounds.top()+edge)
+                delta=-qBound(5,(bounds.top()+edge-pos.y())/2+5,24);
+            else if(pos.y()>=bounds.bottom()-edge)
+                delta=qBound(5,(pos.y()-bounds.bottom()+edge)/2+5,24);
+            if(delta) {
+                QScrollBar *bar=m_layersScroll->verticalScrollBar();
+                bar->setValue(bar->value()+delta);
+                showLayerDragPreview(finger?m_touchLayerPrimary:m_layerDragNode,pos);
+            }
+        });
         m_layerTouchHoldTimer=new QTimer(this);
         m_layerTouchHoldTimer->setSingleShot(true);
         connect(m_layerTouchHoldTimer,&QTimer::timeout,this,[this]() {
             if(m_layerTouches.size()==1 && !m_touchLayerScrolling &&
                !m_touchLayerPinching) {
                 m_touchLayerArmed=true;
+                if(m_layerEdgeScrollTimer)m_layerEdgeScrollTimer->start();
                 showLayerDragPreview(m_touchLayerPrimary,m_touchLayerLast);
                 feedbackForHold();
             }
@@ -669,15 +698,40 @@ public:
         // click or feed it to the layer scroller. This supports both finger
         // reorder and pinching two separate layer thumbnails into a group.
         if(handleLayerTouch(watched,event))return true;
-        // The touch-generated mouse stream remains captured by the pressed
-        // layer tile. Track its global position for a hold-then-drag move.
+        // Track native stylus packets even if the pen leaves the thumbnail
+        // or Qt delivers them to the canvas viewport instead of the tile.
+        const bool penPacket=event->type()==QEvent::TabletMove ||
+                             event->type()==QEvent::TabletRelease;
+        if(m_compact && m_layerDragNode && penPacket) {
+            QTabletEvent *tablet=static_cast<QTabletEvent*>(event);
+            m_layerDragLast=tablet->globalPos().toPoint();
+            if(m_layerDragArmed &&
+               (m_layerDragLast-m_layerDragStart).manhattanLength()>16) {
+                m_layerDragMoved=true;
+                showLayerDragPreview(m_layerDragNode,m_layerDragLast);
+            }
+            // A pen release might not synthesize a QToolButton::released.
+            if(event->type()==QEvent::TabletRelease) {
+                const KisNodeSP source=m_layerDragNode;
+                const QPoint last=m_layerDragLast;
+                const bool moved=m_layerDragMoved;
+                const bool held=m_layerDragArmed;
+                QTimer::singleShot(0,this,[this,source,last,moved,held]() {
+                    if(m_layerDragNode!=source)return; // mouse release handled it
+                    if(moved)moveLayerAtFinger(source,last);
+                    else if(held)openLayerActions(source);
+                    else m_vm->nodeManager()->slotUiActivatedNode(source);
+                    finishLayerDrag();
+                });
+            }
+        }
         if(watched==m_layerDragTile && m_layerDragNode &&
            (event->type()==QEvent::MouseMove ||
             event->type()==QEvent::MouseButtonRelease)) {
             const QPoint global=static_cast<QMouseEvent*>(event)->globalPos();
             m_layerDragLast=global;
             if(m_layerDragArmed &&
-               (global-m_layerDragStart).manhattanLength()>22) {
+               (global-m_layerDragStart).manhattanLength()>16) {
                 m_layerDragMoved=true;
                 showLayerDragPreview(m_layerDragNode,global);
             }
@@ -790,6 +844,8 @@ public:
             rememberDockers();
             rememberCompactToolbarState(true);
             enforceCompactChrome();
+            QTimer::singleShot(120,this,[this](){refreshVisibility();});
+            QTimer::singleShot(600,this,[this](){refreshVisibility();});
             QTimer::singleShot(0,this,[this](){refreshVisibility();});
             QTimer::singleShot(0,this,[this](){enforceCompactChrome();});
             QTimer::singleShot(350,this,[this](){enforceCompactChrome();});
@@ -1953,6 +2009,8 @@ private:
             m_layerTouches.clear();
             m_touchLayerArmed=false;
             m_touchLayerPinching=false;
+            if(m_layerEdgeScrollTimer)m_layerEdgeScrollTimer->stop();
+            hideLayerDragPreview();
             return false;
         }
         QTouchEvent *touch=static_cast<QTouchEvent*>(event);
@@ -2043,6 +2101,7 @@ private:
         if(m_layerTouches.isEmpty()) {
             m_layerTouchHoldTimer->stop();
             hideLayerDragPreview();
+            if(m_layerEdgeScrollTimer)m_layerEdgeScrollTimer->stop();
             const KisNodeSP primary=m_touchLayerPrimary;
             const KisNodeSP pinchedA=m_touchPinchA;
             const KisNodeSP pinchedB=m_touchPinchB;
@@ -2084,6 +2143,14 @@ private:
         return newParent->allowAsChild(node);
     }
 
+    void finishLayerDrag() {
+        hideLayerDragPreview();
+        if(m_layerEdgeScrollTimer)m_layerEdgeScrollTimer->stop();
+        m_layerDragNode.clear();
+        m_layerDragTile.clear();
+        m_layerDragArmed=false;
+        m_layerDragMoved=false;
+    }
     void hideLayerDragPreview() {
         if(m_layerDragGhost)m_layerDragGhost->hide();
         if(m_layerDropMarker)m_layerDropMarker->hide();
@@ -2246,7 +2313,7 @@ private:
                 if(inheritsAlpha)tooltip+=i18n(" — Inherit alpha / clipped");
                 if(passThrough)tooltip+=i18n(" — pass-through group");
                 tile->setToolTip(tooltip+i18n(
-                    "\nTap: select. Hold: options. Hold and drag: reorder."));
+                    "\nTap: select. Hold: options. Hold and drag: reorder. Move near the top or bottom to scroll."));
                 tile->setStyleSheet(node==active ?
                     "QToolButton{border:3px solid #e86c79;border-radius:5px;"
                     "background:#a4a4a4;}" :
@@ -2321,6 +2388,7 @@ private:
                 connect(tileHold,&QTimer::timeout,tile,[this,held]() {
                     *held=true;
                     m_layerDragArmed=true;
+                    if(m_layerEdgeScrollTimer)m_layerEdgeScrollTimer->start();
                     showLayerDragPreview(m_layerDragNode,m_layerDragLast);
                     feedbackForHold();
                 });
@@ -2329,11 +2397,8 @@ private:
                     tileHold->stop();
                     const bool moved=m_layerDragMoved;
                     const QPoint drop=m_layerDragLast;
-                    hideLayerDragPreview();
-                    m_layerDragNode.clear();
-                    m_layerDragTile.clear();
-                    m_layerDragArmed=false;
-                    m_layerDragMoved=false;
+                    if(m_layerDragNode!=node)return;
+                    finishLayerDrag();
                     if(*held)QTimer::singleShot(0,this,
                         [this,node,moved,drop]() {
                             if(moved)moveLayerAtFinger(node,drop);
@@ -2813,7 +2878,9 @@ private:
         // The welcome page is not a painting workspace: don't render the
         // dedicated Compact drawing toolbar over Recent Images / Project Gallery.
         // It returns automatically once a document is active.
-        const bool documentOpen=m_mdi && m_mdi->activeSubWindow() &&
+        // QMdiArea::activeSubWindow() may temporarily be null after
+        // toggling document view modes; the image/view manager is authoritative.
+        const bool documentOpen=m_vm && m_vm->activeNode() &&
             !m_vm->image().toStrongRef().isNull();
         if(m_compactBar)m_compactBar->setVisible(m_compact && documentOpen);
         m_brushControls->setVisible(show);
@@ -2893,6 +2960,7 @@ private:
     QList<CompactLayerRow> m_compactLayerRows;
     QHash<int,CompactTouchPoint> m_layerTouches;
     QTimer *m_layerTouchHoldTimer=nullptr;
+    QTimer *m_layerEdgeScrollTimer=nullptr;
     KisNodeSP m_touchLayerPrimary;
     KisNodeSP m_touchPinchA;
     KisNodeSP m_touchPinchB;
