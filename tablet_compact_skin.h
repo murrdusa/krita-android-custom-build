@@ -2229,7 +2229,8 @@ private:
     // issue the next grouping operation until its actual nodes have moved.
     void finishCompactClipTransaction() {
         if(m_vm && m_vm->nodeManager()) {
-            if(m_clipRestoreActive && m_clipRestoreActive->parent()) {
+            if(m_vm->image().toStrongRef()==m_clipWorkingImage &&
+               m_clipRestoreActive && m_clipRestoreActive->parent()) {
                 m_vm->nodeManager()->slotUiActivatedNode(m_clipRestoreActive);
                 m_vm->nodeManager()->slotSetSelectedNodes(
                     KisNodeList{m_clipRestoreActive});
@@ -2238,6 +2239,10 @@ private:
             }
         }
         m_clipRebuildParents.clear();
+        m_clipPendingWrappers.clear();
+        m_clipPendingMoved.clear();
+        m_clipExpectedParent.clear();
+        m_clipExpectedBelow.clear();
         m_clipRestoreActive.clear();
         m_clipWorkingImage.clear();
         m_clipTransactionBusy=false;
@@ -2246,7 +2251,9 @@ private:
     void waitForCompactGroup(KisNodeSP parent,KisNodeSP base,
                              KisNodeList cluster,int attempt) {
         if(!m_clipTransactionBusy || !m_vm ||
-           m_vm->image().toStrongRef()!=m_clipWorkingImage)return;
+           m_vm->image().toStrongRef()!=m_clipWorkingImage) {
+            finishCompactClipTransaction();return;
+        }
         KisNodeSP group=base?base->parent():KisNodeSP();
         bool settled=group && group!=parent &&
             group->parent()==parent && group->inherits("KisGroupLayer");
@@ -2304,6 +2311,25 @@ private:
         }
         finishCompactClipTransaction();
     }
+    void waitForCompactPlacement(int attempt) {
+        if(!m_clipTransactionBusy || !m_vm || !m_vm->nodeManager() ||
+           m_vm->image().toStrongRef()!=m_clipWorkingImage) {
+            finishCompactClipTransaction();return;
+        }
+        if(m_clipPendingMoved &&
+           (m_clipPendingMoved->parent()!=m_clipExpectedParent ||
+            m_clipPendingMoved->prevSibling()!=m_clipExpectedBelow)) {
+            if(attempt<35) {
+                QTimer::singleShot(110,this,[this,attempt]() {
+                    waitForCompactPlacement(attempt+1);
+                });
+            } else {
+                finishCompactClipTransaction();
+            }
+            return;
+        }
+        continueCompactClipRebuild();
+    }
     void waitForCompactFlatten(int attempt,
                                 const std::function<void()> &afterFlatten) {
         if(!m_clipTransactionBusy || !m_vm || !m_vm->nodeManager() ||
@@ -2311,8 +2337,11 @@ private:
             finishCompactClipTransaction();return;
         }
         bool hasWrappers=false;
-        for(KisNodeSP parent:m_clipRebuildParents)
-            if(containsCompactClipGroups(parent))hasWrappers=true;
+        // Track the actual wrapper nodes: a legacy "Group N" can stop
+        // matching the structural heuristic as its children move out,
+        // before Krita has removed the now-empty folder.
+        for(KisNodeSP wrapper:m_clipPendingWrappers)
+            if(wrapper && wrapper->parent())hasWrappers=true;
         if(hasWrappers && attempt<35) {
             QTimer::singleShot(110,this,[this,attempt,afterFlatten]() {
                 waitForCompactFlatten(attempt+1,afterFlatten);
@@ -2321,8 +2350,8 @@ private:
         }
         if(hasWrappers) {finishCompactClipTransaction();return;}
         if(afterFlatten)afterFlatten();
-        QTimer::singleShot(afterFlatten?300:180,this,[this]() {
-            continueCompactClipRebuild();
+        QTimer::singleShot(afterFlatten?160:100,this,[this]() {
+            waitForCompactPlacement(0);
         });
     }
     void beginCompactClipRebuild(KisNodeSP first,
@@ -2335,6 +2364,10 @@ private:
         m_clipRestoreActive=m_vm->activeNode();
         m_clipTransactionBusy=true;
         m_clipRebuildParents.clear();
+        m_clipPendingWrappers.clear();
+        m_clipPendingMoved.clear();
+        m_clipExpectedParent.clear();
+        m_clipExpectedBelow.clear();
         m_clipRebuildParents.append(first);
         if(second && second!=first)m_clipRebuildParents.append(second);
         ungroupCompactClips(first);
@@ -2487,6 +2520,7 @@ private:
         };
         collect(parent);
         for(KisNodeSP wrapper:wrappers) {
+            m_clipPendingWrappers.append(wrapper);
             m_vm->nodeManager()->slotUiActivatedNode(wrapper);
             m_vm->nodeManager()->slotSetSelectedNodes(KisNodeList{wrapper});
             m_vm->nodeManager()->quickUngroup();
@@ -2519,6 +2553,9 @@ private:
                     (upper?target:target->prevSibling());
                 if(above==source && source->parent()==destination)return;
                 if(!canMoveCompactNode(source,destination))return;
+                m_clipPendingMoved=source;
+                m_clipExpectedParent=destination;
+                m_clipExpectedBelow=above;
                 m_vm->nodeManager()->moveNodesDirect(
                     KisNodeList{source},destination,above);
             });
@@ -3239,6 +3276,10 @@ private:
     KisImageSP m_clipWorkingImage;
     KisNodeSP m_clipRestoreActive;
     QList<KisNodeSP> m_clipRebuildParents;
+    QList<KisNodeSP> m_clipPendingWrappers;
+    KisNodeSP m_clipPendingMoved;
+    KisNodeSP m_clipExpectedParent;
+    KisNodeSP m_clipExpectedBelow;
     bool m_layerScrollerSuspended=false;
     bool m_recoverLegacyNormalLayout=false;
     bool m_compact=false;
