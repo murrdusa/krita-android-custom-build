@@ -1022,7 +1022,7 @@ private:
                     other->item(j)->setCheckState(item->checkState());
         };
         connect(favorites,&QListWidget::itemChanged,&dialog,
-                [favorites,all,sync](QListWidgetItem *item) {
+                [favorites,sync](QListWidgetItem *item) {
             sync(favorites,favorites->row(item));
         });
         connect(all,&QListWidget::itemChanged,&dialog,
@@ -1371,7 +1371,7 @@ private:
         QListWidgetItem *heldItem=nullptr;
         bool heldAction=false;
         connect(grid,&QListWidget::itemPressed,&dialog,
-                [&holdTimer,&heldItem,&heldAction](QListWidgetItem *item) {
+                [this,&holdTimer,&heldItem,&heldAction](QListWidgetItem *item) {
             heldItem=item;
             heldAction=false;
             holdTimer.start(holdMs());
@@ -1569,7 +1569,7 @@ private:
             tileHold->setInterval(holdMs());
             auto *held=new bool(false);
             connect(tile,&QObject::destroyed,this,[held]() {delete held;});
-            connect(tile,&QToolButton::pressed,tile,[tileHold,held]() {
+            connect(tile,&QToolButton::pressed,tile,[this,tileHold,held]() {
                 *held=false;
                 tileHold->start(holdMs());
             });
