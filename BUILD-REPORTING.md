@@ -84,3 +84,32 @@ python3 krita_build_live.py --quiet
 
 You can also use a separate Windows Terminal tab for the viewer. No special
 permissions or new Python packages are required.
+
+
+## Incremental build optimization
+
+The local watcher still polls GitHub for every commit, but the build script
+now fingerprints app-affecting inputs and compares them to the last successful
+APK. Documentation, GitHub workflows, and monitoring/reporting-only changes
+are skipped without recompiling or repackaging. The existing APK is reused.
+
+For app changes, byte-for-byte comparison restores original modification times
+for patched Krita files whose contents did not change. This prevents the
+git restore / patch-application cycle from making unchanged C++ files appear
+new to the compiler. The existing Android CMake configuration is also reused;
+CMake automatically regenerates when relevant build inputs actually change.
+
+The first measured optimized build completed in 71.7 seconds, compared with
+278.7 seconds for the preceding build. Other builds may take longer when
+significant source files, dependencies, or APK packaging change.
+
+Force a build for unchanged inputs:
+    KRITA_FORCE_BUILD=1 bash local-build.sh build
+
+Force both compilation and CMake reconfiguration:
+    KRITA_FORCE_BUILD=1 KRITA_RECONFIGURE=1 bash local-build.sh build
+
+These changes do not delete the persistent Docker container or its build
+directory, and do not alter the running watcher. The watcher's earlier
+--jobs 2 setting reduces CPU load while gaming; increasing it may speed
+compilation at the cost of higher background resource use.
