@@ -46,6 +46,10 @@
 #include <QSignalBlocker>
 #include <QHeaderView>
 #include <KoToolManager.h>
+#include <KoToolBase.h>
+#include <kis_canvas2.h>
+#include <utility>
+#include <initializer_list>
 #include <QScrollBar>
 #include <QScroller>
 #include <QCursor>
