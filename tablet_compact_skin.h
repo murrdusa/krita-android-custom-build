@@ -140,12 +140,12 @@ public:
         layerHeader->setSpacing(2);
         rail->addLayout(layerHeader);
         m_addLayer = new QToolButton(m_layerRail);
-        m_addLayer->setText(QStringLiteral("+"));
+        m_addLayer->setText(i18n("+ Add Layer"));
         m_addLayer->setFixedHeight(38);
         m_addLayer->setToolTip(i18n("Tap: new paint layer. Hold: layer and mask types"));
         layerHeader->addWidget(m_addLayer,1);
         m_layerPinButton = new QToolButton(m_layerRail);
-        m_layerPinButton->setFixedSize(32,38);
+        m_layerPinButton->setFixedSize(38,38);
         m_layerPinButton->setToolTip(i18n("Tap: pin/unpin. Hold: layer settings"));
         layerHeader->addWidget(m_layerPinButton);
         auto *layerPinTimer=new QTimer(this);
@@ -229,7 +229,7 @@ public:
         m_layersLayout->setContentsMargins(0,0,0,0);
         m_layersLayout->setSpacing(3);
         m_layersScroll->setWidget(m_layersContent);
-        rail->addWidget(m_layersScroll,1);
+        rail->addWidget(m_layersScroll,0);
         m_layerName = new QLabel(m_layerRail);
         m_layerName->setAlignment(Qt::AlignCenter);
         m_layerName->setWordWrap(true);
@@ -284,8 +284,7 @@ public:
                 if(!wasVisible) m_toolOptionsDocker->raise();
             }
         });
-        m_main->addToolBar(Qt::TopToolBarArea,m_topBar);
-        m_topBar->hide();
+        // Tool actions attach to mainToolBar in both UI modes.
 
         connect(m_vm->canvasResourceProvider(),
                 &KisCanvasResourceProvider::sigPaintOpPresetChanged, this,
@@ -422,8 +421,7 @@ public:
             // Restore pinned panels only, not transient open panels.
             m_colorExpanded=m_colorPinned;
             m_layerExpanded=m_layerPinned;
-            hideCompactToolbarClutter();
-            for(QDockWidget *dock:{m_layerDocker.data(),m_brushDocker.data(),
+             for(QDockWidget *dock:{m_layerDocker.data(),m_brushDocker.data(),
                                    m_toolOptionsDocker.data()}) {
                 if(dock) dock->hide();
             }
@@ -477,13 +475,10 @@ public:
                 m_colorPinButton->setText(QString());
                 m_colorPinButton->setIcon(lockIcon(m_colorPinned));
             }
-            m_topBar->show();
-            m_layerRefreshTimer->start();
+             m_layerRefreshTimer->start();
         } else {
             m_layerRefreshTimer->stop();
-            restoreCompactToolbarClutter();
-            m_topBar->hide();
-            if(m_colorDocker) {
+             if(m_colorDocker) {
                 m_colorDocker->hide();
                 m_colorDocker->setFloating(false);
             }
@@ -499,8 +494,6 @@ public:
                 }
                 m_recoverLegacyNormalLayout=false;
             }
-            // Restoring a saved main-window state can make this toolbar visible.
-            m_topBar->hide();
         }
         refreshVisibility();
         refreshLayers();
@@ -558,68 +551,42 @@ private:
     void organizeDefaultToolbars() {
         QToolBar *mainBar=nullptr;
         const auto bars=m_main->findChildren<QToolBar*>();
-        for(QToolBar *bar : bars)
+        for(QToolBar *bar:bars)
             if(bar->objectName()==QStringLiteral("mainToolBar"))mainBar=bar;
         if(!mainBar)return;
-        QAction *compact=m_main->actionCollection()->action(
-            QStringLiteral("tablet_compact_ui"));
-        QAction *reset=m_main->actionCollection()->action(
-            QStringLiteral("tablet_reset_view"));
-        QAction *settings=m_main->actionCollection()->action(
-            QStringLiteral("tablet_settings"));
-        for(QToolBar *bar : bars) {
-            if(bar==m_topBar)continue;
-            if(reset)bar->removeAction(reset);
-            if(settings)bar->removeAction(settings);
+        auto *actions=m_main->actionCollection();
+        QAction *compact=actions->action(QStringLiteral("tablet_compact_ui"));
+        for(QAction *action:m_topBar->actions())
+            if(!mainBar->actions().contains(action))mainBar->addAction(action);
+        // One-time defaults, never undo changes made in Configure Toolbars.
+        if(QSettings().value(QStringLiteral("TabletUi/toolbarDefaultsV10"),false).toBool())
+            return;
+        QSettings().setValue(QStringLiteral("TabletUi/toolbarDefaultsV10"),true);
+        for(QToolBar *bar:bars) {
+            const auto items=bar->actions();
+            for(QAction *action:items) {
+                if(!action)continue;
+                const QString id=action->objectName().toLower();
+                const QString label=(action->text()+QLatin1Char(' ')+
+                                     action->toolTip()).toLower();
+                const bool redundant=id.contains(QStringLiteral("mirror")) ||
+                    id.contains(QStringLiteral("wrap")) ||
+                    id.contains(QStringLiteral("workspace")) ||
+                    label.contains(QStringLiteral("mirror horizontal")) ||
+                    label.contains(QStringLiteral("mirror vertical")) ||
+                    label.contains(QStringLiteral("wrap around")) ||
+                    label.contains(QStringLiteral("workspace"));
+                if(redundant || action==actions->action(QStringLiteral("tablet_reset_view")) ||
+                   action==actions->action(QStringLiteral("tablet_settings")))
+                    bar->removeAction(action);
+            }
             if(compact && bar!=mainBar)bar->removeAction(compact);
         }
         if(compact) {
             mainBar->removeAction(compact);
             mainBar->insertAction(mainBar->actions().isEmpty() ?
-                nullptr : mainBar->actions().first(),compact);
+                nullptr:mainBar->actions().first(),compact);
         }
-        // Keep Compact UI's toolbar at the left of all the other top bars.
-        for(QToolBar *bar:bars) {
-            if(bar!=mainBar && m_main->toolBarArea(bar)==Qt::TopToolBarArea) {
-                m_main->insertToolBar(bar,mainBar);
-                break;
-            }
-        }
-    }
-    void hideCompactToolbarClutter() {
-        m_hiddenActions.clear();
-        for(QToolBar *bar : m_main->findChildren<QToolBar*>()) {
-            if(bar == m_topBar)continue;
-            const QList<QAction*> originalActions=bar->actions();
-            for(QAction *action : originalActions) {
-                if(!action || !action->isVisible())continue;
-                const QString id=action->objectName().toLower();
-                const QString title=(action->text()+QStringLiteral(" ")+
-                                     action->toolTip()).toLower();
-                if(id.contains(QStringLiteral("mirror")) ||
-                   id.contains(QStringLiteral("wrap")) ||
-                   id.contains(QStringLiteral("workspace")) ||
-                   title.contains(QStringLiteral("mirror horizontal")) ||
-                   title.contains(QStringLiteral("mirror vertical")) ||
-                   title.contains(QStringLiteral("wrap around")) ||
-                   title.contains(QStringLiteral("workspace"))) {
-                    const int index=originalActions.indexOf(action);
-                    QAction *next=index+1<originalActions.size() ?
-                        originalActions.at(index+1):nullptr;
-                    m_hiddenActions.append({bar,action,next});
-                    bar->removeAction(action);
-                }
-            }
-        }
-    }
-    void restoreCompactToolbarClutter() {
-        // Reinsert from the end to preserve the original toolbar order.
-        for(int i=m_hiddenActions.size()-1;i>=0;--i) {
-            const HiddenToolbarAction &item=m_hiddenActions.at(i);
-            if(item.bar && item.action)
-                item.bar->insertAction(item.before,item.action);
-        }
-        m_hiddenActions.clear();
     }
     void trigger(const QString &name) {
         if(QAction *a=m_main->actionCollection()->action(name))a->trigger();
@@ -1074,6 +1041,7 @@ private:
             m_layersLayout->addWidget(frame);
         }
         m_layersLayout->addStretch(1);
+        m_visibleLayerCount=count;
         QTimer::singleShot(0,this,[this,oldScroll]() {
             if(m_layersScroll) m_layersScroll->verticalScrollBar()->setValue(oldScroll);
         });
@@ -1319,7 +1287,12 @@ private:
         const int w=m_surface->width();
         const int h=m_surface->height();
         const int layerX=m_layerOnRight?qMax(4,w-m_layerRail->width()-4):4;
-        m_layerRail->setGeometry(layerX,35,m_layerRail->width(),qMax(140,h-125));
+        const int count=qMax(1,m_visibleLayerCount);
+        const int rowsHeight=count*(m_layerTileSize+4)+(count-1)*3;
+        const int desired=5+38+3+rowsHeight+3+34+5+12;
+        const int maxHeight=qMax(140,h-125);
+        m_layerRail->setGeometry(layerX,35,m_layerRail->width(),
+                                 qMin(maxHeight,qMax(130,desired)));
         m_layerToggleButton->move(m_layerOnRight?qMax(6,w-54):6,42);
         m_brushStrip->adjustSize();
         m_brushStrip->move(8,qMax(0,h-m_brushStrip->height()-8));
@@ -1385,6 +1358,7 @@ private:
     bool m_layerExpanded=true;
     bool m_layerOnRight=false;
     int m_layerTileSize=64;
+    int m_visibleLayerCount=1;
     QScrollArea *m_layersScroll=nullptr;
     QWidget *m_layersContent=nullptr;
     QVBoxLayout *m_layersLayout=nullptr;
