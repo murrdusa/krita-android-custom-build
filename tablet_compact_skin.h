@@ -119,6 +119,77 @@ public:
             });
         }
         m_brushStrip->adjustSize();
+        m_brushControls=new QFrame(m_surface);
+        m_brushControls->setObjectName(QStringLiteral("tabletBrushControls"));
+        m_brushControls->setStyleSheet(
+            "#tabletBrushControls{background:rgba(34,34,38,235);border-radius:8px;}");
+        m_brushControls->setFixedWidth(190);
+        auto *controlLayout=new QVBoxLayout(m_brushControls);
+        controlLayout->setContentsMargins(8,6,8,6);
+        controlLayout->setSpacing(2);
+        auto createSlider=[this,controlLayout](const QString &title,int minimum,int maximum,
+                                               QSlider **slider,QLabel **readout) {
+            auto *row=new QWidget(m_brushControls);
+            auto *layout=new QVBoxLayout(row);
+            layout->setContentsMargins(0,0,0,0);
+            layout->setSpacing(0);
+            auto *header=new QHBoxLayout();
+            auto *label=new QLabel(title,row);
+            label->setStyleSheet(QStringLiteral("color:white;"));
+            *readout=new QLabel(row);
+            (*readout)->setStyleSheet(QStringLiteral("color:#d2d2d2;"));
+            header->addWidget(label);
+            header->addStretch(1);
+            header->addWidget(*readout);
+            layout->addLayout(header);
+            *slider=new QSlider(Qt::Horizontal,row);
+            (*slider)->setRange(minimum,maximum);
+            layout->addWidget(*slider);
+            controlLayout->addWidget(row);
+            return row;
+        };
+        createSlider(i18n("Size"),1,1000,&m_brushSizeSlider,&m_brushSizeValue);
+        createSlider(i18n("Opacity"),0,100,&m_brushOpacitySlider,&m_brushOpacityValue);
+        m_flowRow=createSlider(i18n("Flow"),0,100,
+                               &m_brushFlowSlider,&m_brushFlowValue);
+        auto *blendRow=new QHBoxLayout();
+        auto *blendLabel=new QLabel(i18n("Blend"),m_brushControls);
+        blendLabel->setStyleSheet(QStringLiteral("color:white;"));
+        m_brushComposite=new QComboBox(m_brushControls);
+        for(const auto &entry:std::initializer_list<std::pair<const char*,const char*>>{
+                {"Normal","normal"},{"Multiply","multiply"},{"Screen","screen"},
+                {"Overlay","overlay"},{"Burn","burn"},{"Dodge","dodge"},
+                {"Darken","darken"},{"Lighten","lighten"}})
+            m_brushComposite->addItem(QString::fromLatin1(entry.first),
+                                      QString::fromLatin1(entry.second));
+        blendRow->addWidget(blendLabel);
+        blendRow->addWidget(m_brushComposite,1);
+        controlLayout->addLayout(blendRow);
+        auto *provider=m_vm->canvasResourceProvider();
+        connect(m_brushSizeSlider,&QSlider::valueChanged,this,[provider,this](int value) {
+            if(!m_syncingBrushControls)provider->setSize(value);
+            m_brushSizeValue->setText(QStringLiteral("%1 px").arg(value));
+        });
+        connect(m_brushOpacitySlider,&QSlider::valueChanged,this,[provider,this](int value) {
+            if(!m_syncingBrushControls)provider->setOpacity(value/100.0);
+            m_brushOpacityValue->setText(QStringLiteral("%1%").arg(value));
+        });
+        connect(m_brushFlowSlider,&QSlider::valueChanged,this,[provider,this](int value) {
+            if(!m_syncingBrushControls)provider->setFlow(value/100.0);
+            m_brushFlowValue->setText(QStringLiteral("%1%").arg(value));
+        });
+        connect(m_brushComposite,QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this,[provider,this](int index) {
+            if(!m_syncingBrushControls && index>=0)
+                provider->setCurrentCompositeOp(
+                    m_brushComposite->itemData(index).toString());
+        });
+        m_brushControls->adjustSize();
+        // Follow changes made through pen, shortcuts or Krita's own sliders.
+        m_brushControlTimer=new QTimer(this);
+        m_brushControlTimer->setInterval(350);
+        connect(m_brushControlTimer,&QTimer::timeout,this,
+                [this](){refreshBrushControls();});
 
         m_layerRail = new QFrame(m_surface);
         m_layerRail->setObjectName(QStringLiteral("tabletLayerRail"));
@@ -377,6 +448,7 @@ public:
         m_layerRail->hide();
         m_layerToggleButton->hide();
         m_brushStrip->hide();
+        m_brushControls->hide();
         m_colorButton->hide();
         m_recent->hide();
         m_toolOptionsFloating->hide();
@@ -584,9 +656,11 @@ public:
                 m_colorPinButton->setIcon(lockIcon(m_colorPinned));
             }
              m_layerRefreshTimer->start();
+            m_brushControlTimer->start();
         } else {
             rememberCompactToolbarState(false);
             m_layerRefreshTimer->stop();
+            m_brushControlTimer->stop();
              if(m_colorDocker) {
                 m_colorDocker->hide();
                 m_colorDocker->setFloating(false);
@@ -668,6 +742,24 @@ private:
                dock->windowTitle().contains(i18n("Advanced Color Selector"),Qt::CaseInsensitive))
                 m_colorDocker=dock;
         }
+    }
+    void refreshBrushControls() {
+        if(!m_compact || !m_vm->activeNode())return;
+        auto *provider=m_vm->canvasResourceProvider();
+        if(!provider)return;
+        m_syncingBrushControls=true;
+        m_brushSizeSlider->setValue(qBound(1,qRound(provider->size()),1000));
+        m_brushOpacitySlider->setValue(qBound(0,qRound(provider->opacity()*100),100));
+        m_brushFlowSlider->setValue(qBound(0,qRound(provider->flow()*100),100));
+        bool hasFlow=false;
+        const auto preset=provider->currentPreset();
+        if(preset && preset->settings())
+            hasFlow=preset->settings()->hasProperty(QStringLiteral("FlowValue"));
+        m_flowRow->setVisible(hasFlow);
+        const int index=m_brushComposite->findData(provider->currentCompositeOp());
+        if(index>=0)m_brushComposite->setCurrentIndex(index);
+        m_syncingBrushControls=false;
+        m_brushControls->adjustSize();
     }
     void rememberCompactToolbarState(bool compactMode) {
         if(compactMode) {
@@ -1695,12 +1787,15 @@ private:
         m_layerToggleButton->move(m_layerOnRight?qMax(6,w-54):6,42);
         m_brushStrip->adjustSize();
         m_brushStrip->move(8,qMax(0,h-m_brushStrip->height()-8));
+        m_brushControls->move(8,qMax(0,h-m_brushStrip->height()-
+                                      m_brushControls->height()-11));
         m_toolOptionsFloating->move(qMax(0,w-54),55);
         m_colorButton->move(qMax(0,w-58),qMax(0,h-56));
 
         m_layerRail->raise();
         m_layerToggleButton->raise();
         m_brushStrip->raise();
+        m_brushControls->raise();
         m_toolOptionsFloating->raise();
         m_colorButton->raise();
         m_recent->raise();
@@ -1709,7 +1804,9 @@ private:
     void refreshVisibility() {
         const bool show=m_compact && m_vm->activeNode() && m_surface->isVisible();
         m_brushStrip->setVisible(show);
+        m_brushControls->setVisible(show);
         m_toolOptionsFloating->setVisible(show);
+        if(show)refreshBrushControls();
         m_colorButton->setVisible(show && !m_colorExpanded);
         m_recent->setVisible(show && m_colorExpanded);
         if(show) {
@@ -1759,6 +1856,17 @@ private:
     int m_slot=0;
     QString m_lastPreset[3];
     QFrame *m_brushStrip=nullptr;
+    QFrame *m_brushControls=nullptr;
+    QWidget *m_flowRow=nullptr;
+    QSlider *m_brushSizeSlider=nullptr;
+    QSlider *m_brushOpacitySlider=nullptr;
+    QSlider *m_brushFlowSlider=nullptr;
+    QLabel *m_brushSizeValue=nullptr;
+    QLabel *m_brushOpacityValue=nullptr;
+    QLabel *m_brushFlowValue=nullptr;
+    QComboBox *m_brushComposite=nullptr;
+    QTimer *m_brushControlTimer=nullptr;
+    bool m_syncingBrushControls=false;
     QToolButton *m_brushButtons[3]={nullptr,nullptr,nullptr};
     QFrame *m_layerRail=nullptr;
     QToolButton *m_layerToggleButton=nullptr;
