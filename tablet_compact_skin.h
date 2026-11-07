@@ -536,7 +536,7 @@ public:
         m_colorWheelPixels=qBound(190,QSettings().value(
             QStringLiteral("TabletUi/colorWheelPixels"),265).toInt(),380);
         m_colorShowHistory=QSettings().value(
-            QStringLiteral("TabletUi/colorShowHistory"),false).toBool();
+            QStringLiteral("TabletUi/colorHistoryEnabledV2"),true).toBool();
         m_colorPinned=QSettings().value(QStringLiteral("TabletUi/colorPinned"),false).toBool();
         // Only explicit pinning keeps the selector open after restart.
         m_colorExpanded=m_colorPinned;
