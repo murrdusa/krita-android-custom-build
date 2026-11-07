@@ -718,6 +718,7 @@ public:
             const CompactLayerRow *row=touchLayerAt(p);
             if(row && row->tile) {
                 m_layerPenTracking=true;
+                m_penLayerWasSelected=(m_vm->activeNode()==row->node);
                 m_layerDragNode=row->node;
                 m_layerDragTile=row->tile;
                 m_layerDragStart=p;
@@ -756,11 +757,12 @@ public:
                 const bool moved=m_layerDragArmed && m_layerDragMoved;
                 const bool held=m_layerDragArmed;
                 finishLayerDrag();
+                suppressSynthesizedLayerClick(source);
                 if(moved)moveLayerAtFinger(source,last);
-                else if(held) {
+                else if(!held)handleCompactLayerTap(
+                    source,m_penLayerWasSelected);
+                else if(source && m_vm->activeNode()!=source)
                     m_vm->nodeManager()->slotUiActivatedNode(source);
-                    openLayerActions(source);
-                } else m_vm->nodeManager()->slotUiActivatedNode(source);
             }
         }
         if(watched==m_layerDragTile && m_layerDragNode &&
@@ -2099,6 +2101,25 @@ private:
         }
         return nullptr;
     }
+    // Both touch and stylus decide selection from the state at gesture
+    // START, rather than a later synthesized click after selection changed.
+    void handleCompactLayerTap(KisNodeSP node,bool previouslySelected) {
+        if(!node || !m_vm || !m_vm->nodeManager())return;
+        if(!previouslySelected || m_vm->activeNode()!=node) {
+            m_vm->nodeManager()->slotUiActivatedNode(node);
+            QTimer::singleShot(0,this,[this]() {refreshLayers();});
+        } else {
+            openLayerActions(node);
+        }
+    }
+    void suppressSynthesizedLayerClick(KisNodeSP node) {
+        m_suppressedClickNode=node;
+        m_suppressedClickUntil=QDateTime::currentMSecsSinceEpoch()+430;
+    }
+    bool layerMouseClickSuppressed(KisNodeSP node) const {
+        return m_suppressedClickNode==node &&
+               QDateTime::currentMSecsSinceEpoch()<m_suppressedClickUntil;
+    }
     void groupPinchedLayers(KisNodeSP start,KisNodeSP finish) {
         if(!start || !finish || start==finish || !start->parent() ||
            start->parent()!=finish->parent())return;
@@ -2175,6 +2196,7 @@ private:
                 item.last=pos;
                 if(m_layerTouches.isEmpty()) {
                     m_touchLayerPrimary=row->node;
+                    m_touchLayerWasSelected=(m_vm->activeNode()==row->node);
                     m_touchLayerArmed=false;
                     m_touchLayerMoved=false;
                     m_touchLayerScrolling=false;
@@ -2267,13 +2289,12 @@ private:
             if(doGroup) {
                 groupPinchedLayers(pinchedA,pinchedB);
             } else if(!wasPinching && !wasScroll && primary) {
+                suppressSynthesizedLayerClick(primary);
                 if(drag)moveLayerAtFinger(primary,last);
-                else if(held) {
+                else if(!held)handleCompactLayerTap(
+                    primary,m_touchLayerWasSelected);
+                else if(m_vm->activeNode()!=primary)
                     m_vm->nodeManager()->slotUiActivatedNode(primary);
-                    openLayerActions(primary);
-                } else {
-                    m_vm->nodeManager()->slotUiActivatedNode(primary);
-                }
             }
             QTimer::singleShot(0,this,[this](){refreshLayers();});
         }
@@ -2778,7 +2799,7 @@ private:
                 if(inheritsAlpha)tooltip+=i18n(" — Inherit alpha / clipped");
                 if(passThrough)tooltip+=i18n(" — pass-through group");
                 tile->setToolTip(tooltip+i18n(
-                    "\nTap: select. Hold: options. Hold and drag: reorder. Move near the top or bottom to scroll."));
+                    "\nTap: select; tap again: options. Hold and drag: reorder. Edge: auto-scroll."));
                 tile->setStyleSheet(node==active ?
                     "QToolButton{border:3px solid #e86c79;border-radius:5px;"
                     "background:#a4a4a4;}" :
@@ -2841,7 +2862,10 @@ private:
                 tile->installEventFilter(this);
                 connect(tile,&QToolButton::pressed,tile,
                         [this,tileHold,held,tile,node]() {
-                    if(m_layerPenTracking && m_layerDragNode==node)return;
+                    if((m_layerPenTracking && m_layerDragNode==node) ||
+                       !m_layerTouches.isEmpty() ||
+                       layerMouseClickSuppressed(node))return;
+                    m_mouseLayerWasSelected=m_vm->activeNode()==node;
                     *held=false;
                     m_layerDragNode=node;
                     m_layerDragTile=tile;
@@ -2861,27 +2885,22 @@ private:
                 });
                 connect(tile,&QToolButton::released,tile,
                         [this,tileHold,held,node]() {
-                    if(m_layerPenTracking && m_layerDragNode==node)return;
+                    if((m_layerPenTracking && m_layerDragNode==node) ||
+                       layerMouseClickSuppressed(node))return;
                     tileHold->stop();
                     const bool moved=m_layerDragMoved;
                     const QPoint drop=m_layerDragLast;
                     if(m_layerDragNode!=node)return;
                     finishLayerDrag();
-                    if(*held)QTimer::singleShot(0,this,
-                        [this,node,moved,drop]() {
-                            if(moved)moveLayerAtFinger(node,drop);
-                            else {
-                                m_vm->nodeManager()->slotUiActivatedNode(node);
-                                openLayerActions(node);
-                            }
+                    if(*held && moved)QTimer::singleShot(0,this,
+                        [this,node,drop]() {
+                            moveLayerAtFinger(node,drop);
                         });
                 });
                 connect(tile,&QToolButton::clicked,this,[this,node,held]() {
                     if(*held) {*held=false;return;}
-                    const bool wasActive=m_vm->activeNode()==node;
-                    m_vm->nodeManager()->slotUiActivatedNode(node);
-                    if(wasActive)openLayerActions(node);
-                    else QTimer::singleShot(0,this,[this](){refreshLayers();});
+                    if(layerMouseClickSuppressed(node))return;
+                    handleCompactLayerTap(node,m_mouseLayerWasSelected);
                 });
                 const int overlaySize=qBound(20,rowWidth/4,38);
                 const int iconX=rowWidth-overlaySize+1;
@@ -3431,6 +3450,11 @@ private:
     bool m_normalMenuVisible=true;
     bool m_normalStatusVisible=true;
     bool m_layerPenTracking=false;
+    bool m_penLayerWasSelected=false;
+    bool m_touchLayerWasSelected=false;
+    bool m_mouseLayerWasSelected=false;
+    KisNodeSP m_suppressedClickNode;
+    qint64 m_suppressedClickUntil=0;
     bool m_clipTransactionBusy=false;
     KisImageSP m_clipWorkingImage;
     KisNodeSP m_clipRestoreActive;
