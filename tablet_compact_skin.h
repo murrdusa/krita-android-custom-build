@@ -495,8 +495,13 @@ public:
                         break;
                     }
                 }
+                // The footer must share the floating dock's window to
+                // receive finger and pen input above the canvas.
+                if(m_recent->parentWidget()!=m_colorDocker)
+                    m_recent->setParent(m_colorDocker);
                 const int wheelWidth=m_colorWheelPixels;
-                m_colorDocker->resize(QSize(wheelWidth,wheelWidth+24));
+                m_colorDocker->resize(QSize(wheelWidth,
+                    wheelWidth+24+m_recent->height()));
                 if(!m_colorPinButton) {
                     // Pin and settings live in the attached history footer.
                     m_colorPinButton=new QToolButton(m_recent);
@@ -1298,23 +1303,12 @@ private:
             .arg(fg.name()));
         while(m_recentLayout->count()) {
             QLayoutItem *item=m_recentLayout->takeAt(0);
-            if(item->widget() && item->widget()!=m_colorPinButton &&
-               item->widget()!=m_fgColorChip && item->widget()!=m_bgColorChip)
+            if(item->widget() && item->widget()!=m_colorPinButton)
                 item->widget()->deleteLater();
             delete item;
         }
         const int columns=8;
         const int swatchSize=qMax(16,(m_colorWheelPixels-22)/columns-2);
-        auto styleChip=[swatchSize](QToolButton *button,const QColor &color) {
-            button->setFixedSize(swatchSize,swatchSize);
-            button->setStyleSheet(QStringLiteral(
-                "QToolButton{background:%1;border:1px solid #ddd;border-radius:3px;}")
-                .arg(color.name()));
-        };
-        styleChip(m_fgColorChip,provider->fgColor().toQColor());
-        styleChip(m_bgColorChip,provider->bgColor().toQColor());
-        m_recentLayout->addWidget(m_bgColorChip,0,5);
-        m_recentLayout->addWidget(m_fgColorChip,0,6);
         if(m_colorPinButton) {
             m_colorPinButton->setFixedSize(swatchSize,swatchSize);
             m_colorPinButton->setIconSize(QSize(swatchSize-3,swatchSize-3));
@@ -1322,21 +1316,27 @@ private:
         }
         const QList<KoColor> colors=provider->colorHistory();
         const int maxColors=m_colorShowHistory ?
-            qMin(5+8*(m_colorHistoryRows-1),colors.size()) : 0;
+            qMin(7+columns*(m_colorHistoryRows-1),colors.size()) : 0;
         for(int i=0;i<maxColors;++i) {
             const QColor color=colors.at(i).toQColor();
             auto *swatch=new QToolButton(m_recent);
-            styleChip(swatch,color);
+            swatch->setFixedSize(swatchSize,swatchSize);
+            swatch->setStyleSheet(QStringLiteral(
+                "QToolButton{background:%1;border:1px solid white;border-radius:3px;}")
+                .arg(color.name()));
             swatch->setToolTip(color.name());
             connect(swatch,&QToolButton::clicked,this,[provider,color]() {
                 provider->setFGColor(KoColor(color,provider->fgColor().colorSpace()));
             });
-            const int row=i<5?0:1+(i-5)/columns;
-            const int col=i<5?i:(i-5)%columns;
+            const int row=i<7?0:1+(i-7)/columns;
+            const int col=i<7?i:(i-7)%columns;
             m_recentLayout->addWidget(swatch,row,col);
         }
         m_recent->setFixedWidth(m_colorWheelPixels);
         m_recent->setFixedHeight(m_colorHistoryRows*(swatchSize+2)+6);
+        if(m_colorDocker && m_compact)
+            m_colorDocker->resize(m_colorWheelPixels,
+                m_colorWheelPixels+24+m_recent->height());
         positionOverlays();
     }
     void openColorSettings() {
@@ -1403,7 +1403,8 @@ private:
             m_colorWheelPixels=pixels;
             value->setText(QStringLiteral("%1 px").arg(pixels));
             QSettings().setValue(QStringLiteral("TabletUi/colorWheelPixels"),pixels);
-            if(m_colorDocker)m_colorDocker->resize(pixels,pixels+24);
+            if(m_colorDocker)m_colorDocker->resize(
+                pixels,pixels+24+m_recent->height());
             updateColorDock();
             refreshColorControls();
         });
@@ -1438,12 +1439,17 @@ private:
         }
         m_colorDocker->show();
         m_colorDocker->raise();
-        const int bottomGap=!m_colorHistoryOnTop ?
-            m_recent->height()+8 : 8;
+        const int bottomGap=8;
         const QPoint global=m_surface->mapToGlobal(
             QPoint(qMax(0,m_surface->width()-m_colorDocker->width()-8),
                    qMax(0,m_surface->height()-m_colorDocker->height()-bottomGap)));
         m_colorDocker->move(global);
+        m_recent->setGeometry(0,
+            m_colorHistoryOnTop ? 0 :
+                qMax(0,m_colorDocker->height()-m_recent->height()),
+            m_colorWheelPixels,m_recent->height());
+        m_recent->show();
+        m_recent->raise();
         if(m_colorPinButton)m_colorPinButton->show();
     }
     void positionOverlays() {
@@ -1461,28 +1467,13 @@ private:
         m_brushStrip->adjustSize();
         m_brushStrip->move(8,qMax(0,h-m_brushStrip->height()-8));
         m_colorButton->move(qMax(0,w-58),qMax(0,h-56));
-        if(m_colorExpanded && m_colorDocker && m_colorDocker->isVisible()) {
-            const QPoint dockPos=m_surface->mapFromGlobal(m_colorDocker->pos());
-            const int historyY=m_colorHistoryOnTop ?
-                dockPos.y()-m_recent->height() :
-                dockPos.y()+m_colorDocker->height();
-            m_recent->move(dockPos.x(),qMax(0,historyY));
-        }
+
         m_layerRail->raise();
         m_layerToggleButton->raise();
         m_brushStrip->raise();
         m_colorButton->raise();
         m_recent->raise();
-        if(m_colorExpanded) {
-            updateColorDock();
-            if(m_colorDocker) {
-                const QPoint dockPos=m_surface->mapFromGlobal(m_colorDocker->pos());
-                const int historyY=m_colorHistoryOnTop ?
-                    dockPos.y()-m_recent->height() :
-                    dockPos.y()+m_colorDocker->height();
-                m_recent->move(dockPos.x(),qMax(0,historyY));
-            }
-        }
+        if(m_colorExpanded)updateColorDock();
     }
     void refreshVisibility() {
         const bool show=m_compact && m_vm->activeNode() && m_surface->isVisible();
