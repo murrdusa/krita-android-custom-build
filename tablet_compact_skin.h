@@ -699,7 +699,7 @@ public:
                 }
                 const int wheelWidth=m_colorWheelPixels;
                 m_colorDocker->resize(QSize(wheelWidth,
-                    wheelWidth+24+m_recent->height()));
+                    wheelWidth+8+m_recent->height()));
                 if(!m_colorPinButton) {
                     // Pin and settings live in the attached history footer.
                     m_colorPinButton=new QToolButton(m_recent);
@@ -1837,7 +1837,7 @@ private:
         m_recent->setFixedHeight(m_colorHistoryRows*(swatchSize+2)+6);
         if(m_colorDocker && m_compact)
             m_colorDocker->resize(m_colorWheelPixels,
-                m_colorWheelPixels+24+m_recent->height());
+                m_colorWheelPixels+8+m_recent->height());
         positionOverlays();
     }
     void openColorSettings() {
@@ -1905,7 +1905,7 @@ private:
             value->setText(QStringLiteral("%1 px").arg(pixels));
             QSettings().setValue(QStringLiteral("TabletUi/colorWheelPixels"),pixels);
             if(m_colorDocker)m_colorDocker->resize(
-                pixels,pixels+24+m_recent->height());
+                pixels,pixels+8+m_recent->height());
             updateColorDock();
             refreshColorControls();
         });
