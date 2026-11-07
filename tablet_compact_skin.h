@@ -2063,9 +2063,9 @@ private:
                     frame->setStyleSheet(
                         "QFrame#compactClippedLayer{border-left:4px solid #4aafa1;"
                         "background:#454b4b;border-radius:3px;}");
-                } else if(node->previousSibling() &&
+                } else if(node->prevSibling() &&
                           KisLayerPropertiesIcons::nodeProperty(
-                              node->previousSibling(),
+                              node->prevSibling(),
                               KisLayerPropertiesIcons::inheritAlpha,false).toBool()) {
                     frame->setObjectName(QStringLiteral("compactClipBase"));
                     frame->setStyleSheet(
