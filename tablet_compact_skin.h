@@ -254,10 +254,14 @@ public:
         m_recent->setObjectName(QStringLiteral("tabletRecentColors"));
         m_recent->setStyleSheet(
             "#tabletRecentColors{background:rgba(30,30,33,225);border-radius:5px;}");
-        m_recentLayout = new QHBoxLayout(m_recent);
+        m_recentLayout = new QGridLayout(m_recent);
         m_recentLayout->setContentsMargins(3,3,3,3);
         m_recentLayout->setSpacing(2);
-        m_recent->setFixedHeight(26);
+        m_recent->setFixedHeight(30);
+        m_colorHistoryRows=qBound(1,QSettings().value(
+            QStringLiteral("TabletUi/colorHistoryRows"),1).toInt(),4);
+        m_colorHistoryOnTop=QSettings().value(
+            QStringLiteral("TabletUi/colorHistoryOnTop"),false).toBool();
 
         m_topBar = new QToolBar(i18n("Compact tools"), m_main);
         m_topBar->setObjectName(QStringLiteral("tabletCompactPopupBar"));
@@ -341,7 +345,6 @@ public:
         }
         if (watched==m_colorDocker && event->type()==QEvent::Resize &&
             m_colorPinButton) {
-            m_colorPinButton->move(qMax(0,m_colorDocker->width()-89),39);
             m_colorPinButton->raise();
         }
         // Stylus strokes arrive as tablet events on the canvas, not mouse
@@ -433,13 +436,24 @@ public:
                 const int wheelWidth=m_colorWheelPixels;
                 m_colorDocker->resize(QSize(wheelWidth,wheelWidth+24));
                 if(!m_colorPinButton) {
-                    m_colorPinButton=new QToolButton(m_colorDocker);
+                    // Replace the native docker title and window buttons with
+                    // a thin contextual strip. Preserve its actual color widget.
+                    auto *title=new QWidget(m_colorDocker);
+                    title->setFixedHeight(32);
+                    title->setStyleSheet("background:#363639;");
+                    auto *titleLayout=new QHBoxLayout(title);
+                    titleLayout->setContentsMargins(3,0,3,0);
+                    titleLayout->setSpacing(2);
+                    titleLayout->addStretch(1);
+                    m_colorPinButton=new QToolButton(title);
                     m_colorPinButton->setFixedSize(36,36);
                     m_colorPinButton->setIconSize(QSize(28,28));
                     m_colorPinButton->setStyleSheet(
                         "QToolButton{background:#242428;color:white;"
                         "border:1px solid #aaa;border-radius:6px;font-size:18px;}");
-                    m_colorPinButton->setToolTip(i18n("Pin or unpin color wheel"));
+                    m_colorPinButton->setToolTip(i18n("Tap: pin. Hold: color wheel settings"));
+                    titleLayout->addWidget(m_colorPinButton);
+                    m_colorDocker->setTitleBarWidget(title);
                     m_colorDocker->installEventFilter(this);
                     auto *pinTimer=new QTimer(this);
                     pinTimer->setSingleShot(true);
@@ -471,7 +485,6 @@ public:
                         refreshColorControls();
                     });
                 }
-                m_colorPinButton->move(qMax(0,m_colorDocker->width()-89),39);
                 m_colorPinButton->setText(QString());
                 m_colorPinButton->setIcon(lockIcon(m_colorPinned));
             }
@@ -481,6 +494,8 @@ public:
              if(m_colorDocker) {
                 m_colorDocker->hide();
                 m_colorDocker->setFloating(false);
+                m_colorDocker->setTitleBarWidget(nullptr);
+                m_colorPinButton=nullptr;
             }
             if(!m_previousWindowState.isEmpty())
                 m_main->restoreState(m_previousWindowState);
@@ -1195,11 +1210,13 @@ private:
             delete item;
         }
         const QList<KoColor> colors=provider->colorHistory();
-        const int maxColors=qMin(8,colors.size());
+        const int columns=8;
+        const int maxColors=qMin(columns*m_colorHistoryRows,colors.size());
+        const int swatchSize=qMax(16,(m_colorWheelPixels-10)/columns-2);
         for(int i=0;i<maxColors;++i) {
             const QColor color=colors.at(i).toQColor();
             auto *swatch=new QToolButton(m_recent);
-            swatch->setFixedSize(20,20);
+            swatch->setFixedSize(swatchSize,swatchSize);
             swatch->setStyleSheet(QStringLiteral(
                 "QToolButton{background:%1;border:1px solid white;border-radius:3px;}")
                 .arg(color.name()));
@@ -1207,9 +1224,10 @@ private:
             connect(swatch,&QToolButton::clicked,this,[provider,color]() {
                 provider->setFGColor(KoColor(color,provider->fgColor().colorSpace()));
             });
-            m_recentLayout->addWidget(swatch);
+            m_recentLayout->addWidget(swatch,i/columns,i%columns);
         }
-        m_recent->setFixedWidth(qMax(42,maxColors*23+6));
+        m_recent->setFixedWidth(m_colorWheelPixels);
+        m_recent->setFixedHeight(m_colorHistoryRows*(swatchSize+2)+6);
         positionOverlays();
     }
     void openColorSettings() {
@@ -1224,6 +1242,42 @@ private:
             QSettings().setValue(QStringLiteral("TabletUi/colorShowHistory"),enabled);
             updateColorDock();
             refreshColorControls();
+        });
+        layout->addWidget(new QLabel(i18n("Color history position"),&dialog));
+        auto *historySide=new QComboBox(&dialog);
+        historySide->addItem(i18n("Below color wheel"));
+        historySide->addItem(i18n("Above color wheel"));
+        historySide->setCurrentIndex(m_colorHistoryOnTop?1:0);
+        layout->addWidget(historySide);
+        connect(historySide,QOverload<int>::of(&QComboBox::currentIndexChanged),
+                &dialog,[this](int index) {
+            m_colorHistoryOnTop=index==1;
+            QSettings().setValue(QStringLiteral("TabletUi/colorHistoryOnTop"),
+                                 m_colorHistoryOnTop);
+            positionOverlays();
+        });
+        layout->addWidget(new QLabel(i18n("Maximum history rows"),&dialog));
+        auto *rows=new QSlider(Qt::Horizontal,&dialog);
+        rows->setRange(1,4);
+        rows->setValue(m_colorHistoryRows);
+        layout->addWidget(rows);
+        connect(rows,&QSlider::valueChanged,&dialog,[this](int value) {
+            m_colorHistoryRows=value;
+            QSettings().setValue(QStringLiteral("TabletUi/colorHistoryRows"),value);
+            refreshColors();
+        });
+        auto *nativeSettings=new QPushButton(i18n("Krita Color Selector Options..."),&dialog);
+        layout->addWidget(nativeSettings);
+        connect(nativeSettings,&QPushButton::clicked,&dialog,[this]() {
+            if(!m_colorDocker)return;
+            for(QToolButton *button:m_colorDocker->findChildren<QToolButton*>()) {
+                if(button!=m_colorPinButton && button->menu()) {
+                    button->showMenu();
+                    return;
+                }
+            }
+            QMessageBox::information(m_main,i18n("Color selector"),
+                i18n("Open Krita's selector menu from the selector widget."));
         });
         layout->addWidget(new QLabel(i18n("Color wheel size"),&dialog));
         auto *size=new QSlider(Qt::Horizontal,&dialog);
@@ -1271,13 +1325,13 @@ private:
         }
         m_colorDocker->show();
         m_colorDocker->raise();
-        const int bottomGap=m_colorShowHistory ? 39 : 8;
+        const int bottomGap=(m_colorShowHistory && !m_colorHistoryOnTop) ?
+            m_recent->height()+8 : 8;
         const QPoint global=m_surface->mapToGlobal(
             QPoint(qMax(0,m_surface->width()-m_colorDocker->width()-8),
                    qMax(0,m_surface->height()-m_colorDocker->height()-bottomGap)));
         m_colorDocker->move(global);
         if(m_colorPinButton) {
-            m_colorPinButton->move(qMax(0,m_colorDocker->width()-89),39);
             m_colorPinButton->show();
             m_colorPinButton->raise();
         }
@@ -1297,13 +1351,28 @@ private:
         m_brushStrip->adjustSize();
         m_brushStrip->move(8,qMax(0,h-m_brushStrip->height()-8));
         m_colorButton->move(qMax(0,w-58),qMax(0,h-56));
-        m_recent->move(qMax(0,w-m_recent->width()-8),qMax(0,h-31));
+        if(m_colorExpanded && m_colorDocker && m_colorDocker->isVisible()) {
+            const QPoint dockPos=m_surface->mapFromGlobal(m_colorDocker->pos());
+            const int historyY=m_colorHistoryOnTop ?
+                dockPos.y()-m_recent->height() :
+                dockPos.y()+m_colorDocker->height();
+            m_recent->move(dockPos.x(),qMax(0,historyY));
+        }
         m_layerRail->raise();
         m_layerToggleButton->raise();
         m_brushStrip->raise();
         m_colorButton->raise();
         m_recent->raise();
-        if(m_colorExpanded)updateColorDock();
+        if(m_colorExpanded) {
+            updateColorDock();
+            if(m_colorDocker) {
+                const QPoint dockPos=m_surface->mapFromGlobal(m_colorDocker->pos());
+                const int historyY=m_colorHistoryOnTop ?
+                    dockPos.y()-m_recent->height() :
+                    dockPos.y()+m_colorDocker->height();
+                m_recent->move(dockPos.x(),qMax(0,historyY));
+            }
+        }
     }
     void refreshVisibility() {
         const bool show=m_compact && m_vm->activeNode() && m_surface->isVisible();
@@ -1340,10 +1409,12 @@ private:
     bool m_compact=false;
     bool m_colorExpanded=false;
     bool m_colorPinned=false;
-    QToolButton *m_colorPinButton=nullptr;
+    QPointer<QToolButton> m_colorPinButton;
     bool m_colorPinLongPressed=false;
     bool m_colorShowHistory=false;
     int m_colorWheelPixels=265;
+    int m_colorHistoryRows=1;
+    bool m_colorHistoryOnTop=false;
     bool m_internalPresetChange=false;
     bool m_slotReady=false;
     int m_slot=0;
@@ -1369,7 +1440,7 @@ private:
     QToolButton *m_colorButton=nullptr;
 
     QFrame *m_recent=nullptr;
-    QHBoxLayout *m_recentLayout=nullptr;
+    QGridLayout *m_recentLayout=nullptr;
     QToolBar *m_topBar=nullptr;
     QTimer *m_layerRefreshTimer=nullptr;
     KisResourceModel *m_presetModel=nullptr;
