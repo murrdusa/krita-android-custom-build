@@ -308,7 +308,7 @@ def main(root):
                     [galleryHoldTimer,heldIndex,heldList,suppressGalleryClick,view](
                             QListWidgetItem *item) {
                 suppressGalleryClick->remove(view);
-                *heldIndex=QPersistentModelIndex(view->indexFromItem(item));
+                *heldIndex=QPersistentModelIndex(view->model()->index(view->row(item),0));
                 *heldList=view;
                 galleryHoldTimer->start();
             });
