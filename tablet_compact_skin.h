@@ -88,6 +88,8 @@
 #include "kis_image.h"
 #include "kis_icon_utils.h"
 #include "widgets/kis_cmb_composite.h"
+#include "widgets/kis_tool_options_popup.h"
+#include <QScreen>
 #include <KisResourceModel.h>
 #include <KoColor.h>
 #include <KoColorSpace.h>
@@ -420,11 +422,8 @@ public:
             KisIconUtils::loadIcon("configure"), i18n("Tool Options"));
         optionsAction->setToolTip(i18n("Open current tool options"));
         m_main->actionCollection()->addAction(QStringLiteral("tablet_tool_options_popup"),optionsAction);
-        connect(optionsAction, &QAction::triggered, this, [this]() {
-            if(QAction *native=m_main->actionCollection()->action(
-                    QStringLiteral("show_tool_options")))
-                native->trigger();
-        });
+        connect(optionsAction, &QAction::triggered,this,
+                [this]() {showCompactToolOptions();});
         QPixmap saveClosePixmap(32,32);
         saveClosePixmap.fill(Qt::transparent);
         {
@@ -447,10 +446,11 @@ public:
         m_main->actionCollection()->addAction(
             QStringLiteral("tablet_save_and_close"),saveClose);
         connect(saveClose,&QAction::triggered,this,[this]() {
-            // Same close action as Krita's document-tab X. Handles
-            // Save/Discard/Cancel and the Save As prompt natively.
-            if(QAction *close=m_main->actionCollection()->action(
-                    QStringLiteral("file_close")))close->trigger();
+            // Krita's standard Close QAction is not named "file_close".
+            // Call the exact implementation used by the document-tab X;
+            // it handles unsaved work, cancellation and Save As correctly.
+            if(m_mdi && (m_mdi->currentSubWindow() || m_mdi->activeSubWindow()))
+                m_main->closeCurrentWindow();
         });
         // Dedicated Compact UI toolbar: normal desktop toolbars are untouched.
         m_compactBar=new QToolBar(i18n("Compact UI shortcuts"),m_main);
@@ -489,7 +489,10 @@ public:
             auto addSetting=[this,collection](const QString &id) {
                 if(QAction *a=collection->action(id))m_hubMenu->addAction(a);
             };
-            addSetting(QStringLiteral("tablet_settings"));
+            // Keep Tablet Controls and toolbar customization in this
+            // always-present settings group, not in optional quick actions.
+            if(QAction *tablet=collection->action(QStringLiteral("tablet_settings")))
+                m_hubMenu->addAction(tablet);
             m_hubMenu->addAction(m_customizeAction);
             QAction *brush=m_hubMenu->addAction(i18n("Brush controls..."));
             connect(brush,&QAction::triggered,this,
@@ -500,10 +503,11 @@ public:
             QAction *color=m_hubMenu->addAction(i18n("Color selector settings..."));
             connect(color,&QAction::triggered,this,
                     [this](){openColorSettings();});
-            m_hubMenu->addSection(i18n("Krita menus"));
+            QMenu *nativeMenus=m_hubMenu->addMenu(i18n("Krita menus"));
+            nativeMenus->setIcon(KisIconUtils::loadIcon("application-menu"));
             for(QAction *topLevel:m_main->menuBar()->actions()) {
                 if(topLevel && topLevel->menu())
-                    m_hubMenu->addMenu(topLevel->menu());
+                    nativeMenus->addMenu(topLevel->menu());
             }
             m_hubMenu->addSection(i18n("Quick actions"));
             const QStringList defaults={
@@ -513,7 +517,8 @@ public:
                 QStringLiteral("TabletUi/quickActionsV2"),defaults).toStringList();
             for(const QString &key:selected) {
                 if(key==QStringLiteral("tablet_compact_ui") ||
-                   key==QStringLiteral("tablet_quick_actions"))continue;
+                   key==QStringLiteral("tablet_quick_actions") ||
+                   key==QStringLiteral("tablet_settings"))continue;
                 if(QAction *a=collection->action(key))m_hubMenu->addAction(a);
             }
             // The existing submenu contains the native Quick Actions editor.
@@ -554,10 +559,20 @@ public:
         m_toolOptionsFloating->setToolTip(i18n("Tool options"));
         m_toolOptionsFloating->setStyleSheet(
             "QToolButton{background:#303033;border:1px solid #aaa;border-radius:7px;}");
-        connect(m_toolOptionsFloating,&QToolButton::clicked,this,[this]() {
-            if(QAction *a=m_main->actionCollection()->action(
-                    QStringLiteral("show_tool_options")))a->trigger();
+        m_compactToolPopup=new KisToolOptionsPopup(m_main);
+        m_compactToolPopup->setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
+        m_compactToolPopup->hide();
+        connect(KoToolManager::instance(),
+                &KoToolManager::toolOptionWidgetsChanged,this,
+                [this](KoCanvasController *controller,
+                       const QList<QPointer<QWidget>> &widgets) {
+            if(controller!=KoToolManager::instance()->activeCanvasController())
+                return;
+            if(m_compact && m_compactToolPopup)
+                m_compactToolPopup->newOptionWidgets(widgets);
         });
+        connect(m_toolOptionsFloating,&QToolButton::clicked,this,
+                [this]() {showCompactToolOptions();});
         QTimer::singleShot(0,this,[this]() {
             rebuildCompactToolbar();
             refreshVisibility();
@@ -874,6 +889,14 @@ public:
              m_layerRefreshTimer->start();
             m_brushControlTimer->start();
         } else {
+            if(m_compactToolPopup)m_compactToolPopup->hide();
+            // Revert real option widgets to Krita's configured normal
+            // Tool Options docker/toolbar when leaving Compact UI.
+            QTimer::singleShot(0,this,[]() {
+                if(KoCanvasController *controller=
+                        KoToolManager::instance()->activeCanvasController())
+                    KoToolManager::instance()->requestToolActivation(controller);
+            });
             m_layerRefreshTimer->stop();
             m_brushControlTimer->stop();
              if(m_colorDocker) {
@@ -930,6 +953,33 @@ public:
     }
 
 private:
+    void showCompactToolOptions() {
+        if(!m_compact || !m_vm->activeNode() || !m_compactToolPopup)return;
+        // Re-emit the active tool's existing widget list regardless of the
+        // user's normal-mode Tool Options in Docker/Toolbar preference.
+        if(KoCanvasController *controller=
+                KoToolManager::instance()->activeCanvasController())
+            KoToolManager::instance()->requestToolActivation(controller);
+        QTimer::singleShot(0,this,[this]() {
+            if(!m_compact || !m_compactToolPopup)return;
+            m_compactToolPopup->adjustSize();
+            const QPoint anchor=m_toolOptionsFloating->mapToGlobal(
+                QPoint(0,m_toolOptionsFloating->height()+4));
+            const QRect available=m_main->screen() ?
+                m_main->screen()->availableGeometry():QRect(0,0,1000,1600);
+            const QSize sz=m_compactToolPopup->sizeHint().boundedTo(
+                QSize(qMax(260,available.width()-24),
+                      qMax(220,available.height()-60)));
+            m_compactToolPopup->resize(sz);
+            m_compactToolPopup->move(
+                qBound(available.left()+4,anchor.x(),
+                       qMax(available.left()+4,available.right()-sz.width()-4)),
+                qBound(available.top()+4,anchor.y(),
+                       qMax(available.top()+4,available.bottom()-sz.height()-4)));
+            m_compactToolPopup->show();
+            m_compactToolPopup->raise();
+        });
+    }
     static bool isEraseName(const QString &s) {
         return s.contains(QStringLiteral("eraser")) ||
                s.contains(QStringLiteral("erase")) ||
@@ -2776,6 +2826,7 @@ private:
     QAction *m_toolsAction=nullptr;
     QAction *m_sampleModeAction=nullptr;
     QToolButton *m_toolOptionsFloating=nullptr;
+    KisToolOptionsPopup *m_compactToolPopup=nullptr;
     QList<QPointer<QToolBar>> m_originalToolbars;
     QList<QPointer<QDockWidget>> m_compactNativeDockers;
     QTimer *m_layerRefreshTimer=nullptr;
