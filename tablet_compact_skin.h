@@ -1232,6 +1232,89 @@ private:
             QAndroidJniObject::callStaticMethod<void>(
                 "org/krita/android/MainActivity","vibrateHold","()V");
     }
+    // Use consistent finger-sized controls only in our own custom settings.
+    void styleTouchDialog(QDialog &dialog) {
+        dialog.setStyleSheet(
+            "QDialog{background:#282d36;color:#eaf0f7;}"
+            "QWidget#compactSettingsPage{background:#282d36;}"
+            "QLabel{color:#e7eaf0;font-size:14px;}"
+            "QCheckBox{color:#f2f5fa;min-height:48px;"
+            "padding:5px 6px;spacing:12px;font-size:14px;}"
+            "QCheckBox::indicator{width:24px;height:24px;}"
+            "QComboBox{background:#3a4451;color:white;border:1px solid #6b7e93;"
+            "border-radius:8px;min-height:46px;padding:5px 12px;}"
+            "QPushButton,QToolButton{background:#394858;color:white;"
+            "border:1px solid #69879f;border-radius:9px;"
+            "min-height:44px;padding:5px 10px;font-size:14px;}"
+            "QPushButton:pressed,QToolButton:pressed{background:#507a99;}"
+            "QSlider:horizontal{min-height:48px;}"
+            "QSlider::groove:horizontal{height:9px;background:#4d5a69;"
+            "border-radius:5px;}"
+            "QSlider::handle:horizontal{background:#98d0ee;"
+            "border:1px solid #e2f4ff;width:25px;margin:-11px 0;"
+            "border-radius:13px;}"
+            "QLineEdit{min-height:45px;background:#3a4351;color:white;"
+            "border:1px solid #748497;border-radius:8px;padding:5px;}"
+            "QListWidget::item{min-height:47px;}"
+            "QTabBar::tab{min-height:47px;padding:6px 12px;}");
+    }
+    QVBoxLayout *makeTouchSettingsPage(QDialog &dialog,const QString &title) {
+        dialog.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
+        styleTouchDialog(dialog);
+        auto *outer=new QVBoxLayout(&dialog);
+        outer->setContentsMargins(13,12,13,12);
+        outer->setSpacing(8);
+        auto *headline=new QLabel(title,&dialog);
+        headline->setWordWrap(true);
+        headline->setStyleSheet("font-size:20px;font-weight:600;");
+        outer->addWidget(headline);
+        auto *scroll=new QScrollArea(&dialog);
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        QScroller::grabGesture(scroll->viewport(),QScroller::TouchGesture);
+        auto *page=new QWidget(scroll);
+        page->setObjectName(QStringLiteral("compactSettingsPage"));
+        auto *content=new QVBoxLayout(page);
+        content->setContentsMargins(5,5,5,5);
+        content->setSpacing(8);
+        scroll->setWidget(page);
+        outer->addWidget(scroll,1);
+        auto *done=new QPushButton(i18n("Done"),&dialog);
+        done->setMinimumHeight(52);
+        outer->addWidget(done);
+        connect(done,&QPushButton::clicked,&dialog,&QDialog::accept);
+        const int width=m_surface?m_surface->width():400;
+        const int height=m_surface?m_surface->height():700;
+        dialog.resize(qMax(290,qMin(430,width-24)),
+                      qMax(320,qMin(695,height-35)));
+        return content;
+    }
+    void addTouchSliderRow(QVBoxLayout *layout,QSlider *slider,int step) {
+        auto *row=new QHBoxLayout;
+        row->setSpacing(7);
+        auto *minus=new QPushButton(QStringLiteral("−"),slider->parentWidget());
+        auto *plus=new QPushButton(QStringLiteral("+"),slider->parentWidget());
+        for(QPushButton *button:{minus,plus}) {
+            button->setFixedSize(49,50);
+            button->setStyleSheet(
+                "QPushButton{font-size:22px;font-weight:600;"
+                "background:#374b60;border:1px solid #6385a4;"
+                "border-radius:9px;color:white;}"
+                "QPushButton:pressed{background:#517997;}");
+        }
+        slider->setMinimumHeight(48);
+        row->addWidget(minus);
+        row->addWidget(slider,1);
+        row->addWidget(plus);
+        layout->addLayout(row);
+        connect(minus,&QPushButton::clicked,slider,[slider,step]() {
+            slider->setValue(qMax(slider->minimum(),slider->value()-step));
+        });
+        connect(plus,&QPushButton::clicked,slider,[slider,step]() {
+            slider->setValue(qMin(slider->maximum(),slider->value()+step));
+        });
+    }
     void configureBrushControls() {
         QDialog dialog(m_main);
         dialog.setWindowTitle(i18n("Brush Control Settings"));
