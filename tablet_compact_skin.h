@@ -72,6 +72,7 @@
 #include <cmath>
 
 #include "KisMainWindow.h"
+#include "KisView.h"
 #include "KisViewManager.h"
 #include "kis_canvas_resource_provider.h"
 #include "kis_paintop_box.h"
@@ -468,14 +469,31 @@ public:
         m_main->actionCollection()->addAction(
             QStringLiteral("tablet_save_and_close"),saveClose);
         connect(saveClose,&QAction::triggered,this,[this]() {
-            // Krita's standard Close QAction is not named "file_close".
-            // Call the exact implementation used by the document-tab X;
-            // it handles unsaved work, cancellation and Save As correctly.
-            if(m_mdi) {
-                QMdiSubWindow *sub=m_mdi->currentSubWindow();
-                if(!sub)sub=m_mdi->activeSubWindow();
-                if(sub)sub->close();
+            // The active MDI subwindow may become null after a normal <->
+            // Compact workspace switch. Close through the live KisView
+            // instead; never close a different tab by guessing an index.
+            QPointer<KisView> view=m_main?m_main->activeKisView():nullptr;
+            if(!view && m_mdi) {
+                QMdiSubWindow *sub=m_mdi->activeSubWindow();
+                if(!sub)sub=m_mdi->currentSubWindow();
+                if(!sub && m_mdi->subWindowList().size()==1)
+                    sub=m_mdi->subWindowList().first();
+                if(sub)view=qobject_cast<KisView*>(sub->widget());
             }
+            if(!view || !view->document())return;
+            KisDocument *document=view->document();
+            // Save explicitly; do not offer the discard path when the user
+            // asked for Save & Close. A cancelled Save As keeps the view open.
+            if(document->isModified()) {
+                const bool native=document->mimeType()==
+                    document->nativeFormatMimeType();
+                if(!m_main->saveDocument(document,!native,false))return;
+            }
+            if(view)view->closeView(); // Native Krita close/cleanup.
+            QTimer::singleShot(0,this,[this]() {
+                refreshVisibility();
+                syncNormalWelcomeChrome();
+            });
         });
         // Dedicated Compact UI toolbar: normal desktop toolbars are untouched.
         m_compactBar=new QToolBar(i18n("Compact UI shortcuts"),m_main);
@@ -626,10 +644,18 @@ public:
         connect(m_mdi, &QMdiArea::subWindowActivated, this, [this](QMdiSubWindow*) {
             QTimer::singleShot(0,this,[this]() {
                 enforceCompactChrome();refreshVisibility();refreshLayers();
+                syncNormalWelcomeChrome();
             });
-            // View-manager activation may occur after QMdiArea emits this
-            // signal, especially when a document is still being loaded.
-            QTimer::singleShot(200,this,[this]() {refreshVisibility();});
+            // The welcome screen can be installed after MDI activation,
+            // especially on the last document close.
+            QTimer::singleShot(250,this,[this]() {
+                refreshVisibility();syncNormalWelcomeChrome();
+            });
+        });
+        connect(m_main,&KisMainWindow::activeViewChanged,this,[this]() {
+            QTimer::singleShot(0,this,[this]() {
+                if(!m_compact)syncNormalWelcomeChrome();
+            });
         });
         connect(m_vm->canvasResourceProvider(), &KisCanvasResourceProvider::sigFGColorChanged,
                 this, [this](const KoColor&) {if(m_compact) refreshColors();});
@@ -702,6 +728,7 @@ public:
         m_colorExpanded=m_colorPinned;
         QTimer::singleShot(0,this,[this](){organizeDefaultToolbars();});
         QTimer::singleShot(450,this,[this](){organizeDefaultToolbars();});
+        QTimer::singleShot(650,this,[this](){syncNormalWelcomeChrome();});
     }
 
     bool eventFilter(QObject *watched,QEvent *event) override {
@@ -970,9 +997,9 @@ public:
                     if(auto *layout=dynamic_cast<QBoxLayout*>(selector->layout()))
                         layout->addWidget(m_recent);
                 }
-                const int wheelWidth=m_colorWheelPixels;
-                m_colorDocker->resize(QSize(wheelWidth,
-                    wheelWidth+8+m_recent->height()));
+                // Geometry is applied after the swatches and native selector
+                // are attached to the same floating docker.
+                updateCompactColorGeometry();
                 // Color pin and settings now live in the Compact UI hub.
                 m_colorDocker->installEventFilter(this);
             }
@@ -989,6 +1016,18 @@ public:
             m_brushControlTimer->stop();
              if(m_colorDocker) {
                 m_colorDocker->hide();
+                // Remove Compact-specific size constraints when returning
+                // the native docker to the desktop layout.
+                m_colorDocker->setMinimumSize(0,0);
+                m_colorDocker->setMaximumSize(16777215,16777215);
+                if(QWidget *body=m_colorDocker->widget()) {
+                    for(QWidget *child:body->findChildren<QWidget*>()) {
+                        if(child->inherits("KisVisualColorSelector")) {
+                            child->setMinimumSize(0,0);
+                            child->setMaximumSize(16777215,16777215);
+                        }
+                    }
+                }
                 m_colorDocker->setFloating(false);
                 QPointer<QWidget> customTitle=m_colorDocker->titleBarWidget();
                 m_colorDocker->setTitleBarWidget(nullptr);
@@ -1047,7 +1086,10 @@ public:
         }
         refreshVisibility();
         refreshLayers();
-        QTimer::singleShot(0,this,[this](){refreshNativeColorSelectorLayout();});
+        QTimer::singleShot(0,this,[this]() {
+            refreshNativeColorSelectorLayout();
+            syncNormalWelcomeChrome();
+        });
         if(!active) {
             // Krita may apply deferred toolbar state after the mode changes.
             // Reassert only the normal toolbar's Compact toggle, not its
@@ -3210,10 +3252,11 @@ private:
             m_recentLayout->addWidget(swatch,row,col);
         }
         m_recent->setFixedWidth(m_colorWheelPixels);
-        m_recent->setFixedHeight(m_colorHistoryRows*(swatchSize+2)+6);
-        if(m_colorDocker && m_compact)
-            m_colorDocker->resize(m_colorWheelPixels,
-                m_colorWheelPixels+8+m_recent->height());
+        // Never reserve empty rows of dark space above/below the wheel.
+        const int populatedRows=(maxColors+columns-1)/columns;
+        m_recent->setFixedHeight(populatedRows ?
+            populatedRows*(swatchSize+2)+6 : 0);
+        updateCompactColorGeometry();
         positionOverlays();
     }
     void openColorSettings() {
@@ -3311,9 +3354,8 @@ private:
             m_colorWheelPixels=pixels;
             value->setText(QStringLiteral("%1 px").arg(pixels));
             QSettings().setValue(QStringLiteral("TabletUi/colorWheelPixels"),pixels);
-            if(m_colorDocker)m_colorDocker->resize(
-                pixels,pixels+8+m_recent->height());
-            updateColorDock();
+            // A single size setting drives both the wheel and swatches.
+            refreshColors();
             refreshColorControls();
         });
         dialog.setMinimumWidth(260);
@@ -3342,12 +3384,52 @@ private:
         m_colorButton->setVisible(show && !m_colorExpanded);
         m_recent->setVisible(show && m_colorExpanded);
     }
+    void updateCompactColorGeometry() {
+        if(!m_colorDocker || !m_compact)return;
+        const int wheel=qBound(190,m_colorWheelPixels,380);
+        if(QWidget *body=m_colorDocker->widget()) {
+            for(QWidget *child:body->findChildren<QWidget*>()) {
+                // Wide Gamut's selector retains its previous dimensions
+                // when merely resizing the QDockWidget. Set the actual
+                // selector square to the new size before sizing the dock.
+                if(child->inherits("KisVisualColorSelector") &&
+                   child->size()!=QSize(wheel,wheel)) {
+                    child->setFixedSize(wheel,wheel);
+                    child->updateGeometry();
+                    child->update();
+                }
+            }
+            if(QLayout *layout=body->layout()) {
+                layout->invalidate();
+                layout->activate();
+            }
+        }
+        const int footer=m_colorShowHistory?m_recent->height():0;
+        const QSize target(wheel,wheel+footer+2);
+        // A floating docker can retain a larger minimumSizeHint from its
+        // desktop layout. The native selector is now constrained explicitly.
+        m_colorDocker->setMinimumSize(0,0);
+        m_colorDocker->setMaximumSize(16777215,16777215);
+        if(m_colorDocker->size()!=target)m_colorDocker->resize(target);
+        // Tighten the floating dock around the square and history footer.
+        m_colorDocker->setFixedSize(target);
+        if(m_recent->width()!=wheel)m_recent->setFixedWidth(wheel);
+    }
+    void syncNormalWelcomeChrome() {
+        if(m_compact || !m_main || !m_main->menuBar())return;
+        const bool hasDocument=m_mdi &&
+            !m_mdi->subWindowList().isEmpty();
+        // Keep normal Krita's menu bar during painting, but not over the
+        // mobile welcome/gallery screen. Preserve the user's preference.
+        m_main->menuBar()->setVisible(hasDocument && m_normalMenuVisible);
+    }
     void updateColorDock() {
         if(!m_colorDocker)return;
         if(!m_compact || !m_colorExpanded || !m_vm->activeNode()) {
             m_colorDocker->hide();
             return;
         }
+        updateCompactColorGeometry();
         m_colorDocker->show();
         m_colorDocker->raise();
         const int bottomGap=8;
@@ -3365,8 +3447,7 @@ private:
                 }
             }
         }
-        m_recent->show();
-        if(m_colorPinButton)m_colorPinButton->show();
+        m_recent->setVisible(m_colorShowHistory && m_recent->height()>0);
     }
     void positionOverlays() {
         if(!m_compact)return;
