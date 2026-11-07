@@ -366,6 +366,20 @@ public:
         m_layersLayout->setContentsMargins(0,0,0,0);
         m_layersLayout->setSpacing(3);
         m_layersScroll->setWidget(m_layersContent);
+        m_layerDropMarker=new QFrame(m_layersContent);
+        m_layerDropMarker->setFixedHeight(4);
+        m_layerDropMarker->setStyleSheet(
+            "QFrame{background:#ff6677;border-radius:2px;}");
+        m_layerDropMarker->setAttribute(Qt::WA_TransparentForMouseEvents);
+        m_layerDropMarker->hide();
+        m_layerDragGhost=new QLabel(m_surface);
+        m_layerDragGhost->setFixedSize(67,67);
+        m_layerDragGhost->setAlignment(Qt::AlignCenter);
+        m_layerDragGhost->setStyleSheet(
+            "QLabel{border:3px solid #f17a90;border-radius:7px;"
+            "background:rgba(38,40,43,222);}");
+        m_layerDragGhost->setAttribute(Qt::WA_TransparentForMouseEvents);
+        m_layerDragGhost->hide();
         rail->addWidget(m_layersScroll,0);
         m_layerName = new QLabel(m_layerRail);
         m_layerName->setAlignment(Qt::AlignCenter);
@@ -613,6 +627,7 @@ public:
             if(m_layerTouches.size()==1 && !m_touchLayerScrolling &&
                !m_touchLayerPinching) {
                 m_touchLayerArmed=true;
+                showLayerDragPreview(m_touchLayerPrimary,m_touchLayerLast);
                 feedbackForHold();
             }
         });
@@ -656,8 +671,10 @@ public:
             const QPoint global=static_cast<QMouseEvent*>(event)->globalPos();
             m_layerDragLast=global;
             if(m_layerDragArmed &&
-               (global-m_layerDragStart).manhattanLength()>22)
+               (global-m_layerDragStart).manhattanLength()>22) {
                 m_layerDragMoved=true;
+                showLayerDragPreview(m_layerDragNode,global);
+            }
         }
         // Krita's startup/welcome-page layout may re-show menu/status bars
         // after the restored Compact UI action fires. Keep chrome hidden
@@ -889,6 +906,7 @@ public:
              m_layerRefreshTimer->start();
             m_brushControlTimer->start();
         } else {
+            hideLayerDragPreview();
             if(m_compactToolPopup)m_compactToolPopup->hide();
             // Revert real option widgets to Krita's configured normal
             // Tool Options docker/toolbar when leaving Compact UI.
@@ -1985,6 +2003,7 @@ private:
                     m_touchLayerLast.y()-point.last.y());
             } else if(m_touchLayerArmed && travel>18) {
                 m_touchLayerMoved=true;
+                showLayerDragPreview(m_touchLayerPrimary,point.last);
                 for(const CompactLayerRow &row:m_compactLayerRows) {
                     if(row.node && row.widget &&
                        QRect(row.widget->mapToGlobal(QPoint()),row.widget->size())
@@ -2007,6 +2026,7 @@ private:
             m_layerTouches.clear();
         if(m_layerTouches.isEmpty()) {
             m_layerTouchHoldTimer->stop();
+            hideLayerDragPreview();
             const KisNodeSP primary=m_touchLayerPrimary;
             const KisNodeSP pinchedA=m_touchPinchA;
             const KisNodeSP pinchedB=m_touchPinchB;
@@ -2048,8 +2068,61 @@ private:
         return newParent->allowAsChild(node);
     }
 
+    void hideLayerDragPreview() {
+        if(m_layerDragGhost)m_layerDragGhost->hide();
+        if(m_layerDropMarker)m_layerDropMarker->hide();
+    }
+    void showLayerDragPreview(KisNodeSP source,const QPoint &globalPos) {
+        if(!source || !m_layerDragGhost || !m_compact)return;
+        if(!m_layerDragGhost->isVisible()) {
+            QPixmap pix=source->inherits("KisGroupLayer") ?
+                KisIconUtils::loadIcon("folder").pixmap(56,56) :
+                QPixmap::fromImage(source->createThumbnail(
+                    56,56,Qt::KeepAspectRatio));
+            if(pix.isNull())pix=KisIconUtils::loadIcon("document-open").pixmap(54,54);
+            m_layerDragGhost->setPixmap(pix.scaled(
+                53,53,Qt::KeepAspectRatio,Qt::SmoothTransformation));
+            m_layerDragGhost->show();
+        }
+        const QPoint local=m_surface->mapFromGlobal(globalPos);
+        m_layerDragGhost->move(
+            qBound(0,local.x()+10,qMax(0,m_surface->width()-67)),
+            qBound(0,local.y()-73,qMax(0,m_surface->height()-67)));
+        m_layerDragGhost->raise();
+        if(m_layerDropMarker)m_layerDropMarker->hide();
+        for(const CompactLayerRow &row:m_compactLayerRows) {
+            if(!row.widget || !row.node || row.node==source)continue;
+            const QRect box(row.widget->mapToGlobal(QPoint()),row.widget->size());
+            if(!box.contains(globalPos))continue;
+            const bool folder=row.node->inherits("KisGroupLayer") &&
+                              globalPos.x()>box.center().x();
+            const bool upper=globalPos.y()<box.center().y();
+            KisNodeSP parent=folder?row.node:row.node->parent();
+            if(!canMoveCompactNode(source,parent)) {
+                m_layerName->setText(i18n("Cannot move to this layer"));
+                return;
+            }
+            if(m_layerDropMarker) {
+                m_layerDropMarker->setFixedWidth(row.widget->width());
+                const int y=folder?row.widget->y()+box.height()/2:
+                    row.widget->y()+(upper?0:row.widget->height());
+                m_layerDropMarker->move(row.widget->x(),y);
+                m_layerDropMarker->show();
+                m_layerDropMarker->raise();
+            }
+            m_layerName->setText(folder?
+                i18n("Move into %1",row.node->name()):
+                upper?i18n("Move above %1",row.node->name()):
+                      i18n("Move below %1",row.node->name()));
+            return;
+        }
+    }
     void moveLayerAtFinger(KisNodeSP source,const QPoint &screenPos) {
         if(!source || !m_vm->image().toStrongRef())return;
+        if(!m_vm->nodeManager()->canMoveLayer(source,false)) {
+            m_layerName->setText(i18n("This layer cannot be moved"));
+            return;
+        }
         for(const CompactLayerRow &row:m_compactLayerRows) {
             if(!row.widget || !row.node)continue;
             const QRect bounds(row.widget->mapToGlobal(QPoint()),row.widget->size());
@@ -2066,11 +2139,11 @@ private:
             KisNodeSP above;
             if(intoGroup) {
                 // Right half of a folder tile: move inside, at the top.
-                above=parent->firstChild();
+                above=parent->lastChild();
             } else {
                 // Upper/lower half: place above/below this sibling.
                 above=screenPos.y()<bounds.center().y() ?
-                    target:target->nextSibling();
+                    target:target->prevSibling();
             }
             if(above==source && parent==source->parent())return;
             KisNodeList moving;
@@ -2095,9 +2168,9 @@ private:
         std::function<void(KisNodeSP,int)> appendChildren;
         appendChildren=[this,&appendChildren,&count,active](KisNodeSP parent,int depth) {
             if(!parent || count>=180)return;
-            // Krita's node list is ordered topmost first.
-            for(KisNodeSP node=parent->firstChild();node && count<180;
-                node=node->nextSibling()) {
+            // Higher sibling indices are the topmost Krita layers.
+            for(KisNodeSP node=parent->lastChild();node && count<180;
+                node=node->prevSibling()) {
                 if(node->inherits("KisReferenceImagesLayer"))continue;
                 ++count;
                 const bool isGroup=node->inherits("KisGroupLayer");
@@ -2123,9 +2196,9 @@ private:
                     frame->setStyleSheet(
                         "QFrame#compactClippedLayer{border-left:4px solid #4aafa1;"
                         "background:#454b4b;border-radius:3px;}");
-                } else if(node->prevSibling() &&
+                } else if(node->nextSibling() &&
                           KisLayerPropertiesIcons::nodeProperty(
-                              node->prevSibling(),
+                              node->nextSibling(),
                               KisLayerPropertiesIcons::inheritAlpha,false).toBool()) {
                     frame->setObjectName(QStringLiteral("compactClipBase"));
                     frame->setStyleSheet(
@@ -2232,6 +2305,7 @@ private:
                 connect(tileHold,&QTimer::timeout,tile,[this,held]() {
                     *held=true;
                     m_layerDragArmed=true;
+                    showLayerDragPreview(m_layerDragNode,m_layerDragLast);
                     feedbackForHold();
                 });
                 connect(tile,&QToolButton::released,tile,
@@ -2239,6 +2313,7 @@ private:
                     tileHold->stop();
                     const bool moved=m_layerDragMoved;
                     const QPoint drop=m_layerDragLast;
+                    hideLayerDragPreview();
                     m_layerDragNode.clear();
                     m_layerDragTile.clear();
                     m_layerDragArmed=false;
@@ -2814,6 +2889,8 @@ private:
     bool m_touchPinchReady=false;
     KisNodeSP m_layerDragNode;
     QPointer<QWidget> m_layerDragTile;
+    QLabel *m_layerDragGhost=nullptr;
+    QFrame *m_layerDropMarker=nullptr;
     QPoint m_layerDragStart;
     QPoint m_layerDragLast;
     bool m_layerDragArmed=false;
