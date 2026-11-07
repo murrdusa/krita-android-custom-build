@@ -271,6 +271,7 @@ public:
         auto *presetAction = m_topBar->addAction(
             KisIconUtils::loadIcon("paintop_settings_01"), i18n("All brush presets"));
         presetAction->setToolTip(i18n("Open Krita's full brush preset chooser"));
+        m_main->actionCollection()->addAction(QStringLiteral("tablet_all_brush_presets"),presetAction);
         connect(presetAction, &QAction::triggered, this, [this]() {
             QAction *native = m_main->actionCollection()->action(QStringLiteral("show_brush_presets"));
             if (native) native->trigger();
@@ -279,6 +280,7 @@ public:
         auto *optionsAction = m_topBar->addAction(
             KisIconUtils::loadIcon("view-choose"), i18n("Tool Options"));
         optionsAction->setToolTip(i18n("Open current tool options"));
+        m_main->actionCollection()->addAction(QStringLiteral("tablet_tool_options_popup"),optionsAction);
         connect(optionsAction, &QAction::triggered, this, [this]() {
             QAction *native = m_main->actionCollection()->action(QStringLiteral("show_tool_options"));
             if (native) native->trigger();
