@@ -9,6 +9,7 @@
 
 #include <QAbstractItemView>
 #include <QApplication>
+#include <QtAndroid>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QBoxLayout>
@@ -263,13 +264,14 @@ public:
         layerHeader->addWidget(m_layerPinButton);
         auto *layerPinTimer=new QTimer(this);
         layerPinTimer->setSingleShot(true);
-        layerPinTimer->setInterval(330);
+        layerPinTimer->setInterval(holdMs());
         connect(m_layerPinButton,&QToolButton::pressed,this,[this,layerPinTimer]() {
             m_layerPinLongPressed=false;
             layerPinTimer->start();
         });
         connect(layerPinTimer,&QTimer::timeout,this,[this]() {
             m_layerPinLongPressed=true;
+            feedbackForHold();
         });
         // Opening a nested popup on timeout swallows the release/click event
         // on Android. Open it only after the finger is lifted.
@@ -287,7 +289,7 @@ public:
         });
         m_addLayerHoldTimer = new QTimer(this);
         m_addLayerHoldTimer->setSingleShot(true);
-        m_addLayerHoldTimer->setInterval(550);
+        m_addLayerHoldTimer->setInterval(holdMs());
         connect(m_addLayer, &QToolButton::pressed, this, [this]() {
             m_addLayerLongPressed = false;
             m_addLayerHoldTimer->start();
@@ -297,6 +299,7 @@ public:
         });
         connect(m_addLayerHoldTimer, &QTimer::timeout, this, [this]() {
             m_addLayerLongPressed = true;
+            feedbackForHold();
             QMenu menu(m_main);
             auto addNative = [this, &menu](const QString &id) {
                 if (QAction *action = m_main->actionCollection()->action(id))
@@ -685,7 +688,7 @@ public:
                     m_colorDocker->installEventFilter(this);
                     auto *pinTimer=new QTimer(this);
                     pinTimer->setSingleShot(true);
-                    pinTimer->setInterval(330);
+                    pinTimer->setInterval(holdMs());
                     connect(m_colorPinButton,&QToolButton::pressed,this,
                             [this,pinTimer]() {
                         m_colorPinLongPressed=false;
@@ -693,6 +696,7 @@ public:
                     });
                     connect(pinTimer,&QTimer::timeout,this,[this]() {
                         m_colorPinLongPressed=true;
+                        feedbackForHold();
                     });
                     connect(m_colorPinButton,&QToolButton::released,this,
                             [this,pinTimer]() {
@@ -809,6 +813,15 @@ private:
                dock->windowTitle().contains(i18n("Advanced Color Selector"),Qt::CaseInsensitive))
                 m_colorDocker=dock;
         }
+    }
+    int holdMs() const {
+        return qBound(160,QSettings().value(
+            QStringLiteral("TabletUi/longPressMs"),260).toInt(),600);
+    }
+    void feedbackForHold() const {
+        if(QSettings().value(QStringLiteral("TabletUi/hapticLongPress"),false).toBool())
+            QAndroidJniObject::callStaticMethod<void>(
+                "org/krita/android/MainActivity","vibrateHold","()V");
     }
     void configureBrushControls() {
         QDialog dialog(m_main);
@@ -1327,7 +1340,7 @@ private:
                 [&holdTimer,&heldItem,&heldAction](QListWidgetItem *item) {
             heldItem=item;
             heldAction=false;
-            holdTimer.start(320);
+            holdTimer.start(holdMs());
         });
         connect(QScroller::scroller(grid->viewport()),&QScroller::stateChanged,
                 &dialog,[&holdTimer](QScroller::State state) {
@@ -1341,6 +1354,7 @@ private:
             const auto preset=candidates.at(index);
             if(!preset)return;
             heldAction=true;
+            feedbackForHold();
             QMenu options(&dialog);
             QAction *remove=nullptr;
             if(!all->isChecked())
@@ -1518,15 +1532,16 @@ private:
                 "background:#a4a4a4;}");
             auto *tileHold=new QTimer(tile);
             tileHold->setSingleShot(true);
-            tileHold->setInterval(330);
+            tileHold->setInterval(holdMs());
             auto *held=new bool(false);
             connect(tile,&QObject::destroyed,this,[held]() {delete held;});
             connect(tile,&QToolButton::pressed,tile,[tileHold,held]() {
                 *held=false;
                 tileHold->start();
             });
-            connect(tileHold,&QTimer::timeout,tile,[held]() {
+            connect(tileHold,&QTimer::timeout,tile,[this,held]() {
                 *held=true;
+                feedbackForHold();
             });
             connect(tile,&QToolButton::released,tile,[this,tileHold,held,node]() {
                 tileHold->stop();
