@@ -36,27 +36,42 @@ def main(root: Path):
         x = angle/360.0;
 """, "inverse mapping")
     path.write_text(src, encoding="utf-8")
-    # The Wide Gamut plugin already links against Krita's visual-selector
-    # widget library. Keep its refresh here, not in kritaui, to avoid an
-    # undefined symbol at the main UI library link stage.
-    wg_path = root / "plugins/dockers/widegamutcolorselector/WGColorSelectorDock.cpp"
-    wg = wg_path.read_text(encoding="utf-8")
-    inc = '#include "KisVisualColorSelector.h"\n'
-    if wg.count(inc) != 1:
-        raise RuntimeError("wide gamut color selector include anchor")
-    wg = wg.replace(inc, inc + '#include "KisVisualColorSelectorShape.h"\n', 1)
-    anchor = "    m_selector->setConfiguration(&selectorCfg);\n"
-    if wg.count(anchor) != 1:
-        raise RuntimeError("wide gamut selector refresh anchor")
-    wg = wg.replace(anchor, anchor + """    // Compact hue-ring angular offsets do not change the selector type.
-    // Explicitly invalidate the cached gradients on a rotation setting change.
-    for(KisVisualColorSelectorShape *shape:
-        m_selector->findChildren<KisVisualColorSelectorShape*>()) {
-        shape->forceImageUpdate();
-        shape->update();
+    # Invalidate the visual ring's own cached gradient when it gets painted.
+    # Doing it in the widgets library avoids using non-exported widget
+    # symbols from kritaui or from the Wide Gamut plugin.
+    one("void KisVisualEllipticalSelectorShape::setBorderWidth(int width)\n",
+        """void KisVisualEllipticalSelectorShape::paintEvent(QPaintEvent *event)
+{
+    if (isHueControl() &&
+        getDimensions() == KisVisualColorSelectorShape::onedimensional &&
+        m_type == KisVisualEllipticalSelectorShape::border) {
+        const int degrees = QSettings().value(
+            QStringLiteral("TabletUi/compact"),false).toBool() ?
+            QSettings().value(QStringLiteral(
+                "TabletUi/colorHueRotationDegrees"),0).toInt() : 0;
+        if (m_lastHueRotation != degrees) {
+            m_lastHueRotation = degrees;
+            forceImageUpdate();
+        }
     }
-""", 1)
-    wg_path.write_text(wg, encoding="utf-8")
+    KisVisualColorSelectorShape::paintEvent(event);
+}
+
+void KisVisualEllipticalSelectorShape::setBorderWidth(int width)
+""", "cache invalidation")
+    # The CPP was already saved above; write the additional paint override.
+    path.write_text(src, encoding="utf-8")
+    header = root / "libs/widgets/KisVisualEllipticalSelectorShape.h"
+    header_src = header.read_text(encoding="utf-8")
+    if header_src.count("protected:\n") != 1 or \
+       header_src.count("    bool m_gamutMaskNeedsUpdate;\n") != 1:
+        raise RuntimeError("wheel rotation header anchors")
+    header_src = header_src.replace(
+        "protected:\n", "protected:\n    void paintEvent(QPaintEvent *event) override;\n", 1)
+    header_src = header_src.replace(
+        "    bool m_gamutMaskNeedsUpdate;\n",
+        "    bool m_gamutMaskNeedsUpdate;\n    int m_lastHueRotation {-1};\n", 1)
+    header.write_text(header_src, encoding="utf-8")
     print("Compact hue ring rotation patched")
 
 if __name__ == "__main__":

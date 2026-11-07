@@ -3137,9 +3137,14 @@ private:
         refreshColorControls();
     }
     void refreshNativeColorSelectorLayout() {
-        if(m_colorDocker)
+        if(m_colorDocker) {
             QMetaObject::invokeMethod(m_colorDocker.data(),
                 "slotConfigurationChanged",Qt::DirectConnection);
+            // No cross-library visual-selector symbols in Krita's main UI.
+            // The hue-ring widget detects its own changed rotation on paint.
+            for(QWidget *child:m_colorDocker->findChildren<QWidget*>())
+                child->update();
+        }
         if(m_compact && m_colorExpanded)
             QTimer::singleShot(0,this,[this](){updateColorDock();});
     }
