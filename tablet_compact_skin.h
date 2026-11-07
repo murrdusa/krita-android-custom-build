@@ -3082,13 +3082,16 @@ private:
             }
         };
         struct Command {const char *label;const char *action;};
+        // Clipping already has a dedicated checkbox. Keep frequent actions
+        // in one compact 3x3 grid; advanced actions remain in More.
         const Command commands[]={
-            {"Hide","visibility"},{"Duplicate","duplicatelayer"},{"Clear","clear"},
-            {"Lock","lock"},{"Merge","merge_layer"},{"Delete","remove_layer"},
-            {"Clip","toggle_layer_inherit_alpha"},{"Select","select_opaque"},{"Mask","add_new_transparency_mask"},
-            {"Alpha Lock","toggle_layer_alpha_lock"},{"More...",""}
+            {"Visible","visibility"},{"Duplicate","duplicatelayer"},{"Lock","lock"},
+            {"Merge","merge_layer"},{"Delete","remove_layer"},
+            {"Alpha Lock","toggle_layer_alpha_lock"},
+            {"Select","select_opaque"},{"Mask","add_new_transparency_mask"},
+            {"More...",""}
         };
-        for(int i=0;i<11;++i) {
+        for(int i=0;i<9;++i) {
             auto *btn=new QToolButton(&dialog);
             btn->setText(i18n(commands[i].label));
             btn->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
@@ -3097,18 +3100,17 @@ private:
             if(action)btn->setIcon(action->icon());
             grid->addWidget(btn,i/3,i%3);
             if(i==0)toggleButtons[0]=btn;
-            else if(i==3)toggleButtons[1]=btn;
-            else if(i==9)toggleButtons[2]=btn;
+            else if(i==2)toggleButtons[1]=btn;
+            else if(i==5)toggleButtons[2]=btn;
             connect(btn,&QToolButton::clicked,&dialog,
                     [this,node,i,&dialog,refreshToggles]() {
                 m_vm->nodeManager()->slotUiActivatedNode(node);
                 if(i==0)m_vm->nodeManager()->toggleVisibility();
                 else if(i==1)m_vm->nodeManager()->duplicateActiveNode();
-                else if(i==3)m_vm->nodeManager()->toggleLock();
-                else if(i==5)m_vm->nodeManager()->removeNode();
-                else if(i==6)setCompactClip(node,!compactInheritsAlpha(node));
-                else if(i==9)trigger(QStringLiteral("toggle_layer_alpha_lock"));
-                else if(i==10) {
+                else if(i==2)m_vm->nodeManager()->toggleLock();
+                else if(i==4)m_vm->nodeManager()->removeNode();
+                else if(i==5)trigger(QStringLiteral("toggle_layer_alpha_lock"));
+                else if(i==8) {
                     QMenu options(m_main);
                     auto addNative=[this](QMenu *menu,const QString &id) {
                         if(QAction *action=m_main->actionCollection()->action(id))
@@ -3119,6 +3121,7 @@ private:
                     addNative(&options,QStringLiteral("duplicatelayer"));
                     addNative(&options,QStringLiteral("merge_layer"));
                     addNative(&options,QStringLiteral("flatten_layer"));
+                    addNative(&options,QStringLiteral("clear"));
                     addNative(&options,QStringLiteral("select_opaque"));
                     addNative(&options,QStringLiteral("remove_layer"));
                     addNative(&options,QStringLiteral("raise_layer"));
@@ -3152,17 +3155,12 @@ private:
                     }
                     options.exec(QCursor::pos());
                 }
-                else if(i==7 && m_layerDocker) {
+                else if(i==6 && m_layerDocker) {
                     QMetaObject::invokeMethod(m_layerDocker, "slotSelectOpaque",
                                               Qt::DirectConnection);
-                } else {
-                    const QStringList actions={
-                        QStringLiteral(""),QStringLiteral(""),QStringLiteral("clear"),
-                        QStringLiteral(""),QStringLiteral("merge_layer"),QStringLiteral(""),
-                        QStringLiteral(""),QStringLiteral(""),QStringLiteral("add_new_transparency_mask")};
-                    trigger(actions.at(i));
-                }
-                if(i==0 || i==3 || i==9) {
+                } else if(i==3)trigger(QStringLiteral("merge_layer"));
+                else if(i==7)trigger(QStringLiteral("add_new_transparency_mask"));
+                if(i==0 || i==2 || i==5) {
                     refreshToggles();
                     QTimer::singleShot(0,this,[this](){refreshLayers();});
                 } else {
