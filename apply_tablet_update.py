@@ -561,6 +561,8 @@ QSet<KisInputManager*> tabletReferencePenPresses;
     if begin < 0 or end < 0 or src.count(begin_token) != 1:
         raise RuntimeError("Could not locate v1 gallery injection")
     gallery_code = r'''        widgetRight->hide();
+        clearRecentFilesLink->hide();
+        clearRecentFilesLink->setEnabled(false);
         auto *galleryButton = new QToolButton(this);
         galleryButton->setText(i18n("Project Gallery"));
         galleryButton->setToolTip(i18n("Switch between recent projects and the folder gallery"));
@@ -661,7 +663,7 @@ QSet<KisInputManager*> tabletReferencePenPresses;
                     static_cast<QWidget*>(labelNoRecentDocs));
                 galleryButton->setText(i18n("Project Gallery"));
                 recentDocumentsLabel->setText(i18n("Recent Images"));
-                clearRecentFilesLink->show();
+                clearRecentFilesLink->hide();
             } else {
                 populate();
                 pages->setCurrentWidget(galleryPage);
@@ -692,6 +694,16 @@ QSet<KisInputManager*> tabletReferencePenPresses;
         raise RuntimeError("Gallery dependencies from v1 not applied")
     src = src.replace("#include <algorithm>\n",
                       "#include <algorithm>\n#include <memory>\n#include <QComboBox>\n", 1)
+    # Do not let upstream's asynchronous recent-files refresh re-show Clear.
+    old_clear='''    clearRecentFilesLink->setVisible(!modelIsEmpty);'''
+    new_clear='''#ifdef Q_OS_ANDROID
+    clearRecentFilesLink->hide();
+#else
+    clearRecentFilesLink->setVisible(!modelIsEmpty);
+#endif'''
+    if src.count(old_clear)!=1:
+        raise RuntimeError("Recent files Clear control anchor mismatch")
+    src=src.replace(old_clear,new_clear)
     modified[path] = src
 
     for path, contents in modified.items():

@@ -630,8 +630,9 @@ public:
         if (m_compact==active) return;
         m_compact=active;
         if (active) {
-            rememberCompactToolbarState(true);
+            // Snapshot the real Krita workspace before hiding a single toolbar.
             rememberDockers();
+            rememberCompactToolbarState(true);
             const QByteArray storedNormal=QSettings().value(
                 QStringLiteral("TabletUi/normalWindowState")).toByteArray();
             if(m_startupCompact && !storedNormal.isEmpty()) {
@@ -748,7 +749,6 @@ public:
              m_layerRefreshTimer->start();
             m_brushControlTimer->start();
         } else {
-            rememberCompactToolbarState(false);
             m_layerRefreshTimer->stop();
             m_brushControlTimer->stop();
              if(m_colorDocker) {
@@ -775,13 +775,20 @@ public:
             }
             if(!m_previousWindowState.isEmpty())
                 m_main->restoreState(m_previousWindowState);
+            // restoreState() also restores toolbar visibility. Do the
+            // normal-bar restore *after* it, keeping Compact shortcuts hidden.
+            rememberCompactToolbarState(false);
+            organizeDefaultToolbars();
             if(m_recoverLegacyNormalLayout) {
                 for(QDockWidget *dock : {m_layerDocker.data(),m_brushDocker.data(),
                                         m_toolOptionsDocker.data(),m_colorDocker.data()}) {
                     if(dock)dock->show();
                 }
+                // Legacy recovery cannot recover hidden toolbar preferences.
+                // Only expose the normal primary toolbar (with the mode toggle).
                 for(QToolBar *bar : m_main->findChildren<QToolBar*>()) {
-                    if(bar!=m_topBar)bar->show();
+                    if(bar->objectName()==QStringLiteral("mainToolBar"))
+                        bar->show();
                 }
                 m_recoverLegacyNormalLayout=false;
             }
@@ -906,7 +913,7 @@ private:
         if(compactMode) {
             m_originalToolbars.clear();
             for(QToolBar *bar:m_main->findChildren<QToolBar*>()) {
-                if(bar==m_compactBar)continue;
+                if(!bar || bar==m_compactBar || bar==m_topBar)continue;
                 if(bar->isVisible())m_originalToolbars.append(bar);
                 if(bar->objectName()!=QStringLiteral("tabletTransformContextBar"))
                     bar->hide();
@@ -918,6 +925,13 @@ private:
             for(const QPointer<QToolBar> &bar:m_originalToolbars)
                 if(bar)bar->show();
             m_originalToolbars.clear();
+            // Even older broken Compact snapshots must never strand the user.
+            for(QToolBar *bar:m_main->findChildren<QToolBar*>()) {
+                if(bar && bar->objectName()==QStringLiteral("mainToolBar")) {
+                    bar->show();
+                    break;
+                }
+            }
         }
     }
     QStringList compactDefaultActions() const {
@@ -1122,68 +1136,26 @@ private:
         dialog.exec();
     }
     void organizeDefaultToolbars() {
+        auto *collection=m_main->actionCollection();
+        QAction *compact=collection->action(QStringLiteral("tablet_compact_ui"));
+        if(!compact)return;
+        // Never remove the shared toggle QAction from the Compact toolbar:
+        // the two modes intentionally use the same action in different bars.
         QToolBar *mainBar=nullptr;
-        const auto bars=m_main->findChildren<QToolBar*>();
-        for(QToolBar *bar:bars)
-            if(bar->objectName()==QStringLiteral("mainToolBar"))mainBar=bar;
+        for(QToolBar *bar:m_main->findChildren<QToolBar*>()) {
+            if(bar && bar->objectName()==QStringLiteral("mainToolBar")) {
+                mainBar=bar;
+                break;
+            }
+        }
         if(!mainBar)return;
-        auto *actions=m_main->actionCollection();
-        QAction *compact=actions->action(QStringLiteral("tablet_compact_ui"));
-        // Do not insert Compact UI-only actions into the normal Krita toolbar.
-        rebuildCompactToolbar();
-        // Keep Compact UI first on every startup, including saved layouts.
-        if(compact && mainBar->actions().value(0)!=compact) {
-            for(QToolBar *bar:bars)if(bar!=mainBar)bar->removeAction(compact);
+        // This is the ONLY action forced into the regular Krita toolbar.
+        if(mainBar->actions().value(0)!=compact) {
             mainBar->removeAction(compact);
             mainBar->insertAction(mainBar->actions().isEmpty() ?
                 nullptr:mainBar->actions().first(),compact);
         }
-
-        // Preserve the user's normal Krita toolbar layout. The Compact-only
-        // controls no longer belong on mainToolBar.
-        if(QSettings().value(QStringLiteral("TabletUi/dedicatedToolbarV1"),false).toBool())
-            return;
-        QSettings().setValue(QStringLiteral("TabletUi/dedicatedToolbarV1"),true);
-        for(QToolBar *bar:bars) {
-            if(bar==m_compactBar)continue;
-            for(const char *name:{"tablet_save_and_close",
-                    "tablet_all_brush_presets","tablet_tool_options_popup"}) {
-                if(QAction *action=actions->action(QString::fromLatin1(name)))
-                    bar->removeAction(action);
-            }
-        }
-        return;
-        // Legacy setup below is disabled: it changed normal Krita toolbars.
-        if(QSettings().value(QStringLiteral("TabletUi/toolbarDefaultsV12"),false).toBool())
-            return;
-        QSettings().setValue(QStringLiteral("TabletUi/toolbarDefaultsV12"),true);
-        for(QToolBar *bar:bars) {
-            const auto items=bar->actions();
-            for(QAction *action:items) {
-                if(!action)continue;
-                const QString id=action->objectName().toLower();
-                const QString label=(action->text()+QLatin1Char(' ')+
-                                     action->toolTip()).toLower();
-                const bool redundant=id.contains(QStringLiteral("mirror")) ||
-                    id.contains(QStringLiteral("wrap")) ||
-                    id.contains(QStringLiteral("workspace")) ||
-                    id==QStringLiteral("select_layout") ||
-                    id==QStringLiteral("expanding_spacer_1") ||
-                    label.contains(QStringLiteral("mirror horizontal")) ||
-                    label.contains(QStringLiteral("mirror vertical")) ||
-                    label.contains(QStringLiteral("wrap around")) ||
-                    label.contains(QStringLiteral("workspace"));
-                if(redundant || action==actions->action(QStringLiteral("tablet_reset_view")) ||
-                   action==actions->action(QStringLiteral("tablet_settings")))
-                    bar->removeAction(action);
-            }
-            if(compact && bar!=mainBar)bar->removeAction(compact);
-        }
-        if(compact) {
-            mainBar->removeAction(compact);
-            mainBar->insertAction(mainBar->actions().isEmpty() ?
-                nullptr:mainBar->actions().first(),compact);
-        }
+        if(!m_compact)mainBar->show();
     }
     void trigger(const QString &name) {
         if(QAction *a=m_main->actionCollection()->action(name))a->trigger();
@@ -1989,7 +1961,8 @@ private:
     void refreshVisibility() {
         const bool show=m_compact && m_vm->activeNode() && m_surface->isVisible();
         m_brushStrip->setVisible(show);
-        if(m_compactBar)m_compactBar->setVisible(show);
+        // The mode toggle must remain accessible even without an open image.
+        if(m_compactBar)m_compactBar->setVisible(m_compact);
         m_brushControls->setVisible(show);
         m_toolOptionsFloating->setVisible(show);
         if(show)refreshBrushControls();
