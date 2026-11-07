@@ -3487,7 +3487,7 @@ private:
     int m_visibleLayerCount=1;
     int m_compactLayerHeight=0;
     QList<CompactLayerRow> m_compactLayerRows;
-    KisImage *m_lastLayerImage=nullptr;
+    const KisImage *m_lastLayerImage=nullptr;
     KisNodeSP m_lastLayerActive;
     QTimer *m_layerPreviewTimer=nullptr;
     QHash<int,CompactTouchPoint> m_layerTouches;
