@@ -924,7 +924,7 @@ public:
         if (active) {
             // Record the actual normal-mode chrome, not its hidden compact
             // state. restoreState() does not restore menu/status bar visibility.
-            if(!m_startupCompact) {
+            if(!m_startupCompact && !m_welcomeMenuHidden) {
                 m_normalMenuVisible=m_main->menuBar() &&
                     m_main->menuBar()->isVisible();
                 m_normalStatusVisible=m_main->statusBar() &&
@@ -3392,7 +3392,7 @@ private:
         connect(history,&QCheckBox::toggled,&dialog,[this](bool enabled) {
             m_colorShowHistory=enabled;
             QSettings().setValue(QStringLiteral("TabletUi/colorHistoryEnabledV2"),enabled);
-            updateColorDock();
+            refreshColors();
             refreshColorControls();
         });
         layout->addWidget(new QLabel(i18n("Color history position"),&dialog));
@@ -3530,11 +3530,20 @@ private:
     }
     void syncNormalWelcomeChrome() {
         if(m_compact || !m_main || !m_main->menuBar())return;
-        const bool hasDocument=m_mdi &&
-            !m_mdi->subWindowList().isEmpty();
-        // Keep normal Krita's menu bar during painting, but not over the
-        // mobile welcome/gallery screen. Preserve the user's preference.
-        m_main->menuBar()->setVisible(hasDocument && m_normalMenuVisible);
+        const bool hasDocument=m_mdi && !m_mdi->subWindowList().isEmpty();
+        // Temporarily hide menus only on the empty mobile home. Do not
+        // record that temporary hiding as the user's normal-mode preference
+        // when toggling Compact UI on and back off.
+        if(!hasDocument) {
+            if(!m_welcomeMenuHidden)
+                m_normalMenuVisible=m_main->menuBar()->isVisible();
+            m_welcomeMenuHidden=true;
+            m_main->menuBar()->hide();
+        } else {
+            if(m_welcomeMenuHidden && m_normalMenuVisible)
+                m_main->menuBar()->show();
+            m_welcomeMenuHidden=false;
+        }
     }
     void updateColorDock() {
         if(!m_colorDocker)return;
@@ -3640,6 +3649,7 @@ private:
     QList<HiddenToolbarAction> m_hiddenActions;
     bool m_startupCompact=false;
     bool m_normalMenuVisible=true;
+    bool m_welcomeMenuHidden=false;
     bool m_normalStatusVisible=true;
     bool m_layerPenTracking=false;
     bool m_penLayerWasSelected=false;
