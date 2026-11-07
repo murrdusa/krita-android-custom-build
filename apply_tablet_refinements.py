@@ -728,6 +728,14 @@ QHash<KisInputManager*, TabletReferenceDrag> tabletReferenceDrags;
             if (action) quickMenu->addAction(action);
         }
         quickMenu->addSeparator();
+        // Native Krita menu hierarchy is also available while Compact UI
+        // hides the menu bar. Reuse the original menus and their QAction trees.
+        QMenu *allMenus=quickMenu->addMenu(i18n("Krita Menus"));
+        for(QAction *topLevel:menuBar()->actions()) {
+            if(QMenu *native=topLevel->menu())
+                allMenus->addMenu(native);
+        }
+        quickMenu->addSeparator();
         quickMenu->addAction(customizeQuick);
     });
 
