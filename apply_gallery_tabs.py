@@ -14,33 +14,23 @@ def main(root):
     path=root/"libs/ui/KisWelcomePageWidget.cpp"
     s=path.read_text(encoding="utf-8")
     s=sub(s,"#include <QComboBox>\n",
-          "#include <QComboBox>\n#include <QTabWidget>\n#include <QTimer>\n#include <QJsonArray>\n#include <QJsonObject>\n#include <QJsonDocument>\n",
+          "#include <QComboBox>\n#include <QTabWidget>\n#include <QTimer>\n#include <QJsonArray>\n#include <QJsonObject>\n#include <QJsonDocument>\n#include <QScroller>\n#include <QRegularExpression>\n#include <QDateTime>\n",
           "includes")
     s=sub(s,
 '''QDirIterator iter(*folder, QStringList() << QStringLiteral("*.kra")
                                                         << QStringLiteral("*.krz"),''',
 '''QDirIterator iter(*folder, QStringList()
                                                         << QStringLiteral("*.kra*")
-                                                        << QStringLiteral("*.krz*")
-                                                        << QStringLiteral("*.ora")
-                                                        << QStringLiteral("*.psd")
-                                                        << QStringLiteral("*.png")
-                                                        << QStringLiteral("*.jpg")
-                                                        << QStringLiteral("*.jpeg")
-                                                        << QStringLiteral("*.webp")
-                                                        << QStringLiteral("*.tif")
-                                                        << QStringLiteral("*.tiff")
-                                                        << QStringLiteral("*.bmp")
-                                                        << QStringLiteral("*.gif")
-                                                        << QStringLiteral("*.svg")
-                                                        << QStringLiteral("*.exr")
-                                                        << QStringLiteral("*.xcf")
-                                                        << QStringLiteral("*.jxl"),''',
+                                                        << QStringLiteral("*.krz*"),''',
           "folder compatible formats")
     s=sub(s,
 '''        auto *galleryList = new QListWidget(galleryPage);''',
 '''        auto *galleryTabs = new QTabWidget(galleryPage);
-        auto *galleryList = new QListWidget(galleryTabs);''',
+        auto *galleryList = new QListWidget(galleryTabs);
+        galleryList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        galleryList->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        galleryList->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,true);
+        QScroller::grabGesture(galleryList->viewport(),QScroller::TouchGesture);''',
           "create tabs")
     s=sub(s,
 '''        galleryLayout->addWidget(galleryList);
@@ -53,7 +43,11 @@ def main(root):
         deviceList->setResizeMode(QListView::Adjust);
         deviceList->setMovement(QListView::Static);
         deviceList->setWordWrap(true);
-        galleryTabs->addTab(deviceList,i18n("Accessible device files"));
+        deviceList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        deviceList->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        deviceList->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,true);
+        QScroller::grabGesture(deviceList->viewport(),QScroller::TouchGesture);
+        galleryTabs->addTab(deviceList,i18n("Krita projects on device"));
         galleryLayout->addWidget(galleryTabs);
         pages->addWidget(galleryPage);''',"tab widgets")
     s=sub(s,
@@ -77,30 +71,38 @@ def main(root):
         });
 
         const auto acceptedExtensions=QStringList{
-            QStringLiteral("*.kra*"),QStringLiteral("*.krz*"),
-            QStringLiteral("*.ora"),QStringLiteral("*.psd"),
-            QStringLiteral("*.png"),QStringLiteral("*.jpg"),
-            QStringLiteral("*.jpeg"),QStringLiteral("*.webp"),
-            QStringLiteral("*.tif"),QStringLiteral("*.tiff"),
-            QStringLiteral("*.bmp"),QStringLiteral("*.gif"),
-            QStringLiteral("*.svg"),QStringLiteral("*.exr"),
-            QStringLiteral("*.hdr"),QStringLiteral("*.xcf"),
-            QStringLiteral("*.qoi"),QStringLiteral("*.jxl"),
-            QStringLiteral("*.heic"),QStringLiteral("*.heif"),
-            QStringLiteral("*.avif")
+            QStringLiteral("*.kra*"),QStringLiteral("*.krz*")
+        };
+        const QRegularExpression validKritaProject(
+            QStringLiteral("(?i)\\.(?:kra|krz)(?: \\([0-9]+\\))?$"));
+        const QStringList scanRoots={
+            QStringLiteral("/storage/emulated/0/Download"),
+            QStringLiteral("/storage/emulated/0/Documents"),
+            QStringLiteral("/storage/emulated/0/Pictures/Krita"),
+            QStringLiteral("/storage/emulated/0/Krita")
         };
         auto deviceSeen=std::make_shared<QSet<QString>>();
         auto deviceIterator=std::make_shared<std::shared_ptr<QDirIterator>>();
         auto deviceCount=std::make_shared<int>(0);
+        auto deviceRootIndex=std::make_shared<int>(0);
+        auto deviceScanRoots=std::make_shared<QStringList>(scanRoots);
+        auto deviceThumbBudget=std::make_shared<int>(48);
         auto scanTimer=new QTimer(galleryPage);
         scanTimer->setInterval(10);
-        auto addDeviceItem=[deviceList,deviceSeen](const QString &location,
-                                                  const QString &title,
-                                                  const QString &physicalPath) {
+        auto addDeviceItem=[deviceList,deviceSeen,deviceThumbBudget,
+                            validKritaProject](const QString &location,
+                                              const QString &title,
+                                              const QString &physicalPath) {
             if(location.isEmpty() || deviceSeen->contains(location))return;
+            if(!validKritaProject.match(QFileInfo(
+                    physicalPath.isEmpty()?title:physicalPath).fileName()).hasMatch())
+                return;
             if(!physicalPath.isEmpty() && deviceSeen->contains(physicalPath))return;
             QIcon thumbnail;
-            if(!physicalPath.isEmpty() && QFileInfo(physicalPath).isReadable()) {
+            if(*deviceThumbBudget>0 && !physicalPath.isEmpty() &&
+               QFileInfo(physicalPath).isReadable() &&
+               QFileInfo(physicalPath).size()<134217728) {
+                --*deviceThumbBudget;
                 QScopedPointer<KoStore> store(KoStore::createStore(physicalPath,KoStore::Read));
                 if(store && !store->bad()) {
                     for(const QString &preview:{QStringLiteral("preview.png"),
@@ -124,72 +126,63 @@ def main(root):
             if(!physicalPath.isEmpty())deviceSeen->insert(physicalPath);
         };
         QObject::connect(scanTimer,&QTimer::timeout,this,
-            [scanTimer,deviceIterator,deviceCount,addDeviceItem,deviceList]() {
-            if(!*deviceIterator){scanTimer->stop();return;}
+            [scanTimer,deviceIterator,deviceCount,deviceRootIndex,
+             deviceScanRoots,addDeviceItem,validKritaProject]() {
             int batch=0;
-            while(batch++<100 && (*deviceIterator)->hasNext() &&
-                  *deviceCount<3500) {
+            while(batch++<12 && *deviceCount<200) {
+                if(!*deviceIterator || !(*deviceIterator)->hasNext()) {
+                    deviceIterator->reset();
+                    while(*deviceRootIndex<deviceScanRoots->size() &&
+                          !QDir(deviceScanRoots->at(*deviceRootIndex)).exists())
+                        ++*deviceRootIndex;
+                    if(*deviceRootIndex>=deviceScanRoots->size()){
+                        scanTimer->stop();break;
+                    }
+                    const QString root=deviceScanRoots->at((*deviceRootIndex)++);
+                    *deviceIterator=std::make_shared<QDirIterator>(
+                        root,QStringList{QStringLiteral("*.kra*"),
+                                         QStringLiteral("*.krz*")},
+                        QDir::Files|QDir::Readable|QDir::NoDotAndDotDot,
+                        QDirIterator::Subdirectories);
+                }
+                if(!(*deviceIterator)->hasNext())continue;
                 const QString path=(*deviceIterator)->next();
                 const QFileInfo info(path);
-                if(!info.isReadable())continue;
-                addDeviceItem(info.absoluteFilePath(),info.completeBaseName(),
+                if(!info.isReadable() ||
+                   !validKritaProject.match(info.fileName()).hasMatch() ||
+                   info.absolutePath().contains(
+                       QStringLiteral(".krita-gallery-trash")))continue;
+                addDeviceItem(info.absoluteFilePath(),info.fileName(),
                               info.absoluteFilePath());
                 ++*deviceCount;
             }
-            if(!(*deviceIterator)->hasNext() || *deviceCount>=3500) {
-                scanTimer->stop();
-                deviceIterator->reset();
+            if(*deviceCount>=200) {
+                scanTimer->stop();deviceIterator->reset();
             }
         });
         auto populateDevice=[this,deviceList,deviceSeen,deviceIterator,deviceCount,
+                             deviceRootIndex,deviceScanRoots,deviceThumbBudget,
                              scanTimer,acceptedExtensions,addDeviceItem,
-                             updateGalleryAccess]() {
+                             updateGalleryAccess,folder]() {
             scanTimer->stop();
             deviceIterator->reset();
             deviceList->clear();
             deviceSeen->clear();
             *deviceCount=0;
+            *deviceRootIndex=0;
+            *deviceThumbBudget=48;
+            *deviceScanRoots=QStringList{*folder,
+                QStringLiteral("/storage/emulated/0/Download"),
+                QStringLiteral("/storage/emulated/0/Documents"),
+                QStringLiteral("/storage/emulated/0/Pictures/Krita"),
+                QStringLiteral("/storage/emulated/0/Krita")};
+            deviceScanRoots->removeDuplicates();
             updateGalleryAccess();
-            // Existing SAF document URIs may be accessible even when an
-            // absolute filesystem path is hidden by Android storage policy.
-            if(const QAbstractItemModel *recent=recentDocumentsListView->model()) {
-                for(int i=0;i<recent->rowCount();++i) {
-                    QModelIndex index=recent->index(i,0);
-                    const QString uri=index.data(Qt::ToolTipRole).toString();
-                    if(!uri.isEmpty())
-                        addDeviceItem(uri,index.data(Qt::DisplayRole).toString(),
-                                      uri.startsWith(QStringLiteral("content://")) ?
-                                          QString():uri);
-                }
-            }
-#ifdef Q_OS_ANDROID
-            // MediaStore finds indexed downloads/files that are omitted from
-            // direct QDir scans. The returned URI remains readable by Krita's
-            // normal Android content-URI document opener when authorized.
-            const QAndroidJniObject json=QAndroidJniObject::callStaticObjectMethod(
-                "org/krita/android/MainActivity","tabletIndexedArtFiles",
-                "()Ljava/lang/String;");
-            if(json.isValid()) {
-                const QJsonDocument doc=QJsonDocument::fromJson(json.toString().toUtf8());
-                if(doc.isArray())for(const QJsonValue &value:doc.array()) {
-                    const QJsonObject object=value.toObject();
-                    const QString uri=object.value(QStringLiteral("uri")).toString();
-                    const QString path=object.value(QStringLiteral("path")).toString();
-                    const QString name=object.value(QStringLiteral("name")).toString();
-                    addDeviceItem(path.isEmpty()?uri:path,name,path);
-                }
-            }
-#endif
-            // Cover additional readable projects that Android has not indexed.
-            // Process the scan in small timer batches to keep touch UI usable.
-            const QString sharedRoot=QStringLiteral("/storage/emulated/0");
-            if(QDir(sharedRoot).exists()) {
-                *deviceIterator=std::make_shared<QDirIterator>(
-                    sharedRoot,acceptedExtensions,
-                    QDir::Files|QDir::Readable|QDir::NoDotAndDotDot,
-                    QDirIterator::Subdirectories);
-                scanTimer->start();
-            }
+            // Avoid a synchronous whole-device MediaStore query; it used to
+            // delay the welcome screen and mix photos into the project list.
+            // The selected folder and four likely save folders are scanned in
+            // short timer batches only when this tab is opened.
+            scanTimer->start();
         };
         connect(galleryTabs,&QTabWidget::currentChanged,this,
                 [galleryTabs,populateDevice,scanTimer](int index) {
