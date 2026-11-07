@@ -52,6 +52,7 @@
 #include <QWidget>
 #include <QCryptographicHash>
 #include <algorithm>
+#include <cmath>
 
 #include "KisMainWindow.h"
 #include "KisViewManager.h"
@@ -263,21 +264,10 @@ public:
         m_recentLayout->setContentsMargins(3,3,3,3);
         m_recentLayout->setSpacing(2);
         m_recent->setFixedHeight(30);
-        m_fgColorChip=new QToolButton(m_recent);
-        m_fgColorChip->setToolTip(i18n("Foreground color"));
-        m_bgColorChip=new QToolButton(m_recent);
-        m_bgColorChip->setToolTip(i18n("Background color; tap to exchange colors"));
-        connect(m_bgColorChip,&QToolButton::clicked,this,[this]() {
-            auto *provider=m_vm->canvasResourceProvider();
-            if(!provider)return;
-            const KoColor fg=provider->fgColor();
-            const KoColor bg=provider->bgColor();
-            provider->setFGColor(bg);
-            provider->setBGColor(fg);
-            refreshColors();
-        });
         m_colorHistoryRows=qBound(1,QSettings().value(
             QStringLiteral("TabletUi/colorHistoryRows"),1).toInt(),4);
+        m_colorShowHistory=QSettings().value(
+            QStringLiteral("TabletUi/colorHistoryEnabledV2"),true).toBool();
         m_colorHistoryOnTop=QSettings().value(
             QStringLiteral("TabletUi/colorHistoryOnTop"),false).toBool();
 
@@ -296,7 +286,7 @@ public:
             else if (m_brushDocker) m_brushDocker->show();
         });
         auto *optionsAction = m_topBar->addAction(
-            KisIconUtils::loadIcon("view-choose"), i18n("Tool Options"));
+            KisIconUtils::loadIcon("configure"), i18n("Tool Options"));
         optionsAction->setToolTip(i18n("Open current tool options"));
         m_main->actionCollection()->addAction(QStringLiteral("tablet_tool_options_popup"),optionsAction);
         connect(optionsAction, &QAction::triggered, this, [this]() {
@@ -305,25 +295,15 @@ public:
                 native->trigger();
         });
         auto *saveClose = m_topBar->addAction(
-            KisIconUtils::loadIcon("document-save"), i18n("Save and Close"));
+            KisIconUtils::loadIcon("document-close"), i18n("Save and Close"));
         saveClose->setToolTip(i18n("Save artwork and return to Krita home"));
         m_main->actionCollection()->addAction(
             QStringLiteral("tablet_save_and_close"),saveClose);
         connect(saveClose,&QAction::triggered,this,[this]() {
-            QPointer<KisDocument> document=m_vm->document();
-            if(!document)return;
-            const bool needsName=document->localFilePath().isEmpty();
-            QAction *saveAction=m_main->actionCollection()->action(
-                needsName?QStringLiteral("file_save_as"):QStringLiteral("file_save"));
-            if(!saveAction)return;
-            saveAction->trigger();
-            QTimer::singleShot(0,this,[this,document]() {
-                if(!document || document->localFilePath().isEmpty() ||
-                   document->isModified())return;
-                if(QAction *closeAction=m_main->actionCollection()->action(
-                        QStringLiteral("file_close")))
-                    closeAction->trigger();
-            });
+            // Same close action as Krita's document-tab X. Handles
+            // Save/Discard/Cancel and the Save As prompt natively.
+            if(QAction *close=m_main->actionCollection()->action(
+                    QStringLiteral("file_close")))close->trigger();
         });
         // Tool actions attach to mainToolBar in both UI modes.
 
@@ -656,6 +636,19 @@ private:
         QAction *compact=actions->action(QStringLiteral("tablet_compact_ui"));
         for(QAction *action:m_topBar->actions())
             if(!mainBar->actions().contains(action))mainBar->addAction(action);
+        // Keep Compact UI first on every startup, including saved layouts.
+        if(compact && mainBar->actions().value(0)!=compact) {
+            for(QToolBar *bar:bars)if(bar!=mainBar)bar->removeAction(compact);
+            mainBar->removeAction(compact);
+            mainBar->insertAction(mainBar->actions().isEmpty() ?
+                nullptr:mainBar->actions().first(),compact);
+        }
+        for(QToolBar *bar:bars) {
+            if(bar!=mainBar && m_main->toolBarArea(bar)==Qt::TopToolBarArea) {
+                m_main->insertToolBar(bar,mainBar);
+                break;
+            }
+        }
         // One-time defaults, never undo changes made in Configure Toolbars.
         if(QSettings().value(QStringLiteral("TabletUi/toolbarDefaultsV12"),false).toBool())
             return;
@@ -975,6 +968,18 @@ private:
         p.setPen(Qt::NoPen);
         p.setBrush(QColor(42,42,45));
         p.drawEllipse(QRectF(14,20,4,4));
+        // Small cog on the upper right signals long-press settings.
+        p.setPen(QPen(QColor(255,255,255),1));
+        p.setBrush(QColor(45,48,52));
+        p.drawEllipse(QRectF(23,1,8,8));
+        for(int i=0;i<8;++i) {
+            const double rad=i*3.141592653589793/4.0;
+            p.drawLine(QPointF(27+4*cos(rad),5+4*sin(rad)),
+                       QPointF(27+5.5*cos(rad),5+5.5*sin(rad)));
+        }
+        p.setPen(Qt::NoPen);
+        p.setBrush(Qt::white);
+        p.drawEllipse(QRectF(26,4,2,2));
         return QIcon(pix);
     }
     void openLayerSettings() {
@@ -1343,7 +1348,7 @@ private:
         layout->addWidget(history);
         connect(history,&QCheckBox::toggled,&dialog,[this](bool enabled) {
             m_colorShowHistory=enabled;
-            QSettings().setValue(QStringLiteral("TabletUi/colorShowHistory"),enabled);
+            QSettings().setValue(QStringLiteral("TabletUi/colorHistoryEnabledV2"),enabled);
             updateColorDock();
             refreshColorControls();
         });
@@ -1519,8 +1524,7 @@ private:
     QPointer<QWidget> m_nativeSelectorHeader;
     QMargins m_nativeColorMargins;
     int m_nativeColorSpacing=0;
-    QToolButton *m_fgColorChip=nullptr;
-    QToolButton *m_bgColorChip=nullptr;
+
     QDockWidget::DockWidgetFeatures m_previousColorFeatures=QDockWidget::DockWidgetFeatures();
     bool m_colorPinLongPressed=false;
     bool m_colorShowHistory=false;
