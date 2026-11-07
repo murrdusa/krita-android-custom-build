@@ -82,6 +82,8 @@
 #include "kis_mask.h"
 #include "kis_layer_properties_icons.h"
 #include <functional>
+#include <QHash>
+#include <QLineF>
 #include "kis_base_node.h"
 #include "kis_image.h"
 #include "kis_icon_utils.h"
@@ -586,6 +588,15 @@ public:
         connect(m_vm->canvasResourceProvider(), &KisCanvasResourceProvider::sigFGColorChanged,
                 this, [this](const KoColor&) {if(m_compact) refreshColors();});
 
+        m_layerTouchHoldTimer=new QTimer(this);
+        m_layerTouchHoldTimer->setSingleShot(true);
+        connect(m_layerTouchHoldTimer,&QTimer::timeout,this,[this]() {
+            if(m_layerTouches.size()==1 && !m_touchLayerScrolling &&
+               !m_touchLayerPinching) {
+                m_touchLayerArmed=true;
+                feedbackForHold();
+            }
+        });
         m_layerRefreshTimer = new QTimer(this);
         m_layerRefreshTimer->setInterval(5000);
         connect(m_layerRefreshTimer, &QTimer::timeout,this,[this]() {
@@ -614,6 +625,10 @@ public:
     }
 
     bool eventFilter(QObject *watched,QEvent *event) override {
+        // Handle native multi-touch before Qt can translate it to an ordinary
+        // click or feed it to the layer scroller. This supports both finger
+        // reorder and pinching two separate layer thumbnails into a group.
+        if(handleLayerTouch(watched,event))return true;
         // The touch-generated mouse stream remains captured by the pressed
         // layer tile. Track its global position for a hold-then-drag move.
         if(watched==m_layerDragTile && m_layerDragNode &&
@@ -1766,6 +1781,176 @@ private:
         QPointer<QToolButton> tile;
         int depth=0;
     };
+    struct CompactTouchPoint {
+        KisNodeSP node;
+        QPoint start;
+        QPoint last;
+    };
+    const CompactLayerRow *touchLayerAt(const QPoint &globalPos) const {
+        QWidget *hit=QApplication::widgetAt(globalPos);
+        for(const CompactLayerRow &row:m_compactLayerRows) {
+            if(!row.widget || !row.tile ||
+               !QRect(row.widget->mapToGlobal(QPoint()),row.widget->size())
+                   .contains(globalPos))continue;
+            // Ignore touches on visibility, alpha lock, folder expansion and
+            // the other small buttons that have their own native actions.
+            if(hit && hit!=row.widget && hit!=row.tile &&
+               !row.tile->isAncestorOf(hit))return nullptr;
+            return &row;
+        }
+        return nullptr;
+    }
+    void groupPinchedLayers(KisNodeSP start,KisNodeSP finish) {
+        if(!start || !finish || start==finish || !start->parent() ||
+           start->parent()!=finish->parent())return;
+        // Group siblings in Krita's actual node ordering, including every
+        // layer between the two fingers. Masks cannot be grouped as layers.
+        const KisNodeSP parent=start->parent();
+        KisNodeList ordered;
+        for(KisNodeSP node=parent->firstChild();node;node=node->nextSibling())
+            ordered.append(node);
+        const int a=ordered.indexOf(start);
+        const int b=ordered.indexOf(finish);
+        if(a<0 || b<0 || a==b)return;
+        KisNodeList selected;
+        for(int i=qMin(a,b);i<=qMax(a,b);++i) {
+            KisNodeSP node=ordered.at(i);
+            if(!node->inherits("KisLayer") ||
+               !parent->allowAsChild(node)) {
+                m_layerName->setText(i18n("Only compatible sibling layers can be grouped"));
+                return;
+            }
+            selected.append(node);
+        }
+        if(!m_vm->nodeManager()->canMoveLayers(selected,false)) {
+            m_layerName->setText(i18n("Unlock these layers before grouping"));
+            return;
+        }
+        m_vm->nodeManager()->slotUiActivatedNode(start);
+        m_vm->nodeManager()->slotSetSelectedNodes(selected);
+        m_vm->nodeManager()->createQuickGroup();
+        QTimer::singleShot(250,this,[this]() {refreshLayers();});
+    }
+    bool handleLayerTouch(QObject *watched,QEvent *event) {
+        if(!m_compact || !m_layerRail || !m_layerRail->isVisible())return false;
+        const QEvent::Type type=event->type();
+        if(type!=QEvent::TouchBegin && type!=QEvent::TouchUpdate &&
+           type!=QEvent::TouchEnd && type!=QEvent::TouchCancel)return false;
+        QWidget *target=qobject_cast<QWidget*>(watched);
+        if(!target)return false;
+        const bool inRail=target==m_layerRail ||
+            m_layerRail->isAncestorOf(target);
+        if(!inRail && m_layerTouches.isEmpty())return false;
+        if(type==QEvent::TouchCancel) {
+            m_layerTouchHoldTimer->stop();
+            m_layerTouches.clear();
+            m_touchLayerArmed=false;
+            m_touchLayerPinching=false;
+            return false;
+        }
+        QTouchEvent *touch=static_cast<QTouchEvent*>(event);
+        bool consumed=!m_layerTouches.isEmpty();
+        for(const QTouchEvent::TouchPoint &point:touch->touchPoints()) {
+            const int id=point.id();
+            const QPoint pos=point.screenPos().toPoint();
+            const bool released=point.state() & Qt::TouchPointReleased;
+            if(!m_layerTouches.contains(id) && !released && inRail) {
+                const CompactLayerRow *row=touchLayerAt(pos);
+                if(!row)continue;
+                consumed=true;
+                CompactTouchPoint item;
+                item.node=row->node;
+                item.start=pos;
+                item.last=pos;
+                if(m_layerTouches.isEmpty()) {
+                    m_touchLayerPrimary=row->node;
+                    m_touchLayerArmed=false;
+                    m_touchLayerMoved=false;
+                    m_touchLayerScrolling=false;
+                    m_touchLayerPinching=false;
+                    m_touchPinchReady=false;
+                    m_touchLayerLast=pos;
+                    m_layerTouchHoldTimer->start(holdMs());
+                }
+                m_layerTouches.insert(id,item);
+            }
+            if(m_layerTouches.contains(id)) {
+                m_layerTouches[id].last=pos;
+                consumed=true;
+            }
+        }
+        if(!consumed)return false;
+        if(m_layerTouches.size()>=2) {
+            const auto pts=m_layerTouches.values();
+            if(!m_touchLayerPinching) {
+                m_touchLayerPinching=true;
+                m_layerTouchHoldTimer->stop();
+                m_touchPinchA=pts.at(0).node;
+                m_touchPinchB=pts.at(1).node;
+                m_touchPinchStartDistance=QLineF(
+                    pts.at(0).start,pts.at(1).start).length();
+            }
+            if(type==QEvent::TouchUpdate &&
+               m_touchPinchStartDistance>=65) {
+                const qreal current=QLineF(
+                    pts.at(0).last,pts.at(1).last).length();
+                if(current<m_touchPinchStartDistance*0.55 &&
+                   m_touchPinchStartDistance-current>45)
+                    m_touchPinchReady=true;
+            }
+        } else if(m_layerTouches.size()==1 && !m_touchLayerPinching &&
+                  type==QEvent::TouchUpdate) {
+            const CompactTouchPoint point=m_layerTouches.constBegin().value();
+            const int travel=(point.last-point.start).manhattanLength();
+            if(!m_touchLayerArmed && travel>12) {
+                m_touchLayerScrolling=true;
+                m_layerTouchHoldTimer->stop();
+                m_layersScroll->verticalScrollBar()->setValue(
+                    m_layersScroll->verticalScrollBar()->value()+
+                    m_touchLayerLast.y()-point.last.y());
+            } else if(m_touchLayerArmed && travel>18) {
+                m_touchLayerMoved=true;
+            }
+            m_touchLayerLast=point.last;
+        }
+        for(const QTouchEvent::TouchPoint &point:touch->touchPoints()) {
+            if(point.state() & Qt::TouchPointReleased)
+                m_layerTouches.remove(point.id());
+        }
+        if(type==QEvent::TouchEnd)m_layerTouches.clear();
+        if(m_layerTouches.isEmpty()) {
+            m_layerTouchHoldTimer->stop();
+            const KisNodeSP primary=m_touchLayerPrimary;
+            const KisNodeSP pinchedA=m_touchPinchA;
+            const KisNodeSP pinchedB=m_touchPinchB;
+            const bool doGroup=m_touchLayerPinching && m_touchPinchReady;
+            const bool wasPinching=m_touchLayerPinching;
+            const bool wasScroll=m_touchLayerScrolling;
+            const bool drag=m_touchLayerArmed && m_touchLayerMoved;
+            const bool held=m_touchLayerArmed;
+            const QPoint last=m_touchLayerLast;
+            m_touchLayerPrimary.clear();
+            m_touchPinchA.clear();
+            m_touchPinchB.clear();
+            m_touchLayerArmed=false;
+            m_touchLayerPinching=false;
+            m_touchPinchReady=false;
+            if(doGroup) {
+                groupPinchedLayers(pinchedA,pinchedB);
+            } else if(!wasPinching && !wasScroll && primary) {
+                if(drag)moveLayerAtFinger(primary,last);
+                else if(held) {
+                    m_vm->nodeManager()->slotUiActivatedNode(primary);
+                    openLayerActions(primary);
+                } else {
+                    m_vm->nodeManager()->slotUiActivatedNode(primary);
+                }
+            }
+            QTimer::singleShot(0,this,[this](){refreshLayers();});
+        }
+        event->accept();
+        return true;
+    }
 
     bool canMoveCompactNode(KisNodeSP node,KisNodeSP newParent) const {
         if(!node || !newParent || !node->parent() || node==newParent)
@@ -1810,7 +1995,8 @@ private:
     }
 
     void refreshLayers() {
-        if(!m_compact || !m_vm->activeNode() || m_layerDragNode)return;
+        if(!m_compact || !m_vm->activeNode() || m_layerDragNode ||
+           !m_layerTouches.isEmpty())return;
         const auto image=m_vm->image().toStrongRef();
         if(!image || !image->root())return;
         const int oldScroll=m_layersScroll->verticalScrollBar()->value();
@@ -2498,6 +2684,18 @@ private:
     int m_visibleLayerCount=1;
     int m_compactLayerHeight=0;
     QList<CompactLayerRow> m_compactLayerRows;
+    QHash<int,CompactTouchPoint> m_layerTouches;
+    QTimer *m_layerTouchHoldTimer=nullptr;
+    KisNodeSP m_touchLayerPrimary;
+    KisNodeSP m_touchPinchA;
+    KisNodeSP m_touchPinchB;
+    QPoint m_touchLayerLast;
+    qreal m_touchPinchStartDistance=0;
+    bool m_touchLayerArmed=false;
+    bool m_touchLayerMoved=false;
+    bool m_touchLayerScrolling=false;
+    bool m_touchLayerPinching=false;
+    bool m_touchPinchReady=false;
     KisNodeSP m_layerDragNode;
     QPointer<QWidget> m_layerDragTile;
     QPoint m_layerDragStart;
