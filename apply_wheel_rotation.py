@@ -18,7 +18,7 @@ def main(root: Path):
     if (isHueControl() &&
         getDimensions() == KisVisualColorSelectorShape::onedimensional &&
         m_type == KisVisualEllipticalSelectorShape::border &&
-        QSettings().value(QStringLiteral("TabletUi/compact"),false).toBool()) {
+        m_lastHueRotation > 0) {
         angle += m_lastHueRotation < 0 ? 0 : m_lastHueRotation;
     }
     line.setAngle(angle);
@@ -26,7 +26,7 @@ def main(root: Path):
     one("        x = angle/360.0;\n", """        if (isHueControl() &&
             getDimensions() == KisVisualColorSelectorShape::onedimensional &&
             m_type == KisVisualEllipticalSelectorShape::border &&
-            QSettings().value(QStringLiteral("TabletUi/compact"),false).toBool()) {
+            m_lastHueRotation > 0) {
             angle = fmod(angle +
                 (m_lastHueRotation < 0 ? 0 : m_lastHueRotation)
                 + 720.0, 360.0);
