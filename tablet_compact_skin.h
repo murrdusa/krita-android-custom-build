@@ -2155,14 +2155,7 @@ private:
     void rebuildCompactClips(KisNodeSP parent) {
         if(!parent || !m_vm || !m_vm->nodeManager())return;
         auto *manager=m_vm->nodeManager();
-        QList<KisNodeSP> wrappers;
-        for(KisNodeSP n=parent->firstChild();n;n=n->nextSibling())
-            if(isCompactClipGroup(n))wrappers.append(n);
-        for(KisNodeSP group:wrappers) {
-            manager->slotUiActivatedNode(group);
-            manager->slotSetSelectedNodes(KisNodeList{group});
-            manager->quickUngroup();
-        }
+        ungroupCompactClips(parent);
         // Native juggler operations can settle on a later event-loop pass.
         QTimer::singleShot(160,this,[this,parent]() mutable {
             if(!m_vm || !m_vm->nodeManager() || !parent)return;
@@ -2245,6 +2238,27 @@ private:
         m_layerDragArmed=false;
         m_layerDragMoved=false;
     }
+    const CompactLayerRow *compactDropRowAt(const QPoint &globalPos,
+                                            KisNodeSP source) const {
+        const CompactLayerRow *closest=nullptr;
+        int best=INT_MAX;
+        const QRect area(m_layersScroll->viewport()->mapToGlobal(QPoint()),
+                         m_layersScroll->viewport()->size());
+        // A drag may be between tiles or near the upper/lower autoscroll
+        // border. Snap to the nearest *visible* row instead of dropping nowhere.
+        if(globalPos.x()<area.left()-28 || globalPos.x()>area.right()+28 ||
+           globalPos.y()<area.top()-56 || globalPos.y()>area.bottom()+56)
+            return nullptr;
+        for(const CompactLayerRow &row:m_compactLayerRows) {
+            if(!row.widget || !row.node || row.node==source)continue;
+            const QRect box(row.widget->mapToGlobal(QPoint()),row.widget->size());
+            if(box.bottom()<area.top() || box.top()>area.bottom())continue;
+            if(box.contains(globalPos))return &row;
+            const int d=qAbs(globalPos.y()-box.center().y());
+            if(d<best){best=d;closest=&row;}
+        }
+        return closest;
+    }
     void hideLayerDragPreview() {
         if(m_layerDragGhost)m_layerDragGhost->hide();
         if(m_layerDropMarker)m_layerDropMarker->hide();
@@ -2267,14 +2281,13 @@ private:
             qBound(0,local.y()-73,qMax(0,m_surface->height()-67)));
         m_layerDragGhost->raise();
         if(m_layerDropMarker)m_layerDropMarker->hide();
-        for(const CompactLayerRow &row:m_compactLayerRows) {
-            if(!row.widget || !row.node || row.node==source)continue;
+        if(const CompactLayerRow *candidate=compactDropRowAt(globalPos,source)) {
+            const CompactLayerRow &row=*candidate;
             const QRect box(row.widget->mapToGlobal(QPoint()),row.widget->size());
-            if(!box.contains(globalPos))continue;
             const bool folder=row.node->inherits("KisGroupLayer") &&
                               globalPos.x()>box.center().x();
             const bool upper=globalPos.y()<box.center().y();
-            KisNodeSP parent=folder?row.node:row.node->parent();
+            KisNodeSP parent=folder?row.node:compactLogicalParent(row.node);
             if(!canMoveCompactNode(source,parent)) {
                 m_layerName->setText(i18n("Cannot move to this layer"));
                 return;
@@ -2294,41 +2307,58 @@ private:
             return;
         }
     }
+    void ungroupCompactClips(KisNodeSP parent) {
+        if(!parent || !m_vm || !m_vm->nodeManager())return;
+        QList<KisNodeSP> wrappers;
+        for(KisNodeSP n=parent->firstChild();n;n=n->nextSibling())
+            if(isCompactClipGroup(n))wrappers.append(n);
+        for(KisNodeSP wrapper:wrappers) {
+            m_vm->nodeManager()->slotUiActivatedNode(wrapper);
+            m_vm->nodeManager()->slotSetSelectedNodes(KisNodeList{wrapper});
+            m_vm->nodeManager()->quickUngroup();
+        }
+    }
     void moveLayerAtFinger(KisNodeSP source,const QPoint &screenPos) {
-        if(!source || !m_vm->image().toStrongRef())return;
-        if(!m_vm->nodeManager()->canMoveLayer(source,false)) {
-            m_layerName->setText(i18n("This layer cannot be moved"));
+        if(!source || !m_vm || !m_vm->image().toStrongRef())return;
+        const CompactLayerRow *row=compactDropRowAt(screenPos,source);
+        if(!row || !row->widget || !row->node)return;
+        const KisNodeSP target=row->node;
+        const QRect bounds(row->widget->mapToGlobal(QPoint()),row->widget->size());
+        const bool intoGroup=target->inherits("KisGroupLayer") &&
+            screenPos.x()>bounds.center().x();
+        const bool upper=screenPos.y()<bounds.center().y();
+        KisNodeSP destination=intoGroup?target:compactLogicalParent(target);
+        KisNodeSP previous=compactLogicalParent(source);
+        if(!canMoveCompactNode(source,destination) ||
+           !m_vm->nodeManager()->canMoveLayer(source,false)){
+            m_layerName->setText(i18n("Layer cannot move to that location"));
             return;
         }
-        for(const CompactLayerRow &row:m_compactLayerRows) {
-            if(!row.widget || !row.node)continue;
-            const QRect bounds(row.widget->mapToGlobal(QPoint()),row.widget->size());
-            if(!bounds.contains(screenPos))continue;
-            const KisNodeSP target=row.node;
-            if(target==source)return;
-            const bool intoGroup=target->inherits("KisGroupLayer") &&
-                screenPos.x()>bounds.center().x();
-            KisNodeSP parent=intoGroup?target:target->parent();
-            if(!canMoveCompactNode(source,parent)) {
-                m_layerName->setText(i18n("Incompatible layer or mask target"));
-                return;
-            }
+        // Flatten only our automatic clip wrappers. We then reorder the real
+        // nodes and rebuild the wrappers from the NEW consecutive alpha runs.
+        // This makes clipping follow whatever un-clipped base is below it.
+        ungroupCompactClips(previous);
+        if(destination!=previous)ungroupCompactClips(destination);
+        QTimer::singleShot(140,this,[this,source,target,destination,previous,
+                                      intoGroup,upper]() mutable {
+            if(!source || !target || !destination ||
+               !m_vm || !m_vm->nodeManager())return;
             KisNodeSP above;
-            if(intoGroup) {
-                // Right half of a folder tile: move inside, at the top.
-                above=parent->lastChild();
-            } else {
-                // Upper/lower half: place above/below this sibling.
-                above=screenPos.y()<bounds.center().y() ?
-                    target:target->prevSibling();
-            }
-            if(above==source && parent==source->parent())return;
-            KisNodeList moving;
-            moving.append(source);
-            m_vm->nodeManager()->moveNodesDirect(moving,parent,above);
-            QTimer::singleShot(300,this,[this](){refreshLayers();});
-            return;
-        }
+            if(intoGroup)above=destination->lastChild();
+            else above=upper?target:target->prevSibling();
+            if(above==source && source->parent()==destination)return;
+            if(!canMoveCompactNode(source,destination))return;
+            m_vm->nodeManager()->moveNodesDirect(
+                KisNodeList{source},destination,above);
+            // Let Krita's compressed node mover settle before rewrapping.
+            QTimer::singleShot(150,this,[this,previous,destination]() mutable {
+                rebuildCompactClips(previous);
+                if(destination!=previous)
+                    QTimer::singleShot(400,this,[this,destination]() mutable {
+                        rebuildCompactClips(destination);
+                    });
+            });
+        });
     }
 
     void refreshLayers() {
