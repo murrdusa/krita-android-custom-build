@@ -299,6 +299,89 @@ def main(root):
     s=sub(s,'        connect(folderButton, &QPushButton::clicked, this,',
           home+'        connect(folderButton, &QPushButton::clicked, this,',
           "Android main start panel")
+    # Consolidate gallery into a single On Device screen. The old selected
+    # folder remains an internal fallback source, not a navigation tab.
+    s=sub(s,'        galleryLayout->addWidget(galleryTabs);',
+'''        galleryLayout->addWidget(galleryTabs);
+        galleryTabs->setCurrentIndex(1);
+        galleryTabs->tabBar()->hide();''',"single on-device gallery")
+    # Hide obsolete controls without changing the tested file scan/permissions
+    # logic; users retain access permissions if needed.
+    s=sub(s,'        auto *searchRow=new QHBoxLayout;',
+'''        galleryControls->removeWidget(folderButton);
+        galleryControls->removeWidget(downloadsButton);
+        folderButton->hide();
+        downloadsButton->hide();
+        galleryControls->removeWidget(sortMode);
+        galleryControls->removeWidget(refreshButton);
+        galleryControls->removeWidget(undoTrash);
+        galleryControls->removeWidget(allowFiles);
+        galleryControls->addWidget(sortMode,0,1);
+        galleryControls->addWidget(refreshButton,0,2);
+        galleryControls->addWidget(undoTrash,0,3);
+        galleryControls->addWidget(allowFiles,1,0,1,4);
+        galleryControls->setColumnStretch(0,1);
+        galleryControls->setContentsMargins(0,0,0,0);
+        galleryControls->setSpacing(4);
+        sortMode->setItemText(0,i18n("Newest"));
+        sortMode->setItemText(1,i18n("A-Z"));
+        sortMode->setFixedWidth(110);
+        sortMode->setMinimumHeight(42);
+        refreshButton->setText(QStringLiteral("↻"));
+        refreshButton->setAccessibleName(i18n("Refresh projects"));
+        refreshButton->setToolTip(i18n("Rescan projects on device"));
+        refreshButton->setFixedSize(43,42);
+        refreshButton->setStyleSheet("QPushButton{font-size:23px;}");
+        undoTrash->setText(i18n("Undo"));
+        undoTrash->setToolTip(i18n("Restore last trashed project"));
+        undoTrash->setFixedSize(65,42);
+        allowFiles->setMinimumHeight(44);
+        auto *searchRow=new QHBoxLayout;''',"compact gallery toolbar")
+    s=sub(s,'''            undoTrash->setEnabled(!stack.isEmpty() &&
+                QFileInfo(stack.last().toMap().value(
+                    QStringLiteral("trash")).toString()).isFile());''',
+'''            undoTrash->setEnabled(!stack.isEmpty() &&
+                QFileInfo(stack.last().toMap().value(
+                    QStringLiteral("trash")).toString()).isFile());
+            undoTrash->setVisible(undoTrash->isEnabled());''',
+          "contextual undo button")
+    # Save timestamp for reliable newest-first mode without opening project
+    # archives just to sort. Alphabetical mode is case-insensitive.
+    s=sub(s,'            item->setData(Qt::UserRole,location);',
+'''            item->setData(Qt::UserRole,location);
+            item->setData(Qt::UserRole+5,physicalPath.isEmpty() ? 0LL :
+                QFileInfo(physicalPath).lastModified().toMSecsSinceEpoch());''',
+          "project modification times")
+    s=sub(s,'        auto *searchRow=new QHBoxLayout;',
+'''        const auto sortDevice=[deviceList,sortMode]() {
+            if(deviceList->count()<2)return;
+            QList<QListWidgetItem*> sorted;
+            sorted.reserve(deviceList->count());
+            deviceList->setUpdatesEnabled(false);
+            while(deviceList->count())sorted.append(deviceList->takeItem(0));
+            std::stable_sort(sorted.begin(),sorted.end(),
+                [sortMode](QListWidgetItem *a,QListWidgetItem *b) {
+                    if(sortMode->currentIndex()==1) {
+                        const QString an=a->data(Qt::UserRole+4).toString();
+                        const QString bn=b->data(Qt::UserRole+4).toString();
+                        return QString::compare(an.isEmpty()?a->text():an,
+                            bn.isEmpty()?b->text():bn,Qt::CaseInsensitive)<0;
+                    }
+                    const qint64 am=a->data(Qt::UserRole+5).toLongLong();
+                    const qint64 bm=b->data(Qt::UserRole+5).toLongLong();
+                    return am==bm ?
+                        QString::compare(a->text(),b->text(),
+                                         Qt::CaseInsensitive)<0 : am>bm;
+                });
+            for(QListWidgetItem *item:sorted)deviceList->addItem(item);
+            deviceList->setUpdatesEnabled(true);
+        };
+        // Existing incremental device scanner runs first on timeout. When
+        // it stops (end of scan), sort the completed list only once.
+        connect(scanTimer,&QTimer::timeout,this,[scanTimer,sortDevice]() {
+            if(!scanTimer->isActive())sortDevice();
+        });
+        auto *searchRow=new QHBoxLayout;''',"device sorting")
     path.write_text(s,encoding="utf-8")
     print("Mobile home: quick actions, continue, responsive gallery, search, starred projects")
 
