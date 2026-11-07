@@ -222,26 +222,13 @@ public:
         // Follow changes made through pen, shortcuts or Krita's own sliders.
         m_brushControlTimer=new QTimer(this);
         m_brushControlTimer->setInterval(350);
-        connect(m_brushControlTimer,&QTimer::timeout,this,
-                [this]() {
-                    refreshBrushControls();
-                    // The contextual selection bar may cause Qt to recreate
-                    // subwindow chrome after it is pinned/unpinned.
-                    if(m_compact) {
-                        // Krita may restore its saved tabbed MDI mode when
-                        // pinning Selection Actions notifies configuration.
-                        if(m_mdi->viewMode()!=QMdiArea::SubWindowView)
-                            m_mdi->setViewMode(QMdiArea::SubWindowView);
-                        for(QMdiSubWindow *subwin:m_mdi->subWindowList()) {
-                            if(subwin && !(subwin->windowFlags() &
-                                           Qt::FramelessWindowHint)) {
-                                subwin->setWindowFlags(
-                                    subwin->windowFlags()|Qt::FramelessWindowHint);
-                                subwin->showMaximized();
-                            }
-                        }
-                    }
-                });
+        connect(m_brushControlTimer,&QTimer::timeout,this,[this]() {
+            refreshBrushControls();
+            refreshCompactToolbarIconSize();
+            // Do not mutate the MDI view mode/window flags here.
+            // Pinning Selection Actions emits configChanged(), and repeatedly
+            // reparenting/maximizing the canvas caused it to collapse.
+        });
 
         m_layerRail = new QFrame(m_surface);
         m_layerRail->setObjectName(QStringLiteral("tabletLayerRail"));
@@ -455,7 +442,9 @@ public:
         m_compactBar->setObjectName(QStringLiteral("tabletDedicatedCompactBar"));
         m_compactBar->setMovable(false);
         m_compactBar->setFloatable(false);
-        m_compactBar->setIconSize(QSize(26,26));
+        const int compactIconSize=qBound(20,QSettings().value(
+            QStringLiteral("TabletUi/compactToolbarIconSize"),26).toInt(),72);
+        m_compactBar->setIconSize(QSize(compactIconSize,compactIconSize));
         m_compactBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
         m_main->addToolBar(Qt::TopToolBarArea,m_compactBar);
         m_compactBar->hide();
@@ -557,6 +546,19 @@ public:
     }
 
     bool eventFilter(QObject *watched,QEvent *event) override {
+        // Dockers are normal-Krita widgets, not Compact UI overlays. Some
+        // plugins re-show their dockers after document/selection changes.
+        if(m_compact && event->type()==QEvent::Show) {
+            if(QDockWidget *dock=qobject_cast<QDockWidget*>(watched)) {
+                if(dock!=m_colorDocker) {
+                    QPointer<QDockWidget> guard(dock);
+                    QTimer::singleShot(0,this,[this,guard]() {
+                        if(m_compact && guard && guard!=m_colorDocker)
+                            guard->hide();
+                    });
+                }
+            }
+        }
         if(watched==m_layerName &&
            event->type()==QEvent::MouseButtonDblClick && m_vm->activeNode()) {
             const KisNodeSP node=m_vm->activeNode();
@@ -659,9 +661,11 @@ public:
             // Restore pinned panels only, not transient open panels.
             m_colorExpanded=m_colorPinned;
             m_layerExpanded=m_layerPinned;
-             for(QDockWidget *dock:{m_layerDocker.data(),m_brushDocker.data(),
-                                   m_toolOptionsDocker.data()}) {
-                if(dock) dock->hide();
+            // Hide the entire native docker set: Toolbox, Compositions,
+            // undo/history, extra selectors, etc. The single color docker
+            // reused as the floating Compact wheel is handled separately.
+            for(const QPointer<QDockWidget> &dock:m_compactNativeDockers) {
+                if(dock && dock!=m_colorDocker) dock->hide();
             }
             // The original color wheel and its color history are reused.
             // Its floating state is restored on return to normal Krita.
@@ -849,15 +853,27 @@ private:
         m_brushDocker=nullptr;
         m_colorDocker=nullptr;
         m_toolOptionsDocker=nullptr;
+        m_compactNativeDockers.clear();
         for (QDockWidget *dock : m_main->findChildren<QDockWidget*>()) {
+            if(!dock)continue;
+            m_compactNativeDockers.append(dock);
+            dock->removeEventFilter(this);
+            dock->installEventFilter(this);
             const QString name=dock->objectName();
             if(name==QStringLiteral("KisLayerBox"))m_layerDocker=dock;
             if(name==QStringLiteral("sharedtooldocker"))m_toolOptionsDocker=dock;
             if(name.contains(QStringLiteral("BrushPreset"),Qt::CaseInsensitive) ||
                dock->windowTitle().contains(i18n("Brush Presets"),Qt::CaseInsensitive))
                 m_brushDocker=dock;
-            if(name.contains(QStringLiteral("ColorSelector"),Qt::CaseInsensitive) ||
-               dock->windowTitle().contains(i18n("Advanced Color Selector"),Qt::CaseInsensitive))
+            const bool wideGamut=name.contains(QStringLiteral("WideGamut"),
+                                               Qt::CaseInsensitive) ||
+                dock->windowTitle().contains(QStringLiteral("Wide Gamut Color Selector"),
+                                             Qt::CaseInsensitive);
+            const bool isColor=name.contains(QStringLiteral("ColorSelector"),
+                                            Qt::CaseInsensitive) ||
+                dock->windowTitle().contains(i18n("Advanced Color Selector"),
+                                             Qt::CaseInsensitive);
+            if(wideGamut || (isColor && !m_colorDocker))
                 m_colorDocker=dock;
         }
     }
@@ -924,6 +940,14 @@ private:
         m_syncingBrushControls=false;
         m_brushControls->adjustSize();
     }
+    void refreshCompactToolbarIconSize() {
+        if(!m_compactBar)return;
+        const int px=qBound(20,QSettings().value(
+            QStringLiteral("TabletUi/compactToolbarIconSize"),26).toInt(),72);
+        const QSize square(px,px);
+        if(m_compactBar->iconSize()!=square)
+            m_compactBar->setIconSize(square);
+    }
     void rememberCompactToolbarState(bool compactMode) {
         if(compactMode) {
             m_originalToolbars.clear();
@@ -960,6 +984,7 @@ private:
     }
     void rebuildCompactToolbar() {
         if(!m_compactBar)return;
+        refreshCompactToolbarIconSize();
         m_compactBar->clear();
         auto *collection=m_main->actionCollection();
         QAction *compact=collection->action(QStringLiteral("tablet_compact_ui"));
@@ -2054,18 +2079,26 @@ private:
         if(!m_compact)return;
         const int w=m_surface->width();
         const int h=m_surface->height();
-        const int layerX=m_layerOnRight?qMax(4,w-m_layerRail->width()-4):4;
-        const int count=qMax(1,m_visibleLayerCount);
-        const int rowsHeight=count*(m_layerTileSize+4)+(count-1)*3;
-        const int desired=5+38+3+rowsHeight+3+34+5+12;
-        const int maxHeight=qMax(140,h-125);
-        m_layerRail->setGeometry(layerX,35,m_layerRail->width(),
-                                 qMin(maxHeight,qMax(130,desired)));
-        m_layerToggleButton->move(m_layerOnRight?qMax(6,w-54):6,42);
         m_brushStrip->adjustSize();
         m_brushStrip->move(8,qMax(0,h-m_brushStrip->height()-8));
         m_brushControls->move(8,qMax(0,h-m_brushStrip->height()-
                                       m_brushControls->height()-11));
+        const int layerX=m_layerOnRight?qMax(4,w-m_layerRail->width()-4):4;
+        const int layerY=35;
+        const int count=qMax(1,m_visibleLayerCount);
+        const int rowsHeight=count*(m_layerTileSize+4)+(count-1)*3;
+        const int desired=5+38+3+rowsHeight+3+34+5+12;
+        // Keep the rail above the brush panel when both share the left side.
+        // On the right, also avoid a pinned color selector at the bottom.
+        int availableBottom=h-8;
+        if(!m_layerOnRight)
+            availableBottom=qMin(availableBottom,m_brushControls->y()-10);
+        else if(m_colorExpanded && m_colorDocker && m_colorDocker->isVisible())
+            availableBottom=qMin(availableBottom,h-m_colorDocker->height()-12);
+        const int availableHeight=qMax(0,availableBottom-layerY);
+        m_layerRail->setGeometry(layerX,layerY,m_layerRail->width(),
+                                 qMin(availableHeight,qMax(130,desired)));
+        m_layerToggleButton->move(m_layerOnRight?qMax(6,w-54):6,42);
         m_toolOptionsFloating->move(qMax(0,w-54),55);
         m_colorButton->move(qMax(0,w-58),qMax(0,h-56));
 
@@ -2174,6 +2207,7 @@ private:
     QAction *m_sampleModeAction=nullptr;
     QToolButton *m_toolOptionsFloating=nullptr;
     QList<QPointer<QToolBar>> m_originalToolbars;
+    QList<QPointer<QDockWidget>> m_compactNativeDockers;
     QTimer *m_layerRefreshTimer=nullptr;
     KisResourceModel *m_presetModel=nullptr;
 };

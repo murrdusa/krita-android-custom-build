@@ -337,11 +337,20 @@ QHash<KisInputManager*, TabletReferenceDrag> tabletReferenceDrags;""")
         hapticLongPress->setChecked(stored.value(
             QStringLiteral("TabletUi/hapticLongPress"),false).toBool());
         form->addRow(hapticLongPress);
+        QSpinBox *compactToolbarIcons=new QSpinBox(&dialog);
+        compactToolbarIcons->setRange(20,72);
+        compactToolbarIcons->setSingleStep(2);
+        compactToolbarIcons->setSuffix(i18n(" px"));
+        compactToolbarIcons->setValue(qBound(20,stored.value(
+            QStringLiteral("TabletUi/compactToolbarIconSize"),26).toInt(),72));
+        form->addRow(i18n("Compact toolbar icon size"),compactToolbarIcons);
         layout->addLayout(form);""")
     sub(p, """            stored.setValue(QStringLiteral("TabletUi/referenceTwoFinger"), referenceTwoFinger->isChecked());""",
            """            stored.setValue(QStringLiteral("TabletUi/referenceTwoFinger"), referenceTwoFinger->isChecked());
             stored.setValue(QStringLiteral("TabletUi/longPressMs"),tabletHoldMs->value());
-            stored.setValue(QStringLiteral("TabletUi/hapticLongPress"),hapticLongPress->isChecked());""")
+            stored.setValue(QStringLiteral("TabletUi/hapticLongPress"),hapticLongPress->isChecked());
+            stored.setValue(QStringLiteral("TabletUi/compactToolbarIconSize"),
+                            compactToolbarIcons->value());""")
 
     p = "packaging/android/apk/src/org/krita/android/MainActivity.java"
     sub(p, """    public static int getLongPressTimeout() {""",
