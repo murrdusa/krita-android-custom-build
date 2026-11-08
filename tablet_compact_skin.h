@@ -1345,6 +1345,108 @@ private:
         dialog.exec();
     }
 
+    void openQuickActionSettings() {
+        QDialog dialog(m_main);
+        dialog.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
+        dialog.setWindowTitle(i18n("Customize Quick Actions"));
+        styleTouchDialog(dialog);
+        auto *layout=new QVBoxLayout(&dialog);
+        layout->setContentsMargins(13,13,13,13);
+        layout->setSpacing(9);
+        auto *title=new QLabel(i18n("Customize Quick Actions"),&dialog);
+        title->setStyleSheet("font-size:19px;font-weight:600;");
+        layout->addWidget(title);
+        auto *help=new QLabel(
+            i18n("Check commands to include in the Quick tab. "
+                 "Use Move Up and Move Down to change their order."),
+            &dialog);
+        help->setWordWrap(true);
+        layout->addWidget(help);
+        auto *list=new QListWidget(&dialog);
+        list->setSelectionMode(QAbstractItemView::SingleSelection);
+        list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        list->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        list->setIconSize(QSize(23,23));
+        list->setStyleSheet("QListWidget::item{min-height:52px;padding:5px;}");
+        QScroller::grabGesture(list->viewport(),QScroller::TouchGesture);
+        layout->addWidget(list,1);
+        const QStringList defaults={
+            QStringLiteral("gradients"),QStringLiteral("patterns"),
+            QStringLiteral("duplicatelayer"),QStringLiteral("quick_group")};
+        const QStringList available={
+            QStringLiteral("gradients"),QStringLiteral("patterns"),
+            QStringLiteral("file_new"),QStringLiteral("file_open"),
+            QStringLiteral("file_save_as"),QStringLiteral("file_export_file"),
+            QStringLiteral("select_all"),QStringLiteral("invert_selection"),
+            QStringLiteral("reselect"),QStringLiteral("deselect"),
+            QStringLiteral("fill_selection_foreground_color"),
+            QStringLiteral("cut_selection_to_new_layer"),
+            QStringLiteral("duplicate_layer"),QStringLiteral("duplicatelayer"),
+            QStringLiteral("merge_layer"),QStringLiteral("quick_group"),
+            QStringLiteral("edit_undo"),QStringLiteral("edit_redo"),
+            QStringLiteral("tablet_reset_view"),QStringLiteral("tablet_settings")};
+        const QStringList selected=QSettings().value(
+            QStringLiteral("TabletUi/quickActionsV2"),defaults).toStringList();
+        QStringList ordered=selected;
+        for(const QString &id:available)
+            if(!ordered.contains(id))ordered.append(id);
+        for(const QString &id:ordered) {
+            QAction *action=m_main->actionCollection()->action(id);
+            if(!action)continue;
+            QString label=action->text();
+            label.remove(QLatin1Char('&'));
+            if(label.isEmpty())label=id;
+            auto *item=new QListWidgetItem(action->icon(),label,list);
+            item->setData(Qt::UserRole,id);
+            item->setFlags(item->flags()|Qt::ItemIsUserCheckable);
+            item->setCheckState(selected.contains(id)?Qt::Checked:Qt::Unchecked);
+        }
+        auto *reorder=new QHBoxLayout;
+        auto *up=new QPushButton(i18n("Move Up"),&dialog);
+        auto *down=new QPushButton(i18n("Move Down"),&dialog);
+        up->setMinimumHeight(53);
+        down->setMinimumHeight(53);
+        reorder->addWidget(up);
+        reorder->addWidget(down);
+        layout->addLayout(reorder);
+        connect(up,&QPushButton::clicked,&dialog,[list]() {
+            const int row=list->currentRow();
+            if(row<=0)return;
+            QListWidgetItem *item=list->takeItem(row);
+            list->insertItem(row-1,item);
+            list->setCurrentRow(row-1);
+        });
+        connect(down,&QPushButton::clicked,&dialog,[list]() {
+            const int row=list->currentRow();
+            if(row<0||row>=list->count()-1)return;
+            QListWidgetItem *item=list->takeItem(row);
+            list->insertItem(row+1,item);
+            list->setCurrentRow(row+1);
+        });
+        auto *controls=new QHBoxLayout;
+        auto *cancel=new QPushButton(i18n("Cancel"),&dialog);
+        auto *save=new QPushButton(i18n("Save"),&dialog);
+        cancel->setMinimumHeight(52);
+        save->setMinimumHeight(52);
+        save->setStyleSheet(
+            "QPushButton{background:#406d86;color:white;"
+            "border:1px solid #96c7e2;border-radius:8px;}");
+        controls->addWidget(cancel);
+        controls->addWidget(save);
+        layout->addLayout(controls);
+        connect(cancel,&QPushButton::clicked,&dialog,&QDialog::reject);
+        connect(save,&QPushButton::clicked,&dialog,&QDialog::accept);
+        dialog.resize(qMax(310,qMin(440,m_surface->width()-26)),
+                      qMax(390,qMin(695,m_surface->height()-35)));
+        if(dialog.exec()!=QDialog::Accepted)return;
+        QStringList chosen;
+        for(int i=0;i<list->count();++i) {
+            QListWidgetItem *item=list->item(i);
+            if(item->checkState()==Qt::Checked)
+                chosen.append(item->data(Qt::UserRole).toString());
+        }
+        QSettings().setValue(QStringLiteral("TabletUi/quickActionsV2"),chosen);
+    }
     void showAddLayerSheet() {
         QDialog dialog(m_main);
         dialog.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
@@ -1557,6 +1659,14 @@ private:
         auto *quickLayout=new QVBoxLayout(quick);
         quickLayout->setContentsMargins(5,8,5,8);
         quickLayout->setSpacing(8);
+        auto *editQuick=new QPushButton(i18n("Customize Quick Actions"),quick);
+        editQuick->setIcon(KisIconUtils::loadIcon("configure"));
+        editQuick->setMinimumHeight(58);
+        quickLayout->addWidget(editQuick);
+        connect(editQuick,&QPushButton::clicked,&dialog,[this,&dialog]() {
+            dialog.accept();
+            QTimer::singleShot(0,this,[this](){openQuickActionSettings();});
+        });
         const QStringList defaults={
             QStringLiteral("gradients"),QStringLiteral("patterns"),
             QStringLiteral("duplicatelayer"),QStringLiteral("quick_group")};
