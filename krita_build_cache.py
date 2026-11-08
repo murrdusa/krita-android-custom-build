@@ -11,7 +11,7 @@ NON_APP={"krita_build_live.py","krita_build_reporter.py",
          "krita_build_watcher.py","krita_build_cache.py",".gitignore"}
 GENERATED=("libs/ui/tablet_compact_skin.h","libs/ui/mobile_shell.h",
            "libs/ui/standalone_host.h","libs/ui/canvas_session.h",
-           "libs/ui/canvas_transfer.h",
+           "libs/ui/canvas_transfer.h","libs/ui/canvas_surface.h",
            "libs/ui/engine_bridge.h","libs/ui/document_service.h",
            "libs/ui/command_service.h",
            "libs/ui/brush_workspace.h","libs/ui/color_workspace.h",
