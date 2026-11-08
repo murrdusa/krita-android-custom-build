@@ -1457,17 +1457,17 @@ private:
     void openQuickActionSettings() {
         QDialog dialog(m_main);
         dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
-        dialog.setWindowTitle(i18n("Customize Quick Actions"));
+        dialog.setWindowTitle(i18n("Manage Quick Actions"));
         styleTouchDialog(dialog);
         auto *layout=new QVBoxLayout(&dialog);
         layout->setContentsMargins(13,13,13,13);
         layout->setSpacing(9);
-        auto *title=new QLabel(i18n("Customize Quick Actions"),&dialog);
+        auto *title=new QLabel(i18n("Manage Quick Actions"),&dialog);
         title->setStyleSheet("font-size:19px;font-weight:600;");
         layout->addWidget(title);
         auto *help=new QLabel(
-            i18n("Check commands to include in the Quick tab. "
-                 "Use Move Up and Move Down to change their order."),
+            i18n("Uncheck a command to remove it. To reorder shortcuts, "
+                 "hold and drag them directly in the Quick tab."),
             &dialog);
         help->setWordWrap(true);
         layout->addWidget(help);
@@ -1500,38 +1500,17 @@ private:
         for(const QString &id:available)
             if(!ordered.contains(id))ordered.append(id);
         for(const QString &id:ordered) {
-            QAction *action=m_main->actionCollection()->action(id);
-            if(!action)continue;
-            QString label=action->text();
-            label.remove(QLatin1Char('&'));
+            QAction *action=resolveQuickAction(id);
+            if(!action && !selected.contains(id))continue;
+            QString label=action?cleanCompactActionText(action->text()):
+                i18n("Unavailable: %1",id);
             if(label.isEmpty())label=id;
-            auto *item=new QListWidgetItem(action->icon(),label,list);
+            auto *item=new QListWidgetItem(
+                action?action->icon():QIcon(),label,list);
             item->setData(Qt::UserRole,id);
             item->setFlags(item->flags()|Qt::ItemIsUserCheckable);
             item->setCheckState(selected.contains(id)?Qt::Checked:Qt::Unchecked);
         }
-        auto *reorder=new QHBoxLayout;
-        auto *up=new QPushButton(i18n("Move Up"),&dialog);
-        auto *down=new QPushButton(i18n("Move Down"),&dialog);
-        up->setMinimumHeight(53);
-        down->setMinimumHeight(53);
-        reorder->addWidget(up);
-        reorder->addWidget(down);
-        layout->addLayout(reorder);
-        connect(up,&QPushButton::clicked,&dialog,[list]() {
-            const int row=list->currentRow();
-            if(row<=0)return;
-            QListWidgetItem *item=list->takeItem(row);
-            list->insertItem(row-1,item);
-            list->setCurrentRow(row-1);
-        });
-        connect(down,&QPushButton::clicked,&dialog,[list]() {
-            const int row=list->currentRow();
-            if(row<0||row>=list->count()-1)return;
-            QListWidgetItem *item=list->takeItem(row);
-            list->insertItem(row+1,item);
-            list->setCurrentRow(row+1);
-        });
         auto *controls=new QHBoxLayout;
         auto *cancel=new QPushButton(i18n("Cancel"),&dialog);
         auto *save=new QPushButton(i18n("Save"),&dialog);
