@@ -1,5 +1,28 @@
 # Krita Core / Mobile UI redesign
 
+## Milestone v1.0 — mobile tools and canvas chrome isolation
+
+- `MobileEngineBridge::tools()/selectTool()` enumerates the live
+  `KoToolManager::toolActionList()` and activates real registered tool
+  actions, retaining Krita's pen input manager, vector/raster selection,
+  transform implementations and undo model.
+- `tool_browser.h` is a searchable, touch-sized native Qt mobile tool
+  chooser with recently used tools. It doesn't construct brushes or
+  duplicate drawing tools. The old desktop toolbox remains registered
+  only for legacy compatibility until the application bootstrap is
+  replaced.
+- `canvas_session.h` is now responsible for the visual tab chrome owned
+  by Krita's `QMdiArea`. While the canvas widget belongs to Mobile
+  Studio, its Qt `QTabBar` is hidden and compressed; each bar's original
+  minimum/maximum height and visibility are restored on returning to
+  the desktop host. A lightweight timer handles QTabBars created after
+  a new or opened document. The mobile document switcher remains
+  the independent visible navigation.
+- We still **do not** claim to have a standalone application executable:
+  Krita's `KisMainWindow` remains alive for initialization and for
+  engine services. There is no unsafe removal of document lifecycle,
+  brush/input, save or color-management code.
+
 ## Milestone v0.9 — safe document close and mobile empty canvas
 
 - Document close now goes through
