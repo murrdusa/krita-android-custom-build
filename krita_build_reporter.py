@@ -41,6 +41,75 @@ def save(path, data):
     temp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     temp.replace(path)
 
+def apk_size_section(build_root=None):
+    """Summarize local APK packaging without exposing or publishing the APK.
+
+    Uses the same output directory as local-build.sh. This is diagnostic data
+    only; a successful compilation does not imply device-level correctness.
+    """
+    if build_root is None:
+        build_root = Path(os.environ.get(
+            "KRITA_LOCAL_ROOT", str(Path.home() / "krita-local-android")))
+    output = build_root / "persistent" / "krita-custom-apks"
+    report = load(output / "apk-size-report.json")
+    apks = report.get("apks", [])
+    if not isinstance(apks, list) or not apks:
+        return ("\n## APK size inspection\n\n"
+                "No local size report available for this build.\n")
+    apk = apks[0]
+    if not isinstance(apk, dict) or not isinstance(apk.get("apk_bytes"), int):
+        return "\n## APK size inspection\n\nNo valid APK size entry.\n"
+    size = apk["apk_bytes"]
+    lines = [
+        "\n## APK size inspection (local APK, not uploaded)\n",
+        f"**{apk.get('apk', 'Android APK')}**: "
+        f"{size / (1024*1024):,.2f} MiB ({size:,} bytes)\n",
+        "Compressed ZIP contents by category:\n",
+        "| Category | Size (MiB) | Share |",
+        "|---|---:|---:|",
+    ]
+    categories = apk.get("categories") or {}
+    if not isinstance(categories, dict):
+        categories = {}
+    for category, values in sorted(
+            categories.items(), key=lambda row:
+            -row[1].get("compressed_bytes", 0)
+            if isinstance(row[1], dict) else 0):
+        if not isinstance(values, dict):
+            continue
+        amount = values.get("compressed_bytes", 0)
+        if not isinstance(amount, int):
+            continue
+        lines.append(f"| {category} | {amount/(1024*1024):.2f} "
+                     f"| {100*amount/size:.1f}% |")
+    history = load(output / "apk-size-history.json").get("snapshots", [])
+    if isinstance(history, list) and len(history) > 1:
+        last = history[-1]
+        prior = history[-2]
+        if isinstance(last, dict) and isinstance(prior, dict) and (
+                last.get("sha256") == apk.get("sha256")):
+            old_bytes = prior.get("apk_bytes")
+            if isinstance(old_bytes, int):
+                delta = size-old_bytes
+                lines.append(f"\n**Change since previous distinct APK:** "
+                             f"{delta / (1024*1024):+.2f} MiB ({delta:+,} bytes).")
+    biggest = apk.get("largest_entries") or []
+    if isinstance(biggest, list) and biggest:
+        lines.extend(["\nLargest compressed package entries:\n",
+                      "| File | MiB |", "|---|---:|"])
+        for item in biggest[:8]:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("path", "")).replace("|", "\\|")
+            amount = item.get("compressed_bytes")
+            if not isinstance(amount, int):
+                continue
+            lines.append(f"| `{name}` | {amount/(1024*1024):.2f} |")
+    lines.append("\nSizes describe APK ZIP payloads, not installed disk usage "
+                 "or runtime memory. No assets or native libraries were removed.\n")
+    return "\n".join(lines)
+
+
 def publish_status(sha, state, description, url=""):
     args = ["api", "--method", "POST", f"repos/{REPO}/statuses/{sha}",
             "-f", f"state={state}", "-f", f"context={CONTEXT}",
@@ -86,7 +155,8 @@ def report_completed(watcher):
         body = f"# Local Android build: {'SUCCESS' if success else 'FAILED'}\n\nRevision: `{sha}`\n"
     body = (f"**Commit:** `{sha}`\n\n"
             f"**Outcome:** {'SUCCESS' if success else 'FAILED'}\n\n"
-            f"**Completed UTC:** {watcher.get('completed_at', 'unknown')}\n\n" + body)
+            f"**Completed UTC:** {watcher.get('completed_at', 'unknown')}\n\n"
+            + (apk_size_section() if success else "") + "\n" + body)
     issue_url = ""
     if not success:
         result = gh("issue", "create", "--repo", REPO,
