@@ -105,20 +105,42 @@ public:
             native->hide();
             native->setParent(nullptr);
         }
-        if(m_backend && native) {
+        if(m_backend && native)
             m_backend->setCentralWidget(native);
-            native->show();
-        }
         restoreNativeTabs();
+
+        // Android hosts both surfaces in the same Qt application. Hide
+        // the mobile top-level *before* showing the desktop window again,
+        // otherwise the two surfaces can briefly overlap and leave a
+        // stale footer over an otherwise empty desktop canvas.
+        if(m_mobileWindow)m_mobileWindow->hide();
 
         if(m_backend) {
             m_backend->setProperty("_mobileStudioCanvasTransferred",false);
-            m_backend->setWindowState(m_savedWindowState);
+            if(m_backend->windowState()!=m_savedWindowState)
+                m_backend->setWindowState(m_savedWindowState);
             m_backend->show();
+            if(native)native->show();
             m_backend->raise();
             m_backend->activateWindow();
+            // Returning the native widget changes its top-level window.
+            // Let Qt finish the Android surface/MDI layout pass before
+            // requesting its repaint. This does not create a view.
+            const QPointer<QWidget> restored=native;
+            const QPointer<QMdiArea> documents=m_documents;
+            QTimer::singleShot(0,m_backend,[restored,documents]() {
+                if(!restored)return;
+                restored->show();
+                restored->updateGeometry();
+                restored->update();
+                if(documents) {
+                    documents->updateGeometry();
+                    documents->update();
+                    if(documents->viewport())
+                        documents->viewport()->update();
+                }
+            });
         }
-        if(m_mobileWindow)m_mobileWindow->hide();
 
         m_surface=nullptr;
         m_mobileWindow=nullptr;
