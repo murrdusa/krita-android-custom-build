@@ -113,3 +113,34 @@ These changes do not delete the persistent Docker container or its build
 directory, and do not alter the running watcher. The watcher's earlier
 --jobs 2 setting reduces CPU load while gaming; increasing it may speed
 compilation at the cost of higher background resource use.
+
+## Automatic APK download links (new)
+
+The local WSL build script now attempts to publish **every successfully compiled
+or safely reused ARM64 debug APK** as a GitHub Release using the existing
+GitHub CLI login from the build reporter. The upload runs only after a
+successful local build. Upload problems cannot invalidate the local APK.
+
+- **Stable APK URL once the first upload succeeds:**
+  https://github.com/murrdusa/krita-android-custom-build/releases/download/krita-android-latest/krita-android-custom-arm64-debug.apk
+- **Release page:** https://github.com/murrdusa/krita-android-custom-build/releases/tag/krita-android-latest
+- **GitHub commit status:** \`local/android-apk-published\`, separate from
+  \`local/android-wsl-build\`. A successful compile alone is not proof of upload.
+- The published file is a separately installable experimental debug APK,
+  not an official Krita release.
+
+The WSL watcher must still be **running and online** for local publication;
+new scripts are picked up after its normal repository update/build cycle.
+The existing authenticated \`gh\` CLI normally needs no additional setup.
+If its token cannot create Releases or \`gh\` is absent, the build continues,
+but a one-time \`gh auth login\` or permission update is necessary.
+
+To disable public uploads without disabling builds, set
+\`KRITA_PUBLISH_APK=0\` in the WSL build environment. **This repository is
+public, so its release APK is publicly downloadable.** No API tokens or user
+drawings are uploaded. Only the generated APK is published.
+
+GitHub Actions also retains its independent on-demand \`build\` mode for
+building on GitHub-hosted runners when the local WSL watcher is unavailable;
+that mode uploads a temporary workflow artifact rather than this stable
+local Release.
