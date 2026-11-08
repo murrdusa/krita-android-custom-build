@@ -109,8 +109,15 @@ public:
 
     void refresh()
     {
+        // A native Android modal popup can leave newly reparented toolbar
+        // children explicitly hidden while the scroll area itself remains.
+        // These buttons are always displayed while the strip is visible.
+        if(m_scroll && m_scroll->widget() &&
+           m_scroll->widget()->isHidden())
+            m_scroll->widget()->show();
         for(const auto &widget:m_buttons) {
             if(!widget.second)continue;
+            if(widget.second->isHidden())widget.second->show();
             widget.second->setEnabled(isEnabled(widget.first));
         }
     }
@@ -522,7 +529,9 @@ private:
         dlg.resize(qMax(315,qMin(535,bounds.width()-24)),
                    qMax(370,qMin(760,bounds.height()-35)));
         if(dlg.exec()!=QDialog::Accepted)return;
-        m_ids=currentIds();
+        const QStringList updated=currentIds();
+        if(updated==m_ids)return; // No rebuild for an unchanged toolbar.
+        m_ids=updated;
         save();
         rebuild();
     }
