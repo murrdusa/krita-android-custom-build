@@ -1,5 +1,25 @@
 # Krita Core / Mobile UI redesign
 
+## Milestone v0.5 — interface/service boundary
+
+The `MobileEngineBridge` is the only mobile module that accesses the hidden
+Krita main-window action collection directly. Brush and layer UIs now accept
+an engine service adapter instead of a `KisMainWindow*`. Tool/preset selection,
+eraser state, native command execution and action discovery use that bridge.
+
+The new **Search all Krita commands** interface is built from native QAction
+objects and searches their live labels and identifiers. It uses Krita's own
+handlers without mirroring the desktop menu hierarchy. The old menus are
+retained behind a clearly labeled compatibility item until all necessary
+commands have mobile equivalents.
+
+**This is dependency isolation, not dependency removal**: Krita still starts
+with a `KisMainWindow`, and that window still owns the document lifecycle and
+canvas before we transfer them. We have not reduced the APK size or created a
+separate executable. Next is to migrate document bootstrap and file action
+ownership behind independent services, then remove unused desktop chrome
+and packaging only after runtime verification.
+
 ## Engineering state — independent window v0.1 (November 2026)
 
 The current test milestone is no longer a painter toolbar over Krita's
