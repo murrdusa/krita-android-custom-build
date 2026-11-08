@@ -39,11 +39,19 @@ QPointF KisVisualDiamondSelectorShape::convertWidgetCoordinateToShapeCoordinate'
 }
 
 QImage KisVisualDiamondSelectorShape::renderAlphaMask()''',
-'''    return QRegion(m_squareRotation.map(QPolygonF(maskPoly)).toPolygon());
+'''    // Match the actual diamond, not the original octagonal mouse mask.
+    // Rotating the old beveled eight-point mask clipped all four visible
+    // corners when the diamond was rotated into a square.
+    QPolygonF trueDiamond;
+    trueDiamond << QPointF(0.5*width(),m_margin)
+                << QPointF(m_margin,0.5*height())
+                << QPointF(0.5*width(),height()-m_margin)
+                << QPointF(width()-m_margin,0.5*height());
+    return QRegion(m_squareRotation.map(trueDiamond).toPolygon());
 }
 
 QImage KisVisualDiamondSelectorShape::renderAlphaMask()''',
-          "rotated touch mask")
+          "unclipped rotated touch mask")
     s=one(s,
 '''    painter.setPen(Qt::NoPen);
     QPointF diamond[4] = {''',
@@ -58,7 +66,7 @@ QImage KisVisualDiamondSelectorShape::renderAlphaMask()''',
     const int degrees=QSettings().value(
         QStringLiteral("TabletUi/compact"),false).toBool() ?
         qBound(0,QSettings().value(
-            QStringLiteral("TabletUi/colorDiamondRotationDegrees"),0).toInt(),359) : 0;
+            QStringLiteral("TabletUi/colorDiamondRotationDegrees"),315).toInt(),359) : 0;
     // Keep the corners inscribed in the ring at every rotation angle.
     // QWidget clipping uses the pre-rotation square; the visible corners
     // and touch region are mapped consistently by the shape transform.
