@@ -105,6 +105,20 @@ def apk_size_section(build_root=None):
             if not isinstance(amount, int):
                 continue
             lines.append(f"| `{name}` | {amount/(1024*1024):.2f} |")
+    folders = apk.get("largest_asset_folders") or []
+    if isinstance(folders, list) and folders:
+        lines.extend(["\nLargest bundled resource directories:\n",
+                      "| Directory | MiB | Files |",
+                      "|---|---:|---:|"])
+        for item in folders[:8]:
+            if not isinstance(item, dict):
+                continue
+            amount = item.get("compressed_bytes")
+            count = item.get("count")
+            if not isinstance(amount, int) or not isinstance(count, int):
+                continue
+            name = str(item.get("path", "")).replace("|", "\\|")
+            lines.append(f"| `{name}` | {amount/(1024*1024):.2f} | {count} |")
     lines.append("\nSizes describe APK ZIP payloads, not installed disk usage "
                  "or runtime memory. No assets or native libraries were removed.\n")
     return "\n".join(lines)
