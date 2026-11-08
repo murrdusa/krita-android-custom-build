@@ -1586,55 +1586,88 @@ private:
         settingsScroll->setWidget(settingsPage);
         tabs->addTab(settingsScroll,i18n("Settings"));
 
-        // Native commands are selectable as one flat, searchable list; no
-        // tiny cascading desktop menus or hover-only submenus.
+        // Curated, stable commands only. Dynamic native menu contents such as
+        // Open Recent, disabled placeholders and plugin submenu text do not
+        // belong in a touch menu. Left-mouse scrolling is the same proven
+        // Android gesture used in the Compact brush preset grid.
         auto *actionsPage=new QWidget(tabs);
         auto *actionsLayout=new QVBoxLayout(actionsPage);
         actionsLayout->setContentsMargins(5,7,5,7);
+        actionsLayout->setSpacing(7);
         auto *search=new QLineEdit(actionsPage);
         search->setMinimumHeight(49);
         search->setClearButtonEnabled(true);
-        search->setPlaceholderText(i18n("Find a Krita action"));
+        search->setPlaceholderText(i18n("Search drawing actions"));
         actionsLayout->addWidget(search);
         auto *list=new QListWidget(actionsPage);
         list->setSelectionMode(QAbstractItemView::SingleSelection);
         list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
         list->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        list->setIconSize(QSize(25,25));
-        QScroller::grabGesture(list->viewport(),QScroller::TouchGesture);
-        list->setStyleSheet("QListWidget::item{min-height:52px;padding:5px;}");
+        list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        list->setWordWrap(true);
+        list->setIconSize(QSize(24,24));
+        list->setMovement(QListView::Static);
+        list->setDragEnabled(false);
+        list->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
+        QScroller::grabGesture(list->viewport(),
+                                QScroller::LeftMouseButtonGesture);
+        list->setStyleSheet("QListWidget::item{min-height:56px;padding:7px;}");
         actionsLayout->addWidget(list,1);
-        QVector<QPointer<QAction>> refs;
-        auto append=[list,&refs](const QString &label,QAction *action) {
-            if(!action || label.isEmpty() || refs.size()>=600)return;
-            const int index=refs.size();
-            refs.append(action);
-            auto *item=new QListWidgetItem(action->icon(),label,list);
-            item->setData(Qt::UserRole,index);
+        struct ActionSpec{const char *label;const char *id;};
+        const ActionSpec specs[]={
+            {"New canvas","file_new"},{"Open file","file_open"},
+            {"Save","file_save"},{"Save As","file_save_as"},
+            {"Export","file_export_file"},
+            {"Undo","edit_undo"},{"Redo","edit_redo"},
+            {"Cut","edit_cut"},{"Copy","edit_copy"},{"Paste","edit_paste"},
+            {"Select all","select_all"},{"Deselect","deselect"},
+            {"Invert selection","invert_selection"},{"Reselect","reselect"},
+            {"Fill selection","fill_selection_foreground_color"},
+            {"Cut selection to new layer","cut_selection_to_new_layer"},
+            {"Add paint layer","add_new_paint_layer"},
+            {"Add group layer","add_new_group_layer"},
+            {"Duplicate layer","duplicatelayer"},
+            {"Merge with layer below","merge_layer"},
+            {"Group layers","quick_group"},
+            {"Add transparency mask","add_new_transparency_mask"},
+            {"Alpha lock","toggle_layer_alpha_lock"},
+            {"Toggle eraser","erase_action"},
+            {"Brush presets","tablet_all_brush_presets"},
+            {"All tools","tablet_all_tools_popup"},
+            {"Reset canvas view","tablet_reset_view"},
+            {"Reference images","view_toggle_reference_images"},
+            {"Gradient preset","gradients"},
+            {"Pattern preset","patterns"}
+        };
+        QSet<QString> included;
+        for(const auto &spec:specs) {
+            const QString id=QString::fromLatin1(spec.id);
+            if(included.contains(id))continue;
+            QAction *action=m_main->actionCollection()->action(id);
+            if(!action || action->isSeparator())continue;
+            included.insert(id);
+            auto *item=new QListWidgetItem(action->icon(),i18n(spec.label),list);
+            item->setData(Qt::UserRole,id);
             if(!action->isEnabled())
                 item->setFlags(item->flags()&~Qt::ItemIsEnabled);
-        };
-        std::function<void(QMenu*,const QString&,int)> collect;
-        collect=[&](QMenu *menu,const QString &section,int depth) {
-            if(!menu || depth>5 || refs.size()>=600)return;
-            for(QAction *a:menu->actions()) {
-                if(!a || a->isSeparator())continue;
-                QString label=a->text();
-                label.remove(QLatin1Char('&'));
-                if(label.isEmpty())continue;
-                if(QMenu *sub=a->menu())collect(sub,section+
-                    QStringLiteral(" / ")+label,depth+1);
-                else append(section+QStringLiteral(" / ")+label,a);
-            }
-        };
-        if(QMenuBar *bar=m_main->menuBar()) {
-            for(QAction *top:bar->actions()) {
-                if(!top || !top->menu())continue;
-                QString name=top->text();
-                name.remove(QLatin1Char('&'));
-                collect(top->menu(),name,0);
-            }
         }
+        auto *actionButtons=new QHBoxLayout;
+        auto *run=new QPushButton(i18n("Run action"),actionsPage);
+        auto *addQuick=new QPushButton(i18n("+ Quick"),actionsPage);
+        run->setMinimumHeight(52);
+        addQuick->setMinimumHeight(52);
+        run->setEnabled(false);
+        addQuick->setEnabled(false);
+        actionButtons->addWidget(run,1);
+        actionButtons->addWidget(addQuick,1);
+        actionsLayout->addLayout(actionButtons);
+        connect(list,&QListWidget::itemSelectionChanged,&dialog,
+                [list,run,addQuick]() {
+            const bool enabled=list->currentItem() &&
+                (list->currentItem()->flags()&Qt::ItemIsEnabled);
+            run->setEnabled(enabled);
+            addQuick->setEnabled(enabled);
+        });
         connect(search,&QLineEdit::textChanged,&dialog,
                 [list](const QString &term) {
             for(int i=0;i<list->count();++i) {
@@ -1642,15 +1675,33 @@ private:
                 item->setHidden(!item->text().contains(term,Qt::CaseInsensitive));
             }
         });
-        connect(list,&QListWidget::itemClicked,&dialog,
-                [this,&dialog,&refs](QListWidgetItem *item) {
-            const int i=item->data(Qt::UserRole).toInt();
-            if(i<0||i>=refs.size()||!refs.at(i))return;
-            QPointer<QAction> action=refs.at(i);
+        connect(run,&QPushButton::clicked,&dialog,
+                [this,&dialog,list]() {
+            QListWidgetItem *item=list->currentItem();
+            if(!item)return;
+            QPointer<QAction> action=m_main->actionCollection()->action(
+                item->data(Qt::UserRole).toString());
             dialog.accept();
             QTimer::singleShot(0,this,[action]() {
                 if(action)action->trigger();
             });
+        });
+        connect(list,&QListWidget::itemDoubleClicked,&dialog,
+                [run](QListWidgetItem*){run->click();});
+        connect(addQuick,&QPushButton::clicked,&dialog,[this,list,addQuick]() {
+            QListWidgetItem *item=list->currentItem();
+            if(!item)return;
+            const QString id=item->data(Qt::UserRole).toString();
+            const QStringList defaults={
+                QStringLiteral("gradients"),QStringLiteral("patterns"),
+                QStringLiteral("duplicatelayer"),QStringLiteral("quick_group")};
+            QStringList chosen=QSettings().value(
+                QStringLiteral("TabletUi/quickActionsV2"),defaults).toStringList();
+            if(!chosen.contains(id)) {
+                chosen.append(id);
+                QSettings().setValue(QStringLiteral("TabletUi/quickActionsV2"),chosen);
+            }
+            addQuick->setText(i18n("Added to Quick"));
         });
         tabs->addTab(actionsPage,i18n("Krita actions"));
         auto *quick=new QWidget(tabs);
@@ -1686,10 +1737,13 @@ private:
         }
         quickLayout->addStretch();
         tabs->addTab(quick,i18n("Quick"));
-        auto *close=new QPushButton(i18n("Close"),&dialog);
-        close->setMinimumHeight(52);
-        outer->addWidget(close);
-        connect(close,&QPushButton::clicked,&dialog,&QDialog::accept);
+        auto *back=new QPushButton(i18n("Back"),&dialog);
+        back->setMinimumHeight(52);
+        outer->addWidget(back);
+        connect(back,&QPushButton::clicked,&dialog,[tabs,&dialog]() {
+            if(tabs->currentIndex()!=0)tabs->setCurrentIndex(0);
+            else dialog.reject();
+        });
         dialog.resize(qMax(310,qMin(445,m_surface->width()-26)),
                       qMax(395,qMin(695,m_surface->height()-36)));
         dialog.exec();
