@@ -111,7 +111,8 @@ public:
         // owns. Never install an unrelated widget as the backend's central
         // widget, even if a future surface implementation returns one.
         QWidget *native=m_canvas.data();
-        if(native && detached!=native) {
+        if(native && detached!=native &&
+           m_backend->centralWidget()!=native) {
             // Recovery also covers a surface that reports no widget after
             // having reparented the original native canvas.
             native->hide();
