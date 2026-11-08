@@ -2574,19 +2574,28 @@ private:
             refreshLayerControls();
         });
         layout->addWidget(new QLabel(i18n("Layer thumbnail size"),&dialog));
-        auto *size=new QSlider(Qt::Horizontal,&dialog);
-        size->setRange(64,160);
+        auto *size=new KisDoubleSliderSpinBox(&dialog);
+        size->setRange(64,160,0);
         size->setSingleStep(4);
         size->setValue(m_layerTileSize);
-        addTouchSliderRow(layout,size,8);
-        auto *value=new QLabel(QStringLiteral("%1 × %1").arg(m_layerTileSize),&dialog);
-        layout->addWidget(value);
-        connect(size,&QSlider::valueChanged,&dialog,[this,value](int newSize) {
-            m_layerTileSize=newSize;
-            value->setText(QStringLiteral("%1 × %1").arg(newSize));
-            QSettings().setValue(QStringLiteral("TabletUi/layerTileSize"),newSize);
+        size->setSuffix(i18n(" px"));
+        size->setMinimumHeight(54);
+        size->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
+        layout->addWidget(size);
+        auto *layerResizeDelay=new QTimer(&dialog);
+        layerResizeDelay->setSingleShot(true);
+        layerResizeDelay->setInterval(100);
+        connect(layerResizeDelay,&QTimer::timeout,&dialog,[this]() {
             updateLayerWidth();
             refreshLayers();
+        });
+        connect(size,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),
+                &dialog,[this,layerResizeDelay](qreal raw) {
+            const int value=qBound(64,qRound(raw),160);
+            if(m_layerTileSize==value)return;
+            m_layerTileSize=value;
+            QSettings().setValue(QStringLiteral("TabletUi/layerTileSize"),value);
+            layerResizeDelay->start();
         });
         layout->addWidget(new QLabel(i18n("Layer panel position"),&dialog));
         auto *side=new QComboBox(&dialog);
