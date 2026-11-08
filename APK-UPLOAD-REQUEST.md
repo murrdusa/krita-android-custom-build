@@ -1,7 +1,7 @@
 # On-demand Krita Android APK upload
 
-UPLOAD_REQUEST_ID=request-20261108-enginefirst-preview-0246-x92f
-UPLOAD_RELEASE_TAG=krita-mobile-studio-preview
+UPLOAD_REQUEST_ID=request-20261108-mobile-layers-v02-0303-xe81
+UPLOAD_RELEASE_TAG=krita-mobile-studio-preview-v02
 
 Normal local builds must **never** upload an APK automatically. The build
 watcher reads this file on each GitHub revision but publishes only when the
