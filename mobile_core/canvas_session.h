@@ -10,6 +10,7 @@
 #include <QObject>
 #include <QEvent>
 #include <QMainWindow>
+#include <QMessageBox>
 #include <QMdiArea>
 #include <QPointer>
 #include <QSignalBlocker>
@@ -74,7 +75,14 @@ public:
     }
     ~MobileAppController() override
     {
-        if(m_transfer.active())leave();
+        // Do not destroy the mobile top-level (and its child canvas) if
+        // the desktop handoff refused to replace an occupied widget.
+        // During shutdown it is safer to let the OS reclaim this window
+        // than to silently delete a modified KisDocument's view.
+        if(m_transfer.active() && !m_transfer.leave()) {
+            m_host=nullptr;
+            return;
+        }
         delete m_host;
     }
 
@@ -114,7 +122,22 @@ private:
     }
     void leave()
     {
-        m_transfer.leave();
+        if(m_transfer.leave())return;
+        // Leave the working mobile canvas in place on a rejected
+        // transfer. Keep the launcher state in sync without recursively
+        // reentering the mode-switch handler.
+        if(m_entry) {
+            const QSignalBlocker blocked(m_entry);
+            m_entry->setChecked(true);
+        }
+        if(m_host) {
+            QMessageBox::warning(m_host,
+                QObject::tr("Canvas still in Mobile Studio"),
+                QObject::tr("Krita could not safely restore the original "
+                            "canvas because its desktop window changed. "
+                            "Your drawing remains in Mobile Studio. "
+                            "Save it before trying to switch again."));
+        }
     }
     MobileCanvasTransfer m_transfer;
     QPointer<QMainWindow> m_backend;
