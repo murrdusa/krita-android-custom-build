@@ -7,7 +7,7 @@
  * No Krita types or Mobile Studio window implementation are included.
  */
 #pragma once
-#ifdef Q_OS_ANDROID
+#if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
 
 #include <QMainWindow>
 #include <QDebug>
@@ -295,4 +295,4 @@ private:
     QTimer m_tabTimer;
     bool m_active=false;
 };
-#endif // Q_OS_ANDROID
+#endif // Q_OS_ANDROID || KRITA_MOBILE_QT_TEST
