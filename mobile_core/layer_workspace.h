@@ -10,6 +10,7 @@
 #include <QFrame>
 #include <QMenu>
 #include <QInputDialog>
+#include <QFont>
 #include <QLineEdit>
 #include <QScroller>
 #include <QHBoxLayout>
