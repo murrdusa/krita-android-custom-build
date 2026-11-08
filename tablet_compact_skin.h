@@ -2268,32 +2268,66 @@ private:
             if(!preset)return;
             heldAction=true;
             feedbackForHold();
-            QMenu options(&dialog);
-            QAction *remove=nullptr;
-            if(!all->isChecked())
-                remove=options.addAction(i18n("Remove from this category"));
-            QAction *paint=options.addAction(i18n("Add to Paint"));
-            QAction *erase=options.addAction(i18n("Add to Erase"));
-            options.addAction(i18n("Add to Blend"));
-            options.addSeparator();
-            QAction *makeBlend=options.addAction(i18n("Create blending version"));
-            const bool alreadyPinned=QSettings().value(
+            // A proper touch sheet replaces the native mouse-oriented
+            // context menu. Its Favorite action uses the existing pin key.
+            QDialog options(&dialog);
+            options.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
+            options.setWindowTitle(preset->name());
+            styleTouchDialog(options);
+            auto *outer=new QVBoxLayout(&options);
+            outer->setContentsMargins(13,13,13,13);
+            auto *heading=new QLabel(preset->name(),&options);
+            heading->setWordWrap(true);
+            heading->setStyleSheet("font-size:18px;font-weight:600;");
+            outer->addWidget(heading);
+            auto *scroll=new QScrollArea(&options);
+            scroll->setWidgetResizable(true);
+            scroll->setFrameShape(QFrame::NoFrame);
+            QScroller::grabGesture(scroll->viewport(),QScroller::TouchGesture);
+            auto *body=new QWidget(scroll);
+            auto *actions=new QVBoxLayout(body);
+            actions->setContentsMargins(6,5,6,5);
+            actions->setSpacing(8);
+            int chosen=-1;
+            auto add=[&](const QString &name,int code) {
+                auto *btn=new QPushButton(name,body);
+                btn->setMinimumHeight(55);
+                actions->addWidget(btn);
+                connect(btn,&QPushButton::clicked,&options,[&options,&chosen,code]() {
+                    chosen=code;
+                    options.accept();
+                });
+            };
+            const bool alreadyFavorite=QSettings().value(
                 presetPinKey(preset->name()),false).toBool();
-            QAction *pin=options.addAction(alreadyPinned ?
-                i18n("Remove Favorite") : i18n("Favorite"));
-            QAction *selected=options.exec(QCursor::pos());
-            if(!selected)return;
-            if(selected==pin) {
-                QSettings().setValue(presetPinKey(preset->name()),!alreadyPinned);
+            add(alreadyFavorite?i18n("Remove Favorite"):i18n("Favorite"),5);
+            if(!all->isChecked())
+                add(i18n("Remove from this category"),0);
+            add(i18n("Add to Paint"),1);
+            add(i18n("Add to Erase"),2);
+            add(i18n("Add to Blend"),3);
+            add(i18n("Create blending version"),4);
+            actions->addStretch();
+            scroll->setWidget(body);
+            outer->addWidget(scroll,1);
+            auto *cancel=new QPushButton(i18n("Back"),&options);
+            cancel->setMinimumHeight(50);
+            outer->addWidget(cancel);
+            connect(cancel,&QPushButton::clicked,&options,&QDialog::reject);
+            options.resize(qMax(280,qMin(410,m_surface->width()-26)),
+                           qMax(330,qMin(595,m_surface->height()-38)));
+            if(options.exec()!=QDialog::Accepted)return;
+            if(chosen==5) {
+                QSettings().setValue(presetPinKey(preset->name()),
+                                     !alreadyFavorite);
                 refill();
                 return;
             }
-            if(selected==makeBlend) {
+            if(chosen==4) {
                 if(createBlendingVersion(preset))refill();
                 return;
             }
-            const int group=selected==remove?-1:
-                selected==paint?0:selected==erase?1:2;
+            const int group=chosen==0?-1:chosen-1;
             QSettings().setValue(groupKey(preset->name()),group);
             refill();
         });
