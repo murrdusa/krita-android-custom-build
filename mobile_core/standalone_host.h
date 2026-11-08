@@ -52,6 +52,7 @@
 #include <klocalizedstring.h>
 
 #include "engine_bridge.h"
+#include "command_browser.h"
 #include "brush_workspace.h"
 #include "layer_workspace.h"
 
@@ -120,8 +121,7 @@ public:
         m_canvasLayout->setContentsMargins(0,0,0,0);
         m_canvasLayout->setSpacing(0);
         paintingLayout->addWidget(m_canvasSlot,1);
-        m_layers=new KritaMobileLayersPanel(
-            m_engine.legacyHost(),m_engine.manager(),paintingArea);
+        m_layers=new KritaMobileLayersPanel(m_engine,paintingArea);
         m_layers->onRequestClose=[this]() {
             if(m_layers)m_layers->hide();
             if(m_layersButton)m_layersButton->setChecked(false);
@@ -130,8 +130,7 @@ public:
         m_layers->hide();
         layout->addWidget(paintingArea,1);
 
-        m_brushWorkspace=new KritaMobileBrushWorkspace(
-            m_engine.legacyHost(),m_engine.manager(),root);
+        m_brushWorkspace=new KritaMobileBrushWorkspace(m_engine,root);
         m_brushWorkspace->setSizePolicy(
             QSizePolicy::Expanding,QSizePolicy::Fixed);
         layout->addWidget(m_brushWorkspace,0);
@@ -240,6 +239,14 @@ private:
     {
         if(!m_more)return;
         QMenu menu(this);
+        auto *browse=menu.addAction(i18n("Search all Krita commands"));
+        connect(browse,&QAction::triggered,this,[this]() {
+            // Let the menu close before opening the independent browser.
+            QTimer::singleShot(0,this,[this]() {
+                MobileCommandBrowser::open(m_engine,this);
+            });
+        });
+        menu.addSeparator();
         auto *transform=menu.addAction(i18n("Transform selected pixels/layers"));
         connect(transform,&QAction::triggered,this,[this](){
             KoToolManager::instance()->switchToolRequested(
@@ -252,7 +259,7 @@ private:
         });
         menu.addSeparator();
         auto *nativeMenu=m_engine.nativeMenus(&menu);
-        nativeMenu->setTitle(i18n("All Krita commands"));
+        nativeMenu->setTitle(i18n("Legacy menus (compatibility)"));
         menu.addMenu(nativeMenu);
         menu.exec(m_more->mapToGlobal(QPoint(0,m_more->height())));
     }
