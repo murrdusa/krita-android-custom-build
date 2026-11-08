@@ -22,8 +22,7 @@
 #include <QTimer>
 #include <QPixmap>
 
-#include "KisMainWindow.h"
-#include "KisViewManager.h"
+#include "engine_bridge.h"
 #include "kis_canvas_resource_provider.h"
 #include "kis_paintop_box.h"
 #include "kis_slider_spin_box.h"
@@ -35,10 +34,9 @@
 
 class KritaMobileBrushWorkspace final : public QFrame {
 public:
-    explicit KritaMobileBrushWorkspace(KisMainWindow *window,
-                                       KisViewManager *viewManager,
+    explicit KritaMobileBrushWorkspace(const MobileEngineBridge &engine,
                                        QWidget *parent)
-        : QFrame(parent),m_window(window),m_vm(viewManager)
+        : QFrame(parent),m_engine(engine)
     {
         setObjectName(QStringLiteral("mobileBrushWorkspace"));
         setStyleSheet(
@@ -170,7 +168,7 @@ private:
     }
     KisCanvasResourceProvider *resources() const
     {
-        return m_vm ? m_vm->canvasResourceProvider():nullptr;
+        return m_engine.brushResources();
     }
     KisResourceModel *model()
     {
@@ -202,25 +200,20 @@ private:
     }
     void setEraser(bool enabled)
     {
-        if(!m_window)return;
-        QAction *eraser=m_window->actionCollection()->action(
-            QStringLiteral("erase_action"));
-        if(eraser && eraser->isCheckable() && eraser->isChecked()!=enabled)
-            eraser->trigger();
+        m_engine.setEraser(enabled);
     }
     void setNativePreset(KisPaintOpPresetSP preset)
     {
-        if(!preset || !m_vm || !m_vm->paintOpBox())return;
+        if(!preset)return;
         m_internalChange=true;
-        m_vm->paintOpBox()->resourceSelected(preset);
+        m_engine.selectBrushPreset(preset);
         m_internalChange=false;
     }
     void switchMode(int slot)
     {
-        if(!m_vm || !resources() || slot<0 || slot>2)return;
+        if(!resources() || slot<0 || slot>2)return;
         // Changing presets never replaces Krita's tool or input manager.
-        KoToolManager::instance()->switchToolRequested(
-            QStringLiteral("KritaShape/KisToolBrush"));
+        m_engine.freehandBrush();
         const QString name=QSettings().value(
             QStringLiteral("MobilePilot/brushSlot%1").arg(slot)).toString();
         KisPaintOpPresetSP preset=findPreset(name);
@@ -237,8 +230,8 @@ private:
     }
     void openPresetBrowser(int slot)
     {
-        if(!m_vm || !m_vm->paintOpBox() || !resources())return;
-        QDialog dialog(m_window);
+        if(!resources())return;
+        QDialog dialog(this);
         dialog.setWindowTitle(i18n("Krita brush presets"));
         dialog.setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
         dialog.setStyleSheet(
@@ -316,8 +309,7 @@ private:
             if(index<0 || index>=presets.size())return;
             auto preset=presets.at(index);
             if(!preset)return;
-            KoToolManager::instance()->switchToolRequested(
-                QStringLiteral("KritaShape/KisToolBrush"));
+            m_engine.freehandBrush();
             setNativePreset(preset);
             // Keep selected category (Paint/Erase/Blend), independent of
             // which filter the user used to locate this native preset.
@@ -330,14 +322,13 @@ private:
             dialog.accept();
         });
         refill();
-        const QSize size=m_window->size();
+        const QSize size=window()->size();
         dialog.resize(qMax(300,qMin(570,size.width()-32)),
                       qMax(340,qMin(720,size.height()-65)));
         dialog.exec();
     }
 
-    QPointer<KisMainWindow> m_window;
-    KisViewManager *m_vm=nullptr;
+    MobileEngineBridge m_engine;
     QToolButton *m_modes[3]={nullptr,nullptr,nullptr};
     QLabel *m_presetName=nullptr;
     KisDoubleSliderSpinBox *m_size=nullptr,*m_opacity=nullptr;
