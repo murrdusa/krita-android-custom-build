@@ -13,6 +13,7 @@
 #include <QMessageBox>
 #include <QMdiArea>
 #include <QPointer>
+#include <QScopedValueRollback>
 #include <QSignalBlocker>
 #include <QAction>
 #include <QApplication>
@@ -113,7 +114,18 @@ protected:
 private:
     void enter()
     {
+        // Modal file dialogs and deferred Compact UI callbacks can toggle
+        // the launcher while the native central widget is being moved.
+        // Never run two ownership transactions on the same event loop.
+        if(m_transitioning) {
+            if(m_entry) {
+                const QSignalBlocker blocked(m_entry);
+                m_entry->setChecked(m_transfer.active());
+            }
+            return;
+        }
         if(m_transfer.active())return;
+        const QScopedValueRollback<bool> transition(m_transitioning,true);
         if(!m_host) {
             m_host=new MobileStandaloneWindow(m_bridge);
             m_host->setExitCallback([this]() {
@@ -136,6 +148,14 @@ private:
     }
     void leave()
     {
+        if(m_transitioning) {
+            if(m_entry) {
+                const QSignalBlocker blocked(m_entry);
+                m_entry->setChecked(m_transfer.active());
+            }
+            return;
+        }
+        const QScopedValueRollback<bool> transition(m_transitioning,true);
         if(m_transfer.leave()) {
             // Recreate the UI host on the next entry. A former independent
             // Android window must not remain behind the Krita surface and
@@ -169,6 +189,7 @@ private:
     MobileEngineBridge m_bridge;
     QPointer<QAction> m_entry;
     MobileStandaloneWindow *m_host=nullptr;
+    bool m_transitioning=false;
 };
 
 #endif // Q_OS_ANDROID
