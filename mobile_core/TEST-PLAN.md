@@ -63,6 +63,37 @@ There is deliberately **no new native file format** and no custom image
 serializer. The old native file dialogs/actions remain in the compatibility
 menus until Android storage and save reliability are proven.
 
+## v1.3 touch and stylus interaction checks — upload paused
+
+This is a WSL compilation milestone, not an APK publication request.
+Leave `UPLOAD_REQUEST_ID=none`.
+
+**Quick Actions**
+- Open Edit; touch and drag a row immediately. This should scroll the
+  list **without reordering**. Hold a row for approximately 360 ms,
+  then drag: the item should reorder with Qt's drop indicator.
+- Repeat with a pressure-sensitive pen. Move to the upper/lower edge
+  while dragging; the list should autoscroll toward the edge.
+- Use Up/Down as a reliable alternative, verify Cancel restores the
+  previous layout, and Save persists after app restart.
+- Add more actions than fit horizontally. The quick strip should really
+  scroll sideways without squeezing/clipping all button labels.
+  Defaults must still fit the compact layout and retain Add/Edit.
+
+**Layers**
+- Tap an inactive layer once: it selects that layer. Tap the already
+  active layer again: a menu should open with Rename, Properties,
+  Duplicate, Move, Group, Clipping Group, Ungroup (for groups), Delete.
+  Test with both finger and pen.
+- Tap **Shown** or **Lock** in the row of a non-active layer. Only
+  that layer should be modified, and native Undo/Redo should work.
+- In multi-select mode, toggle rows and group them; nested groups
+  should remain visually distinct. Expand/collapse a nested group
+  and verify the expansion survives list refresh.
+- Draw, Undo, Save, open another document and restore the original
+  Krita window. No operations should alter Krita's native data model
+  except through native node-manager commands.
+
 ## v1.2 native mobile menus — no APK upload
 
 APK publishing is intentionally paused. Run the WSL compile and record
