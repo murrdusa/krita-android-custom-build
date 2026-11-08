@@ -509,65 +509,16 @@ public:
             QStringLiteral("tablet_all_tools_popup"),m_toolsAction);
         m_main->actionCollection()->addAction(
             QStringLiteral("tablet_customize_compact"),m_customizeAction);
-        // Always-second, nonremovable hub: settings, native Krita menus and
-        // customizable user actions remain available without a menu bar.
-        m_hubMenu=new QMenu(i18n("Compact UI menu"),m_main);
-        m_hubMenu->menuAction()->setIcon(m_customizeAction->icon());
-        m_hubMenu->menuAction()->setToolTip(
-            i18n("Compact settings, Krita menus and quick actions"));
+        // Always-visible Compact hub action; opens a touch-sized action
+        // browser instead of native cascading desktop menus.
+        m_hubAction=new QAction(m_customizeAction->icon(),
+                                i18n("Compact UI menu"),this);
+        m_hubAction->setToolTip(i18n(
+            "Compact settings, Krita menus and quick actions"));
         m_main->actionCollection()->addAction(
-            QStringLiteral("tablet_compact_hub"),m_hubMenu->menuAction());
-        connect(m_hubMenu,&QMenu::aboutToShow,this,[this]() {
-            m_hubMenu->clear();
-            auto *collection=m_main->actionCollection();
-            m_hubMenu->addSection(i18n("Compact UI settings"));
-            // Keep Tablet Controls and toolbar customization in this
-            // always-present settings group, not in optional quick actions.
-            QAction *tabletSettings=m_hubMenu->addAction(i18n("Tablet Controls..."));
-            tabletSettings->setIcon(KisIconUtils::loadIcon("configure"));
-            connect(tabletSettings,&QAction::triggered,this,[this]() {
-                if(QAction *native=m_main->actionCollection()->action(
-                        QStringLiteral("tablet_settings")))
-                    native->trigger();
-            });
-            m_hubMenu->addAction(m_customizeAction);
-            m_hubMenu->addSeparator();
-            m_hubMenu->addAction(m_discardCloseAction);
-            QAction *brush=m_hubMenu->addAction(i18n("Brush controls..."));
-            connect(brush,&QAction::triggered,this,
-                    [this](){configureBrushControls();});
-            QAction *layers=m_hubMenu->addAction(i18n("Layers display..."));
-            connect(layers,&QAction::triggered,this,
-                    [this](){openLayerSettings();});
-            QAction *color=m_hubMenu->addAction(i18n("Color selector settings..."));
-            connect(color,&QAction::triggered,this,
-                    [this](){openColorSettings();});
-            QMenu *nativeMenus=m_hubMenu->addMenu(i18n("Krita menus"));
-            nativeMenus->setIcon(KisIconUtils::loadIcon("application-menu"));
-            for(QAction *topLevel:m_main->menuBar()->actions()) {
-                if(topLevel && topLevel->menu())
-                    nativeMenus->addMenu(topLevel->menu());
-            }
-            m_hubMenu->addSection(i18n("Quick actions"));
-            const QStringList defaults={
-                QStringLiteral("gradients"),QStringLiteral("patterns"),
-                QStringLiteral("duplicatelayer"),QStringLiteral("quick_group")};
-            const QStringList selected=QSettings().value(
-                QStringLiteral("TabletUi/quickActionsV2"),defaults).toStringList();
-            for(const QString &key:selected) {
-                if(key==QStringLiteral("tablet_compact_ui") ||
-                   key==QStringLiteral("tablet_quick_actions") ||
-                   key==QStringLiteral("tablet_settings"))continue;
-                if(QAction *a=collection->action(key))m_hubMenu->addAction(a);
-            }
-            // The existing submenu contains the native Quick Actions editor.
-            if(QAction *legacy=collection->action(
-                    QStringLiteral("tablet_quick_actions"))) {
-                if(legacy->menu()) {
-                    m_hubMenu->addSeparator();
-                    m_hubMenu->addMenu(legacy->menu());
-                }
-            }
+            QStringLiteral("tablet_compact_hub"),m_hubAction);
+        connect(m_hubAction,&QAction::triggered,this,[this]() {
+            openCompactHubSheet();
         });
         m_sampleModeAction=new QAction(
             KisIconUtils::loadIcon("krita_tool_color_sampler"),
@@ -1393,6 +1344,248 @@ private:
         });
         dialog.exec();
     }
+
+    void showAddLayerSheet() {
+        QDialog dialog(m_main);
+        dialog.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
+        dialog.setWindowTitle(i18n("Add layer or mask"));
+        styleTouchDialog(dialog);
+        auto *outer=new QVBoxLayout(&dialog);
+        outer->setContentsMargins(14,13,14,13);
+        outer->setSpacing(9);
+        auto *title=new QLabel(i18n("Add layer or mask"),&dialog);
+        title->setStyleSheet("font-size:19px;font-weight:600;");
+        outer->addWidget(title);
+        auto *tabs=new QTabWidget(&dialog);
+        tabs->setDocumentMode(true);
+        tabs->setStyleSheet("QTabBar::tab{min-height:48px;padding:5px 12px;}");
+        outer->addWidget(tabs,1);
+        struct AddChoice{const char *name;const char *id;};
+        const AddChoice layers[]={
+            {"Paint layer","add_new_paint_layer"},
+            {"Group layer","add_new_group_layer"},
+            {"Vector layer","add_new_vector_layer"},
+            {"Clone layer","add_new_clone_layer"},
+            {"Filter layer","add_new_filter_layer"},
+            {"Fill layer","add_new_fill_layer"},
+            {"File layer","add_new_file_layer"}
+        };
+        const AddChoice masks[]={
+            {"Transparency mask","add_new_transparency_mask"},
+            {"Filter mask","add_new_filter_mask"},
+            {"Colorize mask","add_new_colorize_mask"},
+            {"Transform mask","add_new_transform_mask"}
+        };
+        auto populate=[this,tabs,&dialog](const QString &name,
+                                         const AddChoice *choices,int count) {
+            auto *scroll=new QScrollArea(tabs);
+            scroll->setWidgetResizable(true);
+            scroll->setFrameShape(QFrame::NoFrame);
+            QScroller::grabGesture(scroll->viewport(),QScroller::TouchGesture);
+            auto *body=new QWidget(scroll);
+            auto *content=new QVBoxLayout(body);
+            content->setContentsMargins(6,9,6,9);
+            content->setSpacing(8);
+            for(int i=0;i<count;++i) {
+                QAction *native=m_main->actionCollection()->action(
+                    QString::fromLatin1(choices[i].id));
+                if(!native)continue;
+                auto *button=new QPushButton(i18n(choices[i].name),body);
+                button->setMinimumHeight(59);
+                button->setIcon(native->icon());
+                button->setIconSize(QSize(28,28));
+                button->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
+                content->addWidget(button);
+                connect(button,&QPushButton::clicked,&dialog,
+                        [this,&dialog,native]() {
+                    dialog.accept();
+                    QTimer::singleShot(0,this,[this,native]() {
+                        native->trigger();
+                        QTimer::singleShot(120,this,[this](){refreshLayers();});
+                    });
+                });
+            }
+            content->addStretch();
+            scroll->setWidget(body);
+            tabs->addTab(scroll,name);
+        };
+        populate(i18n("Layers"),layers,int(sizeof(layers)/sizeof(layers[0])));
+        populate(i18n("Masks"),masks,int(sizeof(masks)/sizeof(masks[0])));
+        auto *close=new QPushButton(i18n("Cancel"),&dialog);
+        close->setMinimumHeight(51);
+        outer->addWidget(close);
+        connect(close,&QPushButton::clicked,&dialog,&QDialog::reject);
+        dialog.resize(qMax(290,qMin(405,m_surface->width()-24)),
+                      qMax(345,qMin(650,m_surface->height()-32)));
+        dialog.exec();
+    }
+    void openCompactHubSheet() {
+        QDialog dialog(m_main);
+        dialog.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
+        dialog.setWindowTitle(i18n("Compact UI"));
+        styleTouchDialog(dialog);
+        auto *outer=new QVBoxLayout(&dialog);
+        outer->setContentsMargins(12,12,12,12);
+        outer->setSpacing(9);
+        auto *header=new QLabel(i18n("Compact UI"),&dialog);
+        header->setStyleSheet("font-size:20px;font-weight:600;");
+        outer->addWidget(header);
+        auto *tabs=new QTabWidget(&dialog);
+        tabs->setStyleSheet("QTabBar::tab{min-height:48px;padding:5px 10px;}");
+        outer->addWidget(tabs,1);
+        auto *settingsScroll=new QScrollArea(tabs);
+        settingsScroll->setWidgetResizable(true);
+        settingsScroll->setFrameShape(QFrame::NoFrame);
+        QScroller::grabGesture(settingsScroll->viewport(),QScroller::TouchGesture);
+        auto *settingsPage=new QWidget(settingsScroll);
+        auto *settings=new QVBoxLayout(settingsPage);
+        settings->setContentsMargins(6,8,6,8);
+        settings->setSpacing(8);
+        auto addSettings=[this,&dialog,settings](const QString &label,
+                                      const QString &iconName,
+                                      std::function<void()> run) {
+            auto *button=new QPushButton(label,&dialog);
+            button->setMinimumHeight(58);
+            if(!iconName.isEmpty())button->setIcon(KisIconUtils::loadIcon(iconName));
+            button->setIconSize(QSize(25,25));
+            settings->addWidget(button);
+            connect(button,&QPushButton::clicked,&dialog,
+                    [this,&dialog,run]() {
+                dialog.accept();
+                QTimer::singleShot(0,this,[run](){run();});
+            });
+            return button;
+        };
+        auto *description=new QLabel(
+            i18n("Touch-friendly settings and frequently used actions"),
+            settingsPage);
+        description->setWordWrap(true);
+        settings->addWidget(description);
+        addSettings(i18n("Tablet controls"),QStringLiteral("configure"),
+                    [this]() {
+            if(QAction *a=m_main->actionCollection()->action(
+                   QStringLiteral("tablet_settings")))a->trigger();
+        });
+        addSettings(i18n("Customize toolbar"),QStringLiteral("configure-toolbars"),
+                    [this](){configureCompactToolbar();});
+        addSettings(i18n("Brush controls"),QStringLiteral("draw-brush"),
+                    [this](){configureBrushControls();});
+        addSettings(i18n("Layers display"),QStringLiteral("view-list-tree"),
+                    [this](){openLayerSettings();});
+        addSettings(i18n("Color selector"),QStringLiteral("color-picker"),
+                    [this](){openColorSettings();});
+        settings->addSpacing(10);
+        auto *discard=addSettings(
+            i18n("Close without saving…"),
+            QStringLiteral("dialog-warning"),
+            [this](){showDiscardCloseDialog();});
+        discard->setStyleSheet(
+            "QPushButton{background:#713b43;border:1px solid #c47e87;"
+            "border-radius:9px;color:white;font-weight:600;}");
+        settings->addStretch();
+        settingsScroll->setWidget(settingsPage);
+        tabs->addTab(settingsScroll,i18n("Settings"));
+
+        // Native commands are selectable as one flat, searchable list; no
+        // tiny cascading desktop menus or hover-only submenus.
+        auto *actionsPage=new QWidget(tabs);
+        auto *actionsLayout=new QVBoxLayout(actionsPage);
+        actionsLayout->setContentsMargins(5,7,5,7);
+        auto *search=new QLineEdit(actionsPage);
+        search->setMinimumHeight(49);
+        search->setClearButtonEnabled(true);
+        search->setPlaceholderText(i18n("Find a Krita action"));
+        actionsLayout->addWidget(search);
+        auto *list=new QListWidget(actionsPage);
+        list->setSelectionMode(QAbstractItemView::SingleSelection);
+        list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        list->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        list->setIconSize(QSize(25,25));
+        QScroller::grabGesture(list->viewport(),QScroller::TouchGesture);
+        list->setStyleSheet("QListWidget::item{min-height:52px;padding:5px;}");
+        actionsLayout->addWidget(list,1);
+        QVector<QPointer<QAction>> refs;
+        auto append=[list,&refs](const QString &label,QAction *action) {
+            if(!action || label.isEmpty() || refs.size()>=600)return;
+            const int index=refs.size();
+            refs.append(action);
+            auto *item=new QListWidgetItem(action->icon(),label,list);
+            item->setData(Qt::UserRole,index);
+            if(!action->isEnabled())
+                item->setFlags(item->flags()&~Qt::ItemIsEnabled);
+        };
+        std::function<void(QMenu*,const QString&,int)> collect;
+        collect=[&](QMenu *menu,const QString &section,int depth) {
+            if(!menu || depth>5 || refs.size()>=600)return;
+            for(QAction *a:menu->actions()) {
+                if(!a || a->isSeparator())continue;
+                QString label=a->text();
+                label.remove(QLatin1Char('&'));
+                if(label.isEmpty())continue;
+                if(QMenu *sub=a->menu())collect(sub,section+
+                    QStringLiteral(" / ")+label,depth+1);
+                else append(section+QStringLiteral(" / ")+label,a);
+            }
+        };
+        if(QMenuBar *bar=m_main->menuBar()) {
+            for(QAction *top:bar->actions()) {
+                if(!top || !top->menu())continue;
+                QString name=top->text();
+                name.remove(QLatin1Char('&'));
+                collect(top->menu(),name,0);
+            }
+        }
+        connect(search,&QLineEdit::textChanged,&dialog,
+                [list](const QString &term) {
+            for(int i=0;i<list->count();++i) {
+                QListWidgetItem *item=list->item(i);
+                item->setHidden(!item->text().contains(term,Qt::CaseInsensitive));
+            }
+        });
+        connect(list,&QListWidget::itemClicked,&dialog,
+                [this,&dialog,&refs](QListWidgetItem *item) {
+            const int i=item->data(Qt::UserRole).toInt();
+            if(i<0||i>=refs.size()||!refs.at(i))return;
+            QPointer<QAction> action=refs.at(i);
+            dialog.accept();
+            QTimer::singleShot(0,this,[action]() {
+                if(action)action->trigger();
+            });
+        });
+        tabs->addTab(actionsPage,i18n("Krita actions"));
+        auto *quick=new QWidget(tabs);
+        auto *quickLayout=new QVBoxLayout(quick);
+        quickLayout->setContentsMargins(5,8,5,8);
+        quickLayout->setSpacing(8);
+        const QStringList defaults={
+            QStringLiteral("gradients"),QStringLiteral("patterns"),
+            QStringLiteral("duplicatelayer"),QStringLiteral("quick_group")};
+        const QStringList selected=QSettings().value(
+            QStringLiteral("TabletUi/quickActionsV2"),defaults).toStringList();
+        for(const QString &key:selected) {
+            QAction *action=m_main->actionCollection()->action(key);
+            if(!action)continue;
+            auto *button=new QPushButton(action->text().remove(QLatin1Char('&')),
+                                         quick);
+            button->setIcon(action->icon());
+            button->setMinimumHeight(56);
+            quickLayout->addWidget(button);
+            connect(button,&QPushButton::clicked,&dialog,
+                    [this,&dialog,action]() {
+                dialog.accept();
+                QTimer::singleShot(0,this,[action](){action->trigger();});
+            });
+        }
+        quickLayout->addStretch();
+        tabs->addTab(quick,i18n("Quick"));
+        auto *close=new QPushButton(i18n("Close"),&dialog);
+        close->setMinimumHeight(52);
+        outer->addWidget(close);
+        connect(close,&QPushButton::clicked,&dialog,&QDialog::accept);
+        dialog.resize(qMax(310,qMin(445,m_surface->width()-26)),
+                      qMax(395,qMin(695,m_surface->height()-36)));
+        dialog.exec();
+    }
     void configureBrushControls() {
         QDialog dialog(m_main);
         dialog.setWindowTitle(i18n("Brush Control Settings"));
@@ -1527,7 +1720,7 @@ private:
         auto *collection=m_main->actionCollection();
         QAction *compact=collection->action(QStringLiteral("tablet_compact_ui"));
         if(compact)m_compactBar->addAction(compact);
-        if(m_hubMenu)m_compactBar->addAction(m_hubMenu->menuAction());
+        if(m_hubAction)m_compactBar->addAction(m_hubAction);
         const QStringList chosen=QSettings().value(
             QStringLiteral("TabletUi/compactActionOrderV1"),
             compactDefaultActions()).toStringList();
@@ -1539,10 +1732,9 @@ private:
             if(QAction *action=collection->action(id))
                 m_compactBar->addAction(action);
         }
-        if(m_hubMenu) {
+        if(m_hubAction) {
             if(QToolButton *button=qobject_cast<QToolButton*>(
-                    m_compactBar->widgetForAction(m_hubMenu->menuAction()))) {
-                button->setPopupMode(QToolButton::InstantPopup);
+                    m_compactBar->widgetForAction(m_hubAction))) {
                 button->setToolButtonStyle(Qt::ToolButtonIconOnly);
             }
         }
@@ -3967,7 +4159,7 @@ private:
     QToolBar *m_compactBar=nullptr;
     QAction *m_customizeAction=nullptr;
     QAction *m_discardCloseAction=nullptr;
-    QMenu *m_hubMenu=nullptr;
+    QAction *m_hubAction=nullptr;
     QAction *m_toolsAction=nullptr;
     QAction *m_sampleModeAction=nullptr;
     QToolButton *m_toolOptionsFloating=nullptr;
