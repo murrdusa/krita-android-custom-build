@@ -127,6 +127,13 @@ public:
         if(!m_mainWindow || !m_mainWindow->actionCollection())return {};
         return m_mainWindow->actionCollection()->actions();
     }
+    // Native menu actions are accessed only through the adapter. The
+    // mobile menu browser can preserve Krita's real File/Edit/View/etc.
+    // hierarchy without referencing the hidden KisMainWindow itself.
+    QList<QAction*> menuRootActions() const {
+        if(!m_mainWindow || !m_mainWindow->menuBar())return {};
+        return m_mainWindow->menuBar()->actions();
+    }
     bool canRun(const char *id) const {
         const QAction *a=action(id);
         return a && a->isEnabled();
