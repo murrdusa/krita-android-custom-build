@@ -73,6 +73,24 @@ public:
                                         sub==m_documents->activeSubWindow();
             items.append({title,doc->isModified(),isActive,i});
         }
+        // If the view manager temporarily has no matching active document,
+        // retain the MDI selection (or the lone open canvas) as the visual
+        // current item instead of leaving every row without an active mark.
+        bool hasActive=false;
+        for(const OpenDocument &item:items)
+            if(item.active){hasActive=true;break;}
+        if(!hasActive) {
+            const int mdiIndex=windows.indexOf(m_documents->activeSubWindow());
+            for(OpenDocument &item:items) {
+                if(item.nativeIndex==mdiIndex) {
+                    item.active=true;
+                    hasActive=true;
+                    break;
+                }
+            }
+            if(!hasActive && items.size()==1)
+                items[0].active=true;
+        }
         return items;
     }
     bool activateDocument(int nativeIndex) const
@@ -126,6 +144,13 @@ public:
                     return closeDocument(i);
             }
         }
+
+        // If the manager still refers to a just-closed document, trust an
+        // existing valid active MDI subwindow rather than refusing to close
+        // every other document in a multi-document session.
+        if(active && windows.contains(active) &&
+           qobject_cast<KisView*>(active->widget()))
+            return closeDocument(windows.indexOf(active));
 
         // A lone valid view is unambiguous even if no MDI tab is active.
         int only=-1;
