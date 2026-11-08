@@ -89,16 +89,16 @@ public:
 protected:
     bool eventFilter(QObject *watched,QEvent *event) override
     {
-        // Krita may show its desktop window from a deferred loader or
-        // Android display-refresh callback. While the mobile host owns the
-        // canvas, that window must not cover it. Only a return to desktop
-        // through MobileCanvasTransfer is allowed to make it visible.
+        // Mobile Studio is now a child presentation inside Krita's only
+        // Android native window. Do NOT hide the backend here: doing so
+        // would hide the canvas and mobile controls together. Reassert
+        // only the hidden desktop toolbars/status after deferred shows.
         if(watched==m_backend && m_transfer.active() &&
            event->type()==QEvent::Show) {
             QTimer::singleShot(0,this,[this]() {
                 if(!m_transfer.active() || !m_backend)return;
-                if(m_backend->isVisible())m_backend->hide();
-                if(m_host && m_host->isVisible())m_host->raise();
+                m_transfer.enforceMobileChrome();
+                if(m_host && !m_host->isVisible())m_host->show();
             });
         }
         return QObject::eventFilter(watched,event);
@@ -114,15 +114,34 @@ private:
                 if(m_entry)m_entry->setChecked(false);
             });
         }
-        if(!m_transfer.enter(m_host) && m_entry) {
-            // Never report Mobile Studio active after a failed transfer.
-            const QSignalBlocker blocked(m_entry);
-            m_entry->setChecked(false);
+        if(!m_transfer.enter(m_host)) {
+            // Never leave the launcher checked after a rejected transfer;
+            // discard any temporary host that owns no native canvas.
+            if(m_entry) {
+                const QSignalBlocker blocked(m_entry);
+                m_entry->setChecked(false);
+            }
+            if(m_host && !m_host->hasNativeCanvas()) {
+                m_host->hide();
+                m_host->deleteLater();
+                m_host=nullptr;
+            }
         }
     }
     void leave()
     {
-        if(m_transfer.leave())return;
+        if(m_transfer.leave()) {
+            // Recreate the UI host on the next entry. A former independent
+            // Android window must not remain behind the Krita surface and
+            // expose an old toolbar after Back. defer deletion because Back
+            // may have been invoked from a child QToolButton's click slot.
+            if(m_host) {
+                m_host->hide();
+                m_host->deleteLater();
+                m_host=nullptr;
+            }
+            return;
+        }
         // Leave the working mobile canvas in place on a rejected
         // transfer. Keep the launcher state in sync without recursively
         // reentering the mode-switch handler.
