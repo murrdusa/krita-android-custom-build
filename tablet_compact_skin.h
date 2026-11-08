@@ -156,7 +156,8 @@ public:
         viewport()->installEventFilter(this);
         m_hold=new QTimer(this);
         m_hold->setSingleShot(true);
-        m_hold->setInterval(holdMs());
+        m_hold->setInterval(qBound(160,QSettings().value(
+            QStringLiteral("TabletUi/longPressMs"),260).toInt(),600));
         connect(m_hold,&QTimer::timeout,this,[this]() {
             if(!m_tracking || m_from<0 || m_from>=count() || m_scrolling)return;
             m_reordering=true;
