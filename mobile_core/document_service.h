@@ -68,9 +68,10 @@ public:
             // A transferred canvas can have no active Qt MDI subwindow
             // even while Krita's view manager still has a current document.
             // Use the engine's actual active document as a fallback.
-            const bool current=m_manager && m_manager->document()==doc;
-            items.append({title,doc->isModified(),
-                          current || sub==m_documents->activeSubWindow(),i});
+            const KisDocument *current=m_manager?m_manager->document():nullptr;
+            const bool isActive=current?doc==current:
+                                        sub==m_documents->activeSubWindow();
+            items.append({title,doc->isModified(),isActive,i});
         }
         return items;
     }
@@ -212,6 +213,18 @@ public:
                m_manager->document()->isModified();
     }
     bool hasDocument() const {
+        // A stale active-document pointer can survive briefly after closing
+        // the last MDI subwindow. The live native views are authoritative for
+        // the mobile empty-workspace state and availability of commands.
+        if(m_documents) {
+            for(QMdiSubWindow *sub:m_documents->subWindowList(
+                    QMdiArea::CreationOrder)) {
+                if(sub && qobject_cast<KisView*>(sub->widget()) &&
+                   qobject_cast<KisView*>(sub->widget())->document())
+                    return true;
+            }
+            return false;
+        }
         return m_manager && m_manager->document();
     }
 
