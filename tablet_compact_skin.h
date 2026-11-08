@@ -138,6 +138,107 @@ private:
     QVector<QPair<QRect,int>> m_ranges;
 };
 
+// Quick shortcuts use the same hold-then-drag interaction model as layers.
+// A short move scrolls normally; holding for 450ms arms reorder and release
+// commits the new order. This avoids native immediate desktop drag behavior.
+class TabletQuickReorderList final : public QListWidget {
+public:
+    explicit TabletQuickReorderList(QWidget *parent=nullptr)
+        : QListWidget(parent) {
+        setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        setSelectionMode(QAbstractItemView::SingleSelection);
+        setDragDropMode(QAbstractItemView::NoDragDrop);
+        setMouseTracking(true);
+        viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
+        QScroller::grabGesture(viewport(),QScroller::LeftMouseButtonGesture);
+        viewport()->installEventFilter(this);
+        m_hold=new QTimer(this);
+        m_hold->setSingleShot(true);
+        m_hold->setInterval(450);
+        connect(m_hold,&QTimer::timeout,this,[this]() {
+            if(m_from<0 || m_from>=count())return;
+            m_reordering=true;
+            m_target=m_from;
+            QScroller::scroller(viewport())->stop();
+            QScroller::ungrabGesture(viewport());
+            setCurrentRow(m_from);
+            viewport()->setCursor(Qt::ClosedHandCursor);
+        });
+    }
+    std::function<void()> onReordered;
+    bool takeSuppressedClick() {
+        const bool result=m_suppressClick;
+        m_suppressClick=false;
+        return result;
+    }
+protected:
+    bool eventFilter(QObject *watched,QEvent *event) override {
+        if(watched!=viewport())
+            return QListWidget::eventFilter(watched,event);
+        if(event->type()==QEvent::MouseButtonPress) {
+            auto *mouse=static_cast<QMouseEvent*>(event);
+            if(mouse->button()==Qt::LeftButton) {
+                m_from=indexAt(mouse->pos()).row();
+                m_target=m_from;
+                m_origin=mouse->pos();
+                m_reordering=false;
+                m_suppressClick=false;
+                if(m_from>=0)m_hold->start();
+            }
+        } else if(event->type()==QEvent::MouseMove) {
+            auto *mouse=static_cast<QMouseEvent*>(event);
+            if(!m_reordering && m_hold->isActive() &&
+               (mouse->pos()-m_origin).manhattanLength()>12) {
+                m_hold->stop();
+                m_from=-1;
+            }
+            if(m_reordering) {
+                const int y=mouse->pos().y();
+                QModelIndex at=indexAt(mouse->pos());
+                if(at.isValid())m_target=at.row();
+                if(y<32)verticalScrollBar()->setValue(
+                    verticalScrollBar()->value()-22);
+                else if(y>viewport()->height()-32)
+                    verticalScrollBar()->setValue(
+                        verticalScrollBar()->value()+22);
+                if(m_target>=0 && m_target<count())
+                    setCurrentRow(m_target);
+                return true;
+            }
+        } else if(event->type()==QEvent::MouseButtonRelease) {
+            m_hold->stop();
+            if(m_reordering) {
+                m_reordering=false;
+                m_suppressClick=true;
+                viewport()->unsetCursor();
+                const int from=m_from, to=m_target;
+                m_from=-1;
+                QScroller::grabGesture(viewport(),
+                                       QScroller::LeftMouseButtonGesture);
+                if(from>=0 && to>=0 && to<count() && to!=from) {
+                    QListWidgetItem *item=takeItem(from);
+                    insertItem(to,item);
+                    setCurrentRow(to);
+                    if(onReordered)onReordered();
+                }
+                return true;
+            }
+            m_from=-1;
+        } else if(event->type()==QEvent::Leave) {
+            if(!m_reordering)m_hold->stop();
+        }
+        return QListWidget::eventFilter(watched,event);
+    }
+private:
+    QTimer *m_hold=nullptr;
+    QPoint m_origin;
+    int m_from=-1;
+    int m_target=-1;
+    bool m_reordering=false;
+    bool m_suppressClick=false;
+};
+
 class TabletCompactSkin final : public QObject
 {
 public:
@@ -1529,6 +1630,230 @@ private:
                       qMax(345,qMin(650,m_surface->height()-32)));
         dialog.exec();
     }
+    static QString cleanCompactActionText(QString text) {
+        text.remove(QLatin1Char('&'));
+        const int tab=text.indexOf(QLatin1Char('\t'));
+        if(tab>=0)text.truncate(tab);
+        return text.trimmed();
+    }
+    QString stableQuickKey(QAction *action,const QStringList &menuPath={}) const {
+        if(!action || action->isSeparator() || action->menu())return QString();
+        const QString id=action->objectName();
+        if(!id.isEmpty() && m_main->actionCollection()->action(id)==action)
+            return id;
+        // Registered actions have a durable Krita ID. Menu-only commands
+        // can instead use a stable full menu path (excluding Recent Files).
+        if(menuPath.size()>=2) {
+            for(const QString &part:menuPath)
+                if(part.isEmpty() || part.contains(QStringLiteral("Open Recent"),
+                                                  Qt::CaseInsensitive))
+                    return QString();
+            return QStringLiteral("menu:")+menuPath.join(QChar(0x1f));
+        }
+        return QString();
+    }
+    QAction *resolveQuickAction(const QString &key) const {
+        if(!key.startsWith(QStringLiteral("menu:")))
+            return m_main->actionCollection()->action(key);
+        const QStringList parts=key.mid(5).split(QChar(0x1f),
+                                              Qt::SkipEmptyParts);
+        if(parts.size()<2 || !m_main->menuBar())return nullptr;
+        QMenu *menu=nullptr;
+        for(QAction *top:m_main->menuBar()->actions()) {
+            if(cleanCompactActionText(top->text())==parts.first()) {
+                menu=top->menu();break;
+            }
+        }
+        if(!menu)return nullptr;
+        for(int i=1;i<parts.size();++i) {
+            QAction *found=nullptr;
+            for(QAction *option:menu->actions()) {
+                if(cleanCompactActionText(option->text())==parts.at(i)) {
+                    found=option;break;
+                }
+            }
+            if(!found)return nullptr;
+            if(i==parts.size()-1)
+                return found->menu()?nullptr:found;
+            menu=found->menu();
+            if(!menu)return nullptr;
+        }
+        return nullptr;
+    }
+
+    void openQuickAddSheet() {
+        QDialog dialog(m_main);
+        dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
+        dialog.setWindowTitle(i18n("Add Quick Action"));
+        styleTouchDialog(dialog);
+        dialog.resize(qMax(305,qMin(445,m_surface->width()-24)),
+                      qMax(380,qMin(675,m_surface->height()-36)));
+        auto *outer=new QVBoxLayout(&dialog);
+        outer->setContentsMargins(12,12,12,12);
+        outer->setSpacing(8);
+        auto *title=new QLabel(i18n("Add Quick Action"),&dialog);
+        title->setStyleSheet("font-size:19px;font-weight:600;");
+        outer->addWidget(title);
+        auto *category=new QComboBox(&dialog);
+        category->addItem(i18n("Frequently used"));
+        category->addItem(i18n("All eligible Krita commands"));
+        category->setMinimumHeight(49);
+        outer->addWidget(category);
+        auto *search=new QLineEdit(&dialog);
+        search->setPlaceholderText(i18n("Search all commands"));
+        search->setClearButtonEnabled(true);
+        search->setMinimumHeight(49);
+        outer->addWidget(search);
+        auto *list=new QListWidget(&dialog);
+        list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        list->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        list->setWordWrap(true);
+        list->setIconSize(QSize(24,24));
+        list->setSelectionMode(QAbstractItemView::SingleSelection);
+        list->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
+        QScroller::grabGesture(list->viewport(),QScroller::LeftMouseButtonGesture);
+        list->setStyleSheet("QListWidget::item{min-height:53px;padding:5px;}");
+        outer->addWidget(list,1);
+        auto *add=new QPushButton(i18n("Add selected to Quick"),&dialog);
+        add->setMinimumHeight(56);
+        add->setEnabled(false);
+        outer->addWidget(add);
+        auto *back=new QPushButton(i18n("Back to Quick"),&dialog);
+        back->setMinimumHeight(52);
+        outer->addWidget(back);
+
+        struct Entry {
+            QString key;
+            QString label;
+            QIcon icon;
+            bool frequent=false;
+        };
+        QVector<Entry> entries;
+        QSet<QString> existingKeys;
+        const QStringList frequentKeys={
+            QStringLiteral("file_save"),QStringLiteral("file_save_as"),
+            QStringLiteral("edit_undo"),QStringLiteral("edit_redo"),
+            QStringLiteral("deselect"),QStringLiteral("select_all"),
+            QStringLiteral("duplicatelayer"),QStringLiteral("merge_layer"),
+            QStringLiteral("quick_group"),QStringLiteral("erase_action"),
+            QStringLiteral("tablet_all_brush_presets"),
+            QStringLiteral("tablet_all_tools_popup"),
+            QStringLiteral("tablet_reset_view"),
+            QStringLiteral("add_new_paint_layer"),
+            QStringLiteral("add_new_group_layer"),
+            QStringLiteral("add_new_transparency_mask")
+        };
+        auto append=[&](const QString &key,QString label,QAction *action) {
+            if(key.isEmpty() || !action || existingKeys.contains(key))return;
+            if(label.isEmpty())label=key;
+            existingKeys.insert(key);
+            entries.append({key,label,action->icon(),frequentKeys.contains(key)});
+        };
+        for(const QString &key:frequentKeys) {
+            QAction *a=resolveQuickAction(key);
+            if(a)append(key,cleanCompactActionText(a->text()),a);
+        }
+        for(QAction *a:m_main->actionCollection()->actions()) {
+            if(!a || a->isSeparator() || a->menu())continue;
+            const QString key=stableQuickKey(a);
+            if(key.isEmpty())continue;
+            append(key,cleanCompactActionText(a->text()),a);
+        }
+        // Supplement the full list with menu-only actions. Persist them by
+        // their complete File/Edit/View/... path rather than a dangling ptr.
+        std::function<void(QMenu*,QStringList,int)> scan;
+        scan=[&](QMenu *menu,QStringList path,int depth) {
+            if(!menu || depth>5 || entries.size()>1300)return;
+            for(QAction *a:menu->actions()) {
+                if(!a || a->isSeparator())continue;
+                const QString label=cleanCompactActionText(a->text());
+                if(label.isEmpty() ||
+                   label.contains(QStringLiteral("No Entries"),
+                                  Qt::CaseInsensitive))continue;
+                if(a->menu()) {
+                    if(label.contains(QStringLiteral("Open Recent"),
+                                      Qt::CaseInsensitive))continue;
+                    QStringList next=path;next.append(label);
+                    scan(a->menu(),next,depth+1);
+                } else {
+                    QStringList full=path;full.append(label);
+                    const QString key=stableQuickKey(a,full);
+                    append(key,full.join(QStringLiteral(" / ")),a);
+                }
+            }
+        };
+        if(QMenuBar *bar=m_main->menuBar()) {
+            for(QAction *a:bar->actions()) {
+                if(a && a->menu())
+                    scan(a->menu(),{cleanCompactActionText(a->text())},0);
+            }
+        }
+        std::stable_sort(entries.begin(),entries.end(),
+            [](const Entry &a,const Entry &b) {
+                if(a.frequent!=b.frequent)return a.frequent>b.frequent;
+                return a.label.localeAwareCompare(b.label)<0;
+            });
+        // Store only the string IDs on list items: never keep pointers to
+        // temporary menu actions after this dialog closes.
+        for(const Entry &entry:entries) {
+            auto *item=new QListWidgetItem(entry.icon,entry.label,list);
+            item->setData(Qt::UserRole,entry.key);
+            item->setData(Qt::UserRole+1,entry.frequent);
+        }
+        auto refilter=[list,search,category,add]() {
+            const QString query=search->text().trimmed();
+            const bool onlyFrequent=category->currentIndex()==0 && query.isEmpty();
+            for(int i=0;i<list->count();++i) {
+                QListWidgetItem *item=list->item(i);
+                const bool pass=(!onlyFrequent ||
+                    item->data(Qt::UserRole+1).toBool()) &&
+                    (query.isEmpty() ||
+                     item->text().contains(query,Qt::CaseInsensitive) ||
+                     item->data(Qt::UserRole).toString().contains(
+                         query,Qt::CaseInsensitive));
+                item->setHidden(!pass);
+            }
+            add->setEnabled(list->currentItem() &&
+                             !list->currentItem()->isHidden());
+        };
+        connect(category,QOverload<int>::of(&QComboBox::currentIndexChanged),
+                &dialog,[refilter](int){refilter();});
+        connect(search,&QLineEdit::textChanged,&dialog,
+                [refilter](const QString&){refilter();});
+        connect(list,&QListWidget::itemSelectionChanged,&dialog,
+                [refilter](){refilter();});
+        bool goBack=false;
+        connect(add,&QPushButton::clicked,&dialog,
+                [this,&dialog,&goBack,list]() {
+            QListWidgetItem *item=list->currentItem();
+            if(!item || item->isHidden())return;
+            const QString key=item->data(Qt::UserRole).toString();
+            if(!resolveQuickAction(key))return;
+            const QStringList defaults={
+                QStringLiteral("gradients"),QStringLiteral("patterns"),
+                QStringLiteral("duplicatelayer"),QStringLiteral("quick_group")};
+            QStringList saved=QSettings().value(
+                QStringLiteral("TabletUi/quickActionsV2"),defaults).toStringList();
+            if(!saved.contains(key)) {
+                saved.append(key);
+                QSettings().setValue(QStringLiteral(
+                    "TabletUi/quickActionsV2"),saved);
+            }
+            goBack=true;dialog.accept();
+        });
+        connect(list,&QListWidget::itemDoubleClicked,&dialog,
+                [add](QListWidgetItem*){add->click();});
+        connect(back,&QPushButton::clicked,&dialog,[&dialog,&goBack]() {
+            goBack=true;dialog.accept();
+        });
+        refilter();
+        dialog.exec();
+        // Outside-tap dismissal must NOT re-open another popup.
+        if(goBack)
+            QTimer::singleShot(0,this,[this](){openCompactHubSheet(2);});
+    }
+
     void openCompactHubSheet() {
         QDialog dialog(m_main);
         dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
