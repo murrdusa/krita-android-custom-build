@@ -54,6 +54,7 @@
 #include "document_switcher.h"
 #include "command_browser.h"
 #include "tool_browser.h"
+#include "quick_actions.h"
 #include "brush_workspace.h"
 #include "layer_workspace.h"
 
@@ -175,7 +176,7 @@ public:
         m_layers=new KritaMobileLayersPanel(m_engine,paintingArea);
         m_layers->onRequestClose=[this]() {
             if(m_layers)m_layers->hide();
-            if(m_layersButton)m_layersButton->setChecked(false);
+            // Quick Actions do not mirror layer visibility.
         };
         paintingLayout->addWidget(m_layers,0);
         m_layers->hide();
@@ -186,57 +187,14 @@ public:
             QSizePolicy::Expanding,QSizePolicy::Fixed);
         layout->addWidget(m_brushWorkspace,0);
 
-        auto *footer=new QFrame(root);
-        footer->setObjectName(QStringLiteral("mobileFooter"));
-        auto *buttons=new QHBoxLayout(footer);
-        buttons->setContentsMargins(6,4,6,6);
-        buttons->setSpacing(5);
-        auto command=[this,buttons,footer](const QString &text,
-                                           const char *id) {
-            auto *button=new QToolButton(footer);
-            button->setText(text);
-            button->setMinimumHeight(45);
-            button->setToolButtonStyle(Qt::ToolButtonTextOnly);
-            button->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
-            connect(button,&QToolButton::clicked,this,[this,id]() {
-                // Document commands are mobile-owned workflows; undo/redo
-                // still invoke Krita's registered actions directly.
-                const QString commandId=QString::fromLatin1(id);
-                if(commandId==QStringLiteral("file_new"))
-                    MobileDocumentWorkflow::create(m_engine,this);
-                else if(commandId==QStringLiteral("file_open"))
-                    MobileDocumentWorkflow::open(m_engine,this);
-                else if(commandId==QStringLiteral("file_save"))
-                    MobileDocumentWorkflow::save(m_engine,this);
-                else m_engine.run(id);
-                refresh();
-            });
-            buttons->addWidget(button,1);
-            return button;
-        };
-        command(i18n("New"),"file_new");
-        command(i18n("Open"),"file_open");
-        m_saveButton=command(i18n("Save"),"file_save");
-        command(i18n("Undo"),"edit_undo");
-        command(i18n("Redo"),"edit_redo");
-
-        auto custom=[this,buttons,footer](const QString &text,
-                                           std::function<void()> callback) {
-            auto *button=new QToolButton(footer);
-            button->setText(text);
-            button->setMinimumHeight(45);
-            button->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
-            connect(button,&QToolButton::clicked,this,[callback]() {
-                callback();
-            });
-            buttons->addWidget(button,1);
-            return button;
-        };
-        m_layersButton=custom(i18n("Layers"),[this](){openLayers();});
-        m_layersButton->setCheckable(true);
-        custom(i18n("Color"),[this](){openColor();});
-        m_more=custom(i18n("More"),[this](){openMore();});
-        layout->addWidget(footer,0);
+        // Configurable, horizontally scrollable Quick Actions replace the
+        // old eight-button footer without adding more chrome. Every item
+        // calls either a native Krita action/tool or a mobile workflow.
+        m_quickActions=new MobileQuickActions(
+            m_engine,
+            [this](const QString &id){runQuickAction(id);},
+            root);
+        layout->addWidget(m_quickActions,0);
 
         // The mobile shell no longer owns or observes a desktop MDI
         // widget. The backend adapter owns native document navigation.
@@ -274,7 +232,7 @@ public:
     {
         if(!m_document)return;
         const bool has=m_engine.hasDocument();
-        if(m_saveButton)m_saveButton->setEnabled(has);
+        if(m_quickActions)m_quickActions->refresh();
         if(m_canvasStack && m_canvasHolder && m_emptyCanvas) {
             QWidget *target=has?m_canvasHolder:m_emptyCanvas;
             if(m_canvasStack->currentWidget()!=target)
@@ -283,10 +241,10 @@ public:
         // Hide controls that require a document. This also prevents a
         // stale layer panel from occupying space after the last close.
         if(m_brushWorkspace)m_brushWorkspace->setVisible(has);
-        if(m_layersButton)m_layersButton->setEnabled(has);
+        // Quick Actions checks document availability from the bridge.
         if(!has && m_layers && m_layers->isVisible()) {
             m_layers->hide();
-            if(m_layersButton)m_layersButton->setChecked(false);
+            // Quick Actions do not mirror layer visibility.
         }
         const QString node=m_engine.activeLayerName();
         if(!has) {
@@ -316,9 +274,44 @@ private:
     {
         if(m_exit)m_exit();
     }
+    void runQuickAction(const QString &id)
+    {
+        if(id.startsWith(QStringLiteral("native:"))) {
+            QAction *action=m_engine.action(id.mid(7));
+            if(action && action->isEnabled())action->trigger();
+        } else if(id.startsWith(QStringLiteral("tool:"))) {
+            m_engine.selectTool(id.mid(5));
+        } else if(id==QStringLiteral("mobile:new")) {
+            MobileDocumentWorkflow::create(m_engine,this);
+        } else if(id==QStringLiteral("mobile:open")) {
+            MobileDocumentWorkflow::open(m_engine,this);
+        } else if(id==QStringLiteral("mobile:save")) {
+            MobileDocumentWorkflow::save(m_engine,this);
+        } else if(id==QStringLiteral("mobile:save_as")) {
+            MobileDocumentWorkflow::save(m_engine,this,true);
+        } else if(id==QStringLiteral("mobile:undo")) {
+            m_engine.run("edit_undo");
+        } else if(id==QStringLiteral("mobile:redo")) {
+            m_engine.run("edit_redo");
+        } else if(id==QStringLiteral("mobile:layers")) {
+            openLayers();
+        } else if(id==QStringLiteral("mobile:color")) {
+            openColor();
+        } else if(id==QStringLiteral("mobile:tools")) {
+            MobileToolBrowser::open(m_engine,this);
+        } else if(id==QStringLiteral("mobile:canvases")) {
+            MobileDocumentSwitcher::open(m_engine,this);
+        } else if(id==QStringLiteral("mobile:close")) {
+            m_engine.closeActiveDocument();
+        } else if(id==QStringLiteral("mobile:commands")) {
+            MobileCommandBrowser::open(m_engine,this);
+        } else if(id==QStringLiteral("mobile:more")) {
+            openMore();
+        }
+        refresh();
+    }
     void openMore()
     {
-        if(!m_more)return;
         QMenu menu(this);
         auto *tools=menu.addAction(i18n("Tools — search Krita's tool registry"));
         tools->setEnabled(m_engine.hasDocument());
@@ -386,18 +379,19 @@ private:
         auto *nativeMenu=m_engine.nativeMenus(&menu);
         nativeMenu->setTitle(i18n("Legacy menus (compatibility)"));
         menu.addMenu(nativeMenu);
-        menu.exec(m_more->mapToGlobal(QPoint(0,m_more->height())));
+        menu.exec(mapToGlobal(QPoint(qMax(4,width()-270),
+                                      qMax(4,height()-65))));
     }
     void openLayers()
     {
         if(!m_layers)return;
         if(!m_engine.manager() || !m_engine.hasDocument()) {
-            if(m_layersButton)m_layersButton->setChecked(false);
+            // Quick Actions do not mirror layer visibility.
             return;
         }
         const bool opening=!m_layers->isVisible();
         m_layers->setVisible(opening);
-        if(m_layersButton)m_layersButton->setChecked(opening);
+        // Layer visibility is owned by the panel, not the quick strip.
         if(opening)m_layers->refreshNow();
     }
     void openColor()
@@ -419,9 +413,8 @@ private:
     QVBoxLayout *m_canvasLayout=nullptr;
     KritaMobileBrushWorkspace *m_brushWorkspace=nullptr;
     KritaMobileLayersPanel *m_layers=nullptr;
-    QToolButton *m_layersButton=nullptr;
+    MobileQuickActions *m_quickActions=nullptr;
     QToolButton *m_document=nullptr;
-    QToolButton *m_more=nullptr,*m_saveButton=nullptr;
     QTimer *m_updates=nullptr;
     std::function<void()> m_exit;
 };
