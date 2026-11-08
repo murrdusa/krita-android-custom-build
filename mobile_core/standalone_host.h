@@ -105,14 +105,30 @@ public:
 
         // The Krita canvas (including its native MDI document view) is
         // transferred into this slot. It is never recreated or resampled.
-        m_canvasSlot=new QWidget(root);
+        // The canvas and layers are sibling views in the mobile window.
+        // Unlike a modal dialog, layer operations do not block painting,
+        // save, undo or other canvas navigation.
+        auto *paintingArea=new QWidget(root);
+        auto *paintingLayout=new QHBoxLayout(paintingArea);
+        paintingLayout->setContentsMargins(0,0,0,0);
+        paintingLayout->setSpacing(0);
+        m_canvasSlot=new QWidget(paintingArea);
         m_canvasSlot->setObjectName(QStringLiteral("MobileNativeCanvasSlot"));
         m_canvasSlot->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Expanding);
         m_canvasSlot->setMinimumSize(0,0);
         m_canvasLayout=new QVBoxLayout(m_canvasSlot);
         m_canvasLayout->setContentsMargins(0,0,0,0);
         m_canvasLayout->setSpacing(0);
-        layout->addWidget(m_canvasSlot,1);
+        paintingLayout->addWidget(m_canvasSlot,1);
+        m_layers=new KritaMobileLayersPanel(
+            m_engine.legacyHost(),m_engine.manager(),paintingArea);
+        m_layers->onRequestClose=[this]() {
+            if(m_layers)m_layers->hide();
+            if(m_layersButton)m_layersButton->setChecked(false);
+        };
+        paintingLayout->addWidget(m_layers,0);
+        m_layers->hide();
+        layout->addWidget(paintingArea,1);
 
         m_brushWorkspace=new KritaMobileBrushWorkspace(
             m_engine.legacyHost(),m_engine.manager(),root);
@@ -156,7 +172,8 @@ public:
             buttons->addWidget(button,1);
             return button;
         };
-        custom(i18n("Layers"),[this](){openLayers();});
+        m_layersButton=custom(i18n("Layers"),[this](){openLayers();});
+        m_layersButton->setCheckable(true);
         custom(i18n("Color"),[this](){openColor();});
         m_more=custom(i18n("More"),[this](){openMore();});
         layout->addWidget(footer,0);
@@ -203,6 +220,7 @@ public:
         m_document->setText(!has?i18n("No document"):
                             node.isEmpty()?i18n("Canvas"):node.left(28));
         if(m_brushWorkspace && has)m_brushWorkspace->refresh();
+        if(m_layers && m_layers->isVisible())m_layers->refreshFromEngine();
     }
 
 protected:
@@ -240,15 +258,15 @@ private:
     }
     void openLayers()
     {
-        if(!m_engine.manager() || !m_engine.hasDocument())return;
-        // The panel's only state is a view of native KisNodeManager.
-        // Drawing/undo/compositing remain fully Krita-owned.
-        KritaMobileLayersPanel dialog(
-            m_engine.legacyHost(),m_engine.manager(),this);
-        dialog.resize(qMax(310,qMin(625,width()-28)),
-                      qMax(480,qMin(775,height()-52)));
-        dialog.exec();
-        refresh();
+        if(!m_layers)return;
+        if(!m_engine.manager() || !m_engine.hasDocument()) {
+            if(m_layersButton)m_layersButton->setChecked(false);
+            return;
+        }
+        const bool opening=!m_layers->isVisible();
+        m_layers->setVisible(opening);
+        if(m_layersButton)m_layersButton->setChecked(opening);
+        if(opening)m_layers->refreshNow();
     }
     void openColor()
     {
@@ -267,6 +285,8 @@ private:
     QPointer<QWidget> m_canvasSlot;
     QVBoxLayout *m_canvasLayout=nullptr;
     KritaMobileBrushWorkspace *m_brushWorkspace=nullptr;
+    KritaMobileLayersPanel *m_layers=nullptr;
+    QToolButton *m_layersButton=nullptr;
     QLabel *m_document=nullptr;
     QToolButton *m_more=nullptr,*m_saveButton=nullptr;
     QTimer *m_updates=nullptr;
