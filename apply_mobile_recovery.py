@@ -212,8 +212,8 @@ def main(root):
             dialog.exec();
         });
 '''
-    s=one(s,'''        auto *searchRow=new QHBoxLayout;''',
-          code+'''        auto *searchRow=new QHBoxLayout;''',
+    s=one(s,'''        galleryControls->setColumnStretch(0,1);''',
+          '''        galleryControls->setColumnStretch(0,1);'''+code,
           "recovery browser")
     path.write_text(s,encoding="utf-8")
     print("Recovery browser installed: on-demand scan, copy-only restore, non-destructive")
