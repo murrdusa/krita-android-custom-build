@@ -306,7 +306,7 @@ public:
             "border:1px solid #79a9c9;border-radius:9px;"
             "font-size:13px;font-weight:600;padding:5px;}"
             "QToolButton:pressed{background:#567e97;}");
-        m_addLayer->setToolTip(i18n("Tap to add a paint layer; hold for more types"));
+        m_addLayer->setToolTip(i18n("Tap for a paint layer; hold to browse layer and mask types"));
         layerHeader->addWidget(m_addLayer,1);
         // Pin and settings are configured in the Compact UI hub.
         m_addLayerHoldTimer = new QTimer(this);
@@ -322,27 +322,7 @@ public:
         connect(m_addLayerHoldTimer, &QTimer::timeout, this, [this]() {
             m_addLayerLongPressed = true;
             feedbackForHold();
-            QMenu menu(m_main);
-            auto addNative = [this, &menu](const QString &id) {
-                if (QAction *action = m_main->actionCollection()->action(id))
-                    menu.addAction(action);
-                else
-                    qWarning("Compact UI: missing layer creation action %s", qPrintable(id));
-            };
-            addNative(QStringLiteral("add_new_paint_layer"));
-            addNative(QStringLiteral("add_new_group_layer"));
-            addNative(QStringLiteral("add_new_clone_layer"));
-            addNative(QStringLiteral("add_new_vector_layer"));
-            addNative(QStringLiteral("add_new_filter_layer"));
-            addNative(QStringLiteral("add_new_fill_layer"));
-            addNative(QStringLiteral("add_new_file_layer"));
-            menu.addSeparator();
-            addNative(QStringLiteral("add_new_transparency_mask"));
-            addNative(QStringLiteral("add_new_filter_mask"));
-            addNative(QStringLiteral("add_new_colorize_mask"));
-            addNative(QStringLiteral("add_new_transform_mask"));
-            menu.exec(m_addLayer->mapToGlobal(QPoint(m_addLayer->width(), 0)));
-            QTimer::singleShot(150, this, [this]() { refreshLayers(); });
+            showAddLayerSheet();
         });
         connect(m_addLayer, &QToolButton::clicked, this, [this]() {
             if (m_addLayerLongPressed) {
@@ -2007,8 +1987,12 @@ private:
         dialog.resize(qMax(310,qMin(670,m_surface->width()-20)),
                       qMax(390,qMin(790,m_surface->height()-24)));
         auto *layout=new QVBoxLayout(&dialog);
-        auto *all=new QCheckBox(i18n("Show all Krita brushes"),&dialog);
-        layout->addWidget(all);
+        auto *filters=new QHBoxLayout;
+        auto *all=new QCheckBox(i18n("All brushes"),&dialog);
+        auto *favoriteOnly=new QCheckBox(i18n("Favorites only"),&dialog);
+        filters->addWidget(all);
+        filters->addWidget(favoriteOnly);
+        layout->addLayout(filters);
         auto *grid=new QListWidget(&dialog);
         grid->setViewMode(QListView::IconMode);
         grid->setFlow(QListView::LeftToRight);
@@ -2037,7 +2021,7 @@ private:
         layout->addWidget(cancel);
         connect(cancel,&QPushButton::clicked,&dialog,&QDialog::reject);
         QList<KisPaintOpPresetSP> candidates;
-        auto refill=[this,slot,grid,&candidates,all]() {
+        auto refill=[this,slot,grid,&candidates,all,favoriteOnly]() {
             grid->clear();
             candidates.clear();
             KisResourceModel *resources = presetModel();
@@ -2046,6 +2030,9 @@ private:
                                     .dynamicCast<KisPaintOpPreset>();
                 if(!preset || !preset->valid())continue;
                 if(!all->isChecked() && !presetInGroup(preset,slot))continue;
+                if(favoriteOnly->isChecked() &&
+                   !QSettings().value(presetPinKey(preset->name()),false).toBool())
+                    continue;
                 candidates.append(preset);
             }
             std::stable_sort(candidates.begin(),candidates.end(),
@@ -2061,7 +2048,7 @@ private:
                     QIcon(QPixmap::fromImage(preset->image())),
                     (pinned?QStringLiteral("★ "):QString())+preset->name(),grid);
                 item->setData(Qt::UserRole,idx);
-                item->setToolTip(pinned?i18n("Pinned: %1",preset->name()):preset->name());
+                item->setToolTip(pinned?i18n("Favorite: %1",preset->name()):preset->name());
                 if(all->isChecked() && presetInGroup(preset,slot))
                     item->setBackground(QColor(70,103,113,90));
             }
@@ -2101,7 +2088,7 @@ private:
             const bool alreadyPinned=QSettings().value(
                 presetPinKey(preset->name()),false).toBool();
             QAction *pin=options.addAction(alreadyPinned ?
-                i18n("Unpin from top") : i18n("Pin to top"));
+                i18n("Remove Favorite") : i18n("Favorite"));
             QAction *selected=options.exec(QCursor::pos());
             if(!selected)return;
             if(selected==pin) {
@@ -2119,6 +2106,10 @@ private:
             refill();
         });
         connect(all,&QCheckBox::toggled,&dialog,[&holdTimer,refill](bool){
+            holdTimer.stop();refill();
+        });
+        connect(favoriteOnly,&QCheckBox::toggled,&dialog,
+                [&holdTimer,refill](bool) {
             holdTimer.stop();refill();
         });
         connect(assign,&QPushButton::clicked,&dialog,[this,slot,refill]() {
@@ -3008,7 +2999,8 @@ private:
                 // paint layers keep the same dimensions as ordinary layers.
                 const int rowWidth=m_layerTileSize;
                 const bool compactRow=isGroup || isMask;
-                const int rowHeight=compactRow?qMax(42,rowWidth*53/100):rowWidth;
+                const int rowHeight=isGroup?qMax(53,rowWidth*65/100):
+                    (isMask?qMax(42,rowWidth*53/100):rowWidth);
                 const int iconPx=compactRow?qMax(25,rowHeight-9):rowWidth-12;
                 m_compactLayerHeight+=rowHeight+7;
                 auto *frame=new QFrame(m_layersContent);
@@ -3085,14 +3077,16 @@ private:
                 typeBadge->setAttribute(Qt::WA_TransparentForMouseEvents);
                 if(isGroup) {
                     auto *expander=new QToolButton(frame);
-                    expander->setGeometry(3,3,24,24);
+                    const int arrowSize=qBound(29,rowHeight-13,36);
+                    expander->setGeometry(3,3,arrowSize,arrowSize);
                     expander->setText(node->collapsed()?
                         QStringLiteral("▸"):QStringLiteral("▾"));
                     expander->setToolTip(node->collapsed()?
                         i18n("Expand group"):i18n("Collapse group"));
                     expander->setStyleSheet(
-                        "QToolButton{background:#3c5c70;color:white;"
-                        "border:1px solid #ddd;border-radius:4px;}");
+                        "QToolButton{background:#244f71;color:#e7f7ff;"
+                        "font-size:20px;font-weight:bold;"
+                        "border:2px solid #7fc5ef;border-radius:7px;}");
                     connect(expander,&QToolButton::clicked,this,[this,node]() mutable {
                         node->setCollapsed(!node->collapsed());
                         refreshLayers();
@@ -3107,8 +3101,9 @@ private:
                     clip->setToolTip(passThrough?i18n("Pass-through group"):
                                                   i18n("Inherit alpha / clipped"));
                     clip->setStyleSheet(
-                        "QLabel{background:#326d68;color:white;border-radius:4px;"
-                        "font-weight:bold;}");
+                        "QLabel{background:#285f7a;color:#f0fcff;"
+                        "border:1px solid #79c8e8;border-radius:5px;"
+                        "font-weight:bold;font-size:13px;}");
                     clip->setAttribute(Qt::WA_TransparentForMouseEvents);
                 }
                 auto *tileHold=new QTimer(tile);
