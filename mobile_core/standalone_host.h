@@ -53,6 +53,7 @@
 #include "document_workflow.h"
 #include "document_switcher.h"
 #include "command_browser.h"
+#include "tool_browser.h"
 #include "brush_workspace.h"
 #include "layer_workspace.h"
 
@@ -319,6 +320,17 @@ private:
     {
         if(!m_more)return;
         QMenu menu(this);
+        auto *tools=menu.addAction(i18n("Tools — search Krita's tool registry"));
+        tools->setEnabled(m_engine.hasDocument());
+        connect(tools,&QAction::triggered,this,[this]() {
+            // Open after the menu closes; tool activation stays on Krita's
+            // input manager and never routes pen strokes through this UI.
+            QTimer::singleShot(0,this,[this]() {
+                MobileToolBrowser::open(m_engine,this);
+                refresh();
+            });
+        });
+        menu.addSeparator();
         auto *mobileStartup=menu.addAction(
             i18n("Start in Mobile Studio on next launch"));
         mobileStartup->setCheckable(true);
