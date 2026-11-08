@@ -258,6 +258,7 @@ public:
     {
         return nativeCanvas && m_nativeCanvas==nativeCanvas;
     }
+    bool hasNativeCanvas() const override {return hasEngineCanvas();}
     void refreshCanvasSurface() override {refresh();}
 
     void refresh()
