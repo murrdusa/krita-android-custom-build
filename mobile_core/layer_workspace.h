@@ -389,7 +389,7 @@ private:
                 m_items.append(item);
                 if(node->childCount()>0) {
                     visit(node,item,depth+1);
-                    item->setExpanded(hadPrevious ?
+                    item->setExpanded(hadPreviousTree ?
                                       expanded.contains(node.data()) :
                                       !node->collapsed());
                 }
