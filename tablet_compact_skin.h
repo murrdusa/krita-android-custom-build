@@ -1704,9 +1704,14 @@ private:
             addQuick->setText(i18n("Added to Quick"));
         });
         tabs->addTab(actionsPage,i18n("Krita actions"));
-        auto *quick=new QWidget(tabs);
+        auto *quickScroll=new QScrollArea(tabs);
+        quickScroll->setWidgetResizable(true);
+        quickScroll->setFrameShape(QFrame::NoFrame);
+        quickScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        QScroller::grabGesture(quickScroll->viewport(),QScroller::TouchGesture);
+        auto *quick=new QWidget(quickScroll);
         auto *quickLayout=new QVBoxLayout(quick);
-        quickLayout->setContentsMargins(5,8,5,8);
+        quickLayout->setContentsMargins(7,9,7,9);
         quickLayout->setSpacing(8);
         auto *editQuick=new QPushButton(i18n("Customize Quick Actions"),quick);
         editQuick->setIcon(KisIconUtils::loadIcon("configure"));
@@ -1716,27 +1721,44 @@ private:
             dialog.accept();
             QTimer::singleShot(0,this,[this](){openQuickActionSettings();});
         });
-        const QStringList defaults={
-            QStringLiteral("gradients"),QStringLiteral("patterns"),
-            QStringLiteral("duplicatelayer"),QStringLiteral("quick_group")};
-        const QStringList selected=QSettings().value(
-            QStringLiteral("TabletUi/quickActionsV2"),defaults).toStringList();
-        for(const QString &key:selected) {
-            QAction *action=m_main->actionCollection()->action(key);
-            if(!action)continue;
-            auto *button=new QPushButton(action->text().remove(QLatin1Char('&')),
-                                         quick);
-            button->setIcon(action->icon());
-            button->setMinimumHeight(56);
-            quickLayout->addWidget(button);
-            connect(button,&QPushButton::clicked,&dialog,
-                    [this,&dialog,action]() {
-                dialog.accept();
-                QTimer::singleShot(0,this,[action](){action->trigger();});
-            });
-        }
-        quickLayout->addStretch();
-        tabs->addTab(quick,i18n("Quick"));
+        auto refillQuick=[this,quick,quickLayout,editQuick,&dialog]() {
+            for(int i=quickLayout->count()-1;i>=0;--i) {
+                QLayoutItem *existing=quickLayout->itemAt(i);
+                if(existing->widget()==editQuick)continue;
+                QLayoutItem *removed=quickLayout->takeAt(i);
+                if(QWidget *widget=removed->widget())widget->deleteLater();
+                delete removed;
+            }
+            const QStringList defaults={
+                QStringLiteral("gradients"),QStringLiteral("patterns"),
+                QStringLiteral("duplicatelayer"),QStringLiteral("quick_group")};
+            const QStringList selected=QSettings().value(
+                QStringLiteral("TabletUi/quickActionsV2"),defaults).toStringList();
+            for(const QString &key:selected) {
+                QAction *action=m_main->actionCollection()->action(key);
+                if(!action)continue;
+                QString label=action->text();
+                label.remove(QLatin1Char('&'));
+                if(label.isEmpty())label=key;
+                auto *button=new QPushButton(label,quick);
+                button->setIcon(action->icon());
+                button->setMinimumHeight(56);
+                quickLayout->addWidget(button);
+                connect(button,&QPushButton::clicked,&dialog,
+                        [this,&dialog,action]() {
+                    dialog.accept();
+                    QTimer::singleShot(0,this,[action](){action->trigger();});
+                });
+            }
+            quickLayout->addStretch();
+        };
+        refillQuick();
+        quickScroll->setWidget(quick);
+        tabs->addTab(quickScroll,i18n("Quick"));
+        connect(tabs,&QTabWidget::currentChanged,&dialog,
+                [tabs,quickScroll,refillQuick](int index) {
+            if(tabs->widget(index)==quickScroll)refillQuick();
+        });
         auto *back=new QPushButton(i18n("Back"),&dialog);
         back->setMinimumHeight(52);
         outer->addWidget(back);
