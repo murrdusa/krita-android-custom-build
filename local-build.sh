@@ -85,6 +85,7 @@ if [[ "$MODE" == build ]]; then
        [[ -n "$(find "$OUT" -maxdepth 1 -type f -name '*.apk' -size +0c -print -quit)" ]]; then
         say "No Android application changes; reusing previous successful APK"
         echo "Skipped compilation and packaging. Override with KRITA_FORCE_BUILD=1."
+        python3 "$REPO/apk_size_report.py" "$OUT" || say "WARNING: APK size audit failed"
         publish_apk
         exit 0
     fi
