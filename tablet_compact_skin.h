@@ -297,7 +297,7 @@ public:
         rail->addLayout(layerHeader);
         m_addLayer = new QToolButton(m_layerRail);
         m_addLayer->setText(i18n("+ Add"));
-        m_addLayer->setFixedHeight(42);
+        m_addLayer->setFixedHeight(35);
         m_addLayer->setToolButtonStyle(Qt::ToolButtonTextOnly);
         m_addLayer->setStyleSheet(
             "QToolButton{background:#3d6985;color:#f9fbff;"
@@ -1569,11 +1569,6 @@ private:
             });
             return button;
         };
-        auto *description=new QLabel(
-            i18n("Touch-friendly settings and frequently used actions"),
-            settingsPage);
-        description->setWordWrap(true);
-        settings->addWidget(description);
         addSettings(i18n("Tablet controls"),QStringLiteral("configure"),
                     [this]() {
             if(QAction *a=m_main->actionCollection()->action(
@@ -1588,6 +1583,17 @@ private:
         addSettings(i18n("Color selector"),QStringLiteral("color-picker"),
                     [this](){openColorSettings();});
         settings->addSpacing(10);
+        auto *saveClose=addSettings(
+            i18n("Save & Close"),
+            QStringLiteral("document-save"),
+            [this]() {
+                if(QAction *action=m_main->actionCollection()->action(
+                    QStringLiteral("tablet_save_and_close")))
+                    action->trigger();
+            });
+        saveClose->setStyleSheet(
+            "QPushButton{background:#2e7855;border:2px solid #8ddcb0;"
+            "border-radius:9px;color:white;font-weight:600;}");
         auto *discard=addSettings(
             i18n("Close without saving…"),
             QStringLiteral("dialog-warning"),
@@ -2696,7 +2702,11 @@ private:
     }
     void updateLayerWidth() {
         m_layerRail->setFixedWidth(m_layerTileSize+10);
-        m_addLayer->setText(i18n("+ Add"));
+        // Fill the same usable width as the layer thumbnails, leaving only
+        // the rail's 3px side margins. Keep the button relatively short.
+        m_addLayer->setFixedWidth(m_layerTileSize+4);
+        m_addLayer->setText(m_layerTileSize<90?
+            QStringLiteral("+"):i18n("+ Add"));
         if(m_layerRail->isVisible())positionOverlays();
     }
     static QIcon lockIcon(bool locked) {
@@ -3842,7 +3852,14 @@ private:
         scroll->setWidgetResizable(true);
         scroll->setFrameShape(QFrame::NoFrame);
         scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        QScroller::grabGesture(scroll->viewport(),QScroller::TouchGesture);
+        scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        scroll->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
+        QScroller::grabGesture(scroll->viewport(),
+                               QScroller::LeftMouseButtonGesture);
+        scroll->setStyleSheet(
+            "QScrollBar:vertical{background:#2d3642;width:20px;border:0;}"
+            "QScrollBar::handle:vertical{background:#8cbbd8;"
+            "border-radius:9px;min-height:66px;}");
         auto *page=new QWidget(scroll);
         auto *layout=new QVBoxLayout(page);
         layout->setContentsMargins(4,3,4,3);
@@ -4411,7 +4428,7 @@ private:
         const int layerX=m_layerOnRight?qMax(4,w-m_layerRail->width()-4):4;
         const int layerY=35;
         const int rowsHeight=qMax(m_layerTileSize+4,m_compactLayerHeight);
-        const int desired=5+42+3+rowsHeight+3+34+5+12;
+        const int desired=5+35+3+rowsHeight+3+34+5+12;
         // Keep the rail above the brush panel when both share the left side.
         // On the right, also avoid a pinned color selector at the bottom.
         int availableBottom=h-8;
