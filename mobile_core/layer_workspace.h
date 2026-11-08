@@ -8,6 +8,10 @@
 #ifdef Q_OS_ANDROID
 
 #include <QFrame>
+#include <QMenu>
+#include <QInputDialog>
+#include <QLineEdit>
+#include <QScroller>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QLabel>
@@ -88,6 +92,8 @@ public:
         m_tree->setSelectionMode(QAbstractItemView::NoSelection);
         m_tree->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
         m_tree->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        // Swipe-scroll without treating a finger drag as a row click.
+        QScroller::grabGesture(m_tree->viewport(),QScroller::TouchGesture);
         m_tree->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         m_tree->header()->setStretchLastSection(false);
         m_tree->header()->setSectionResizeMode(0,QHeaderView::Stretch);
@@ -97,10 +103,9 @@ public:
         m_summary=new QLabel(i18n("Select a layer"),this);
         layout->addWidget(m_summary);
 
-        // The layer dialog is modal, so the canvas window's Undo/Redo
-        // buttons are not reachable while the user is editing layers.
-        // Forward these controls to Krita's existing document history,
-        // never a separate layer-only undo stack.
+        // Keep native Undo/Redo accessible while the live panel is open.
+        // These are Krita's existing document actions, never a separate
+        // layer-only undo stack.
         auto *history=new QHBoxLayout;
         auto *undo=new QPushButton(i18n("Undo"),this);
         auto *redo=new QPushButton(i18n("Redo"),this);
@@ -209,12 +214,23 @@ public:
 
         connect(m_tree,&QTreeWidget::itemClicked,this,
                 [this](QTreeWidgetItem *item,int column) {
-            Q_UNUSED(column);
             if(!item)return;
             const int index=item->data(0,Qt::UserRole).toInt();
             if(index<0 || index>=m_nodes.size())return;
             KisNodeSP node=m_nodes.at(index);
-            if(!node)return;
+            if(!node || !node->parent())return;
+            auto *m=manager();
+            if(!m)return;
+            if(column==1 || column==2) {
+                // Eye / Lock columns operate on the tapped layer, not
+                // the previously active one. Use Krita's native undoable
+                // node commands instead of changing KisNode directly.
+                m_engine.selectLayer(node);
+                if(column==1)m->toggleVisibility();
+                else m->toggleLock();
+                reload();
+                return;
+            }
             if(m_multi->isChecked()) {
                 if(m_selected.contains(node) && m_selected.size()>1)
                     m_selected.removeAll(node);
@@ -224,6 +240,10 @@ public:
                 if(!m_selected.contains(m_active) || !m_active)
                     m_active=m_selected.last();
                 applySelection();
+            } else if(m_active==node && m_selected.size()==1 &&
+                      m_selected.contains(node)) {
+                // One tap selects; a second tap opens the layer menu.
+                showLayerActions(node,item);
             } else {
                 m_selected=KisNodeList{node};
                 m_active=node;
@@ -253,6 +273,66 @@ public:
     void refreshNow() {reload();}
 
 private:
+    void showLayerActions(KisNodeSP node,QTreeWidgetItem *item)
+    {
+        auto *m=manager();
+        if(!m || !node || !node->parent() || !item)return;
+        QMenu menu(this);
+        menu.setStyleSheet(
+            "QMenu{background:#2c4051;color:#f4f9fe;"
+            "border:1px solid #769bb8;}"
+            "QMenu::item{min-height:45px;padding:9px 14px;}"
+            "QMenu::item:selected{background:#3b7394;}");
+        QAction *rename=menu.addAction(i18n("Rename layer"));
+        QAction *properties=menu.addAction(i18n("Layer properties"));
+        menu.addSeparator();
+        QAction *duplicate=menu.addAction(i18n("Duplicate"));
+        QAction *moveUp=menu.addAction(i18n("Move up"));
+        QAction *moveDown=menu.addAction(i18n("Move down"));
+        menu.addSeparator();
+        QAction *group=menu.addAction(i18n("Group selection"));
+        QAction *clipping=menu.addAction(i18n("Krita clipping group"));
+        QAction *ungroup=nullptr;
+        if(node->inherits("KisGroupLayer"))
+            ungroup=menu.addAction(i18n("Ungroup"));
+        menu.addSeparator();
+        QAction *remove=menu.addAction(i18n("Delete layer"));
+        const QPoint point=m_tree->viewport()->mapToGlobal(
+            m_tree->visualItemRect(item).bottomLeft());
+        QAction *chosen=menu.exec(point);
+        if(!chosen || !node || !node->parent())return;
+        if(chosen==rename) {
+            bool ok=false;
+            const QString next=QInputDialog::getText(
+                this,i18n("Rename layer"),i18n("Layer name"),
+                QLineEdit::Normal,node->name(),&ok);
+            if(ok && !next.trimmed().isEmpty())
+                m->setNodeName(node,next.trimmed());
+        } else if(chosen==properties) {
+            m->nodeProperties(node);
+        } else if(chosen==group) {
+            m->createQuickGroup();
+        } else if(chosen==clipping) {
+            m->createQuickClippingGroup();
+        } else if(chosen==ungroup) {
+            m_engine.selectLayer(node);
+            m->quickUngroup();
+        } else if(chosen==remove) {
+            if(QMessageBox::question(this,i18n("Delete layer"),
+                    i18n("Delete %1?").arg(node->name()),
+                    QMessageBox::Yes|QMessageBox::No,
+                    QMessageBox::No)==QMessageBox::Yes) {
+                m_engine.selectLayer(node);
+                m->removeNode();
+            }
+        } else {
+            m_engine.selectLayer(node);
+            if(chosen==duplicate)m->duplicateActiveNode();
+            else if(chosen==moveUp)m->raiseNode();
+            else if(chosen==moveDown)m->lowerNode();
+        }
+        reload();
+    }
     QString engineSignature() const
     {
         auto *view=m_engine.manager();
@@ -327,12 +407,16 @@ private:
             const auto &node=m_nodes.at(i);
             const bool highlighted=m_selected.contains(node);
             const bool active=m_active==node;
-            const QColor background=active?QColor(96,65,71):
-                highlighted?QColor(45,92,125):QColor(46,62,78);
+            const bool group=node->inherits("KisGroupLayer");
+            const QColor background=active?QColor(48,104,141):
+                highlighted?QColor(43,83,115):
+                group?QColor(34,73,103):QColor(46,62,78);
             for(int c=0;c<3;++c)item->setBackground(c,QBrush(background));
             item->setText(1,node->visible()?i18n("Yes"):i18n("No"));
             item->setText(2,node->userLocked()?i18n("Locked"):QStringLiteral("—"));
-            item->setToolTip(0,active?i18n("Active layer"):
+            item->setToolTip(1,i18n("Tap to toggle visibility (undoable)"));
+            item->setToolTip(2,i18n("Tap to toggle lock (undoable)"));
+            item->setToolTip(0,active?i18n("Tap again for layer options"):
                 highlighted?i18n("Included in multi-selection"):
                 i18n("Tap to select"));
         }
@@ -383,6 +467,12 @@ private:
                 m_nodes.append(node);
                 auto *item=new QTreeWidgetItem;
                 item->setText(0,node->name());
+                if(node->inherits("KisGroupLayer")) {
+                    QFont font=item->font(0);
+                    font.setBold(true);
+                    item->setFont(0,font);
+                    item->setForeground(0,QBrush(QColor(171,217,247)));
+                }
                 item->setData(0,Qt::UserRole,index);
                 if(parentItem)parentItem->addChild(item);
                 else m_tree->addTopLevelItem(item);
