@@ -25,6 +25,7 @@ def main(root:Path):
     switcher=own/"mobile_core/document_switcher.h"
     bridge=own/"mobile_core/engine_bridge.h"
     document_service=own/"mobile_core/document_service.h"
+    command_service=own/"mobile_core/command_service.h"
     brush=own/"mobile_core/brush_workspace.h"
     color=own/"mobile_core/color_workspace.h"
     layers=own/"mobile_core/layer_workspace.h"
@@ -34,7 +35,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,switcher,bridge,document_service,brush,color,layers,commands,quick,reorder,tools,documents)):
+               (shell,session,switcher,bridge,document_service,command_service,brush,color,layers,commands,quick,reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
     mainfile=root/"libs/ui/KisMainWindow.cpp"
@@ -147,6 +148,8 @@ def main(root:Path):
         bridge.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_service.h").write_text(
         document_service.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/command_service.h").write_text(
+        command_service.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/brush_workspace.h").write_text(
         brush.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/color_workspace.h").write_text(
