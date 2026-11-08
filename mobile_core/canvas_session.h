@@ -1,57 +1,43 @@
 /*
  * SPDX-License-Identifier: GPL-2.0-or-later
- * Temporary Krita-backend canvas session.
  *
- * This is the ONLY mobile controller that transfers Krita's live desktop
- * widget stack to/from our mobile top-level window. When Krita's startup
- * lifecycle becomes independent, this component is replaced; the mobile
- * workspace, document UI, brush and layers are unaffected.
+ * Mobile Studio transition controller: startup and mode switching only.
+ * The Qt-only transfer service owns the original native canvas widget
+ * and MDI tab chrome, while MobileEngineBridge supplies Krita services.
  */
 #pragma once
 #ifdef Q_OS_ANDROID
 #include <QObject>
+#include <QMainWindow>
 #include <QMdiArea>
 #include <QPointer>
 #include <QSignalBlocker>
-#include <QWidget>
 #include <QAction>
 #include <QApplication>
 #include <QSettings>
 #include <QTimer>
-#include <QTabBar>
-#include <QVector>
-#include "KisMainWindow.h"
-#include "KisViewManager.h"
 #include "engine_bridge.h"
-#include "standalone_host.h"
+#include "canvas_transfer.h"
 
 class MobileAppController final : public QObject
 {
 public:
-    MobileAppController(KisMainWindow *main,
+    MobileAppController(QMainWindow *backend,
                         QMdiArea *mdi,
-                        KisViewManager *manager,
+                        const MobileEngineBridge &bridge,
                         QAction *entry)
-        : QObject(main),m_main(main),m_mdi(mdi),m_bridge(main,manager,mdi),
+        : QObject(backend),m_transfer(backend,mdi),m_bridge(bridge),
           m_entry(entry)
     {
         connect(entry,&QAction::toggled,this,[this](bool value) {
             if(value)enter();else leave();
-        });
-        // Our document switcher replaces Krita's desktop MDI tab strip.
-        // This timer also handles a QTabBar created after the first new
-        // document. No view/model objects are recreated or reparented.
-        m_tabChromeTimer=new QTimer(this);
-        m_tabChromeTimer->setInterval(750);
-        connect(m_tabChromeTimer,&QTimer::timeout,this,[this]() {
-            if(m_inMobile)hideDesktopTabChrome();
         });
         // Opt-in mobile-first startup: Krita still initializes services
         // before this session takes ownership of its canvas widget.
         // A pending marker prevents repeated launch crashes from trapping
         // users in Mobile Studio; the next launch falls back to Krita.
         QTimer::singleShot(0,this,[this]() {
-            if(!m_main || !m_entry || !qApp ||
+            if(!m_entry || !qApp ||
                qApp->property("_mobileStudioBootHandled").toBool())return;
             qApp->setProperty("_mobileStudioBootHandled",true);
             QSettings settings;
@@ -76,7 +62,7 @@ public:
                 QSettings verified;
                 verified.setValue(
                     QStringLiteral("MobileStudio/bootPending"),false);
-                if(!m_inMobile)
+                if(!m_transfer.active())
                     verified.setValue(
                         QStringLiteral("MobileStudio/startDirectly"),false);
                 verified.sync();
@@ -85,113 +71,34 @@ public:
     }
     ~MobileAppController() override
     {
-        if(m_inMobile)leave();
+        if(m_transfer.active())leave();
         delete m_host;
     }
 
 private:
-    struct TabChrome {
-        QPointer<QTabBar> widget;
-        int minimumHeight=0;
-        int maximumHeight=0;
-        bool wasVisible=false;
-    };
-    void hideDesktopTabChrome()
-    {
-        if(!m_mdi)return;
-        // QMdiArea owns its QTabBar; changes in the current document may
-        // create a new one. Track each original geometry and visibility
-        // so exiting Mobile Studio restores the original desktop UI.
-        const auto bars=m_mdi->findChildren<QTabBar*>();
-        for(QTabBar *bar:bars) {
-            if(!bar)continue;
-            bool known=false;
-            for(const TabChrome &saved:m_tabChrome)
-                if(saved.widget==bar){known=true;break;}
-            if(!known)
-                m_tabChrome.append({bar,bar->minimumHeight(),
-                                    bar->maximumHeight(),bar->isVisible()});
-            if(bar->minimumHeight()!=0)bar->setMinimumHeight(0);
-            if(bar->maximumHeight()!=0)bar->setMaximumHeight(0);
-            if(bar->isVisible())bar->hide();
-        }
-    }
-    void restoreDesktopTabChrome()
-    {
-        if(m_tabChromeTimer)m_tabChromeTimer->stop();
-        for(const TabChrome &saved:m_tabChrome) {
-            if(!saved.widget)continue;
-            saved.widget->setMaximumHeight(saved.maximumHeight);
-            saved.widget->setMinimumHeight(saved.minimumHeight);
-            saved.widget->setVisible(saved.wasVisible);
-        }
-        m_tabChrome.clear();
-    }
     void enter()
     {
-        if(m_inMobile || !m_main)return;
+        if(m_transfer.active())return;
         if(!m_host) {
             m_host=new MobileStandaloneWindow(m_bridge);
             m_host->setExitCallback([this]() {
                 if(m_entry)m_entry->setChecked(false);
             });
         }
-        QWidget *native=m_main->takeCentralWidget();
-        if(!native) {
-            if(m_entry) {
-                const QSignalBlocker block(m_entry);
-                m_entry->setChecked(false);
-            }
-            return;
+        if(!m_transfer.enter(m_host) && m_entry) {
+            // Never report Mobile Studio active after a failed transfer.
+            const QSignalBlocker blocked(m_entry);
+            m_entry->setChecked(false);
         }
-        // Disable the legacy Android re-show workaround while the live
-        // canvas widget is owned by the independent mobile window.
-        // The flag must be set before queued document-load work runs.
-        m_main->setProperty("_mobileStudioCanvasTransferred",true);
-        m_originalState=m_main->windowState();
-        m_originalCentral=native;
-        m_host->attachEngineCanvas(native);
-        m_inMobile=true;
-        hideDesktopTabChrome();
-        if(m_tabChromeTimer)m_tabChromeTimer->start();
-        m_host->showFullScreen();
-        m_host->raise();
-        m_host->activateWindow();
-        m_main->hide();
-        m_host->refresh();
     }
     void leave()
     {
-        if(!m_inMobile || !m_main || !m_host)return;
-        QWidget *native=m_host->releaseEngineCanvas();
-        restoreDesktopTabChrome();
-        if(native) {
-            m_main->setCentralWidget(native);
-            native->show();
-        }
-        // Restore Android's desktop refresh behavior only after its
-        // native canvas widget has been returned to KisMainWindow.
-        m_main->setProperty("_mobileStudioCanvasTransferred",false);
-        // Main window is a temporary backend only in mobile mode.
-        // Preserve the original desktop/compact state on return.
-        m_main->setWindowState(m_originalState);
-        m_main->show();
-        m_main->raise();
-        m_host->hide();
-        m_main->activateWindow();
-        m_inMobile=false;
-        m_originalCentral=nullptr;
+        m_transfer.leave();
     }
-    QPointer<KisMainWindow> m_main;
-    QPointer<QMdiArea> m_mdi;
+    MobileCanvasTransfer m_transfer;
     MobileEngineBridge m_bridge;
     QPointer<QAction> m_entry;
     MobileStandaloneWindow *m_host=nullptr;
-    QPointer<QWidget> m_originalCentral;
-    Qt::WindowStates m_originalState;
-    bool m_inMobile=false;
-    QTimer *m_tabChromeTimer=nullptr;
-    QVector<TabChrome> m_tabChrome;
 };
 
 #endif // Q_OS_ANDROID
