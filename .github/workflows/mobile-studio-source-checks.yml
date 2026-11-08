@@ -1,0 +1,52 @@
+name: Mobile Studio source safety checks
+
+# Source-only validation: never builds or publishes Android APKs.
+on:
+  push:
+    paths:
+      - "apk_size_report.py"
+      - "krita_build_cache.py"
+      - "apply_mobile_shell.py"
+      - "mobile_core/**"
+      - "tests/**"
+      - ".github/workflows/mobile-studio-source-checks.yml"
+  pull_request:
+    paths:
+      - "apk_size_report.py"
+      - "krita_build_cache.py"
+      - "apply_mobile_shell.py"
+      - "mobile_core/**"
+      - "tests/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile Python source
+        run: python -m py_compile apk_size_report.py krita_build_cache.py apply_mobile_shell.py
+      - name: Test APK size reporting
+        run: python -m unittest discover -s tests -p 'test_apk_size_report.py' -v
+      - name: Check canvas ownership boundary
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          transfer = Path("mobile_core/canvas_transfer.h").read_text()
+          surface = Path("mobile_core/canvas_surface.h").read_text()
+          for forbidden in ('"standalone_host.h"', '"engine_bridge.h"',
+                            "MobileStandaloneWindow", "KisMainWindow", "KisDocument"):
+              assert forbidden not in transfer, f"Canvas transfer leaked {forbidden}"
+              assert forbidden not in surface, f"Canvas surface leaked {forbidden}"
+          assert "m_backend->centralWidget()!=m_canvas" in transfer
+          assert "bool leave()" in transfer
+          assert "m_transfer.leave()" in Path("mobile_core/canvas_session.h").read_text()
+          print("Canvas ownership invariants intact")
+          PY
