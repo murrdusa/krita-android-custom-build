@@ -1735,6 +1735,11 @@ private:
         auto *allToggle=new QPushButton(i18n("All commands"),&dialog);
         frequentToggle->setCheckable(true);
         allToggle->setCheckable(true);
+        const QString scopeStyle=QStringLiteral(
+            "QPushButton:checked{background:#376b8e;color:white;"
+            "border:2px solid #97d6f4;font-weight:600;}");
+        frequentToggle->setStyleSheet(scopeStyle);
+        allToggle->setStyleSheet(scopeStyle);
         auto *scopeGroup=new QButtonGroup(&dialog);
         scopeGroup->setExclusive(true);
         scopeGroup->addButton(frequentToggle);
