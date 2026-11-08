@@ -1,5 +1,26 @@
 # Krita Core / Mobile UI redesign
 
+## Milestone v0.9 — safe document close and mobile empty canvas
+
+- Document close now goes through
+  `MobileEngineBridge::closeDocument/closeActiveDocument`. It activates
+  the target native Krita MDI view, then calls its `QMdiSubWindow::close()`.
+  Krita's `KisView::closeEvent` and `queryClose()` remain responsible for
+  unsaved-change prompts, save completion, autosave cleanup, and closing.
+  The mobile interface does not delete documents or bypass save checks.
+- The canvas switcher gains a clearly labeled **Close current canvas**
+  action; **More** exposes the same native operation.
+- A mobile-owned empty canvas panel lives beside the live canvas in a
+  stacked layout. With no document, it hides Krita's desktop welcome
+  page and offers New and Open. Opening a document reveals the native
+  Krita canvas again; leaving Mobile Studio still returns the entire
+  untouched widget stack to Krita.
+
+The hidden desktop main window is still an engine lifecycle dependency,
+not a finished independent executable. On-device tests must establish
+that closing the last view and restoring a new view work before any
+desktop-widget removal.
+
 ## Milestone v0.7 — canvas-session boundary and document navigation
 
 - `canvas_session.h` owns widget-stack transfer between the Krita backend
