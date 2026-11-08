@@ -1,5 +1,34 @@
 # Krita Core / Mobile UI redesign
 
+## Milestone v1.6 — document and command services
+
+The mobile UI has moved closer to being independent of Krita's desktop
+window **without replacing the Krita engine**.
+
+- `document_service.h` is now the single gateway for creating and
+  opening native Krita documents, safe saving, Save As, listing/switching
+  native document views and closing with Krita's built-in unsaved
+  changes checks. This replaces direct document lifecycle calls in
+  `engine_bridge.h`, while preserving the same Krita APIs.
+- `command_service.h` is the single gateway to native Krita
+  `QAction`/menus, brush-preset selection, eraser mode and
+  `KoToolManager` tools. It holds the desktop command-collection
+  dependency behind a replaceable interface.
+- `engine_bridge.h` delegates document and command operations to
+  these two services and retains Krita's resource/node adapter.
+  Mobile widgets continue using the same signatures; no new paint,
+  compositing, undo, I/O or tool implementations were introduced.
+- `canvas_session.h` alone handles physical widget transfer and
+  restoring the desktop fallback. The source patcher now verifies
+  that mobile UI headers and the facade do not directly include the
+  desktop `KisMainWindow` type.
+- **Limit:** This is dependency isolation, not an independent app
+  bootstrap. Krita still constructs `KisMainWindow` at startup and
+  the three backend adapters still call desktop-owned APIs.
+  The following architectural milestone is to replace those adapters
+  with Krita service-owned startup/view instances after more runtime
+  validation. No APK publishing was requested.
+
 ## Milestone v1.5 — responsive overlay ownership
 
 - `MobileColorWorkspace` now owns size presets, drag positioning,
