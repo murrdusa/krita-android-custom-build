@@ -1,10 +1,10 @@
 /*
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Qt-only, reversible canvas widget transfer for Mobile Studio.
- * The native Krita MDI stack is never recreated. This module knows
- * QMainWindow/QMdiArea and the mobile destination, but does not depend
- * on KisMainWindow, KisDocument or the Krita painting engine.
+ * Qt-only, reversible canvas widget transfer.
+ * The native Krita MDI QWidget stack is moved, never copied or
+ * recreated. The destination is a generic MobileCanvasSurface.
+ * No Krita types or Mobile Studio window implementation are included.
  */
 #pragma once
 #ifdef Q_OS_ANDROID
@@ -16,7 +16,7 @@
 #include <QTimer>
 #include <QVector>
 #include <QWidget>
-#include "standalone_host.h"
+#include "canvas_surface.h"
 
 class MobileCanvasTransfer final
 {
@@ -33,35 +33,47 @@ public:
 
     ~MobileCanvasTransfer()
     {
-        // The mobile host must not delete Krita's QWidget stack on exit.
-        // A still-alive backend takes it back before the host is deleted.
         if(m_active)leave();
     }
 
     bool active() const {return m_active;}
 
-    bool enter(MobileStandaloneWindow *mobile)
+    bool enter(MobileCanvasSurface *surface)
     {
-        if(m_active || !m_backend || !mobile ||
-           mobile->hasEngineCanvas())return false;
+        if(m_active || !surface || !m_backend || !m_documents ||
+           surface->hasNativeCanvas())return false;
+        QWidget *mobile=surface->canvasSurfaceWindow();
+        if(!mobile || mobile==m_backend)return false;
+        // Guard the backend's original central widget before changing
+        // ownership. No document or view gets instantiated by this path.
+        if(!m_backend->centralWidget())return false;
+
+        m_savedWindowState=m_backend->windowState();
         QWidget *native=m_backend->takeCentralWidget();
         if(!native)return false;
-        m_savedWindowState=m_backend->windowState();
-        m_canvas=native;
-        m_mobile=mobile;
 
-        // Krita's Android refresh hack observes this property. Set it
-        // BEFORE presenting the mobile host so queued load completions
-        // cannot raise the now-empty desktop window over the canvas.
+        m_canvas=native;
+        m_surface=surface;
+        m_mobileWindow=mobile;
+
+        // Krita's Android refresh workaround observes this Qt property.
+        // It must be set before the host exposes the native canvas.
         m_backend->setProperty("_mobileStudioCanvasTransferred",true);
-        mobile->attachEngineCanvas(native);
-        if(!mobile->hasEngineCanvas()) {
-            // No partial takeover: recover the exact original widget.
+
+        if(!surface->attachNativeCanvas(native) ||
+           !surface->ownsNativeCanvas(native)) {
+            // An incomplete attachment must leave desktop Krita usable.
+            // Never detach an unrelated canvas from the destination.
+            if(surface->ownsNativeCanvas(native))
+                surface->detachNativeCanvas();
+            native->hide();
+            native->setParent(nullptr);
             m_backend->setCentralWidget(native);
             native->show();
             m_backend->setProperty("_mobileStudioCanvasTransferred",false);
+            m_surface=nullptr;
             m_canvas=nullptr;
-            m_mobile=nullptr;
+            m_mobileWindow=nullptr;
             return false;
         }
 
@@ -72,7 +84,7 @@ public:
         mobile->raise();
         mobile->activateWindow();
         m_backend->hide();
-        mobile->refresh();
+        surface->refreshCanvasSurface();
         return true;
     }
 
@@ -80,12 +92,12 @@ public:
     {
         if(!m_active)return;
         m_tabTimer.stop();
-        MobileStandaloneWindow *mobile=m_mobile;
-        QWidget *native=mobile?mobile->releaseEngineCanvas():nullptr;
-        // If the mobile slot unexpectedly lost its widget, recover the
-        // original Qt object if it still exists. Never create a new
-        // canvas or silently discard unsaved Krita documents here.
+
+        MobileCanvasSurface *surface=m_mobileWindow?m_surface:nullptr;
+        QWidget *native=surface?surface->detachNativeCanvas():nullptr;
         if(!native && m_canvas) {
+            // Only recover the exact original widget; never create a
+            // replacement, discard the document or fake a successful save.
             native=m_canvas;
             native->hide();
             native->setParent(nullptr);
@@ -95,6 +107,7 @@ public:
             native->show();
         }
         restoreNativeTabs();
+
         if(m_backend) {
             m_backend->setProperty("_mobileStudioCanvasTransferred",false);
             m_backend->setWindowState(m_savedWindowState);
@@ -102,9 +115,10 @@ public:
             m_backend->raise();
             m_backend->activateWindow();
         }
-        if(mobile)mobile->hide();
+        if(m_mobileWindow)m_mobileWindow->hide();
 
-        m_mobile=nullptr;
+        m_surface=nullptr;
+        m_mobileWindow=nullptr;
         m_canvas=nullptr;
         m_active=false;
     }
@@ -146,8 +160,9 @@ private:
 
     QPointer<QMainWindow> m_backend;
     QPointer<QMdiArea> m_documents;
-    QPointer<MobileStandaloneWindow> m_mobile;
+    QPointer<QWidget> m_mobileWindow;
     QPointer<QWidget> m_canvas;
+    MobileCanvasSurface *m_surface=nullptr; // Lifetime guarded by m_mobileWindow
     Qt::WindowStates m_savedWindowState=Qt::WindowNoState;
     QVector<TabSnapshot> m_tabs;
     QTimer m_tabTimer;
