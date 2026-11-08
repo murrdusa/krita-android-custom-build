@@ -10,23 +10,42 @@ SOURCE="$ROOT/persistent/krita"
 OUT="$ROOT/persistent/krita-custom-apks"
 JOBS="$(printenv KRITA_BUILD_JOBS || echo 6)"
 say() { printf '\n==> %s\n' "$*"; }
-# Publication is best-effort: the APK remains valid even if GitHub is offline
-# or its CLI login lacks Release permissions.
+# APK release publication is opt-in. The GitHub request is a tracked Markdown
+# file so it DOES NOT invalidate the app fingerprint or force a recompile.
+# Only a new explicit request ID from chat causes an upload, once per ID.
 publish_apk() {
     [[ "${KRITA_PUBLISH_APK:-1}" == 1 ]] || return 0
-    [[ -d "$OUT" ]] || return 0
-    command -v gh >/dev/null 2>&1 || {
-        echo "NOTE: Install/authenticate gh once for automatic APK downloads."
+    local request_file="$REPO/APK-UPLOAD-REQUEST.md"
+    [[ -f "$request_file" ]] || return 0
+    local request_id=""
+    request_id="$(sed -n 's/^UPLOAD_REQUEST_ID=//p' "$request_file" | head -n 1 | tr -d '\r\n')"
+    # Initial value "none" never enables upload. Reject malformed requests.
+    [[ "$request_id" =~ ^request-[A-Za-z0-9_-]{8,64}$ ]] || return 0
+    local receipt="$ROOT/persistent/.krita-last-successful-upload-request"
+    if [[ -f "$receipt" ]] && [[ "$(cat "$receipt")" == "$request_id" ]]; then
+        return 0
+    fi
+    [[ -d "$OUT" ]] || {
+        echo "NOTE: Explicit APK upload pending; no compiled APK found yet."
         return 0
     }
-    say "Publish Android APK to the stable GitHub download link"
+    command -v gh >/dev/null 2>&1 || {
+        echo "NOTE: Explicit APK upload pending; install/authenticate GitHub CLI once."
+        return 0
+    }
+    say "User-requested APK upload ($request_id)"
     local revision
     revision="$(git -C "$REPO" rev-parse HEAD)"
-    python3 "$REPO/krita_apk_publisher.py" \
+    if python3 "$REPO/krita_apk_publisher.py" \
         --output-dir "$OUT" \
         --revision "$revision" \
-        --state-file "$ROOT/persistent/.krita-published-apk.json" ||
-        echo "WARNING: GitHub APK upload failed; local APK remains available."
+        --state-file "$ROOT/persistent/.krita-published-apk.json"; then
+        # Mark only VERIFIED uploads so failures remain retryable.
+        printf '%s\n' "$request_id" > "$receipt.tmp"
+        mv "$receipt.tmp" "$receipt"
+    else
+        echo "WARNING: Requested GitHub APK upload failed; local APK remains available."
+    fi
 }
 die() { echo "ERROR: $*" >&2; exit 1; }
 [[ "$JOBS" =~ ^[1-9][0-9]*$ ]] || die "Invalid KRITA_BUILD_JOBS"

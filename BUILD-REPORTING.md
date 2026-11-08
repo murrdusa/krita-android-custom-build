@@ -114,33 +114,35 @@ directory, and do not alter the running watcher. The watcher's earlier
 --jobs 2 setting reduces CPU load while gaming; increasing it may speed
 compilation at the cost of higher background resource use.
 
-## Automatic APK download links (new)
+## Upload an APK only when requested
 
-The local WSL build script now attempts to publish **every successfully compiled
-or safely reused ARM64 debug APK** as a GitHub Release using the existing
-GitHub CLI login from the build reporter. The upload runs only after a
-successful local build. Upload problems cannot invalidate the local APK.
+The local WSL watcher continues compiling changes and publishing build results
+without uploading the APK. **APK uploads are opt-in**, not automatic on success.
 
-- **Stable APK URL once the first upload succeeds:**
+A chat request like **"Upload the latest Krita APK"** is implemented by
+updating the tracked [APK-UPLOAD-REQUEST.md](APK-UPLOAD-REQUEST.md) file to
+a new unique `request-...` ID. The watcher sees that GitHub commit, checks
+that the compiled APK is current, and publishes it to the stable Release.
+As this request file is Markdown, the incremental build fingerprint ignores it:
+**an upload-only request does not itself force a new Android compilation**.
+
+- Stable APK download (after a requested publish):
   https://github.com/murrdusa/krita-android-custom-build/releases/download/krita-android-latest/krita-android-custom-arm64-debug.apk
-- **Release page:** https://github.com/murrdusa/krita-android-custom-build/releases/tag/krita-android-latest
-- **GitHub commit status:** \`local/android-apk-published\`, separate from
-  \`local/android-wsl-build\`. A successful compile alone is not proof of upload.
-- The published file is a separately installable experimental debug APK,
-  not an official Krita release.
+- Latest Release page:
+  https://github.com/murrdusa/krita-android-custom-build/releases/tag/krita-android-latest
+- Confirm publication with `local/android-apk-published` commit status
+  or verify that the GitHub Release has an attached APK asset.
 
-The WSL watcher must still be **running and online** for local publication;
-new scripts are picked up after its normal repository update/build cycle.
-The existing authenticated \`gh\` CLI normally needs no additional setup.
-If its token cannot create Releases or \`gh\` is absent, the build continues,
-but a one-time \`gh auth login\` or permission update is necessary.
+The request is marked complete on the WSL computer **only after GitHub
+confirms the APK asset**. Subsequent builds do not re-upload for the same
+request ID. Failed uploads can be retried on a subsequent watcher run.
+Normal build status reporting remains unchanged.
 
-To disable public uploads without disabling builds, set
-\`KRITA_PUBLISH_APK=0\` in the WSL build environment. **This repository is
-public, so its release APK is publicly downloadable.** No API tokens or user
-drawings are uploaded. Only the generated APK is published.
+No manual computer interaction is needed for an ordinary upload request
+while the existing WSL watcher and GitHub CLI authentication are available.
+If WSL is shut down, the request waits until the watcher runs again.
+A published APK remains downloadable when the computer is off.
 
-GitHub Actions also retains its independent on-demand \`build\` mode for
-building on GitHub-hosted runners when the local WSL watcher is unavailable;
-that mode uploads a temporary workflow artifact rather than this stable
-local Release.
+To disable uploads altogether, set `KRITA_PUBLISH_APK=0` in WSL.
+**This repository and its release APK are public.** Only the generated APK
+is uploaded, not drawings or credentials.
