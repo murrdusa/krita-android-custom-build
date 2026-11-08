@@ -21,10 +21,12 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QScroller>
 #include <QSettings>
 #include <QSizePolicy>
 #include <QStringList>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QVector>
@@ -255,13 +257,17 @@ private:
     }
     void rebuild()
     {
+        if(!m_scroll || !m_scroll->widget() || !m_row)return;
+        QWidget *content=m_scroll->widget();
+        const int oldScroll=m_scroll->horizontalScrollBar()->value();
+        content->setUpdatesEnabled(false);
         m_buttons.clear();
         while(QLayoutItem *item=m_row->takeAt(0)) {
-            delete item->widget();
+            if(QWidget *old=item->widget())delete old;
             delete item;
         }
         for(const QString &id:m_ids) {
-            auto *button=new QToolButton(m_scroll->widget());
+            auto *button=new QToolButton(content);
             button->setText(label(id));
             button->setToolTip(id);
             button->setMinimumWidth(76);
@@ -272,24 +278,36 @@ private:
                 refresh();
             });
             m_row->addWidget(button);
+            // Qt Android may temporarily hide the owning window while a
+            // frameless modal Add/Edit dialog is open. New child widgets
+            // created then need an explicit show() or layout sizeHint()
+            // can treat the entire toolbar as empty after dialog.accept().
+            button->show();
             m_buttons.append(qMakePair(id,QPointer<QToolButton>(button)));
         }
+        m_row->invalidate();
         m_row->activate();
-        // Android Qt styles add vertical padding and borders to the
-        // touch target. Size the scroll viewport to the *actual* button
-        // height instead of clipping the lower half inside a fixed 52px
-        // area. Recompute after Add/Edit because a custom QAction label
-        // can have different metrics.
-        const QSize rowHint=m_row->sizeHint();
-        const int scrollHeight=qMax(64,rowHint.height()+4);
-        if(m_scroll->height()!=scrollHeight)
-            m_scroll->setFixedHeight(scrollHeight);
-        // Keep the horizontal extent independent of the viewport: it
-        // must be scrollable rather than shrink all configured actions.
-        m_scroll->widget()->resize(
-            rowHint.width(),qMax(rowHint.height(),scrollHeight-2));
+        // Respect actual styled Android touch-button sizes. Do not rely on
+        // a stale layout size from before the Add/Edit popup was dismissed.
+        const QSize hint=m_row->sizeHint();
+        const int scrollHeight=qMax(64,hint.height()+6);
+        m_scroll->setFixedHeight(scrollHeight);
+        // Horizontal overflow must occupy the complete natural row width,
+        // not a width compressed to the current viewport.
+        content->setFixedSize(qMax(1,hint.width()),
+                              qMax(1,scrollHeight-2));
+        content->show();
+        content->setUpdatesEnabled(true);
+        m_row->activate();
         m_scroll->updateGeometry();
         updateGeometry();
+        content->update();
+        m_scroll->viewport()->update();
+        // A size change may defer the horizontal range recalculation.
+        QTimer::singleShot(0,this,[this,oldScroll]() {
+            if(!m_scroll)return;
+            m_scroll->horizontalScrollBar()->setValue(oldScroll);
+        });
         refresh();
     }
 
