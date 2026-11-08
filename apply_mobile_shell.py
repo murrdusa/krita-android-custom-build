@@ -25,7 +25,7 @@ def main(root:Path):
     mainfile=root/"libs/ui/KisMainWindow.cpp"
     s=mainfile.read_text(encoding="utf-8")
     s=one(s,'#include "tablet_compact_skin.h"',
-          '#include "tablet_compact_skin.h"\n#include "mobile_shell.h"',
+          '#include "tablet_compact_skin.h"\n#include "mobile_shell.h"\n#include <QSharedPointer>',
           "main window include")
 
     native='''    auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);'''
