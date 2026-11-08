@@ -21,18 +21,21 @@ def main(root:Path):
     root=root.resolve()
     own=Path(__file__).resolve().parent
     shell=own/"mobile_core/standalone_host.h"
+    session=own/"mobile_core/canvas_session.h"
+    switcher=own/"mobile_core/document_switcher.h"
     bridge=own/"mobile_core/engine_bridge.h"
     brush=own/"mobile_core/brush_workspace.h"
     layers=own/"mobile_core/layer_workspace.h"
     commands=own/"mobile_core/command_browser.h"
     documents=own/"mobile_core/document_workflow.h"
-    if not all(p.is_file() for p in (shell,bridge,brush,layers,commands,documents)):
+    if not all(p.is_file() for p in
+               (shell,session,switcher,bridge,brush,layers,commands,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
     mainfile=root/"libs/ui/KisMainWindow.cpp"
     s=mainfile.read_text(encoding="utf-8")
     s=one(s,'#include "tablet_compact_skin.h"',
-          '#include "tablet_compact_skin.h"\n#include "standalone_host.h"\n#include <QSharedPointer>',
+          '#include "tablet_compact_skin.h"\n#include "canvas_session.h"\n#include <QSharedPointer>',
           "main window include")
 
     native='''    auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);'''
@@ -87,6 +90,10 @@ def main(root:Path):
     oldheader.write_text(header,encoding="utf-8")
     (root/"libs/ui/standalone_host.h").write_text(
         shell.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/canvas_session.h").write_text(
+        session.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/document_switcher.h").write_text(
+        switcher.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/engine_bridge.h").write_text(
         bridge.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/brush_workspace.h").write_text(
