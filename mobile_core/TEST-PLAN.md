@@ -26,8 +26,16 @@ rendered inside Mobile Studio. The prototype is opt-in and reversible.
   No second brush engine is involved.
 - **Documents:** Use Open and New, edit, Save, close and reopen. Never
   intentionally overwrite a unique drawing for the test.
-- **Layer model:** Choose Layers and select a different paint layer.
-  It must change Krita's actual active layer.
+- **Layer workspace (new):** Tap Layers to open a persistent tree beside
+  the canvas. Nest and collapse groups; selecting an inactive layer should
+  select it, while tapping the active layer again opens its options.
+  Check that thumbnails update after painting (without UI freezes).
+  Eye and Lock should work on individual rows with native undo. Alpha Lock
+  should operate only on paint layers; opacity should undo correctly.
+  Tap **Multi**, include two layers and verify native Group / Clipping Group,
+  Duplicate, Up / Down and Delete operate on the intended selection.
+  Delete requires confirmation. Verify a Back to desktop then re-entry
+  leaves nodes intact, including multi-layer selections.
 - **Undo:** Draw, undo, redo. Native Krita history must be preserved.
 - **Mode restoration:** Press Mobile Studio Back and re-enter. The original
   Krita interface, canvas data and undo stack must survive both transitions.
