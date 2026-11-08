@@ -21,6 +21,15 @@ publish_apk() {
     request_id="$(sed -n 's/^UPLOAD_REQUEST_ID=//p' "$request_file" | head -n 1 | tr -d '\r\n')"
     # Initial value "none" never enables upload. Reject malformed requests.
     [[ "$request_id" =~ ^request-[A-Za-z0-9_-]{8,64}$ ]] || return 0
+    # Preview builds publish to a separate GitHub tag. The previously
+    # working latest release must not be overwritten by an untested shell.
+    local release_tag=""
+    release_tag="$(sed -n 's/^UPLOAD_RELEASE_TAG=//p' "$request_file" | head -n 1 | tr -d '\r\n')"
+    [[ -n "$release_tag" ]] || release_tag="krita-android-latest"
+    [[ "$release_tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$ ]] || {
+        echo "WARNING: Invalid release tag in APK request."
+        return 0
+    }
     local receipt="$ROOT/persistent/.krita-last-successful-upload-request"
     if [[ -f "$receipt" ]] && [[ "$(cat "$receipt")" == "$request_id" ]]; then
         return 0
@@ -39,6 +48,7 @@ publish_apk() {
     if python3 "$REPO/krita_apk_publisher.py" \
         --output-dir "$OUT" \
         --revision "$revision" \
+        --release-tag "$release_tag" \
         --state-file "$ROOT/persistent/.krita-published-apk.json"; then
         # Mark only VERIFIED uploads so failures remain retryable.
         printf '%s\n' "$request_id" > "$receipt.tmp"
