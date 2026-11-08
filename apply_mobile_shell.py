@@ -38,6 +38,25 @@ def main(root:Path):
                (shell,session,switcher,bridge,document_service,command_service,brush,color,layers,commands,quick,reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
+    # Dependency boundary: only the backend services and temporary canvas
+    # transfer controller may directly include Krita's desktop window.
+    # Keep the mobile widgets/engine facade unaware of this legacy class,
+    # so a future lightweight application host can replace it in one place.
+    desktop_dependent=(session,document_service,command_service)
+    mobile_frontend=(shell,bridge,switcher,brush,color,layers,
+                     commands,quick,reorder,tools,documents)
+    for module in mobile_frontend:
+        contents=module.read_text(encoding="utf-8")
+        if ('#include "KisMainWindow.h"' in contents or
+            '#include <KisMainWindow.h>' in contents or
+            'legacyHost()' in contents):
+            raise RuntimeError(
+                f"Mobile Studio desktop UI dependency leaked into {module.name}")
+    for module in desktop_dependent:
+        if not module.is_file():
+            raise RuntimeError(
+                f"Missing isolated Krita backend module: {module.name}")
+
     mainfile=root/"libs/ui/KisMainWindow.cpp"
     s=mainfile.read_text(encoding="utf-8")
     s=one(s,'#include "tablet_compact_skin.h"',
