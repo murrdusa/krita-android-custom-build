@@ -1,5 +1,28 @@
 # Krita Core / Mobile UI redesign
 
+## Milestone v1.8 — abstract canvas surface interface
+
+- `canvas_surface.h` introduces `MobileCanvasSurface`, a Qt-only
+  contract that attaches, verifies and detaches **the same native
+  QWidget canvas** without constructing any Krita canvas, document or
+  brush objects.
+- `MobileStandaloneWindow` implements the interface while keeping its
+  existing canvas-slot, refresh and UI responsibilities unchanged.
+- `MobileCanvasTransfer` now accepts the abstract surface rather than
+  `MobileStandaloneWindow`; it no longer includes the UI host or
+  engine facade. Its widget handoff has explicit guards for an absent
+  desktop canvas, an occupied destination and incomplete attachment.
+  Recovery reattaches the original QWidget to Krita's main Qt window.
+- `canvas_session.h` is the only controller that knows the concrete
+  mobile UI host and supplies it to the Qt-only transfer layer. The
+  source patcher enforces both this separation and the existing ban
+  on Krita desktop-window includes in the mobile UI.
+- Krita still boots the underlying `KisMainWindow` and owns file I/O,
+  native painting, color, image processing and document lifecycle.
+  These changes reduce source coupling but **do not yet eliminate**
+  the desktop application bootstrap.
+- APK publishing remains explicitly paused.
+
 ## Milestone v1.7 — generic Qt canvas host boundary
 
 - `canvas_transfer.h` owns physical transfer of the **same** native
