@@ -1,3 +1,34 @@
+## v1.9 Android mode-switch and Quick Actions regression checks — source changes
+
+APK publishing remains paused. Compile the source in WSL before installing,
+and test against disposable KRA files rather than irreplaceable drawings.
+
+- On the Mobile Studio welcome screen, with a new blank canvas and with an
+  existing drawing, inspect Quick Actions in portrait, landscape and folded
+  layouts. Every button label and its bottom border must be fully visible;
+  there should be no unused gray bar below the actions. Swipe the populated
+  list horizontally; + Add and Edit must stay visible.
+- Repeatedly switch Krita desktop → Compact UI → Mobile Studio → desktop/
+  Compact UI, with and without a document. The same native canvas should
+  remain visible, not turn into an empty desktop background.
+- From Mobile Studio, create a new drawing and open a drawing. The legacy
+  desktop menu/status bar must NOT rise on top of the mobile toolbar. This
+  catches deferred Krita Android window-refresh callbacks.
+- Test switching back to Compact UI at least ten times with a modified
+  multilayer document. Compare native undo history, stylus pressure, layer
+  thumbnails, tab titles, saved file bytes and unsaved-change prompts.
+- Confirm that an ordinary desktop-only session still shows its native
+  menu, main toolbar, status bar and canvas, and that Mobile Studio cannot
+  suppress the desktop after mode exit.
+- If a canvas still disappears, record the exact sequence, app orientation
+  and whether tapping the Krita menu restores it; do not clear app data
+  or save over the last working drawing.
+
+The fixes avoid Android top-level overlap and delay Compact UI restoration
+until the original QWidget has been reinstalled. They do not replace or
+recreate a KisDocument or the native paint engine, and are not on-device
+verified until an APK build and test complete.
+
 # Mobile Studio — first independent-window smoke test
 
 This is an **architecture prototype**. It still initializes Krita's back-end
