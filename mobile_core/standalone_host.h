@@ -50,6 +50,7 @@
 
 #include "engine_bridge.h"
 #include "document_workflow.h"
+#include "document_switcher.h"
 #include "command_browser.h"
 #include "brush_workspace.h"
 #include "layer_workspace.h"
@@ -57,8 +58,8 @@
 class MobileStandaloneWindow final : public QMainWindow
 {
 public:
-    MobileStandaloneWindow(const MobileEngineBridge &bridge, QMdiArea *mdi)
-        : QMainWindow(nullptr),m_engine(bridge),m_mdi(mdi)
+    explicit MobileStandaloneWindow(const MobileEngineBridge &bridge)
+        : QMainWindow(nullptr),m_engine(bridge)
     {
         setObjectName(QStringLiteral("KritaMobileIndependentWindow"));
         setWindowTitle(i18n("Krita Mobile Studio"));
@@ -96,9 +97,16 @@ public:
         title->setStyleSheet(QStringLiteral("font-weight:600;font-size:14px;"));
         top->addWidget(title);
 
-        m_document=new QLabel(i18n("No document"),header);
-        m_document->setAlignment(Qt::AlignRight|Qt::AlignVCenter);
-        m_document->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Preferred);
+        m_document=new QToolButton(header);
+        m_document->setText(i18n("Canvases"));
+        m_document->setToolTip(i18n("Tap to switch open canvases"));
+        m_document->setMinimumHeight(42);
+        m_document->setSizePolicy(QSizePolicy::Expanding,
+                                  QSizePolicy::Preferred);
+        connect(m_document,&QToolButton::clicked,this,[this]() {
+            MobileDocumentSwitcher::open(m_engine,this);
+            refresh();
+        });
         top->addWidget(m_document,1);
         layout->addWidget(header,0);
 
@@ -185,9 +193,8 @@ public:
         m_more=custom(i18n("More"),[this](){openMore();});
         layout->addWidget(footer,0);
 
-        if(m_mdi)
-            connect(m_mdi,&QMdiArea::subWindowActivated,this,
-                    [this](QMdiSubWindow*){refresh();});
+        // The mobile shell no longer owns or observes a desktop MDI
+        // widget. The backend adapter owns native document navigation.
         m_updates=new QTimer(this);
         m_updates->setInterval(450);
         connect(m_updates,&QTimer::timeout,this,[this](){
@@ -311,14 +318,13 @@ private:
     }
 
     MobileEngineBridge m_engine;
-    QPointer<QMdiArea> m_mdi;
     QPointer<QWidget> m_nativeCanvas;
     QPointer<QWidget> m_canvasSlot;
     QVBoxLayout *m_canvasLayout=nullptr;
     KritaMobileBrushWorkspace *m_brushWorkspace=nullptr;
     KritaMobileLayersPanel *m_layers=nullptr;
     QToolButton *m_layersButton=nullptr;
-    QLabel *m_document=nullptr;
+    QToolButton *m_document=nullptr;
     QToolButton *m_more=nullptr,*m_saveButton=nullptr;
     QTimer *m_updates=nullptr;
     std::function<void()> m_exit;
