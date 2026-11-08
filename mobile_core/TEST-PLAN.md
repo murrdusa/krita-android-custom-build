@@ -1,3 +1,5 @@
+# Mobile Studio — first independent-window smoke test
+
 ## v1.9 Android mode-switch and Quick Actions regression checks — source changes
 
 APK publishing remains paused. Compile the source in WSL before installing,
@@ -28,8 +30,6 @@ The fixes avoid Android top-level overlap and delay Compact UI restoration
 until the original QWidget has been reinstalled. They do not replace or
 recreate a KisDocument or the native paint engine, and are not on-device
 verified until an APK build and test complete.
-
-# Mobile Studio — first independent-window smoke test
 
 This is an **architecture prototype**. It still initializes Krita's back-end
 KisMainWindow for document lifecycle, resource management and native actions,
