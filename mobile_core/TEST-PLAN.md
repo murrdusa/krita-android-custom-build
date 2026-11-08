@@ -1,4 +1,36 @@
-# Mobile Studio — first independent-window smoke test
+# Mobile Studio — Android painting and mode-switch smoke test
+
+## v1.12 Back button: single-window Android canvas
+
+Run these tests against a disposable, unsaved or backed-up KRA drawing.
+The source fix is not an on-device pass until every interaction is verified.
+
+- Enter Mobile Studio from normal Krita and from Compact UI. The Android
+  activity must retain one top-level visible window, without Krita's
+  File/Edit/View menu or status bar overlaying the mobile header/footer.
+- Draw several pressure-sensitive strokes on at least two layers. Tap Back
+  at top left: the original canvas must remain visible in Krita, not an
+  empty dark-gray screen. Mobile Studio's blue + Add/Edit shortcut bar
+  must be completely absent after the return.
+- Repeat that cycle ten times. Zoom, pan, switch brushes, toggle layers,
+  Undo/Redo, save as KRA, close and reopen. No view or document should be
+  recreated, dropped, or left without its prior paint data.
+- Return from Mobile Studio launched from Compact UI. The Compact UI
+  toggle should restore its prior state; neither normal desktop chrome
+  nor mobile shortcut controls should be ghosted in the bottom strip.
+- Launch Mobile Studio, close its last document, enter the empty home,
+  Back, then re-enter Mobile Studio and create another canvas. Ensure
+  the Back handoff works identically with zero and multiple documents.
+- Rotate the device in both directions before and after Back. Confirm
+  the canvas fills Krita's central viewport with no orphaned black band
+  or separately composed Quick Actions window.
+- Rapidly alternate Back and re-enter while drawing is idle; avoid
+  switching during active paint strokes. Modified documents must retain
+  their unsaved-change state and saving/closing prompts.
+- If desktop window ownership changes unexpectedly, Mobile Studio should
+  refuse the handoff rather than deleting a canvas. Save before resetting
+  or reinstalling.
+
 
 ## v1.11 functional regression: empty home, canvas close, Quick Actions
 
