@@ -10,6 +10,7 @@
 #ifdef Q_OS_ANDROID
 
 #include <QMainWindow>
+#include <QDebug>
 #include <QMdiArea>
 #include <QPointer>
 #include <QTabBar>
@@ -88,9 +89,20 @@ public:
         return true;
     }
 
-    void leave()
+    bool leave()
     {
-        if(!m_active)return;
+        if(!m_active)return true;
+        // A second central widget can be installed by deferred native
+        // startup or an unexpected Krita window rebuild. QMainWindow's
+        // setCentralWidget() would DELETE it. Refuse to discard another
+        // canvas, even when the UI is asking to return to desktop.
+        if(!m_backend || !m_canvas || !m_mobileWindow || !m_surface ||
+           (m_backend->centralWidget() &&
+            m_backend->centralWidget()!=m_canvas)) {
+            qWarning() << "Mobile Studio: rejected desktop handoff; native canvas"
+                       << "or window missing, or backend central widget occupied";
+            return false;
+        }
         m_tabTimer.stop();
 
         MobileCanvasSurface *surface=m_mobileWindow?m_surface:nullptr;
@@ -105,7 +117,7 @@ public:
             native->hide();
             native->setParent(nullptr);
         }
-        if(m_backend && native)
+        if(m_backend && native && m_backend->centralWidget()!=native)
             m_backend->setCentralWidget(native);
         restoreNativeTabs();
 
@@ -151,6 +163,7 @@ public:
         m_mobileWindow=nullptr;
         m_canvas=nullptr;
         m_active=false;
+        return true;
     }
 
 private:
