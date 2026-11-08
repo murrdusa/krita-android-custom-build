@@ -343,7 +343,7 @@ private:
     KisDoubleSliderSpinBox *m_size=nullptr,*m_opacity=nullptr;
     KisResourceModel *m_model=nullptr;
     QTimer *m_refresh=nullptr;
-    bool m_syncing=false,m_internalChange=false,m_hasSelectedMode=false;
+    bool m_syncing=false,m_internalChange=false,m_hasSelectedMode=true;
     int m_slot=0;
 };
 #endif // Q_OS_ANDROID
