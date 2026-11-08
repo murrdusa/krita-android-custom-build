@@ -15,6 +15,23 @@ rendered inside Mobile Studio. The prototype is opt-in and reversible.
 - Tap **Back** on the new top bar to return to the existing Krita UI.
   Do not interpret Android's hardware/system Back as an autosave operation.
 
+## v0.5 tests — independent commands and bridge
+
+- In Mobile Studio, open **More → Search all Krita commands**. Search for
+  "save", "undo", a tool name and a command identifier. Results should update
+  without opening the desktop menu bar.
+- Invoke Undo/Redo or Save from the search results. Native Krita history and
+  file dialogs must work correctly, including when the Layers panel is open.
+- Open **More → Legacy menus (compatibility)** and confirm older commands
+  remain accessible where the browser does not yet expose them.
+- Switch Paint, Erase and Blend presets and alter size/opacity. The brush
+  selection popup should appear over the mobile window (not behind the hidden
+  desktop main window).
+- Draw, save, close and reopen a disposable document. Group layers and undo.
+  The previous v0.4 behavior must be unchanged.
+- Leave and reenter Mobile Studio, rotate or unfold, and confirm the live
+  canvas, layers and tool state survive. Input pressure is still Krita-owned.
+
 ## Required smoke checks
 
 - **Canvas transfer:** Create/open a document, enter Mobile Studio,
