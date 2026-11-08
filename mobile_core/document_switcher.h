@@ -3,7 +3,7 @@
  *
  * Non-destructive mobile document navigator. Uses live Krita MDI document
  * views through MobileEngineBridge; no parallel document registry or
- * paint-device duplication. Native closing remains with Krita for now.
+ * paint-device duplication. Closing invokes Krita's native document view.
  */
 #pragma once
 #ifdef Q_OS_ANDROID
@@ -73,20 +73,25 @@ public:
             item->setFlags(Qt::NoItemFlags);
         }
         auto *note=new QLabel(i18n(
-            "An asterisk indicates unsaved changes. Switching does not "
-            "close or save a document."),&dialog);
+            "Tap a canvas to switch. * indicates unsaved changes. "
+            "Close Current uses Krita's Save / Discard / Cancel prompt."),&dialog);
         note->setWordWrap(true);
         layout->addWidget(note);
-        auto *buttons=new QHBoxLayout;
+        auto *creation=new QHBoxLayout;
         auto *create=new QPushButton(i18n("New"),&dialog);
         auto *openFile=new QPushButton(i18n("Open"),&dialog);
-        auto *close=new QPushButton(i18n("Close"),&dialog);
-        buttons->addWidget(create,1);
-        buttons->addWidget(openFile,1);
-        buttons->addWidget(close,1);
-        layout->addLayout(buttons);
+        creation->addWidget(create,1);
+        creation->addWidget(openFile,1);
+        layout->addLayout(creation);
+        auto *actions=new QHBoxLayout;
+        auto *closeCurrent=new QPushButton(i18n("Close current canvas"),&dialog);
+        auto *dismiss=new QPushButton(i18n("Done"),&dialog);
+        closeCurrent->setEnabled(engine.openDocuments().size()>0);
+        actions->addWidget(closeCurrent,2);
+        actions->addWidget(dismiss,1);
+        layout->addLayout(actions);
         int desiredIndex=-1;
-        enum Choice {None,Create,Open};
+        enum Choice {None,Create,Open,CloseCurrent};
         Choice choice=None;
         QObject::connect(items,&QListWidget::itemClicked,&dialog,
                          [&](QListWidgetItem *item) {
@@ -100,7 +105,11 @@ public:
         QObject::connect(openFile,&QPushButton::clicked,&dialog,[&]() {
             choice=Open;dialog.accept();
         });
-        QObject::connect(close,&QPushButton::clicked,
+        QObject::connect(closeCurrent,&QPushButton::clicked,&dialog,[&]() {
+            choice=CloseCurrent;
+            dialog.accept();
+        });
+        QObject::connect(dismiss,&QPushButton::clicked,
                          &dialog,&QDialog::reject);
         const QSize bounds=parent->window()->size();
         dialog.resize(qMax(310,qMin(500,bounds.width()-24)),
@@ -109,6 +118,7 @@ public:
         // End the chooser before opening a native Krita document dialog.
         if(choice==Create)MobileDocumentWorkflow::create(engine,parent);
         else if(choice==Open)MobileDocumentWorkflow::open(engine,parent);
+        else if(choice==CloseCurrent)engine.closeActiveDocument();
         else if(desiredIndex>=0)engine.activateDocument(desiredIndex);
     }
 };
