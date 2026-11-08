@@ -23,6 +23,7 @@ def main(root:Path):
     shell=own/"mobile_core/standalone_host.h"
     session=own/"mobile_core/canvas_session.h"
     transfer=own/"mobile_core/canvas_transfer.h"
+    surface=own/"mobile_core/canvas_surface.h"
     switcher=own/"mobile_core/document_switcher.h"
     bridge=own/"mobile_core/engine_bridge.h"
     document_service=own/"mobile_core/document_service.h"
@@ -36,7 +37,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,transfer,switcher,bridge,document_service,command_service,brush,color,layers,commands,quick,reorder,tools,documents)):
+               (shell,session,transfer,surface,switcher,bridge,document_service,command_service,brush,color,layers,commands,quick,reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
     # Dependency boundary: only the backend services and temporary canvas
@@ -44,7 +45,7 @@ def main(root:Path):
     # Keep the mobile widgets/engine facade unaware of this legacy class,
     # so a future lightweight application host can replace it in one place.
     desktop_dependent=(document_service,command_service)
-    qt_host_components=(session,transfer)
+    qt_host_components=(session,transfer,surface)
     mobile_frontend=(shell,bridge,switcher,brush,color,layers,
                      commands,quick,reorder,tools,documents,*qt_host_components)
     for module in mobile_frontend:
@@ -54,6 +55,17 @@ def main(root:Path):
             'legacyHost()' in contents):
             raise RuntimeError(
                 f"Mobile Studio desktop UI dependency leaked into {module.name}")
+    # Canvas transfer must stay a pure Qt implementation. Its only
+    # dependency on the destination is the generic MobileCanvasSurface
+    # contract, not MobileStandaloneWindow or any Krita-specific class.
+    transfer_text=transfer.read_text(encoding="utf-8")
+    surface_text=surface.read_text(encoding="utf-8")
+    for forbidden in ('"standalone_host.h"','"engine_bridge.h"',
+                      'MobileStandaloneWindow','KisMainWindow',
+                      'KisDocument'):
+        if forbidden in transfer_text or forbidden in surface_text:
+            raise RuntimeError(
+                f"Qt canvas transfer contract leaked concrete dependency: {forbidden}")
     for module in desktop_dependent:
         if not module.is_file():
             raise RuntimeError(
@@ -167,6 +179,8 @@ def main(root:Path):
         session.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/canvas_transfer.h").write_text(
         transfer.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/canvas_surface.h").write_text(
+        surface.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_switcher.h").write_text(
         switcher.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/engine_bridge.h").write_text(
