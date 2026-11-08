@@ -223,7 +223,6 @@ private:
         QMenu menu(this);
         auto *transform=menu.addAction(i18n("Transform selected pixels/layers"));
         connect(transform,&QAction::triggered,this,[this](){
-            m_engine.freehandBrush(); // Switch tool intentionally below.
             KoToolManager::instance()->switchToolRequested(
                 QStringLiteral("KisToolTransform"));
         });
