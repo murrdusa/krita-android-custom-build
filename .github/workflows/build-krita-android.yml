@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile apply_customizations.py apply_tablet_update.py apply_tablet_refinements.py apply_tablet_polish.py apply_tablet_cleanup.py apply_reference_touch_fix.py apply_compact_skin.py apply_wheel_rotation.py apply_gallery_tabs.py apply_home_mobile.py apply_mobile_recovery.py
+          python3 -m py_compile apply_customizations.py apply_tablet_update.py apply_tablet_refinements.py apply_tablet_polish.py apply_tablet_cleanup.py apply_reference_touch_fix.py apply_compact_skin.py apply_wheel_rotation.py apply_diamond_rotation.py apply_gallery_tabs.py apply_home_mobile.py apply_mobile_recovery.py
           test -f tablet_compact_skin.h
           bash -n build-in-krita-container.sh local-build.sh
 
@@ -58,6 +58,7 @@ jobs:
           python3 apply_reference_touch_fix.py "$ROOT/persistent/krita"
           python3 apply_compact_skin.py "$ROOT/persistent/krita"
           python3 apply_wheel_rotation.py "$ROOT/persistent/krita"
+          python3 apply_diamond_rotation.py "$ROOT/persistent/krita"
           python3 apply_gallery_tabs.py "$ROOT/persistent/krita"
           python3 apply_home_mobile.py "$ROOT/persistent/krita"
           python3 apply_mobile_recovery.py "$ROOT/persistent/krita"
