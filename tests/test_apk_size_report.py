@@ -39,6 +39,13 @@ class ApkSizeReportTests(unittest.TestCase):
             self.assertEqual(
                 data["categories"]["Android bytecode"]["count"], 1)
             self.assertEqual(len(data["largest_entries"]), 3)
+            self.assertEqual(len(data["largest_asset_folders"]), 1)
+            self.assertEqual(
+                data["largest_asset_folders"][0]["path"],
+                "assets/krita/brushes"
+            )
+            self.assertEqual(
+                data["largest_asset_folders"][0]["count"], 1)
 
     def test_history_tracks_changed_apk_only(self):
         with tempfile.TemporaryDirectory() as tmp:
