@@ -18,6 +18,8 @@
 #include <QApplication>
 #include <QSettings>
 #include <QTimer>
+#include <QTabBar>
+#include <QVector>
 #include "KisMainWindow.h"
 #include "KisViewManager.h"
 #include "engine_bridge.h"
@@ -35,6 +37,14 @@ public:
     {
         connect(entry,&QAction::toggled,this,[this](bool value) {
             if(value)enter();else leave();
+        });
+        // Our document switcher replaces Krita's desktop MDI tab strip.
+        // This timer also handles a QTabBar created after the first new
+        // document. No view/model objects are recreated or reparented.
+        m_tabChromeTimer=new QTimer(this);
+        m_tabChromeTimer->setInterval(750);
+        connect(m_tabChromeTimer,&QTimer::timeout,this,[this]() {
+            if(m_inMobile)hideDesktopTabChrome();
         });
         // Opt-in mobile-first startup: Krita still initializes services
         // before this session takes ownership of its canvas widget.
@@ -80,6 +90,43 @@ public:
     }
 
 private:
+    struct TabChrome {
+        QPointer<QTabBar> widget;
+        int minimumHeight=0;
+        int maximumHeight=0;
+        bool wasVisible=false;
+    };
+    void hideDesktopTabChrome()
+    {
+        if(!m_mdi)return;
+        // QMdiArea owns its QTabBar; changes in the current document may
+        // create a new one. Track each original geometry and visibility
+        // so exiting Mobile Studio restores the original desktop UI.
+        const auto bars=m_mdi->findChildren<QTabBar*>();
+        for(QTabBar *bar:bars) {
+            if(!bar)continue;
+            bool known=false;
+            for(const TabChrome &saved:m_tabChrome)
+                if(saved.widget==bar){known=true;break;}
+            if(!known)
+                m_tabChrome.append({bar,bar->minimumHeight(),
+                                    bar->maximumHeight(),bar->isVisible()});
+            if(bar->minimumHeight()!=0)bar->setMinimumHeight(0);
+            if(bar->maximumHeight()!=0)bar->setMaximumHeight(0);
+            if(bar->isVisible())bar->hide();
+        }
+    }
+    void restoreDesktopTabChrome()
+    {
+        if(m_tabChromeTimer)m_tabChromeTimer->stop();
+        for(const TabChrome &saved:m_tabChrome) {
+            if(!saved.widget)continue;
+            saved.widget->setMaximumHeight(saved.maximumHeight);
+            saved.widget->setMinimumHeight(saved.minimumHeight);
+            saved.widget->setVisible(saved.wasVisible);
+        }
+        m_tabChrome.clear();
+    }
     void enter()
     {
         if(m_inMobile || !m_main)return;
@@ -105,6 +152,8 @@ private:
         m_originalCentral=native;
         m_host->attachEngineCanvas(native);
         m_inMobile=true;
+        hideDesktopTabChrome();
+        if(m_tabChromeTimer)m_tabChromeTimer->start();
         m_host->showFullScreen();
         m_host->raise();
         m_host->activateWindow();
@@ -115,6 +164,7 @@ private:
     {
         if(!m_inMobile || !m_main || !m_host)return;
         QWidget *native=m_host->releaseEngineCanvas();
+        restoreDesktopTabChrome();
         if(native) {
             m_main->setCentralWidget(native);
             native->show();
@@ -140,6 +190,8 @@ private:
     QPointer<QWidget> m_originalCentral;
     Qt::WindowStates m_originalState;
     bool m_inMobile=false;
+    QTimer *m_tabChromeTimer=nullptr;
+    QVector<TabChrome> m_tabChrome;
 };
 
 #endif // Q_OS_ANDROID
