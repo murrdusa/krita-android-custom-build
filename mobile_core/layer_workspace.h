@@ -24,6 +24,8 @@
 #include <QVector>
 #include <QSignalBlocker>
 #include <QSizePolicy>
+#include <QAction>
+#include <QTimer>
 #include <functional>
 
 #include "KisMainWindow.h"
@@ -89,6 +91,56 @@ public:
         layout->addWidget(m_tree,1);
         m_summary=new QLabel(i18n("Select a layer"),this);
         layout->addWidget(m_summary);
+
+        // The layer dialog is modal, so the canvas window's Undo/Redo
+        // buttons are not reachable while the user is editing layers.
+        // Forward these controls to Krita's existing document history,
+        // never a separate layer-only undo stack.
+        auto *history=new QHBoxLayout;
+        auto *undo=new QPushButton(i18n("Undo"),this);
+        auto *redo=new QPushButton(i18n("Redo"),this);
+        history->addWidget(undo,1);
+        history->addWidget(redo,1);
+        layout->addLayout(history);
+        const auto wireHistory=[this](QPushButton *button,const char *id,
+                                      const QString &fallback) {
+            QAction *action=m_main && m_main->actionCollection() ?
+                m_main->actionCollection()->action(QString::fromLatin1(id)) :
+                nullptr;
+            if(!action) {
+                button->setEnabled(false);
+                return;
+            }
+            QPointer<QAction> guarded(action);
+            auto update=[button,guarded,fallback]() {
+                if(!guarded) {
+                    button->setText(fallback);
+                    button->setEnabled(false);
+                    return;
+                }
+                button->setEnabled(guarded->isEnabled());
+                const QString name=guarded->text().remove(QLatin1Char('&'));
+                button->setText(name.isEmpty()?fallback:name);
+                button->setToolTip(name);
+            };
+            connect(action,&QAction::changed,this,update);
+            connect(button,&QPushButton::clicked,this,[this,guarded]() {
+                if(!guarded || !guarded->isEnabled())return;
+                guarded->trigger();
+                // Node tree changes can be delivered asynchronously by Krita.
+                // Refresh immediately and after the undo stroke completes.
+                QTimer::singleShot(0,this,[this](){reload();});
+                QTimer::singleShot(180,this,[this](){reload();});
+            });
+            update();
+        };
+        wireHistory(undo,"edit_undo",i18n("Undo"));
+        wireHistory(redo,"edit_redo",i18n("Redo"));
+        auto *hint=new QLabel(i18n(
+            "Layer selection is not recorded in Undo; edits are."),this);
+        hint->setWordWrap(true);
+        hint->setStyleSheet(QStringLiteral("color:#afc4d6;font-size:11px;"));
+        layout->addWidget(hint);
 
         auto *creation=new QHBoxLayout;
         addButton(creation,i18n("+ Paint"),[this]() {
