@@ -83,7 +83,7 @@ public:
     bool createCanvas(const QString &name,int width,int height,
                       int resolutionDpi,bool whiteBackground) const
     {
-        if(!m_main || width<1 || height<1 || resolutionDpi<1 ||
+        if(!m_mainWindow || width<1 || height<1 || resolutionDpi<1 ||
            qint64(width)*height>40000000LL)return false;
         const KoColorSpace *space=KoColorSpaceRegistry::instance()->rgb8();
         if(!space)return false;
@@ -101,12 +101,12 @@ public:
             return false;
         }
         KisPart::instance()->addDocument(document);
-        m_main->addViewAndNotifyLoadingCompleted(document);
+        m_mainWindow->addViewAndNotifyLoadingCompleted(document);
         return true;
     }
     int openFiles(QWidget *parent) const
     {
-        if(!m_main || !parent)return 0;
+        if(!m_mainWindow || !parent)return 0;
         KoFileDialog dialog(parent,KoFileDialog::ImportFiles,
                             QStringLiteral("MobileOpenDocument"));
         dialog.setDefaultDir(QStandardPaths::writableLocation(
@@ -120,7 +120,7 @@ public:
         int successful=0;
         for(const QString &path:paths) {
             if(path.isEmpty())continue;
-            if(m_main->openDocument(path,KisMainWindow::None))
+            if(m_mainWindow->openDocument(path,KisMainWindow::None))
                 ++successful;
             else
                 QMessageBox::warning(parent,QObject::tr("Open failed"),
@@ -131,10 +131,10 @@ public:
     }
     bool saveCurrentDocument(bool saveAs=false) const
     {
-        if(!m_main || !m_manager || !m_manager->document())return false;
+        if(!m_mainWindow || !m_manager || !m_manager->document())return false;
         // Native Krita save path retains its format handling,
         // render-completion checks, backups and Android file provider.
-        return m_main->saveDocument(m_manager->document(),
+        return m_mainWindow->saveDocument(m_manager->document(),
                                     saveAs,false,false);
     }
     QString activeDocumentTitle() const
