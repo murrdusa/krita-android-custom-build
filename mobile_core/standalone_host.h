@@ -120,7 +120,10 @@ public:
         // Unlike a modal dialog, layer operations do not block painting,
         // save, undo or other canvas navigation.
         auto *paintingArea=new QWidget(root);
+        m_paintingArea=paintingArea;
         auto *paintingLayout=new QHBoxLayout(paintingArea);
+        m_paintingLayout=paintingLayout;
+        paintingArea->installEventFilter(this);
         paintingLayout->setContentsMargins(0,0,0,0);
         paintingLayout->setSpacing(0);
         m_canvasSlot=new QWidget(paintingArea);
@@ -177,7 +180,7 @@ public:
         m_layers=new KritaMobileLayersPanel(m_engine,paintingArea);
         m_layers->onRequestClose=[this]() {
             if(m_layers)m_layers->hide();
-            // Quick Actions do not mirror layer visibility.
+            updateLayerPresentation();
         };
         paintingLayout->addWidget(m_layers,0);
         m_layers->hide();
@@ -187,6 +190,7 @@ public:
         m_colorWorkspace=new MobileColorWorkspace(m_engine,m_canvasSlot);
         m_colorWorkspace->raise();
         layout->addWidget(paintingArea,1);
+        updateLayerPresentation();
 
         m_brushWorkspace=new KritaMobileBrushWorkspace(m_engine,root);
         m_brushWorkspace->setSizePolicy(
@@ -258,8 +262,8 @@ public:
         // Quick Actions checks document availability from the bridge.
         if(!has && m_layers && m_layers->isVisible()) {
             m_layers->hide();
-            // Quick Actions do not mirror layer visibility.
         }
+        updateLayerPresentation();
         const QString node=m_engine.activeLayerName();
         if(!has) {
             m_document->setText(i18n("No document"));
@@ -276,6 +280,14 @@ public:
     }
 
 protected:
+    bool eventFilter(QObject *watched,QEvent *event) override
+    {
+        if(watched==m_paintingArea &&
+           (event->type()==QEvent::Resize ||
+            event->type()==QEvent::Show))
+            updateLayerPresentation();
+        return QMainWindow::eventFilter(watched,event);
+    }
     void closeEvent(QCloseEvent *event) override
     {
         // Never let a system Back gesture silently close an unsaved document.
@@ -284,6 +296,39 @@ protected:
     }
 
 private:
+    void updateLayerPresentation()
+    {
+        if(!m_layers || !m_paintingArea || !m_paintingLayout)return;
+        const bool compact=m_paintingArea->width()<640;
+        if(compact!=m_layersFloating) {
+            if(compact) {
+                // On folded/portrait screens a side dock would leave too
+                // little width for actual Krita painting. Present the same
+                // native node panel as a bottom drawer over the canvas.
+                m_paintingLayout->removeWidget(m_layers);
+                m_layers->setMinimumWidth(0);
+                m_layers->setMaximumWidth(QWIDGETSIZE_MAX);
+            } else {
+                m_layers->setMinimumWidth(268);
+                m_layers->setMaximumWidth(386);
+                m_paintingLayout->addWidget(m_layers,0);
+            }
+            m_layersFloating=compact;
+        }
+        int drawerHeight=0;
+        if(compact && m_layers->isVisible()) {
+            drawerHeight=qMax(165,qMin(455,
+                            m_paintingArea->height()*55/100));
+            drawerHeight=qMin(drawerHeight,m_paintingArea->height());
+            const QRect target(0,m_paintingArea->height()-drawerHeight,
+                               m_paintingArea->width(),drawerHeight);
+            if(m_layers->geometry()!=target)
+                m_layers->setGeometry(target);
+            m_layers->raise();
+        }
+        if(m_colorWorkspace)
+            m_colorWorkspace->avoidBottom(drawerHeight);
+    }
     void requestExit()
     {
         if(m_exit)m_exit();
@@ -405,7 +450,7 @@ private:
         }
         const bool opening=!m_layers->isVisible();
         m_layers->setVisible(opening);
-        // Layer visibility is owned by the panel, not the quick strip.
+        updateLayerPresentation();
         if(opening)m_layers->refreshNow();
     }
     void openColor()
@@ -417,6 +462,9 @@ private:
     }
 
     MobileEngineBridge m_engine;
+    QPointer<QWidget> m_paintingArea;
+    QHBoxLayout *m_paintingLayout=nullptr;
+    bool m_layersFloating=false;
     QPointer<QWidget> m_nativeCanvas;
     QPointer<QWidget> m_canvasSlot;
     QStackedLayout *m_canvasStack=nullptr;
