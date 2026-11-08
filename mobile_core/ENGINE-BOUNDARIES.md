@@ -1,5 +1,28 @@
 # Krita Core / Mobile UI redesign
 
+## Milestone v0.7 — canvas-session boundary and document navigation
+
+- `canvas_session.h` owns widget-stack transfer between the Krita backend
+  window and Mobile Studio, plus the opt-in startup transition. There is
+  now one replaceable integration point for eventually eliminating the
+  original desktop window. The independent `standalone_host.h` no longer
+  needs a direct MDI pointer or desktop window reference.
+- `document_switcher.h` presents a mobile-native view of the documents
+  exposed by `MobileEngineBridge::openDocuments()`; switching dispatches
+  `QMdiArea::setActiveSubWindow` inside the bridge. Krita continues to
+  own the actual document objects, views, undo stacks and dirty markers.
+- `More → Start in Mobile Studio on next launch` is an optional, OFF-by-
+  default preference. A pending-start marker disables the preference
+  after an early startup failure to avoid a repeated crash loop. The
+  fallback/legacy UI remains available through Back.
+
+**Limit:** Startup still constructs `KisMainWindow` to register Krita
+actions, tools, resources and load completion. v0.7 moves references to
+that code into `engine_bridge.h` and `canvas_session.h`, rather than
+claiming to remove it. Package size and runtime engine dependencies are
+unchanged. A future executable/bootstrap migration must retain autosave,
+color management, display canvas and Android storage semantics.
+
 ## Milestone v0.6 — document workflows
 
 Mobile Studio now owns the New Canvas dialog (presets, dimension and DPI
