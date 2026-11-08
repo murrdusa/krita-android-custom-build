@@ -12,7 +12,8 @@ NON_APP={"krita_build_live.py","krita_build_reporter.py",
 GENERATED=("libs/ui/tablet_compact_skin.h","libs/ui/mobile_shell.h",
            "libs/ui/standalone_host.h","libs/ui/engine_bridge.h",
            "libs/ui/brush_workspace.h","libs/ui/layer_workspace.h",
-           "libs/ui/command_browser.h","build-in-krita-container.sh")
+           "libs/ui/command_browser.h","libs/ui/document_workflow.h",
+           "build-in-krita-container.sh")
 
 def sha(path):
     h=hashlib.sha256()
