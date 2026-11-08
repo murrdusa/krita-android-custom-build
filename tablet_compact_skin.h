@@ -2092,62 +2092,83 @@ private:
         });
         if(menuCategory->count()>0)fillMenu();
         tabs->insertTab(1,menusPage,i18n("Menus"));
-        auto *quickScroll=new QScrollArea(tabs);
-        quickScroll->setWidgetResizable(true);
-        quickScroll->setFrameShape(QFrame::NoFrame);
-        quickScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        quickScroll->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
-        QScroller::grabGesture(quickScroll->viewport(),
-                               QScroller::LeftMouseButtonGesture);
-        auto *quick=new QWidget(quickScroll);
+        // Quick is the user's shortcut list. Hold-and-drag changes order
+        // without requiring the old desktop Move Up / Move Down controls.
+        auto *quick=new QWidget(tabs);
         auto *quickLayout=new QVBoxLayout(quick);
-        quickLayout->setContentsMargins(7,9,7,9);
-        quickLayout->setSpacing(8);
-        auto *editQuick=new QPushButton(i18n("Customize Quick Actions"),quick);
-        editQuick->setIcon(KisIconUtils::loadIcon("configure"));
-        editQuick->setMinimumHeight(58);
-        quickLayout->addWidget(editQuick);
-        connect(editQuick,&QPushButton::clicked,&dialog,[this,&dialog]() {
-            dialog.accept();
-            QTimer::singleShot(0,this,[this](){openQuickActionSettings();});
-        });
-        auto refillQuick=[this,quick,quickLayout,editQuick,&dialog]() {
-            for(int i=quickLayout->count()-1;i>=0;--i) {
-                QLayoutItem *existing=quickLayout->itemAt(i);
-                if(existing->widget()==editQuick)continue;
-                QLayoutItem *removed=quickLayout->takeAt(i);
-                if(QWidget *widget=removed->widget())widget->deleteLater();
-                delete removed;
-            }
+        quickLayout->setContentsMargins(5,5,5,5);
+        quickLayout->setSpacing(7);
+        auto *addQuick=new QPushButton(i18n("+ Add Quick Action"),quick);
+        addQuick->setMinimumHeight(54);
+        addQuick->setIcon(KisIconUtils::loadIcon("list-add"));
+        quickLayout->addWidget(addQuick);
+        auto *quickList=new TabletQuickReorderList(quick);
+        quickList->setIconSize(QSize(24,24));
+        quickList->setWordWrap(true);
+        quickList->setStyleSheet(
+            "QListWidget::item{min-height:57px;padding:6px;}"
+            "QListWidget::item:selected{background:#365d77;"
+            "border:2px solid #7bc3e6;border-radius:6px;}"
+            "QScrollBar:vertical{background:#303944;width:18px;}"
+            "QScrollBar::handle:vertical{background:#81b0cb;"
+            "min-height:55px;border-radius:8px;}");
+        quickList->setToolTip(i18n("Tap to run. Hold and drag to reorder."));
+        quickLayout->addWidget(quickList,1);
+        auto *manageQuick=new QPushButton(i18n("Manage or remove shortcuts"),quick);
+        manageQuick->setMinimumHeight(48);
+        quickLayout->addWidget(manageQuick);
+        auto refillQuick=[this,quickList]() {
+            quickList->clear();
             const QStringList defaults={
                 QStringLiteral("gradients"),QStringLiteral("patterns"),
                 QStringLiteral("duplicatelayer"),QStringLiteral("quick_group")};
-            const QStringList selected=QSettings().value(
+            const QStringList chosen=QSettings().value(
                 QStringLiteral("TabletUi/quickActionsV2"),defaults).toStringList();
-            for(const QString &key:selected) {
-                QAction *action=m_main->actionCollection()->action(key);
-                if(!action)continue;
-                QString label=action->text();
-                label.remove(QLatin1Char('&'));
-                if(label.isEmpty())label=key;
-                auto *button=new QPushButton(label,quick);
-                button->setIcon(action->icon());
-                button->setMinimumHeight(56);
-                quickLayout->addWidget(button);
-                connect(button,&QPushButton::clicked,&dialog,
-                        [this,&dialog,action]() {
-                    dialog.accept();
-                    QTimer::singleShot(0,this,[action](){action->trigger();});
-                });
+            for(const QString &key:chosen) {
+                QAction *action=resolveQuickAction(key);
+                QString title=action?cleanCompactActionText(action->text()):
+                    i18n("Unavailable shortcut");
+                if(title.isEmpty())title=key;
+                auto *item=new QListWidgetItem(
+                    action?action->icon():QIcon(),title,quickList);
+                item->setData(Qt::UserRole,key);
+                item->setToolTip(i18n("Tap to run; hold and drag to reorder"));
             }
-            quickLayout->addStretch();
         };
+        quickList->onReordered=[quickList]() {
+            QStringList selected;
+            for(int n=0;n<quickList->count();++n)
+                selected.append(quickList->item(n)->
+                    data(Qt::UserRole).toString());
+            QSettings().setValue(QStringLiteral("TabletUi/quickActionsV2"),
+                                 selected);
+        };
+        connect(quickList,&QListWidget::itemClicked,&dialog,
+                [this,&dialog,quickList](QListWidgetItem *item) {
+            if(!item || quickList->takeSuppressedClick())return;
+            QPointer<QAction> action=resolveQuickAction(
+                item->data(Qt::UserRole).toString());
+            if(!action || !action->isEnabled())return;
+            dialog.accept();
+            QTimer::singleShot(0,this,[action]() {
+                if(action && action->isEnabled())action->trigger();
+            });
+        });
+        connect(addQuick,&QPushButton::clicked,&dialog,
+                [this,&dialog]() {
+            dialog.accept();
+            QTimer::singleShot(0,this,[this](){openQuickAddSheet();});
+        });
+        connect(manageQuick,&QPushButton::clicked,&dialog,
+                [this,&dialog]() {
+            dialog.accept();
+            QTimer::singleShot(0,this,[this](){openQuickActionSettings();});
+        });
         refillQuick();
-        quickScroll->setWidget(quick);
-        tabs->addTab(quickScroll,i18n("Quick"));
+        tabs->addTab(quick,i18n("Quick"));
         connect(tabs,&QTabWidget::currentChanged,&dialog,
-                [tabs,quickScroll,refillQuick](int index) {
-            if(tabs->widget(index)==quickScroll)refillQuick();
+                [tabs,quick,refillQuick](int index) {
+            if(tabs->widget(index)==quick)refillQuick();
         });
         auto *back=new QPushButton(i18n("Back"),&dialog);
         back->setMinimumHeight(52);
@@ -2156,6 +2177,7 @@ private:
             if(tabs->currentIndex()!=0)tabs->setCurrentIndex(0);
             else dialog.reject();
         });
+        tabs->setCurrentIndex(qBound(0,startingTab,tabs->count()-1));
         dialog.resize(qMax(310,qMin(445,m_surface->width()-26)),
                       qMax(395,qMin(695,m_surface->height()-36)));
         dialog.exec();
