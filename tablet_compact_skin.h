@@ -210,7 +210,9 @@ protected:
             m_hold->stop();
             if(m_reordering) {
                 m_reordering=false;
-                m_suppressClick=true;
+                // The release is consumed below, so no itemClicked is emitted.
+                // Do not suppress the user's next ordinary tap.
+                m_suppressClick=false;
                 viewport()->unsetCursor();
                 const int from=m_from, to=m_target;
                 m_from=-1;
@@ -1482,24 +1484,11 @@ private:
         const QStringList defaults={
             QStringLiteral("gradients"),QStringLiteral("patterns"),
             QStringLiteral("duplicatelayer"),QStringLiteral("quick_group")};
-        const QStringList available={
-            QStringLiteral("gradients"),QStringLiteral("patterns"),
-            QStringLiteral("file_new"),QStringLiteral("file_open"),
-            QStringLiteral("file_save_as"),QStringLiteral("file_export_file"),
-            QStringLiteral("select_all"),QStringLiteral("invert_selection"),
-            QStringLiteral("reselect"),QStringLiteral("deselect"),
-            QStringLiteral("fill_selection_foreground_color"),
-            QStringLiteral("cut_selection_to_new_layer"),
-            QStringLiteral("duplicate_layer"),QStringLiteral("duplicatelayer"),
-            QStringLiteral("merge_layer"),QStringLiteral("quick_group"),
-            QStringLiteral("edit_undo"),QStringLiteral("edit_redo"),
-            QStringLiteral("tablet_reset_view"),QStringLiteral("tablet_settings")};
+        // Adding commands belongs in the searchable Add sheet.
+        // Keep Manage focused on shortcuts currently in Quick.
         const QStringList selected=QSettings().value(
             QStringLiteral("TabletUi/quickActionsV2"),defaults).toStringList();
-        QStringList ordered=selected;
-        for(const QString &id:available)
-            if(!ordered.contains(id))ordered.append(id);
-        for(const QString &id:ordered) {
+        for(const QString &id:selected) {
             QAction *action=resolveQuickAction(id);
             if(!action && !selected.contains(id))continue;
             QString label=action?cleanCompactActionText(action->text()):
@@ -1522,18 +1511,28 @@ private:
         controls->addWidget(cancel);
         controls->addWidget(save);
         layout->addLayout(controls);
-        connect(cancel,&QPushButton::clicked,&dialog,&QDialog::reject);
-        connect(save,&QPushButton::clicked,&dialog,&QDialog::accept);
+        bool returnToQuick=false;
+        connect(cancel,&QPushButton::clicked,&dialog,[&]() {
+            returnToQuick=true;dialog.reject();
+        });
+        connect(save,&QPushButton::clicked,&dialog,[&]() {
+            returnToQuick=true;dialog.accept();
+        });
         dialog.resize(qMax(310,qMin(440,m_surface->width()-26)),
                       qMax(390,qMin(695,m_surface->height()-35)));
-        if(dialog.exec()!=QDialog::Accepted)return;
-        QStringList chosen;
-        for(int i=0;i<list->count();++i) {
-            QListWidgetItem *item=list->item(i);
-            if(item->checkState()==Qt::Checked)
-                chosen.append(item->data(Qt::UserRole).toString());
+        const int result=dialog.exec();
+        if(result==QDialog::Accepted) {
+            QStringList chosen;
+            for(int i=0;i<list->count();++i) {
+                QListWidgetItem *item=list->item(i);
+                if(item->checkState()==Qt::Checked)
+                    chosen.append(item->data(Qt::UserRole).toString());
+            }
+            QSettings().setValue(QStringLiteral("TabletUi/quickActionsV2"),chosen);
         }
-        QSettings().setValue(QStringLiteral("TabletUi/quickActionsV2"),chosen);
+        // Explicit Save/Cancel returns to Quick; outside tap stays dismissed.
+        if(returnToQuick)
+            QTimer::singleShot(0,this,[this](){openCompactHubSheet(2);});
     }
     void showAddLayerSheet() {
         QDialog dialog(m_main);
@@ -3597,10 +3596,9 @@ private:
         m_layerScrollerSuspended=true;
     }
     void restoreLayerScroller() {
-        if(!m_layerScrollerSuspended || !m_layersScroll ||
-           !m_layersScroll->viewport())return;
-        QScroller::grabGesture(m_layersScroll->viewport(),
-                              QScroller::TouchGesture);
+        if(!m_layerScrollerSuspended)return;
+        // Finger scrolling is implemented by handleLayerTouch(). Re-grabbing
+        // QScroller here steals subsequent thumbnail touches and causes jank.
         m_layerScrollerSuspended=false;
     }
     void finishLayerDrag() {
