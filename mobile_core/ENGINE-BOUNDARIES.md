@@ -1,5 +1,30 @@
 # Krita Core / Mobile UI redesign
 
+## Milestone v1.12 — one Android top-level for Back/return stability
+
+- Mobile Studio's UI remains a separate, testable Qt presentation component,
+  but it is now embedded as Krita's central widget **inside the existing
+  Android top-level window**. It no longer shows an independent full-screen
+  Android window above Krita. This avoids the previously observed stale
+  Mobile Studio footer underneath the desktop window on Back.
+- `MobileCanvasTransfer` snapshots and hides Krita's legacy menu, status,
+  toolbars and dockers while the embedded Mobile Studio presentation is
+  active, then restores the original widget visibility on exit.
+- The native Krita canvas is detached directly to the original window as
+  a child before the embedded host is removed, avoiding an intermediate
+  top-level graphics surface on each return. The controller schedules
+  destruction of the empty mobile presentation host after Back; the canvas
+  is never deleted or reconstructed.
+- The old standalone canvas-window toggle is intentionally removed from
+  the Android default path. Krita's engine still owns document I/O,
+  brushes, editing history, animation, and paint/render services.
+- A successful Android compilation does not establish graphics-context
+  stability until repeated Back/enter and stylus tests pass on-device.
+- This is a stabilization step rather than a size reduction: desktop
+  runtime dependencies still exist and should not be stripped until
+  standalone document lifecycle operations are fully reliable.
+
+
 ## Milestone v1.8 — abstract canvas surface interface
 
 - `canvas_surface.h` introduces `MobileCanvasSurface`, a Qt-only
