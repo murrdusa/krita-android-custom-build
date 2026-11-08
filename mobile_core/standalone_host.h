@@ -52,6 +52,7 @@
 #include <klocalizedstring.h>
 
 #include "engine_bridge.h"
+#include "document_workflow.h"
 #include "command_browser.h"
 #include "brush_workspace.h"
 #include "layer_workspace.h"
@@ -148,7 +149,17 @@ public:
             button->setToolButtonStyle(Qt::ToolButtonTextOnly);
             button->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
             connect(button,&QToolButton::clicked,this,[this,id]() {
-                m_engine.run(id);
+                // Document commands are mobile-owned workflows; undo/redo
+                // still invoke Krita's registered actions directly.
+                const QString commandId=QString::fromLatin1(id);
+                if(commandId==QStringLiteral("file_new"))
+                    MobileDocumentWorkflow::create(m_engine,this);
+                else if(commandId==QStringLiteral("file_open"))
+                    MobileDocumentWorkflow::open(m_engine,this);
+                else if(commandId==QStringLiteral("file_save"))
+                    MobileDocumentWorkflow::save(m_engine,this);
+                else m_engine.run(id);
+                refresh();
             });
             buttons->addWidget(button,1);
             return button;
@@ -216,8 +227,16 @@ public:
         const bool has=m_engine.hasDocument();
         if(m_saveButton)m_saveButton->setEnabled(has);
         const QString node=m_engine.activeLayerName();
-        m_document->setText(!has?i18n("No document"):
-                            node.isEmpty()?i18n("Canvas"):node.left(28));
+        if(!has) {
+            m_document->setText(i18n("No document"));
+        } else {
+            const QString title=m_engine.activeDocumentTitle();
+            const QString modified=m_engine.documentModified()?
+                QStringLiteral(" *"):QString();
+            m_document->setText(title+modified+
+                (node.isEmpty()?QString():QStringLiteral(" · ")+node.left(18)));
+            m_document->setToolTip(i18n("Document · Active layer"));
+        }
         if(m_brushWorkspace && has)m_brushWorkspace->refresh();
         if(m_layers && m_layers->isVisible())m_layers->refreshFromEngine();
     }
@@ -239,6 +258,14 @@ private:
     {
         if(!m_more)return;
         QMenu menu(this);
+        auto *saveAs=menu.addAction(i18n("Save As..."));
+        connect(saveAs,&QAction::triggered,this,[this]() {
+            QTimer::singleShot(0,this,[this]() {
+                MobileDocumentWorkflow::save(m_engine,this,true);
+                refresh();
+            });
+        });
+        menu.addSeparator();
         auto *browse=menu.addAction(i18n("Search all Krita commands"));
         connect(browse,&QAction::triggered,this,[this]() {
             // Let the menu close before opening the independent browser.
