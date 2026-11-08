@@ -73,7 +73,10 @@ public:
         m_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         m_scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         m_scroll->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
-        m_scroll->setFixedHeight(52);
+        // The scroll viewport height is recalculated from the styled
+        // action buttons in rebuild(). A hard-coded 52px viewport clips
+        // Android touch targets when Qt adds min-height and padding.
+        m_scroll->setMinimumHeight(64);
         auto *content=new QWidget(m_scroll);
         m_row=new QHBoxLayout(content);
         m_row->setContentsMargins(0,0,0,0);
@@ -272,12 +275,21 @@ private:
             m_buttons.append(qMakePair(id,QPointer<QToolButton>(button)));
         }
         m_row->activate();
-        // QScrollArea with a fixed-width widget creates a real horizontal
-        // content range; a resizable widget can squeeze all the buttons
-        // into the viewport and make swipe-to-scroll ineffective.
-        m_scroll->widget()->adjustSize();
+        // Android Qt styles add vertical padding and borders to the
+        // touch target. Size the scroll viewport to the *actual* button
+        // height instead of clipping the lower half inside a fixed 52px
+        // area. Recompute after Add/Edit because a custom QAction label
+        // can have different metrics.
+        const QSize rowHint=m_row->sizeHint();
+        const int scrollHeight=qMax(64,rowHint.height()+4);
+        if(m_scroll->height()!=scrollHeight)
+            m_scroll->setFixedHeight(scrollHeight);
+        // Keep the horizontal extent independent of the viewport: it
+        // must be scrollable rather than shrink all configured actions.
         m_scroll->widget()->resize(
-            m_row->sizeHint().width(),m_scroll->viewport()->height());
+            rowHint.width(),qMax(rowHint.height(),scrollHeight-2));
+        m_scroll->updateGeometry();
+        updateGeometry();
         refresh();
     }
 
