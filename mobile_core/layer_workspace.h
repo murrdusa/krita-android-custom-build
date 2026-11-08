@@ -248,10 +248,10 @@ private:
         const auto image=m_view->image().toStrongRef();
         if(!image || !image->root())return;
         const int scroll=m_tree->verticalScrollBar()->value();
-        QSet<KisNodeSP> expanded;
+        QSet<KisNode*> expanded;
         for(int i=0;i<m_nodes.size();++i)
             if(auto *item=m_items.value(i,nullptr))
-                if(item->isExpanded())expanded.insert(m_nodes[i]);
+                if(item->isExpanded())expanded.insert(m_nodes[i].data());
 
         const KisNodeList native=m->selectedNodes();
         m_active=m_view->activeNode();
@@ -280,7 +280,7 @@ private:
                 if(node->childCount()>0) {
                     visit(node,item,depth+1);
                     item->setExpanded(expanded.isEmpty() ||
-                                      expanded.contains(node));
+                                      expanded.contains(node.data()));
                 }
             }
         };
