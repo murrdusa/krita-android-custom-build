@@ -1,6 +1,7 @@
 # On-demand Krita Android APK upload
 
-UPLOAD_REQUEST_ID=request-20261108-mobile-pilot-0157-a7c4
+UPLOAD_REQUEST_ID=request-20261108-enginefirst-preview-0246-x92f
+UPLOAD_RELEASE_TAG=krita-mobile-studio-preview
 
 Normal local builds must **never** upload an APK automatically. The build
 watcher reads this file on each GitHub revision but publishes only when the
@@ -14,3 +15,6 @@ change the ID again. Do not update this ID as part of normal app changes.
 The existing WSL watcher reuses a compiled APK if no application inputs changed.
 The uploader marks each request complete only after verifying the GitHub
 Release asset exists, avoiding repeated uploads.
+
+This preview uses a separate release tag so that the previously working
+`krita-android-latest` APK remains downloadable.
