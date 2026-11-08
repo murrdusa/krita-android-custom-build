@@ -78,6 +78,9 @@ def main(root: Path):
 #include <QDialogButtonBox>
 #include <QCheckBox>
 #include <QVBoxLayout>
+#include <QScrollArea>
+#include <QScroller>
+#include <QAbstractButton>
 #endif
 """)
     change(path, """    d->fullScreenMode = actionManager->createStandardAction(KStandardAction::FullScreen, this, SLOT(viewFullscreen(bool)));
@@ -206,8 +209,23 @@ def main(root: Path):
             "border:1px solid #7193ac;border-radius:8px;"
             "min-height:50px;padding:5px;font-size:14px;}");
         QVBoxLayout *layout = new QVBoxLayout(&dialog);
-        layout->setContentsMargins(14,14,14,14);
-        layout->setSpacing(10);
+        layout->setContentsMargins(12,12,12,12);
+        layout->setSpacing(9);
+        // Keep Save/Cancel pinned while the tall settings form scrolls.
+        // Previously the form's minimum size pushed the dialog below
+        // the screen and finger dragging could not reach the bottom.
+        QScrollArea *settingsScroll = new QScrollArea(&dialog);
+        settingsScroll->setWidgetResizable(true);
+        settingsScroll->setFrameShape(QFrame::NoFrame);
+        settingsScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        settingsScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        settingsScroll->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
+        QScroller::grabGesture(settingsScroll->viewport(),
+                               QScroller::LeftMouseButtonGesture);
+        QWidget *settingsPage = new QWidget(settingsScroll);
+        QVBoxLayout *settingsContent = new QVBoxLayout(settingsPage);
+        settingsContent->setContentsMargins(4,5,4,5);
+        settingsContent->setSpacing(8);
         QFormLayout *form = new QFormLayout;
         form->setRowWrapPolicy(QFormLayout::WrapAllRows);
         form->setVerticalSpacing(9);
@@ -227,14 +245,17 @@ def main(root: Path):
         QCheckBox *pinchEnabled = new QCheckBox(i18n("Enable quick-pinch reset (experimental)"), &dialog);
         pinchEnabled->setChecked(stored.value(QStringLiteral("TabletUi/quickPinch"), false).toBool());
         form->addRow(pinchEnabled);
-        layout->addLayout(form);
+        settingsContent->addLayout(form);
+        settingsContent->addStretch(1);
+        settingsScroll->setWidget(settingsPage);
+        layout->addWidget(settingsScroll,1);
         QDialogButtonBox *buttons = new QDialogButtonBox(
             QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
         layout->addWidget(buttons);
         for(QAbstractButton *button:buttons->buttons())
             button->setMinimumHeight(50);
-        dialog.resize(qMax(300,qMin(440,this->width()-30)),
-                      qMax(360,qMin(640,this->height()-40)));
+        dialog.resize(qMax(300,qMin(455,this->width()-24)),
+                      qMax(345,qMin(670,this->height()-35)));
         connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
         connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
         if (dialog.exec() == QDialog::Accepted) {
