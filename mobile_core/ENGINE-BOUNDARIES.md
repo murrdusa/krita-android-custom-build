@@ -1,5 +1,20 @@
 # Krita Core / Mobile UI redesign
 
+## Milestone v1.2 — native menu hierarchy
+
+- `MobileEngineBridge::menuRootActions()` exposes Krita's live top-level
+  QActions without leaking the hidden main-window pointer into mobile UI.
+- `MobileCommandBrowser` now renders the exact nested menu tree with
+  breadcrumb navigation. Typing in its search box searches **across all
+  menus** and includes full action paths. Registered plugin commands
+  absent from the desktop hierarchy remain under Other Krita commands.
+- Actions retain native QAction pointers and are triggered after closing
+  the browser; the mobile interface does not duplicate the handler
+  implementation. Disabled commands stay disabled. Existing native
+  desktop menus remain as a compatibility fallback.
+- **APK publishing remains paused**: normal source commits and WSL
+  compiler checks do not change `UPLOAD_REQUEST_ID=none`.
+
 ## Milestone v1.1 — configurable Quick Actions (UI owns chrome)
 
 - `quick_actions.h` replaces the fixed Krita-like footer with a single
