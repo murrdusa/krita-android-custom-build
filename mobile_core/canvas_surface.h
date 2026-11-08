@@ -5,7 +5,8 @@
  *
  * This is a Qt-only interface. The session and transfer classes do not
  * need to know the Mobile Studio window class or any Krita paint types.
- * They move exactly one existing QWidget canvas stack between windows.
+ * They move exactly one existing QWidget canvas stack between presentation
+ * containers, without requiring separate Android top-level windows.
  */
 #pragma once
 #ifdef Q_OS_ANDROID
@@ -17,16 +18,18 @@ class MobileCanvasSurface
 public:
     virtual ~MobileCanvasSurface() = default;
 
-    // Returns the host top-level widget, or nullptr if unavailable.
+    // Returns the mobile presentation widget, or nullptr if unavailable.
     virtual QWidget *canvasSurfaceWindow() = 0;
 
     // Adopt an existing native Qt canvas stack. Must not recreate or
     // destroy the native paint device. Returns true only when attached.
     virtual bool attachNativeCanvas(QWidget *nativeCanvas) = 0;
 
-    // Detach and return the exact same QWidget. The caller resumes
-    // ownership; the surface must not delete it.
-    virtual QWidget *detachNativeCanvas() = 0;
+    // Detach and return the exact same QWidget. When destinationParent is
+    // supplied, reparent directly to it: making a live OpenGL canvas an
+    // interim top-level window can invalidate the Android graphics surface.
+    // The surface must never delete the painting canvas.
+    virtual QWidget *detachNativeCanvas(QWidget *destinationParent=nullptr) = 0;
 
     // Verify ownership of a particular native widget, not just whether
     // some canvas is present. Used to detect partial/failed transfers.
