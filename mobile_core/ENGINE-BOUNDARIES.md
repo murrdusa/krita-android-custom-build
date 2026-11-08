@@ -1,5 +1,31 @@
 # Krita Core / Mobile UI redesign
 
+## Milestone v1.14 — unparenting audit and native-canvas protection
+
+- Qt 5's `QMainWindow::takeCentralWidget()` calls
+  `oldcentralwidget->setParent(nullptr)`. Thus the current embedded-host
+  transition still briefly changes the canvas into a top-level widget on
+  **entry**, even though the final mobile and desktop presentations share
+  Krita's Android native window. This remains a graphics-context risk.
+- The return/Back path now detaches the painting widget directly from
+  Mobile Studio to the existing Krita parent, *before* taking the empty
+  mobile presentation out of the central slot. The Qt smoke test records
+  parent-change events and asserts Back does not temporarily unparent
+  the real painting canvas.
+- Inconsistent detach results now attempt to restore the exact original
+  canvas into Mobile Studio, and the test injects that failure then
+  retries safely. The controller uses a guarded QPointer to track a
+  mobile presentation replaced by Qt.
+- **Next architectural replacement:** leave the native Krita widgetStack
+  permanently in the same parent, and switch the mobile chrome around it
+  using ordinary child/dock/overlay widgets. That will remove the entry
+  transition and the need to swap `QMainWindow::centralWidget()` during
+  mode toggles. Keep the current Krita engine, document view, undo stack
+  and stylus rendering; only mobile controls should change.
+- Do not claim graphics-context stability from source compilation or
+  offscreen QWidget tests. Validate actual Android EGL drawing, repeated
+  Back/entry, and Save/Discard/Cancel before removing the current path.
+
 ## Milestone v1.12 — one Android top-level for Back/return stability
 
 - Mobile Studio's UI remains a separate, testable Qt presentation component,
