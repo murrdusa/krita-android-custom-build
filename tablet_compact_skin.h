@@ -296,25 +296,23 @@ public:
         layerHeader->setSpacing(2);
         rail->addLayout(layerHeader);
         m_addLayer = new QToolButton(m_layerRail);
-        m_addLayer->setText(i18n("Add"));
-        m_addLayer->setFixedHeight(60);
-        m_addLayer->setIcon(KisIconUtils::loadIcon("list-add"));
-        m_addLayer->setIconSize(QSize(22,22));
-        m_addLayer->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        m_addLayer->setText(i18n("+ Add"));
+        m_addLayer->setFixedHeight(42);
+        m_addLayer->setToolButtonStyle(Qt::ToolButtonTextOnly);
         m_addLayer->setStyleSheet(
             "QToolButton{background:#3d6985;color:#f9fbff;"
             "border:1px solid #79a9c9;border-radius:9px;"
-            "font-size:13px;font-weight:600;padding:5px;}"
+            "font-size:14px;font-weight:600;padding:2px;}"
             "QToolButton:pressed{background:#567e97;}");
-        m_addLayer->setToolTip(i18n("Tap for a paint layer; hold to browse layer and mask types"));
+        m_addLayer->setToolTip(i18n("Tap to add a paint layer. Hold for 2 seconds for other types."));
         layerHeader->addWidget(m_addLayer,1);
         // Pin and settings are configured in the Compact UI hub.
         m_addLayerHoldTimer = new QTimer(this);
         m_addLayerHoldTimer->setSingleShot(true);
-        m_addLayerHoldTimer->setInterval(holdMs());
+        m_addLayerHoldTimer->setInterval(2000);
         connect(m_addLayer, &QToolButton::pressed, this, [this]() {
             m_addLayerLongPressed = false;
-            m_addLayerHoldTimer->start(holdMs());
+            m_addLayerHoldTimer->start(2000);
         });
         connect(m_addLayer, &QToolButton::released, this, [this]() {
             m_addLayerHoldTimer->stop();
@@ -1186,7 +1184,7 @@ private:
             "QTabBar::tab{min-height:47px;padding:6px 12px;}");
     }
     QVBoxLayout *makeTouchSettingsPage(QDialog &dialog,const QString &title) {
-        dialog.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
+        dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
         styleTouchDialog(dialog);
         auto *outer=new QVBoxLayout(&dialog);
         outer->setContentsMargins(13,12,13,12);
@@ -1264,7 +1262,7 @@ private:
         QPointer<KisView> view=compactClosingView();
         if(!view || !view->document())return;
         QDialog dialog(m_main);
-        dialog.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
+        dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
         styleTouchDialog(dialog);
         dialog.resize(qMax(290,qMin(430,m_surface->width()-28)),310);
         auto *layout=new QVBoxLayout(&dialog);
@@ -1347,7 +1345,7 @@ private:
 
     void openQuickActionSettings() {
         QDialog dialog(m_main);
-        dialog.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
+        dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
         dialog.setWindowTitle(i18n("Customize Quick Actions"));
         styleTouchDialog(dialog);
         auto *layout=new QVBoxLayout(&dialog);
@@ -1449,7 +1447,7 @@ private:
     }
     void showAddLayerSheet() {
         QDialog dialog(m_main);
-        dialog.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
+        dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
         dialog.setWindowTitle(i18n("Add layer or mask"));
         styleTouchDialog(dialog);
         auto *outer=new QVBoxLayout(&dialog);
@@ -1523,7 +1521,7 @@ private:
     }
     void openCompactHubSheet() {
         QDialog dialog(m_main);
-        dialog.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
+        dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
         dialog.setWindowTitle(i18n("Compact UI"));
         styleTouchDialog(dialog);
         auto *outer=new QVBoxLayout(&dialog);
@@ -2381,7 +2379,7 @@ private:
             // A proper touch sheet replaces the native mouse-oriented
             // context menu. Its Favorite action uses the existing pin key.
             QDialog options(&dialog);
-            options.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
+            options.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
             options.setWindowTitle(preset->name());
             styleTouchDialog(options);
             auto *outer=new QVBoxLayout(&options);
@@ -2474,7 +2472,7 @@ private:
     }
     void updateLayerWidth() {
         m_layerRail->setFixedWidth(m_layerTileSize+10);
-        m_addLayer->setText(i18n("Add"));
+        m_addLayer->setText(i18n("+ Add"));
         if(m_layerRail->isVisible())positionOverlays();
     }
     static QIcon lockIcon(bool locked) {
@@ -3589,7 +3587,7 @@ private:
         if(!node || !m_vm || !m_vm->nodeManager())return;
         QDialog dialog(m_main);
         dialog.setWindowTitle(node->name());
-        dialog.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
+        dialog.setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
         dialog.resize(qMax(290,qMin(425,m_surface->width()-24)),
                       qMax(360,qMin(635,m_surface->height()-40)));
         dialog.setStyleSheet(
@@ -3648,10 +3646,16 @@ private:
                 blend->selectedCompositeOp().id());
             if(op)m_vm->nodeManager()->setNodeCompositeOp(node,op);
         });
-        auto *opacity=new QSlider(Qt::Horizontal,page);
-        opacity->setRange(0,100);
+        // Reuse Krita's broad filled brush opacity slider, with an exact
+        // numerical value, instead of the narrow desktop QSlider track.
+        auto *opacity=new KisDoubleSliderSpinBox(page);
+        opacity->setRange(0,100,0);
         opacity->setValue(node->percentOpacity());
-        opacity->setMinimumHeight(34);
+        opacity->setSuffix(QStringLiteral("%"));
+        opacity->setSingleStep(5);
+        opacity->setBlockUpdateSignalOnDrag(false);
+        opacity->setMinimumHeight(52);
+        opacity->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
         auto *opacityRow=new QHBoxLayout;
         opacityRow->addWidget(new QLabel(i18n("Opacity"),page));
         auto *opacityValue=new QLabel(
@@ -3660,19 +3664,32 @@ private:
         opacityRow->addWidget(opacityValue);
         layout->addLayout(opacityRow);
         layout->addWidget(opacity);
-        connect(opacity,&QSlider::valueChanged,&dialog,[opacityValue](int v) {
-            opacityValue->setText(QStringLiteral("%1%").arg(v));
-        });
-        connect(opacity,&QSlider::sliderReleased,&dialog,[this,node,opacity]() {
-            m_vm->nodeManager()->setNodeOpacity(
-                node,qRound(opacity->value()*255.0/100.0));
+        connect(opacity,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),
+                &dialog,[this,node,opacityValue](qreal v) {
+            opacityValue->setText(QStringLiteral("%1%").arg(qRound(v)));
+            if(node)m_vm->nodeManager()->setNodeOpacity(
+                node,qRound(v*255.0/100.0));
         });
         if(node->inherits("KisLayer") &&
            !node->inherits("KisGroupLayer")) {
-            auto *clip=new QCheckBox(i18n("Clip to next layer below"),page);
+            auto *clip=new QPushButton(page);
+            clip->setCheckable(true);
             clip->setChecked(compactInheritsAlpha(node));
+            clip->setMinimumHeight(52);
+            clip->setIcon(KisIconUtils::loadIcon("transparency-enabled"));
+            auto syncClip=[clip](bool active) {
+                clip->setText(active?i18n("Clipping: On"):i18n("Clip to layer below"));
+                clip->setStyleSheet(active?
+                    "QPushButton{background:#2f7183;border:2px solid #9adef2;"
+                    "border-radius:9px;color:white;font-weight:600;}":
+                    "QPushButton{background:#404651;border:1px solid #667183;"
+                    "border-radius:9px;color:white;}");
+            };
+            syncClip(clip->isChecked());
             layout->addWidget(clip);
-            connect(clip,&QCheckBox::toggled,&dialog,[this,node](bool checked) {
+            connect(clip,&QPushButton::toggled,&dialog,
+                    [this,node,syncClip](bool checked) {
+                syncClip(checked);
                 setCompactClip(node,checked);
             });
         }
@@ -3788,7 +3805,7 @@ private:
                 else if(i==8) {
                     QDialog extras(&dialog);
                     extras.setWindowTitle(i18n("More layer actions"));
-                    extras.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
+                    extras.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
                     extras.resize(qMax(280,qMin(395,m_surface->width()-30)),
                                   qMax(330,qMin(545,m_surface->height()-60)));
                     auto *extraLayout=new QVBoxLayout(&extras);
@@ -4131,7 +4148,7 @@ private:
         const int layerX=m_layerOnRight?qMax(4,w-m_layerRail->width()-4):4;
         const int layerY=35;
         const int rowsHeight=qMax(m_layerTileSize+4,m_compactLayerHeight);
-        const int desired=5+60+3+rowsHeight+3+34+5+12;
+        const int desired=5+42+3+rowsHeight+3+34+5+12;
         // Keep the rail above the brush panel when both share the left side.
         // On the right, also avoid a pinned color selector at the bottom.
         int availableBottom=h-8;
