@@ -22,6 +22,7 @@ def main(root:Path):
     own=Path(__file__).resolve().parent
     shell=own/"mobile_core/standalone_host.h"
     session=own/"mobile_core/canvas_session.h"
+    transfer=own/"mobile_core/canvas_transfer.h"
     switcher=own/"mobile_core/document_switcher.h"
     bridge=own/"mobile_core/engine_bridge.h"
     document_service=own/"mobile_core/document_service.h"
@@ -35,16 +36,17 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,switcher,bridge,document_service,command_service,brush,color,layers,commands,quick,reorder,tools,documents)):
+               (shell,session,transfer,switcher,bridge,document_service,command_service,brush,color,layers,commands,quick,reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
     # Dependency boundary: only the backend services and temporary canvas
     # transfer controller may directly include Krita's desktop window.
     # Keep the mobile widgets/engine facade unaware of this legacy class,
     # so a future lightweight application host can replace it in one place.
-    desktop_dependent=(session,document_service,command_service)
+    desktop_dependent=(document_service,command_service)
+    qt_host_components=(session,transfer)
     mobile_frontend=(shell,bridge,switcher,brush,color,layers,
-                     commands,quick,reorder,tools,documents)
+                     commands,quick,reorder,tools,documents,*qt_host_components)
     for module in mobile_frontend:
         contents=module.read_text(encoding="utf-8")
         if ('#include "KisMainWindow.h"' in contents or
@@ -91,7 +93,9 @@ def main(root:Path):
         }
     });
     auto *mobileStudio = new MobileAppController(
-        this,d->mdiArea,d->viewManager,mobilePilotAction);
+        this,d->mdiArea,
+        MobileEngineBridge(this,d->viewManager,d->mdiArea),
+        mobilePilotAction);
     Q_UNUSED(mobileStudio);
     connect(tabletCompact,&QAction::toggled,this,
             [mobilePilotAction](bool compact) {
@@ -161,6 +165,8 @@ def main(root:Path):
         shell.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/canvas_session.h").write_text(
         session.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/canvas_transfer.h").write_text(
+        transfer.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_switcher.h").write_text(
         switcher.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/engine_bridge.h").write_text(
