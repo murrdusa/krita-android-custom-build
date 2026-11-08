@@ -63,6 +63,38 @@ There is deliberately **no new native file format** and no custom image
 serializer. The old native file dialogs/actions remain in the compatibility
 menus until Android storage and save reliability are proven.
 
+## v1.7 Qt canvas-host transfer — upload remains paused
+
+This milestone moves the reversible widget handoff into a **Qt-only**
+module. The source is not a new independent Krita bootstrap.
+
+- Compile the Android app with `UPLOAD_REQUEST_ID=none`. The patch
+  preflight now rejects direct KisMainWindow headers in the canvas
+  transfer/session classes as well as in ordinary mobile UI modules.
+- Enter Mobile Studio from the compact UI with **no document open**.
+  Its native empty workspace should appear; Back should restore the
+  original Krita welcome widget. Repeat with an already-open canvas.
+- Open three disposable documents, paint with pen pressure, and switch
+  views. Confirm Krita continues to own each canvas, layer state,
+  undo history and unsaved-change marker.
+- Use New Canvas and Open. The Android legacy display-refresh hack
+  must not re-show an empty desktop main window over Mobile Studio.
+- Exit and reenter repeatedly. The *exact same* native Krita MDI
+  widget must return to the original window, with document tabs at
+  their prior sizes and all document views accessible.
+- Fold/unfold while in Mobile Studio and while the layers bottom drawer
+  is open. Return to the desktop interface and check that Qt's tabs,
+  canvas layout and document activation are still functional.
+- Interrupt entry when a desktop central widget is missing or the
+  mobile host already has a canvas. The action must revert to off
+  rather than taking or deleting a second canvas.
+- Test Save As, close a modified document with Cancel, and Exit using
+  system Back. No document should close or lose changes automatically.
+
+A widget transfer failure now restores the original Qt central widget.
+Qt widget ownership and tab restoration live only in
+`canvas_transfer.h`, not the mode controller or painting UI.
+
 ## v1.6 native document and command service split — upload paused
 
 This checkpoint changes **where** the desktop backend is accessed, not
