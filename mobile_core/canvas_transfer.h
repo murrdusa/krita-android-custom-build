@@ -127,9 +127,14 @@ public:
             // Let Qt finish the Android surface/MDI layout pass before
             // requesting its repaint. This does not create a view.
             const QPointer<QWidget> restored=native;
+            const QPointer<QMainWindow> backend=m_backend;
             const QPointer<QMdiArea> documents=m_documents;
-            QTimer::singleShot(0,m_backend,[restored,documents]() {
-                if(!restored)return;
+            QTimer::singleShot(0,m_backend,[restored,backend,documents]() {
+                // A rapid second toggle may already have moved this
+                // widget back into Mobile Studio. Never paint an old
+                // desktop surface after ownership changed again.
+                if(!restored || !backend ||
+                   backend->centralWidget()!=restored)return;
                 restored->show();
                 restored->updateGeometry();
                 restored->update();
