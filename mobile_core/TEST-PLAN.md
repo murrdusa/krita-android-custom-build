@@ -1,5 +1,30 @@
 # Mobile Studio — Android painting and mode-switch smoke test
 
+## v1.13 transition-safety diagnostics and Qt-only smoke tests
+
+- The non-Android C++ smoke test uses the real
+  `MobileCanvasTransfer` and `MobileCanvasSurface` with a synthetic
+  QWidget canvas. It loops through ten enter/Back cycles and checks
+  that the backend recovers the same widget and its synthetic document
+  state, while desktop chrome visibility is restored.
+- Tests must also reject an occupied mobile destination, an attachment
+  refusal, and an occupied desktop central slot without destroying an
+  unrelated widget or silently replacing the native canvas. Run the
+  `qt-canvas-host-test` GitHub Actions job, or compile the test with
+  Qt5 Widgets and `-DKRITA_MOBILE_QT_TEST` on a development machine.
+- This offscreen test verifies Qt object ownership only; it does **not**
+  test Android OpenGL/EGL context preservation, stylus pressure, Krita
+  document internals, or system Back gestures.
+- On Android, open an existing KRA document and perform multiple Back
+  and re-enter cycles, including toggling Compact UI. Confirm original
+  brush strokes, layers, undo stack and dirty flag persist.
+- If a canvas or toolbar disappears, open Mobile Studio's existing
+  More menu and select **Copy Mobile Studio diagnostics**, then paste
+  the report into the bug report. It contains no document content or
+  file paths. Note if Back was used before or after the failure.
+- Monitor local WSL Android compilation separately: the source-only
+  Qt smoke test does not generate or upload an APK.
+
 ## v1.12 Back button: single-window Android canvas
 
 Run these tests against a disposable, unsaved or backed-up KRA drawing.
