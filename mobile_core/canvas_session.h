@@ -80,6 +80,12 @@ public:
         // During shutdown it is safer to let the OS reclaim this window
         // than to silently delete a modified KisDocument's view.
         if(m_transfer.active() && !m_transfer.leave()) {
+            // The embedded host is a child of Krita's native window.
+            // If an unsafe handoff is rejected, detach that host from the
+            // QObject parent tree before the backend destroys its children;
+            // otherwise shutdown would still delete the live native canvas.
+            // No document is closed or silently discarded by this path.
+            if(m_host)m_host->setParent(nullptr);
             m_host=nullptr;
             return;
         }
