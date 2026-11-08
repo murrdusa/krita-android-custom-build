@@ -16,6 +16,7 @@
 #include <QPushButton>
 #include <QScroller>
 #include <QSize>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <klocalizedstring.h>
 #include "document_workflow.h"
@@ -118,7 +119,16 @@ public:
         // End the chooser before opening a native Krita document dialog.
         if(choice==Create)MobileDocumentWorkflow::create(engine,parent);
         else if(choice==Open)MobileDocumentWorkflow::open(engine,parent);
-        else if(choice==CloseCurrent)engine.closeActiveDocument();
+        else if(choice==CloseCurrent) {
+            // Android Qt may still be tearing down this frameless popup.
+            // Close on the next event-loop pass so Krita's native
+            // Save/Discard/Cancel dialog is shown above the live canvas,
+            // rather than behind the document switcher.
+            const MobileEngineBridge native=engine;
+            QTimer::singleShot(0,parent,[native]() {
+                native.closeActiveDocument();
+            });
+        }
         else if(desiredIndex>=0)engine.activateDocument(desiredIndex);
     }
 };
