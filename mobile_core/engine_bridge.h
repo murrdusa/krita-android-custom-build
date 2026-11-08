@@ -13,6 +13,8 @@
 #include <QVector>
 #include <QWidget>
 #include <QList>
+#include <QMdiArea>
+#include <QMdiSubWindow>
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QMessageBox>
@@ -26,6 +28,7 @@
 #include "kis_config.h"
 #include "KisMainWindow.h"
 #include "KisViewManager.h"
+#include "KisView.h"
 #include "kis_canvas_resource_provider.h"
 #include "kis_paintop_box.h"
 #include "kis_node_manager.h"
@@ -35,8 +38,49 @@
 
 class MobileEngineBridge final {
 public:
-    MobileEngineBridge(KisMainWindow *mainWindow,KisViewManager *manager)
-        : m_mainWindow(mainWindow),m_manager(manager) {}
+    MobileEngineBridge(KisMainWindow *mainWindow,KisViewManager *manager,
+                       QMdiArea *documents=nullptr)
+        : m_mainWindow(mainWindow),m_manager(manager),
+          m_documents(documents) {}
+
+    struct OpenDocument {
+        QString title;
+        bool modified=false;
+        bool active=false;
+        int nativeIndex=-1;
+    };
+
+    QVector<OpenDocument> openDocuments() const
+    {
+        QVector<OpenDocument> items;
+        if(!m_documents)return items;
+        const auto windows=m_documents->subWindowList(QMdiArea::CreationOrder);
+        items.reserve(windows.size());
+        for(int i=0;i<windows.size();++i) {
+            QMdiSubWindow *sub=windows.at(i);
+            if(!sub || !sub->widget())continue;
+            auto *view=qobject_cast<KisView*>(sub->widget());
+            KisDocument *doc=view?view->document():nullptr;
+            if(!doc)continue;
+            const QString path=doc->path();
+            QString title=path.isEmpty()?QStringLiteral("Untitled"):
+                          QFileInfo(path).fileName();
+            if(title.isEmpty())title=QStringLiteral("Untitled");
+            items.append({title,doc->isModified(),
+                          sub==m_documents->activeSubWindow(),i});
+        }
+        return items;
+    }
+    bool activateDocument(int nativeIndex) const
+    {
+        if(!m_documents || nativeIndex<0)return false;
+        const auto windows=m_documents->subWindowList(QMdiArea::CreationOrder);
+        if(nativeIndex>=windows.size())return false;
+        QMdiSubWindow *target=windows.at(nativeIndex);
+        if(!target || !qobject_cast<KisView*>(target->widget()))return false;
+        m_documents->setActiveSubWindow(target);
+        return true;
+    }
 
     KisMainWindow *legacyHost() const {return m_mainWindow;}
     KisViewManager *manager() const {return m_manager;}
@@ -179,5 +223,6 @@ public:
 private:
     QPointer<KisMainWindow> m_mainWindow;
     KisViewManager *m_manager=nullptr;
+    QPointer<QMdiArea> m_documents;
 };
 #endif // Q_OS_ANDROID
