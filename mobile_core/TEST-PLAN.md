@@ -90,6 +90,11 @@ allowed, APK publication is not.
   canvas or a backend with no central widget, in a controlled dev
   environment). It should return false without replacing either
   canvas, and the launcher should return to unchecked.
+- With a deliberately faulty test surface that detaches a different
+  QWidget (or returns null), leave Mobile Studio and verify that Krita
+  restores only the exact pre-transfer native canvas. An unrelated widget
+  must never be installed as Krita's central widget; document history,
+  active layers and unsaved content must remain unchanged.
 - Test Save/Discard/Cancel for a modified document. The generic surface
   handoff must never intercept Krita's native unsaved-change workflow.
 
