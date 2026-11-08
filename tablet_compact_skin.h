@@ -3068,7 +3068,8 @@ private:
         layout->addWidget(note);
         const auto useColor=[this,rawImage](const KoColor &color) {
             rawImage->setDefaultProjectionColor(color);
-            rawImage->root()->setDirty(rawImage->bounds());
+            KisNodeSP root=rawImage->root();
+            if(root)root->setDirty(rawImage->bounds());
             if(KisDocument *document=m_vm->document())
                 document->setModified(true);
         };
