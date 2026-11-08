@@ -13,7 +13,17 @@
 #include <QVector>
 #include <QWidget>
 #include <QList>
+#include <QFileInfo>
+#include <QStandardPaths>
+#include <QMessageBox>
 #include <brushengine/kis_paintop_preset.h>
+#include <KoFileDialog.h>
+#include <KoColor.h>
+#include <KoColorSpaceRegistry.h>
+#include "KisDocument.h"
+#include "KisPart.h"
+#include "KisImportExportManager.h"
+#include "kis_config.h"
 #include "KisMainWindow.h"
 #include "KisViewManager.h"
 #include "kis_canvas_resource_provider.h"
@@ -66,6 +76,79 @@ public:
             if(a->isEnabled()){a->trigger();return true;}
         }
         return false;
+    }
+    // Document I/O and image construction are owned by Krita's engine.
+    // The mobile shell supplies the dialogs and initiates transactions,
+    // but must not implement its own native file serializer.
+    bool createCanvas(const QString &name,int width,int height,
+                      int resolutionDpi,bool whiteBackground) const
+    {
+        if(!m_main || width<1 || height<1 || resolutionDpi<1 ||
+           qint64(width)*height>40000000LL)return false;
+        const KoColorSpace *space=KoColorSpaceRegistry::instance()->rgb8();
+        if(!space)return false;
+        KisDocument *document=KisPart::instance()->createDocument();
+        if(!document)return false;
+        const KoColor background(
+            whiteBackground?QColor(Qt::white):QColor(Qt::transparent),space);
+        const bool created=document->newImage(
+            name.trimmed().isEmpty()?QStringLiteral("Unnamed"):name.trimmed(),
+            width,height,space,background,
+            whiteBackground?KisConfig::RASTER_LAYER:KisConfig::CANVAS_COLOR,
+            whiteBackground?2:1,QString(),qreal(resolutionDpi)/72.0);
+        if(!created) {
+            delete document;
+            return false;
+        }
+        KisPart::instance()->addDocument(document);
+        m_main->addViewAndNotifyLoadingCompleted(document);
+        return true;
+    }
+    int openFiles(QWidget *parent) const
+    {
+        if(!m_main || !parent)return 0;
+        KoFileDialog dialog(parent,KoFileDialog::ImportFiles,
+                            QStringLiteral("MobileOpenDocument"));
+        dialog.setDefaultDir(QStandardPaths::writableLocation(
+            QStandardPaths::PicturesLocation));
+        dialog.setMimeTypeFilters(
+            KisImportExportManager::supportedMimeTypes(
+                KisImportExportManager::Import));
+        dialog.setCaption(QObject::tr("Open drawings"));
+        QStringList paths=dialog.filenames();
+        paths.sort();
+        int successful=0;
+        for(const QString &path:paths) {
+            if(path.isEmpty())continue;
+            if(m_main->openDocument(path,KisMainWindow::None))
+                ++successful;
+            else
+                QMessageBox::warning(parent,QObject::tr("Open failed"),
+                    QObject::tr("Could not open %1").arg(
+                        QFileInfo(path).fileName()));
+        }
+        return successful;
+    }
+    bool saveCurrentDocument(bool saveAs=false) const
+    {
+        if(!m_main || !m_manager || !m_manager->document())return false;
+        // Native Krita save path retains its format handling,
+        // render-completion checks, backups and Android file provider.
+        return m_main->saveDocument(m_manager->document(),
+                                    saveAs,false,false);
+    }
+    QString activeDocumentTitle() const
+    {
+        if(!m_manager || !m_manager->document())return {};
+        const KisDocument *document=m_manager->document();
+        const QString path=document->path();
+        return path.isEmpty()?QStringLiteral("Untitled"):
+            QFileInfo(path).fileName();
+    }
+    bool documentModified() const
+    {
+        return m_manager && m_manager->document() &&
+               m_manager->document()->isModified();
     }
     bool hasDocument() const {
         return m_manager && m_manager->document();
