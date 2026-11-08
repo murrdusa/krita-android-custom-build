@@ -27,7 +27,7 @@ public:
                         QMdiArea *mdi,
                         KisViewManager *manager,
                         QAction *entry)
-        : QObject(main),m_main(main),m_mdi(mdi),m_bridge(main,manager),
+        : QObject(main),m_main(main),m_mdi(mdi),m_bridge(main,manager,mdi),
           m_entry(entry)
     {
         connect(entry,&QAction::toggled,this,[this](bool value) {
@@ -45,7 +45,7 @@ private:
     {
         if(m_inMobile || !m_main)return;
         if(!m_host) {
-            m_host=new MobileStandaloneWindow(m_bridge,m_mdi);
+            m_host=new MobileStandaloneWindow(m_bridge);
             m_host->setExitCallback([this]() {
                 if(m_entry)m_entry->setChecked(false);
             });
