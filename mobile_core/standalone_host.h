@@ -215,6 +215,9 @@ public:
             if(isVisible())refresh();
         });
         m_updates->start();
+        // Apply the empty-workspace presentation immediately, before the
+        // first 450ms refresh tick renders a useless shortcut footer.
+        refresh();
     }
 
     void setExitCallback(std::function<void()> handler) {
@@ -265,7 +268,13 @@ public:
     {
         if(!m_document)return;
         const bool has=m_engine.hasDocument();
-        if(m_quickActions)m_quickActions->refresh();
+        if(m_quickActions) {
+            m_quickActions->refresh();
+            // New/Open are already available in the empty canvas panel.
+            // Hide paint-related shortcuts and their Add/Edit chrome until
+            // an actual document exists; preferences remain untouched.
+            m_quickActions->setVisible(has);
+        }
         if(m_canvasStack && m_canvasHolder && m_emptyCanvas) {
             QWidget *target=has?m_canvasHolder:m_emptyCanvas;
             if(m_canvasStack->currentWidget()!=target)
