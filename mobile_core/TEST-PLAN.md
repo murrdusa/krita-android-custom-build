@@ -63,6 +63,41 @@ There is deliberately **no new native file format** and no custom image
 serializer. The old native file dialogs/actions remain in the compatibility
 menus until Android storage and save reliability are proven.
 
+## v1.6 native document and command service split — upload paused
+
+This checkpoint changes **where** the desktop backend is accessed, not
+how Krita implements painting, saving or document lifetime. Do not
+publish an APK until explicitly requested by the user.
+
+- Run `apply_mobile_shell.py`: its dependency preflight should reject
+  any UI module that includes `KisMainWindow.h`, without rejecting the
+  three intentional backend modules (document service, command service,
+  canvas session). Build Android through the existing WSL watcher.
+- Open and create disposable canvases. Verify Krita's real canvas
+  appears, with pen pressure and normal undo/redo. Switch between
+  several documents and confirm dirty markers and layer trees.
+- Save, Save As, Cancel a save dialog, then re-open. File codecs,
+  backup behavior, unsaved-change prompts and other Krita behaviors
+  must match v1.5. In particular, Close Current Canvas must preserve
+  Save / Discard / Cancel behavior.
+- Search nested File/Edit/View menus and Quick Actions commands. All
+  native QAction handlers must remain accessible and execute only
+  once. Switch Brush / Eraser / Blender presets and native selection
+  tools. Check Color and Layers panels still update correctly.
+- Enter/exit Mobile Studio repeatedly, including folded/portrait
+  layouts. The old Krita window must still return with its canvas and
+  native tabs; new document creation must not make the desktop window
+  resurface over Mobile Studio.
+- If the app crashes or a document cannot be saved, revert to the
+  preserved v1.1 downloaded APK. Source-build success is not device
+  validation.
+
+The only modules that intentionally retain a direct native desktop
+`KisMainWindow` dependency are `canvas_session.h`,
+`document_service.h`, and `command_service.h`. The UI and
+`engine_bridge.h` delegate through service methods rather than
+accessing desktop window controls.
+
 ## v1.5 responsive canvas panels and movable color controls
 
 This checkpoint is source/build-only until the user explicitly resumes
