@@ -35,6 +35,7 @@
 #include "kis_node.h"
 #include "kis_image.h"
 #include <KoToolManager.h>
+#include <algorithm>
 
 class MobileEngineBridge final {
 public:
@@ -235,9 +236,58 @@ public:
         nodes->slotSetSelectedNodes(KisNodeList{node});
         return true;
     }
+    struct MobileTool {
+        QString id;
+        QString label;
+        QString description;
+        QString section;
+        QString iconName;
+        int priority=0;
+    };
+    QVector<MobileTool> tools() const
+    {
+        QVector<MobileTool> result;
+        if(!hasDocument())return result;
+        KoToolManager *manager=KoToolManager::instance();
+        if(!manager)return result;
+        for(KoToolAction *action:manager->toolActionList()) {
+            if(!action || action->id().isEmpty())continue;
+            const QString label=action->iconText().trimmed().isEmpty()?
+                action->toolTip():action->iconText();
+            result.append({action->id(),label,action->toolTip(),
+                           action->section(),action->iconName(),
+                           action->priority()});
+        }
+        std::stable_sort(result.begin(),result.end(),
+            [](const MobileTool &a,const MobileTool &b) {
+                if(a.section!=b.section)
+                    return a.section.localeAwareCompare(b.section)<0;
+                if(a.priority!=b.priority)return a.priority<b.priority;
+                return a.label.localeAwareCompare(b.label)<0;
+            });
+        return result;
+    }
+    QString activeTool() const
+    {
+        KoToolManager *manager=KoToolManager::instance();
+        return manager?manager->activeToolId():QString();
+    }
+    bool selectTool(const QString &id) const
+    {
+        if(!hasDocument() || id.isEmpty())return false;
+        KoToolManager *manager=KoToolManager::instance();
+        if(!manager)return false;
+        const auto actions=manager->toolActionList();
+        for(KoToolAction *action:actions) {
+            if(action && action->id()==id) {
+                action->trigger();
+                return true;
+            }
+        }
+        return false;
+    }
     void freehandBrush() const {
-        KoToolManager::instance()->switchToolRequested(
-            QStringLiteral("KritaShape/KisToolBrush"));
+        selectTool(QStringLiteral("KritaShape/KisToolBrush"));
     }
     QMenu *nativeMenus(QWidget *parent) const {
         auto *menu=new QMenu(parent);
