@@ -97,6 +97,10 @@ private:
             }
             return;
         }
+        // Disable the legacy Android re-show workaround while the live
+        // canvas widget is owned by the independent mobile window.
+        // The flag must be set before queued document-load work runs.
+        m_main->setProperty("_mobileStudioCanvasTransferred",true);
         m_originalState=m_main->windowState();
         m_originalCentral=native;
         m_host->attachEngineCanvas(native);
@@ -115,6 +119,9 @@ private:
             m_main->setCentralWidget(native);
             native->show();
         }
+        // Restore Android's desktop refresh behavior only after its
+        // native canvas widget has been returned to KisMainWindow.
+        m_main->setProperty("_mobileStudioCanvasTransferred",false);
         // Main window is a temporary backend only in mobile mode.
         // Preserve the original desktop/compact state on return.
         m_main->setWindowState(m_originalState);
