@@ -31,6 +31,7 @@
 #include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QStackedWidget>
+#include <QStackedLayout>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -123,9 +124,52 @@ public:
         m_canvasSlot->setObjectName(QStringLiteral("MobileNativeCanvasSlot"));
         m_canvasSlot->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Expanding);
         m_canvasSlot->setMinimumSize(0,0);
-        m_canvasLayout=new QVBoxLayout(m_canvasSlot);
+        // Show our own mobile empty state, not Krita's desktop welcome
+        // screen. Keep Krita's widget stack alive (and attached) behind it,
+        // so document loading, tools and view notifications remain native.
+        m_canvasStack=new QStackedLayout(m_canvasSlot);
+        m_canvasStack->setContentsMargins(0,0,0,0);
+        m_canvasHolder=new QWidget(m_canvasSlot);
+        m_canvasLayout=new QVBoxLayout(m_canvasHolder);
         m_canvasLayout->setContentsMargins(0,0,0,0);
         m_canvasLayout->setSpacing(0);
+        m_canvasStack->addWidget(m_canvasHolder);
+
+        m_emptyCanvas=new QWidget(m_canvasSlot);
+        auto *emptyLayout=new QVBoxLayout(m_emptyCanvas);
+        emptyLayout->setContentsMargins(16,10,16,10);
+        emptyLayout->setSpacing(14);
+        emptyLayout->addStretch(2);
+        auto *emptyTitle=new QLabel(i18n("Your canvas workspace"),m_emptyCanvas);
+        emptyTitle->setAlignment(Qt::AlignCenter);
+        emptyTitle->setStyleSheet(QStringLiteral(
+            "font-weight:650;font-size:21px;color:#edf4fc;"));
+        emptyLayout->addWidget(emptyTitle);
+        auto *emptyText=new QLabel(i18n(
+            "Create a new canvas or open an existing drawing."),m_emptyCanvas);
+        emptyText->setAlignment(Qt::AlignCenter);
+        emptyText->setWordWrap(true);
+        emptyLayout->addWidget(emptyText);
+        auto *emptyButtons=new QHBoxLayout;
+        emptyButtons->setSpacing(8);
+        auto *createCanvas=new QPushButton(i18n("New canvas"),m_emptyCanvas);
+        auto *openCanvas=new QPushButton(i18n("Open drawing"),m_emptyCanvas);
+        createCanvas->setMinimumHeight(51);
+        openCanvas->setMinimumHeight(51);
+        emptyButtons->addWidget(createCanvas,1);
+        emptyButtons->addWidget(openCanvas,1);
+        emptyLayout->addLayout(emptyButtons);
+        emptyLayout->addStretch(3);
+        connect(createCanvas,&QPushButton::clicked,this,[this]() {
+            MobileDocumentWorkflow::create(m_engine,this);
+            refresh();
+        });
+        connect(openCanvas,&QPushButton::clicked,this,[this]() {
+            MobileDocumentWorkflow::open(m_engine,this);
+            refresh();
+        });
+        m_canvasStack->addWidget(m_emptyCanvas);
+        m_canvasStack->setCurrentWidget(m_emptyCanvas);
         paintingLayout->addWidget(m_canvasSlot,1);
         m_layers=new KritaMobileLayersPanel(m_engine,paintingArea);
         m_layers->onRequestClose=[this]() {
@@ -230,6 +274,19 @@ public:
         if(!m_document)return;
         const bool has=m_engine.hasDocument();
         if(m_saveButton)m_saveButton->setEnabled(has);
+        if(m_canvasStack && m_canvasHolder && m_emptyCanvas) {
+            QWidget *target=has?m_canvasHolder:m_emptyCanvas;
+            if(m_canvasStack->currentWidget()!=target)
+                m_canvasStack->setCurrentWidget(target);
+        }
+        // Hide controls that require a document. This also prevents a
+        // stale layer panel from occupying space after the last close.
+        if(m_brushWorkspace)m_brushWorkspace->setVisible(has);
+        if(m_layersButton)m_layersButton->setEnabled(has);
+        if(!has && m_layers && m_layers->isVisible()) {
+            m_layers->hide();
+            if(m_layersButton)m_layersButton->setChecked(false);
+        }
         const QString node=m_engine.activeLayerName();
         if(!has) {
             m_document->setText(i18n("No document"));
@@ -279,6 +336,14 @@ private:
             settings.sync();
         });
         menu.addSeparator();
+        auto *closeCanvas=menu.addAction(i18n("Close current canvas"));
+        closeCanvas->setEnabled(m_engine.hasDocument());
+        connect(closeCanvas,&QAction::triggered,this,[this]() {
+            QTimer::singleShot(0,this,[this]() {
+                m_engine.closeActiveDocument();
+                refresh();
+            });
+        });
         auto *saveAs=menu.addAction(i18n("Save As..."));
         connect(saveAs,&QAction::triggered,this,[this]() {
             QTimer::singleShot(0,this,[this]() {
@@ -337,6 +402,8 @@ private:
     MobileEngineBridge m_engine;
     QPointer<QWidget> m_nativeCanvas;
     QPointer<QWidget> m_canvasSlot;
+    QStackedLayout *m_canvasStack=nullptr;
+    QWidget *m_canvasHolder=nullptr,*m_emptyCanvas=nullptr;
     QVBoxLayout *m_canvasLayout=nullptr;
     KritaMobileBrushWorkspace *m_brushWorkspace=nullptr;
     KritaMobileLayersPanel *m_layers=nullptr;
