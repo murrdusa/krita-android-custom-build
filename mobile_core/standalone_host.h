@@ -50,6 +50,7 @@
 #include <klocalizedstring.h>
 
 #include "engine_bridge.h"
+#include "canvas_surface.h"
 #include "document_workflow.h"
 #include "document_switcher.h"
 #include "command_browser.h"
@@ -59,7 +60,7 @@
 #include "layer_workspace.h"
 #include "color_workspace.h"
 
-class MobileStandaloneWindow final : public QMainWindow
+class MobileStandaloneWindow final : public QMainWindow, public MobileCanvasSurface
 {
 public:
     explicit MobileStandaloneWindow(const MobileEngineBridge &bridge)
@@ -239,6 +240,26 @@ public:
         return canvas;
     }
     bool hasEngineCanvas() const {return m_nativeCanvas!=nullptr;}
+
+    // Qt-only contract: this UI implementation owns the presentation
+    // slot, while MobileCanvasTransfer retains the native widget itself.
+    QWidget *canvasSurfaceWindow() override {return this;}
+    bool attachNativeCanvas(QWidget *nativeCanvas) override
+    {
+        if(!nativeCanvas || m_nativeCanvas || !m_canvasLayout)return false;
+        attachEngineCanvas(nativeCanvas);
+        return m_nativeCanvas==nativeCanvas;
+    }
+    QWidget *detachNativeCanvas() override
+    {
+        return releaseEngineCanvas();
+    }
+    bool ownsNativeCanvas(QWidget *nativeCanvas) const override
+    {
+        return nativeCanvas && m_nativeCanvas==nativeCanvas;
+    }
+    void refreshCanvasSurface() override {refresh();}
+
     void refresh()
     {
         if(!m_document)return;
