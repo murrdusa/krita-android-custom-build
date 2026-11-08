@@ -63,6 +63,38 @@ There is deliberately **no new native file format** and no custom image
 serializer. The old native file dialogs/actions remain in the compatibility
 menus until Android storage and save reliability are proven.
 
+## v1.2 native mobile menus — no APK upload
+
+APK publishing is intentionally paused. Run the WSL compile and record
+the commit status, but leave `UPLOAD_REQUEST_ID=none`.
+
+- Open **More → Menus — File, Edit, View and more** (or add **Menus**
+  to Quick Actions). The first screen should show the same top-level
+  categories and ordering as Krita's native desktop menu bar.
+- Tap File or Layer and navigate nested submenus. **Back** should return
+  one level at a time. Selecting a native command should close the
+  browser and execute Krita's existing handler exactly once.
+- From within a nested submenu, type a search query such as
+  "duplicate", "crop", "mirror", "save" or "layer". Results should search
+  **all** menu categories, not only the current menu, and show the
+  entire menu path beside each result.
+- Search by an action identifier. Krita commands that are registered
+  but do not appear in a standard desktop menu should be accessible
+  under **Other Krita commands**.
+- Disabled commands must remain visibly unavailable and not execute.
+  After changing document or selection state, reopening the browser
+  should reflect Krita's latest enabled/disabled states.
+- After leaving Mobile Studio, Krita's desktop menus must still work.
+  Confirm native New/Open/Save, selection, layers, Undo/Redo and tool
+  activation are unchanged. Test with multiple documents.
+- Test a menu item that opens a file dialog to confirm the dialog is
+  not obscured by the hidden desktop host.
+
+The menu browser only references Krita's own QAction objects and never
+constructs a parallel command implementation. It does not save or
+manipulate document data. The raw legacy menu remains available as a
+compatibility fallback until Android runtime testing is complete.
+
 ## v1.1 configurable Quick Actions regression tests
 
 This preview replaces the old fixed footer with one **horizontally
