@@ -357,7 +357,7 @@ private:
             });
         });
         menu.addSeparator();
-        auto *browse=menu.addAction(i18n("Search all Krita commands"));
+        auto *browse=menu.addAction(i18n("Menus — File, Edit, View and more"));
         connect(browse,&QAction::triggered,this,[this]() {
             // Let the menu close before opening the independent browser.
             QTimer::singleShot(0,this,[this]() {
