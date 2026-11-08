@@ -53,6 +53,7 @@
 
 #include "engine_bridge.h"
 #include "brush_workspace.h"
+#include "layer_workspace.h"
 
 class MobileStandaloneWindow final : public QMainWindow
 {
@@ -239,50 +240,15 @@ private:
     }
     void openLayers()
     {
-        auto *manager=m_engine.manager();
-        if(!manager || !manager->nodeManager())return;
-        const auto image=manager->image().toStrongRef();
-        if(!image || !image->root())return;
-        QDialog dialog(this);
-        dialog.setWindowTitle(i18n("Layers"));
-        dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
-        dialog.setStyleSheet(
-            "QDialog{background:#283643;color:#eff7ff;}"
-            "QListWidget{background:#2c4051;color:white;font-size:14px;}"
-            "QListWidget::item{min-height:46px;padding:4px;}"
-            "QPushButton{background:#45647e;color:white;min-height:44px;}");
-        auto *layout=new QVBoxLayout(&dialog);
-        auto *heading=new QLabel(i18n("Layers · Krita image model"),&dialog);
-        layout->addWidget(heading);
-        auto *list=new QListWidget(&dialog);
-        list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-        layout->addWidget(list,1);
-        QVector<KisNodeSP> nodes;
-        std::function<void(KisNodeSP,int)> visit;
-        visit=[&](KisNodeSP parent,int depth) {
-            if(!parent || depth>12 || nodes.size()>300)return;
-            for(KisNodeSP node=parent->lastChild();node;node=node->prevSibling()) {
-                nodes.append(node);
-                auto *item=new QListWidgetItem(
-                    QString(depth*2,QLatin1Char(' '))+node->name(),list);
-                item->setData(Qt::UserRole,nodes.size()-1);
-                if(node==manager->activeNode())list->setCurrentItem(item);
-                if(node->childCount())visit(node,depth+1);
-            }
-        };
-        visit(image->root(),0);
-        connect(list,&QListWidget::itemClicked,&dialog,
-                [this,&dialog,&nodes](QListWidgetItem *item) {
-            const int id=item?item->data(Qt::UserRole).toInt():-1;
-            if(id>=0 && id<nodes.size() && m_engine.selectLayer(nodes.at(id)))
-                dialog.accept();
-        });
-        auto *done=new QPushButton(i18n("Close"),&dialog);
-        connect(done,&QPushButton::clicked,&dialog,&QDialog::reject);
-        layout->addWidget(done);
-        dialog.resize(qMax(300,qMin(450,width()-32)),
-                      qMax(360,qMin(660,height()-80)));
+        if(!m_engine.manager() || !m_engine.hasDocument())return;
+        // The panel's only state is a view of native KisNodeManager.
+        // Drawing/undo/compositing remain fully Krita-owned.
+        KritaMobileLayersPanel dialog(
+            m_engine.legacyHost(),m_engine.manager(),this);
+        dialog.resize(qMax(310,qMin(625,width()-28)),
+                      qMax(480,qMin(775,height()-52)));
         dialog.exec();
+        refresh();
     }
     void openColor()
     {
