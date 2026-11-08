@@ -49,6 +49,7 @@
 #include <KoColor.h>
 #include <KoToolManager.h>
 #include <klocalizedstring.h>
+#include "brush_workspace.h"
 
 class KritaMobilePilot final : public QObject
 {
@@ -103,10 +104,14 @@ public:
         addButton(files,i18n("Redo"),[this](){trigger(QStringLiteral("edit_redo"));});
         outer->addLayout(files);
 
+        // The first self-contained mobile subsystem: native brush presets,
+        // size and opacity, without rerouting stylus input or paint devices.
+        m_brushWorkspace=new KritaMobileBrushWorkspace(
+            m_window,m_viewManager,m_surface);
+        outer->addWidget(m_brushWorkspace);
+
         auto *tools=new QHBoxLayout;
         tools->setSpacing(5);
-        addButton(tools,i18n("Paint"),[this](){activatePaint(false);});
-        addButton(tools,i18n("Erase"),[this](){activatePaint(true);});
         addButton(tools,i18n("Layers"),[this](){openLayers();});
         addButton(tools,i18n("Color"),[this](){openColor();});
         addButton(tools,i18n("Menus"),[this](){openMenus();});
@@ -130,6 +135,7 @@ public:
             rememberAndHideNativeChrome();
             m_active=true;
             refreshDocumentLabel();
+            if(m_brushWorkspace)m_brushWorkspace->refresh();
             reposition();
             m_surface->show();
             m_surface->raise();
@@ -182,19 +188,7 @@ private:
             if(action->isEnabled())action->trigger();
         }
     }
-    void activatePaint(bool erasing)
-    {
-        // No new brush engine: the same registered Krita freehand tool and
-        // native Erase toggle used by the desktop UI.
-        KoToolManager::instance()->switchToolRequested(
-            QStringLiteral("KritaShape/KisToolBrush"));
-        QAction *eraser=m_window->actionCollection()->action(
-            QStringLiteral("erase_action"));
-        if(eraser && eraser->isEnabled() &&
-           (!eraser->isCheckable() || eraser->isChecked()!=erasing))
-            eraser->trigger();
-    }
-    void refreshDocumentLabel()
+     void refreshDocumentLabel()
     {
         if(!m_documentLabel || !m_viewManager)return;
         KisDocument *document=m_viewManager->document();
@@ -330,6 +324,7 @@ private:
     KisViewManager *m_viewManager=nullptr;
     QPointer<QAction> m_toggle;
     QLabel *m_documentLabel=nullptr;
+    KritaMobileBrushWorkspace *m_brushWorkspace=nullptr;
     bool m_active=false;
     bool m_wasMenuVisible=false;
     bool m_wasStatusVisible=false;
