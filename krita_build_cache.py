@@ -10,7 +10,7 @@ import subprocess
 NON_APP={"krita_build_live.py","krita_build_reporter.py",
          "krita_build_watcher.py","krita_build_cache.py",".gitignore"}
 GENERATED=("libs/ui/tablet_compact_skin.h","libs/ui/mobile_shell.h",
-           "build-in-krita-container.sh")
+           "libs/ui/brush_workspace.h","build-in-krita-container.sh")
 
 def sha(path):
     h=hashlib.sha256()
