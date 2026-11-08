@@ -90,7 +90,7 @@ public:
             m_host=nullptr;
             return;
         }
-        delete m_host;
+        delete m_host.data();
     }
 
 protected:
@@ -188,7 +188,11 @@ private:
     QPointer<QMainWindow> m_backend;
     MobileEngineBridge m_bridge;
     QPointer<QAction> m_entry;
-    MobileStandaloneWindow *m_host=nullptr;
+    // QMainWindow owns this while embedded as the central widget. A
+    // deferred legacy layout change may destroy that widget without the
+    // controller being notified; QPointer prevents a stale Back handler
+    // from dereferencing the destroyed mobile presentation.
+    QPointer<MobileStandaloneWindow> m_host;
     bool m_transitioning=false;
 };
 
