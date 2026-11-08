@@ -125,9 +125,14 @@ public:
         m_backend->activateWindow();
         surface->refreshCanvasSurface();
         // A delayed desktop toolbar restoration may follow the toggle.
+        // Bind delayed work to the transfer's own QObject timer rather
+        // than to Krita's longer-lived main window. The callback must not
+        // dereference a destroyed MobileCanvasTransfer during shutdown.
         QPointer<QMainWindow> backend=m_backend;
-        QTimer::singleShot(320,m_backend,[this,backend]() {
-            if(backend && m_active)enforceMobileChrome();
+        QTimer::singleShot(320,&m_tabTimer,[this,backend]() {
+            if(backend && m_active &&
+               backend->centralWidget()==m_mobileWindow)
+                enforceMobileChrome();
         });
         return true;
     }
