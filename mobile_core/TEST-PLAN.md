@@ -1,5 +1,29 @@
 # Mobile Studio — first independent-window smoke test
 
+## v1.10 rejected-handoff and APK size auditing
+
+- In a controlled Qt developer build, install a disposable second central
+  widget on Krita's hidden backend before requesting Mobile Studio exit.
+  The transition must be rejected: the second widget must NOT be deleted,
+  the original painting canvas must remain inside Mobile Studio, and the
+  launcher must return to checked. The user should see a warning and
+  still be able to save the original document.
+- Restore an empty backend central slot and retry the transition; the
+  original native QWidget should return to Krita without a new document,
+  new undo stack or changed modified state.
+- Simulate a surface reporting a missing detached canvas when the desktop
+  already owns the original QWidget. Recovery must not unparent it.
+- Repeatedly toggle desktop → mobile → desktop with a modified KRA file.
+  Verify the native app's document, layers and pressure-sensitive painting.
+  Do not treat these checks as passed until compiled and tested on Android.
+- Run `python3 -m unittest discover -s tests -p 'test_apk_size_report.py'`.
+  Source-only CI must run the same suite without assembling/publishing APKs.
+- After a local build, review `apk-size-report.json` and
+  `apk-size-history.json` in the APK output folder. The latter stores
+  the previous 20 distinct SHA-256 snapshots so the compressed native
+  libraries and resource changes can be compared over time. APK and
+  installed-app sizes are different metrics.
+
 ## v1.9 Android mode-switch and Quick Actions regression checks — source changes
 
 APK publishing remains paused. Compile the source in WSL before installing,
