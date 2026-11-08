@@ -3017,6 +3017,15 @@ private:
         pinchGrouping->setChecked(QSettings().value(
             QStringLiteral("TabletUi/pinchToGroupLayers"),true).toBool());
         layout->addWidget(pinchGrouping);
+        auto *multiSelect=new QCheckBox(i18n(
+            "Tap to add/remove layers while Transform or Move is active"),&dialog);
+        multiSelect->setChecked(QSettings().value(
+            QStringLiteral("TabletUi/multiLayerToolTaps"),true).toBool());
+        layout->addWidget(multiSelect);
+        connect(multiSelect,&QCheckBox::toggled,&dialog,[](bool enabled) {
+            QSettings().setValue(QStringLiteral("TabletUi/multiLayerToolTaps"),
+                                 enabled);
+        });
         connect(pinchGrouping,&QCheckBox::toggled,&dialog,[](bool enabled) {
             QSettings().setValue(
                 QStringLiteral("TabletUi/pinchToGroupLayers"),enabled);
@@ -3027,11 +3036,95 @@ private:
             QSettings().setValue(QStringLiteral("TabletUi/layerOnRight"),m_layerOnRight);
             positionOverlays();
         });
-        // Keep options at the top; Qt otherwise stretches the gaps across
-        // the entire dialog height on a tablet.
+        auto *canvasBackground=new QPushButton(
+            i18n("Canvas background: transparency or color..."),&dialog);
+        canvasBackground->setMinimumHeight(54);
+        layout->addWidget(canvasBackground);
+        connect(canvasBackground,&QPushButton::clicked,&dialog,[this]() {
+            openCanvasBackgroundSettings();
+        });
+        // Krita's transform tool respects pixel selections on paint layers.
+        // Vector layers and transform masks have different native semantics.
+        auto *transformNote=new QLabel(i18n(
+            "Transform works on selected pixels of paint layers. "
+            "Vector layers and transform masks may transform whole objects."),&dialog);
+        transformNote->setWordWrap(true);
+        layout->addWidget(transformNote);
         layout->addStretch(1);
         dialog.exec();
     }
+    void openCanvasBackgroundSettings() {
+        if(!m_vm || !m_vm->document())return;
+        const auto image=m_vm->image().toStrongRef();
+        if(!image || !image->root())return;
+        QDialog dialog(m_main);
+        auto *layout=makeTouchSettingsPage(dialog,i18n("Canvas background"));
+        auto *note=new QLabel(i18n(
+            "Transparency displays as a checkerboard. A solid canvas "
+            "background does not add a paint layer."),&dialog);
+        note->setWordWrap(true);
+        layout->addWidget(note);
+        const auto useColor=[this,image](const KoColor &color) {
+            image->setDefaultProjectionColor(color);
+            image->root()->setDirty(image->bounds());
+            if(KisDocument *document=m_vm->document())
+                document->setModified(true);
+        };
+        auto *transparent=new QPushButton(
+            i18n("Transparent canvas (checkerboard)"),&dialog);
+        transparent->setMinimumHeight(56);
+        layout->addWidget(transparent);
+        connect(transparent,&QPushButton::clicked,&dialog,[useColor,image]() {
+            useColor(KoColor::createTransparent(image->colorSpace()));
+            QSettings().setValue(QStringLiteral("TabletUi/backgroundDefaultTransparent"),
+                                 true);
+        });
+        auto *current=new QPushButton(
+            i18n("Use current color from the color wheel"),&dialog);
+        current->setMinimumHeight(56);
+        layout->addWidget(current);
+        connect(current,&QPushButton::clicked,&dialog,[this,useColor,image]() {
+            auto *provider=m_vm->canvasResourceProvider();
+            if(!provider)return;
+            KoColor color=provider->fgColor();
+            color.convertTo(image->colorSpace());
+            useColor(color);
+        });
+        const QString favorite=QSettings().value(
+            QStringLiteral("TabletUi/backgroundPreferredColor"),
+            QStringLiteral("#ffffffff")).toString();
+        auto *preferred=new QPushButton(i18n("Apply saved background: %1",
+                                              favorite),&dialog);
+        preferred->setMinimumHeight(56);
+        layout->addWidget(preferred);
+        connect(preferred,&QPushButton::clicked,&dialog,[useColor,image]() {
+            const QColor color(QSettings().value(
+                QStringLiteral("TabletUi/backgroundPreferredColor"),
+                QStringLiteral("#ffffffff")).toString());
+            if(color.isValid())useColor(KoColor(color,image->colorSpace()));
+        });
+        auto *remember=new QPushButton(
+            i18n("Save current wheel color as background default"),&dialog);
+        remember->setMinimumHeight(56);
+        layout->addWidget(remember);
+        connect(remember,&QPushButton::clicked,&dialog,[this,preferred]() {
+            auto *provider=m_vm->canvasResourceProvider();
+            if(!provider)return;
+            const QString hex=provider->fgColor().toQColor().name(QColor::HexArgb);
+            QSettings().setValue(QStringLiteral("TabletUi/backgroundPreferredColor"),hex);
+            QSettings().setValue(QStringLiteral("TabletUi/backgroundDefaultTransparent"),
+                                 false);
+            preferred->setText(i18n("Apply saved background: %1",hex));
+        });
+        auto *help=new QLabel(i18n(
+            "The saved default is a reusable color preset. Use Krita's "
+            "native New Image settings for the initial background of new projects."),&dialog);
+        help->setWordWrap(true);
+        layout->addWidget(help);
+        layout->addStretch(1);
+        dialog.exec();
+    }
+
     void updateGroupOutlines() {
         if(!m_groupOutline || !m_layersContent)return;
         if(m_groupOutline->geometry()!=m_layersContent->rect())
@@ -3126,15 +3219,19 @@ private:
         }
     }
     void refreshSelectedLayerTiles(KisNodeSP active) {
-        if(m_lastLayerActive==active)return;
+        const KisNodeList chosen=m_vm->nodeManager()->selectedNodes();
         for(const CompactLayerRow &row:m_compactLayerRows) {
-            if(!row.tile || (row.node!=active &&
-               row.node!=m_lastLayerActive))continue;
-            row.tile->setStyleSheet(row.node==active ?
+            if(!row.tile)continue;
+            const bool current=row.node==active;
+            const bool included=chosen.contains(row.node);
+            row.tile->setStyleSheet(current ?
                 "QToolButton{border:3px solid #e86c79;border-radius:5px;"
                 "background:#a4a4a4;}" :
+                (included ?
+                "QToolButton{border:3px solid #78c4ed;border-radius:5px;"
+                "background:#a4a4a4;}" :
                 "QToolButton{border:2px solid #808080;border-radius:5px;"
-                "background:#a4a4a4;}");
+                "background:#a4a4a4;}"));
         }
         m_lastLayerActive=active;
     }
@@ -3157,16 +3254,53 @@ private:
         }
         return nullptr;
     }
-    // Both touch and stylus decide selection from the state at gesture
-    // START, rather than a later synthesized click after selection changed.
+    bool isMultiLayerToolActive() const {
+        if(!m_vm || !QSettings().value(
+            QStringLiteral("TabletUi/multiLayerToolTaps"),true).toBool())
+            return false;
+        const QString id=KoToolManager::instance()->activeToolId();
+        return id==QStringLiteral("KisToolTransform") ||
+            id==QStringLiteral("KritaTransform/KisToolMove");
+    }
+    // Transform and Move use Krita's own selectedNodes() collection.
+    // Ordinary brush mode retains one-tap select / second-tap options.
     void handleCompactLayerTap(KisNodeSP node,bool previouslySelected) {
         if(!node || !m_vm || !m_vm->nodeManager())return;
-        if(!previouslySelected || m_vm->activeNode()!=node) {
-            m_vm->nodeManager()->slotUiActivatedNode(node);
-            QTimer::singleShot(0,this,[this]() {refreshLayers();});
-        } else {
-            openLayerActions(node);
+        KisNodeManager *manager=m_vm->nodeManager();
+        if(isMultiLayerToolActive() && node->inherits("KisLayer")) {
+            KisNodeList selected=manager->selectedNodes();
+            if(selected.isEmpty() && m_vm->activeNode())
+                selected.append(m_vm->activeNode());
+            if(selected.contains(node)) {
+                // Do not leave Krita's transform tool with zero targets.
+                if(selected.size()<=1) {
+                    m_layerName->setText(i18n("Keep one layer selected"));
+                    return;
+                }
+                selected.removeAll(node);
+            } else selected.append(node);
+            if(!selected.contains(m_vm->activeNode()))
+                manager->slotUiActivatedNode(selected.last());
+            manager->slotSetSelectedNodes(selected);
+            const QString id=KoToolManager::instance()->activeToolId();
+            if(id==QStringLiteral("KisToolTransform")) {
+                // Refresh Krita's native transform transaction when the
+                // target list changes. Its own reset handles the preview.
+                QPointer<KoToolBase> tool=KoToolManager::instance()->toolById(
+                    m_vm->canvasBase(),QStringLiteral("KisToolTransform"));
+                QTimer::singleShot(0,this,[tool]() {
+                    if(tool)QMetaObject::invokeMethod(
+                        tool.data(),"slotRestartTransform",Qt::DirectConnection);
+                });
+            }
+            m_layerName->setText(i18n("%1 layers selected",selected.size()));
+            refreshSelectedLayerTiles(m_vm->activeNode());
+            return;
         }
+        if(!previouslySelected || m_vm->activeNode()!=node) {
+            manager->slotUiActivatedNode(node);
+            QTimer::singleShot(0,this,[this]() {refreshLayers();});
+        } else openLayerActions(node);
     }
     void suppressSynthesizedLayerClick(KisNodeSP node) {
         m_suppressedClickNode=node;
@@ -4029,6 +4163,7 @@ private:
         m_visibleLayerCount=count;
         m_lastLayerImage=image.data();
         m_lastLayerActive=active;
+        refreshSelectedLayerTiles(active);
         QTimer::singleShot(0,this,[this,oldScroll]() {
             if(m_layersScroll)m_layersScroll->verticalScrollBar()->setValue(oldScroll);
             refreshVisibleLayerThumbnails(false);
