@@ -63,6 +63,37 @@ There is deliberately **no new native file format** and no custom image
 serializer. The old native file dialogs/actions remain in the compatibility
 menus until Android storage and save reliability are proven.
 
+## v1.0 canvas presentation and native tool picker
+
+This milestone advances the **mobile-first interface**, without replacing
+Krita's brush/selection/transform engines or Qt MDI document ownership.
+
+- Use **More → Tools — search Krita's tool registry**. Search for brush,
+  rectangle, selection, move, and transform. Choose a result; the real
+  Krita tool should activate with pen pressure/input and Undo intact.
+- Reopen Tools. The current tool is highlighted, and recently used tools
+  appear first. Search also accepts internal tool identifiers.
+- Open multiple documents, including creating a new one from Mobile
+  Studio. Krita's extra **desktop document tab strip** should not be
+  visible inside the mobile canvas; use the mobile document-title
+  switcher to move between drawings. Check that strokes appear on the
+  intended document, not an inactive one.
+- Leave Mobile Studio using Back. Krita's normal desktop MDI tabs
+  should reappear at their original size and remain clickable.
+- Reenter Mobile Studio, close the last document, then create or open
+  another. The tab strip should remain hidden even when Qt creates a
+  fresh native MDI tab widget.
+- Rotate/fold/unfold, move between documents, and test
+  Save/Save As/Undo/Redo/pressure-sensitive pen strokes.
+- If hiding the native tab bar causes a canvas-rendering failure,
+  use the preserved previous release and report orientation and
+  document count; this must be reverted rather than risking data.
+
+The mobile host's own document switcher replaces the visible MDI tabs,
+but the underlying QMdiArea and native Krita views remain intact.
+The canvas-session controller is the only place that changes native
+MDI tab presentation and records original geometry for restoration.
+
 ## v0.9 document lifecycle and empty workspace
 
 This batch moves **document closing** into the mobile engine adapter,
