@@ -28,8 +28,7 @@
 #include <QTimer>
 #include <functional>
 
-#include "KisMainWindow.h"
-#include "KisViewManager.h"
+#include "engine_bridge.h"
 #include "kis_node_manager.h"
 #include "kis_node.h"
 #include "kis_image.h"
@@ -38,9 +37,9 @@
 class KritaMobileLayersPanel final : public QFrame
 {
 public:
-    KritaMobileLayersPanel(KisMainWindow *main,KisViewManager *view,
+    KritaMobileLayersPanel(const MobileEngineBridge &engine,
                            QWidget *parent=nullptr)
-        : QFrame(parent),m_main(main),m_view(view)
+        : QFrame(parent),m_engine(engine)
     {
         setObjectName(QStringLiteral("MobileStudioLayersPanel"));
         setMinimumWidth(268);
@@ -110,9 +109,7 @@ public:
         layout->addLayout(history);
         const auto wireHistory=[this](QPushButton *button,const char *id,
                                       const QString &fallback) {
-            QAction *action=m_main && m_main->actionCollection() ?
-                m_main->actionCollection()->action(QString::fromLatin1(id)) :
-                nullptr;
+            QAction *action=m_engine.action(id);
             if(!action) {
                 button->setEnabled(false);
                 return;
@@ -258,8 +255,9 @@ public:
 private:
     QString engineSignature() const
     {
-        if(!m_view || !manager())return QStringLiteral("no-view");
-        const auto image=m_view->image().toStrongRef();
+        auto *view=m_engine.manager();
+        if(!view || !manager())return QStringLiteral("no-view");
+        const auto image=view->image().toStrongRef();
         if(!image || !image->root())return QStringLiteral("no-image");
         QString key=QString::number(quintptr(image.data()),16);
         int count=0;
@@ -282,14 +280,15 @@ private:
         const auto selected=manager()->selectedNodes();
         for(const KisNodeSP &n:selected)
             if(n)key+=n->uuid().toString();
-        const KisNodeSP active=m_view->activeNode();
+        const KisNodeSP active=view->activeNode();
         if(active)key+=active->uuid().toString();
         return key;
     }
 
     KisNodeManager *manager() const
     {
-        return m_view?m_view->nodeManager():nullptr;
+        auto *view=m_engine.manager();
+        return view?view->nodeManager():nullptr;
     }
     KisNodeList selectedTargets() const
     {
@@ -346,8 +345,9 @@ private:
     void reload()
     {
         auto *m=manager();
-        if(!m || !m_view)return;
-        const auto image=m_view->image().toStrongRef();
+        auto *view=m_engine.manager();
+        if(!m || !view)return;
+        const auto image=view->image().toStrongRef();
         if(!image || !image->root()) {
             m_tree->clear();
             m_nodes.clear();
@@ -364,7 +364,7 @@ private:
                 if(item->isExpanded())expanded.insert(m_nodes[i].data());
 
         const KisNodeList native=m->selectedNodes();
-        m_active=m_view->activeNode();
+        m_active=view->activeNode();
         m_selected.clear();
         for(auto node:native)
             if(node && node->parent() && !m_selected.contains(node))
@@ -400,8 +400,7 @@ private:
         m_tree->verticalScrollBar()->setValue(scroll);
         m_signature=engineSignature();
     }
-    QPointer<KisMainWindow> m_main;
-    KisViewManager *m_view=nullptr;
+    MobileEngineBridge m_engine;
     QTreeWidget *m_tree=nullptr;
     QLabel *m_summary=nullptr;
     QCheckBox *m_multi=nullptr;
