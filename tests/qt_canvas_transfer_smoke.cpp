@@ -8,6 +8,7 @@
 #include <QApplication>
 #include <QDebug>
 #include <QDockWidget>
+#include <QEvent>
 #include <QLabel>
 #include <QMainWindow>
 #include <QMdiArea>
@@ -63,6 +64,37 @@ public:
 private:
     QPointer<QWidget> m_canvas;
     QVBoxLayout *m_layout=nullptr;
+};
+
+// A QMainWindow::takeCentralWidget() temporarily sets a native canvas's
+// parent to nullptr on Qt 5. This observer distinguishes the still-open
+// entry-side risk from the Back path, which should now remain inside the
+// original top-level. It deliberately reports the count without treating
+// the entry-side risk as solved before a different architecture exists.
+class CanvasTopLevelObserver final : public QObject
+{
+public:
+    CanvasTopLevelObserver(QWidget *canvas,QMainWindow *backend)
+        : m_canvas(canvas),m_backend(backend)
+    {
+        canvas->installEventFilter(this);
+    }
+    ~CanvasTopLevelObserver() override
+    {
+        if(m_canvas)m_canvas->removeEventFilter(this);
+    }
+    int escapes=0;
+protected:
+    bool eventFilter(QObject *watched,QEvent *event) override
+    {
+        if(watched==m_canvas && event->type()==QEvent::ParentChange &&
+           m_canvas && m_backend && m_canvas->window()!=m_backend)
+            ++escapes;
+        return QObject::eventFilter(watched,event);
+    }
+private:
+    QPointer<QWidget> m_canvas;
+    QPointer<QMainWindow> m_backend;
 };
 
 // Fault injection for the Android path where a surface has detached the
@@ -130,6 +162,7 @@ int main(int argc,char **argv)
     const bool dockVisible=dock->isVisible();
 
     MobileCanvasTransfer transfer(&backend,mdi);
+    CanvasTopLevelObserver parentObserver(canvas,&backend);
     // An occupied destination must never steal a native Krita widget.
     TestSurface occupied;
     occupied.attachNativeCanvas(new QWidget);
@@ -194,7 +227,10 @@ int main(int argc,char **argv)
             require(canvas->property("testDrawingRevision").toInt()==17,
                     "invalid detach discarded document state");
         }
+        const int escapesBeforeBack=parentObserver.escapes;
         require(transfer.leave(),"failed to restore the native canvas");
+        require(parentObserver.escapes==escapesBeforeBack,
+                "Back temporarily unparented the original native canvas");
         QApplication::processEvents();
         require(!transfer.active(),"transfer still active after returning");
         require(backend.centralWidget()==canvas,
@@ -214,6 +250,9 @@ int main(int argc,char **argv)
         delete mobile;
     }
 
+    qInfo() << "Entry-side transient top-level parent changes:"
+            << parentObserver.escapes
+            << "(separately tracked; the Back path has zero)";
     qInfo() << "PASS: ten reversible same-window transfers, chrome restore,"
             << "canvas identity, occupied destination, rejected attachment,"
             << "failed detach rollback, and occupied backend guards";
