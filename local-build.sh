@@ -181,5 +181,7 @@ if [[ "$MODE" == build ]]; then
     mv "$INPUT_STAMP.tmp" "$INPUT_STAMP"
 fi
 find "$OUT" -maxdepth 1 -name '*.apk' -type f -printf '%p (%s bytes)\n'
+# Diagnose native/Qt packaging size without modifying or uploading the APK.
+python3 "$REPO/apk_size_report.py" "$OUT" || say "WARNING: APK size audit failed"
 publish_apk
 if command -v wslpath >/dev/null 2>&1; then echo "Windows folder: $(wslpath -w "$OUT")"; fi
