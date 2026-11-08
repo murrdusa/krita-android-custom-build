@@ -57,6 +57,7 @@
 #include "quick_actions.h"
 #include "brush_workspace.h"
 #include "layer_workspace.h"
+#include "color_workspace.h"
 
 class MobileStandaloneWindow final : public QMainWindow
 {
@@ -180,6 +181,11 @@ public:
         };
         paintingLayout->addWidget(m_layers,0);
         m_layers->hide();
+        // Floating foreground color controls are overlaid on the live
+        // canvas and occupy no permanent layout width. They capture
+        // pointer events only over the wheel and recent color swatches.
+        m_colorWorkspace=new MobileColorWorkspace(m_engine,m_canvasSlot);
+        m_colorWorkspace->raise();
         layout->addWidget(paintingArea,1);
 
         m_brushWorkspace=new KritaMobileBrushWorkspace(m_engine,root);
@@ -215,6 +221,7 @@ public:
         m_nativeCanvas=nativeCanvas;
         m_canvasLayout->addWidget(nativeCanvas,1);
         nativeCanvas->show();
+        if(m_colorWorkspace)m_colorWorkspace->raise();
         refresh();
     }
     QWidget *releaseEngineCanvas()
@@ -241,6 +248,13 @@ public:
         // Hide controls that require a document. This also prevents a
         // stale layer panel from occupying space after the last close.
         if(m_brushWorkspace)m_brushWorkspace->setVisible(has);
+        if(m_colorWorkspace) {
+            m_colorWorkspace->setVisible(has);
+            if(has) {
+                m_colorWorkspace->raise();
+                m_colorWorkspace->refresh();
+            }
+        }
         // Quick Actions checks document availability from the bridge.
         if(!has && m_layers && m_layers->isVisible()) {
             m_layers->hide();
@@ -396,13 +410,10 @@ private:
     }
     void openColor()
     {
-        auto *provider=m_engine.brushResources();
-        if(!provider)return;
-        const KoColor initial=provider->fgColor();
-        const QColor color=QColorDialog::getColor(
-            initial.toQColor(),this,i18n("Brush color"));
-        if(color.isValid())
-            provider->setFGColor(KoColor(color,initial.colorSpace()));
+        if(!m_engine.hasDocument() || !m_colorWorkspace)return;
+        m_colorWorkspace->setExpanded(!m_colorWorkspace->expanded());
+        m_colorWorkspace->show();
+        m_colorWorkspace->raise();
     }
 
     MobileEngineBridge m_engine;
@@ -413,6 +424,7 @@ private:
     QVBoxLayout *m_canvasLayout=nullptr;
     KritaMobileBrushWorkspace *m_brushWorkspace=nullptr;
     KritaMobileLayersPanel *m_layers=nullptr;
+    MobileColorWorkspace *m_colorWorkspace=nullptr;
     MobileQuickActions *m_quickActions=nullptr;
     QToolButton *m_document=nullptr;
     QTimer *m_updates=nullptr;
