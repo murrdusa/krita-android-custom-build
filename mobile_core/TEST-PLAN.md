@@ -32,6 +32,37 @@ rendered inside Mobile Studio. The prototype is opt-in and reversible.
 - Leave and reenter Mobile Studio, rotate or unfold, and confirm the live
   canvas, layers and tool state survive. Input pressure is still Krita-owned.
 
+## v0.6 — native document workflow and file-safety checks
+
+This preview replaces the mobile New button's desktop dialog with a
+dedicated New Canvas screen using `KisPart::createDocument` and
+`KisDocument::newImage`. The mobile editor still owns neither the file
+codec nor the save/undo machinery.
+
+Use **disposable** test documents, preferably two separate filenames:
+
+- Create a **transparent** 1024×1024 canvas; confirm one editable paint layer
+  and transparent background. Paint and undo, then save as a KRA file.
+- Create a **white** 2048×2048 canvas; confirm locked background plus a
+  paintable layer, and that Krita's native background handling is correct.
+- Switch between two open documents and verify the top-right title and
+  modified marker refer to the active document.
+- Open an existing KRA from the mobile Open button; wait for the native
+  document load, confirm its layers and size, and save a separate copy.
+- Use **More → Save As...** to create a second file. Check that cancelling
+  does not rename or overwrite the original document.
+- Save while a brush stroke is completing, and after Undo/Redo. Krita's
+  delayed-save protection and file formats must behave as before.
+- Rotate/unfold while the New Canvas dialog is open, and ensure the
+  dialog remains usable. Attempt a 8192×8192 canvas; the preview should
+  reject the oversized pixel count without attempting to allocate it.
+- Close Mobile Studio to the prior Krita window and reenter; images and
+  saved paths must be preserved.
+
+There is deliberately **no new native file format** and no custom image
+serializer. The old native file dialogs/actions remain in the compatibility
+menus until Android storage and save reliability are proven.
+
 ## Required smoke checks
 
 - **Canvas transfer:** Create/open a document, enter Mobile Studio,
