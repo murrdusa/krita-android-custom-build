@@ -1,5 +1,29 @@
 # Krita Core / Mobile UI redesign
 
+## Milestone v1.7 — generic Qt canvas host boundary
+
+- `canvas_transfer.h` owns physical transfer of the **same** native
+  Krita QWidget stack between the backend Qt `QMainWindow` and
+  `MobileStandaloneWindow`. It also isolates native MDI tab-strip
+  hide/restore behavior, prevents the Android desktop-window refresh
+  from reappearing over the mobile canvas, and guards failed transfers.
+- `canvas_session.h` is now just mode switching and opt-in startup.
+  Its constructor accepts Qt `QMainWindow`, Qt `QMdiArea`, and a
+  preconstructed `MobileEngineBridge`. It no longer includes or
+  constructs Krita-specific `KisMainWindow` or `KisViewManager`
+  objects. The source patcher builds the bridge at the Krita startup
+  integration point.
+- The Android patcher rejects concrete desktop window includes from
+  both the mobile UI and the Qt canvas/session classes. Only
+  `document_service.h` and `command_service.h` retain direct
+  Krita-specific main-window dependencies.
+- This is a reduction of **source coupling**, not a runtime removal of
+  Krita's desktop `KisMainWindow`. Krita's core still initializes
+  and owns the paint device, document lifetime, native tools and saves.
+  A future engine-only startup can replace the remaining two services
+  and the Qt host without modifying the mobile UI.
+- APK uploads remain disabled by the user's explicit preference.
+
 ## Milestone v1.6 — document and command services
 
 The mobile UI has moved closer to being independent of Krita's desktop
