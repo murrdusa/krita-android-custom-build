@@ -12,9 +12,12 @@
 #include <QString>
 #include <QVector>
 #include <QWidget>
+#include <QList>
+#include <brushengine/kis_paintop_preset.h>
 #include "KisMainWindow.h"
 #include "KisViewManager.h"
 #include "kis_canvas_resource_provider.h"
+#include "kis_paintop_box.h"
 #include "kis_node_manager.h"
 #include "kis_node.h"
 #include "kis_image.h"
@@ -30,10 +33,33 @@ public:
     KisCanvasResourceProvider *brushResources() const {
         return m_manager?m_manager->canvasResourceProvider():nullptr;
     }
-    QAction *action(const char *id) const {
+    // Only this adapter knows the temporary desktop backend. Client
+    // workspaces see Krita services, not KisMainWindow or its toolbars.
+    QAction *action(const QString &id) const {
         return m_mainWindow && m_mainWindow->actionCollection()?
-            m_mainWindow->actionCollection()->action(
-                QString::fromLatin1(id)):nullptr;
+            m_mainWindow->actionCollection()->action(id):nullptr;
+    }
+    QAction *action(const char *id) const {
+        return action(QString::fromLatin1(id));
+    }
+    QList<QAction*> availableActions() const {
+        if(!m_mainWindow || !m_mainWindow->actionCollection())return {};
+        return m_mainWindow->actionCollection()->actions();
+    }
+    bool canRun(const char *id) const {
+        const QAction *a=action(id);
+        return a && a->isEnabled();
+    }
+    bool selectBrushPreset(const KisPaintOpPresetSP &preset) const {
+        if(!preset || !m_manager || !m_manager->paintOpBox())return false;
+        m_manager->paintOpBox()->resourceSelected(preset);
+        return true;
+    }
+    void setEraser(bool enabled) const {
+        if(QAction *eraser=action("erase_action"))
+            if(eraser->isCheckable() && eraser->isChecked()!=enabled &&
+               eraser->isEnabled())
+                eraser->trigger();
     }
     bool run(const char *id) const {
         if(QAction *a=action(id)) {
