@@ -34,6 +34,30 @@ rendered inside Mobile Studio. The prototype is opt-in and reversible.
 - **Rotation/resizing:** Rotate or unfold the device while the new window
   is active. Neither canvas nor brush panel should disappear permanently.
 
+## Layer workspace v0.2 checks
+
+The new Layers panel now reads Krita's real node tree, preserving nested
+groups and masks. Please test the following with a **disposable** document:
+
+- Create paint layers and groups; check the order and indentation.
+- Tap one layer to activate it; toggle Multi-select and include two layers.
+  The highlighted rows and selected-count label should agree.
+- Duplicate a selected layer; use Up/Down; verify Krita undo/redo reverses
+  mutations correctly.
+- Show/Hide and Lock/Unlock should update the rows and the canvas.
+- Group and Ungroup should change the native layer hierarchy, not just its
+  appearance. Note that a layer may refuse invalid operations under Krita's
+  rules; the UI intentionally delegates those checks.
+- Delete requires confirmation and uses Krita's undoable remove operation.
+- A selected paint layer should remain selected after exiting the panel.
+- Switch in/out of Mobile Studio and reopen the layer panel to verify no
+  missing/duplicate layers or loss of document edits.
+
+This is a native-model-backed pilot, **not yet a completed layer interface**.
+The next phases add drag and nesting, thumbnail previews, clipping UX, and
+a model-driven rather than modal panel. Layer-type-specific availability and
+multi-layer selection also need testing on Android.
+
 ## Known current limitations
 
 - The window is **not yet a separate APK package or executable**. The next
