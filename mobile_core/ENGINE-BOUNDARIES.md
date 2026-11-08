@@ -1,5 +1,23 @@
 # Krita Core / Mobile UI redesign
 
+## Milestone v0.6 — document workflows
+
+Mobile Studio now owns the New Canvas dialog (presets, dimension and DPI
+selection, transparent or white background). `MobileDocumentWorkflow` is
+a UI controller, and `MobileEngineBridge` is the only mobile code that
+constructs or opens Krita documents using `KisPart`, `KisDocument` and
+`KisMainWindow`. Saving and saving-as continue through Krita's existing
+safe-save implementation; no custom serializer, no bypass of render locks,
+KRA backup policy or format conversion.
+
+The Open chooser belongs to the mobile shell but uses Krita's existing
+`KoFileDialog` provider and native document loader, preserving Android
+storage access. The old desktop main window still owns loading completion,
+active canvas view and delayed-save handling; **this milestone does not
+yet eliminate that backend**. The newly introduced document service gives
+us a single place to replace that backend in future milestones without
+rewriting the mobile UI.
+
 ## Milestone v0.5 — interface/service boundary
 
 The `MobileEngineBridge` is the only mobile module that accesses the hidden
