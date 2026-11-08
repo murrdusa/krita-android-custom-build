@@ -15,6 +15,9 @@
 #include <QSignalBlocker>
 #include <QWidget>
 #include <QAction>
+#include <QApplication>
+#include <QSettings>
+#include <QTimer>
 #include "KisMainWindow.h"
 #include "KisViewManager.h"
 #include "engine_bridge.h"
@@ -32,6 +35,42 @@ public:
     {
         connect(entry,&QAction::toggled,this,[this](bool value) {
             if(value)enter();else leave();
+        });
+        // Opt-in mobile-first startup: Krita still initializes services
+        // before this session takes ownership of its canvas widget.
+        // A pending marker prevents repeated launch crashes from trapping
+        // users in Mobile Studio; the next launch falls back to Krita.
+        QTimer::singleShot(0,this,[this]() {
+            if(!m_main || !m_entry || !qApp ||
+               qApp->property("_mobileStudioBootHandled").toBool())return;
+            qApp->setProperty("_mobileStudioBootHandled",true);
+            QSettings settings;
+            if(!settings.value(
+                    QStringLiteral("MobileStudio/startDirectly"),false)
+                    .toBool())return;
+            if(settings.value(
+                    QStringLiteral("MobileStudio/bootPending"),false)
+                    .toBool()) {
+                settings.setValue(
+                    QStringLiteral("MobileStudio/startDirectly"),false);
+                settings.setValue(
+                    QStringLiteral("MobileStudio/bootPending"),false);
+                settings.sync();
+                return;
+            }
+            settings.setValue(
+                QStringLiteral("MobileStudio/bootPending"),true);
+            settings.sync();
+            m_entry->setChecked(true);
+            QTimer::singleShot(4500,this,[this]() {
+                QSettings verified;
+                verified.setValue(
+                    QStringLiteral("MobileStudio/bootPending"),false);
+                if(!m_inMobile)
+                    verified.setValue(
+                        QStringLiteral("MobileStudio/startDirectly"),false);
+                verified.sync();
+            });
         });
     }
     ~MobileAppController() override
