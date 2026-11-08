@@ -996,16 +996,14 @@ public:
             // restoreState() also restores toolbar visibility. Do the
             // normal-bar restore *after* it, keeping Compact shortcuts hidden.
             rememberCompactToolbarState(false);
-            if(m_main->menuBar() && m_normalMenuVisible)
-                m_main->menuBar()->show();
+            if(m_main->menuBar())m_main->menuBar()->show();
             if(m_main->statusBar() && m_normalStatusVisible)
                 m_main->statusBar()->show();
             // Delayed workspace restoration sometimes runs after the toggle;
             // reassert normal-mode chrome without touching user preferences.
             QTimer::singleShot(120,this,[this]() {
                 if(m_compact)return;
-                if(m_main->menuBar() && m_normalMenuVisible)
-                    m_main->menuBar()->show();
+                if(m_main->menuBar())m_main->menuBar()->show();
                 if(m_main->statusBar() && m_normalStatusVisible)
                     m_main->statusBar()->show();
                 for(QToolBar *bar:m_main->findChildren<QToolBar*>())
@@ -1197,7 +1195,12 @@ private:
         scroll->setWidgetResizable(true);
         scroll->setFrameShape(QFrame::NoFrame);
         scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        QScroller::grabGesture(scroll->viewport(),QScroller::TouchGesture);
+        // Android delivers finger drags as synthesized mouse gestures for
+        // these scroll areas. Match the working action/brush list behavior.
+        scroll->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
+        scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        QScroller::grabGesture(scroll->viewport(),
+                               QScroller::LeftMouseButtonGesture);
         auto *page=new QWidget(scroll);
         page->setObjectName(QStringLiteral("compactSettingsPage"));
         auto *content=new QVBoxLayout(page);
@@ -1536,7 +1539,10 @@ private:
         auto *settingsScroll=new QScrollArea(tabs);
         settingsScroll->setWidgetResizable(true);
         settingsScroll->setFrameShape(QFrame::NoFrame);
-        QScroller::grabGesture(settingsScroll->viewport(),QScroller::TouchGesture);
+        settingsScroll->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
+        settingsScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        QScroller::grabGesture(settingsScroll->viewport(),
+                               QScroller::LeftMouseButtonGesture);
         auto *settingsPage=new QWidget(settingsScroll);
         auto *settings=new QVBoxLayout(settingsPage);
         settings->setContentsMargins(6,8,6,8);
@@ -1652,8 +1658,15 @@ private:
                 item->setFlags(item->flags()&~Qt::ItemIsEnabled);
         }
         auto *actionButtons=new QHBoxLayout;
-        auto *run=new QPushButton(i18n("Run action"),actionsPage);
-        auto *addQuick=new QPushButton(i18n("+ Quick"),actionsPage);
+        auto *explanation=new QLabel(
+            i18n("Select a command, then run it once or save a shortcut "
+                 "in the Quick tab."),actionsPage);
+        explanation->setWordWrap(true);
+        actionsLayout->addWidget(explanation);
+        auto *run=new QPushButton(i18n("Run selected"),actionsPage);
+        auto *addQuick=new QPushButton(i18n("Add to Quick"),actionsPage);
+        run->setToolTip(i18n("Execute the selected Krita command"));
+        addQuick->setToolTip(i18n("Add this command to the Quick shortcuts tab"));
         run->setMinimumHeight(52);
         addQuick->setMinimumHeight(52);
         run->setEnabled(false);
@@ -1708,7 +1721,9 @@ private:
         quickScroll->setWidgetResizable(true);
         quickScroll->setFrameShape(QFrame::NoFrame);
         quickScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        QScroller::grabGesture(quickScroll->viewport(),QScroller::TouchGesture);
+        quickScroll->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
+        QScroller::grabGesture(quickScroll->viewport(),
+                               QScroller::LeftMouseButtonGesture);
         auto *quick=new QWidget(quickScroll);
         auto *quickLayout=new QVBoxLayout(quick);
         quickLayout->setContentsMargins(7,9,7,9);
@@ -2641,6 +2656,9 @@ private:
             QSettings().setValue(QStringLiteral("TabletUi/layerOnRight"),m_layerOnRight);
             positionOverlays();
         });
+        // Keep options at the top; Qt otherwise stretches the gaps across
+        // the entire dialog height on a tablet.
+        layout->addStretch(1);
         dialog.exec();
     }
     void updateGroupOutlines() {
@@ -4141,6 +4159,7 @@ private:
             QSettings().setValue(QStringLiteral("TabletUi/colorWheelPixels"),pixels);
             resizeDelay->start();
         });
+        layout->addStretch(1);
         dialog.exec();
     }
     void toggleColor() {
@@ -4215,20 +4234,12 @@ private:
     }
     void syncNormalWelcomeChrome() {
         if(m_compact || !m_main || !m_main->menuBar())return;
-        const bool hasDocument=m_mdi && !m_mdi->subWindowList().isEmpty();
-        // Temporarily hide menus only on the empty mobile home. Do not
-        // record that temporary hiding as the user's normal-mode preference
-        // when toggling Compact UI on and back off.
-        if(!hasDocument) {
-            if(!m_welcomeMenuHidden)
-                m_normalMenuVisible=m_main->menuBar()->isVisible();
-            m_welcomeMenuHidden=true;
-            m_main->menuBar()->hide();
-        } else {
-            if(m_welcomeMenuHidden && m_normalMenuVisible)
-                m_main->menuBar()->show();
-            m_welcomeMenuHidden=false;
-        }
+        // Normal Krita must retain File / Edit / View / Image / Layer and
+        // other standard menus on both document and welcome screens.
+        // The old mobile-only welcome hiding caused them to disappear.
+        m_normalMenuVisible=true;
+        m_welcomeMenuHidden=false;
+        if(!m_main->menuBar()->isVisible())m_main->menuBar()->show();
     }
     void updateColorDock() {
         if(!m_colorDocker)return;
