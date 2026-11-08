@@ -59,17 +59,18 @@ QImage KisVisualDiamondSelectorShape::renderAlphaMask()''',
         QStringLiteral("TabletUi/compact"),false).toBool() ?
         qBound(0,QSettings().value(
             QStringLiteral("TabletUi/colorDiamondRotationDegrees"),0).toInt(),359) : 0;
-    // The diamond's bounding box is unchanged even for arbitrary angles.
-    // Fit its rotated four corners inside the existing selector square.
+    // Keep the corners inscribed in the ring at every rotation angle.
+    // QWidget clipping uses the pre-rotation square; the visible corners
+    // and touch region are mapped consistently by the shape transform.
     if(m_lastSquareRotation!=degrees || m_lastSquareSize!=size()) {
         m_lastSquareRotation=degrees;
         m_lastSquareSize=size();
-        const qreal angle=qDegreesToRadians(qreal(degrees));
-        const qreal fit=1.0/(qAbs(qCos(angle))+qAbs(qSin(angle)));
+        // The diamond's corners are already on the inscribed circle.
+        // Rotating the square does NOT increase its corner radius.
+        // The previous 1/(cos+sin) shrink left a large empty gray ring.
         QTransform transform;
         transform.translate(width()/2.0,height()/2.0);
         transform.rotate(degrees);
-        transform.scale(fit,fit);
         transform.translate(-width()/2.0,-height()/2.0);
         m_squareRotation=transform;
         m_squareRotationInverse=transform.inverted();
@@ -104,7 +105,21 @@ void KisVisualDiamondSelectorShape::drawCursor(QPainter &painter)''',
 };''',
           "cached transforms")
     header.write_text(h,encoding="utf-8")
-    print("Compact color diamond rotation applied to rendering, cursor and touch coordinates")
+    # In Compact UI, use a slimmer hue ring. The diamond then expands
+    # toward the ring automatically via getSpaceForSquare(). Normal Krita
+    # retains its original ring geometry and minimum slider target.
+    visual=root/"libs/widgets/KisVisualColorSelector.cpp"
+    v=visual.read_text(encoding="utf-8")
+    v=one(v,"#include <QVector4D>\n",
+          "#include <QVector4D>\n#include <QSettings>\n",
+          "selector settings header")
+    v=one(v,"    const qreal sliderRatio = 0.09;\n",
+          '''    const bool compactSelector=QSettings().value(
+        QStringLiteral("TabletUi/compact"),false).toBool();
+    const qreal sliderRatio=compactSelector ? 0.055 : 0.09;
+''',"compact ring ratio")
+    visual.write_text(v,encoding="utf-8")
+    print("Compact color diamond no longer shrinks when rotated; slimmer hue ring")
 
 if __name__=="__main__":
     if len(sys.argv)!=2:
