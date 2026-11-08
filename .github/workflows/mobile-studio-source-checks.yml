@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - "apk_size_report.py"
+      - "krita_build_reporter.py"
       - "krita_build_cache.py"
       - "apply_mobile_shell.py"
       - "mobile_core/**"
@@ -13,6 +14,7 @@ on:
   pull_request:
     paths:
       - "apk_size_report.py"
+      - "krita_build_reporter.py"
       - "krita_build_cache.py"
       - "apply_mobile_shell.py"
       - "mobile_core/**"
@@ -32,9 +34,9 @@ jobs:
         with:
           python-version: "3.11"
       - name: Compile Python source
-        run: python -m py_compile apk_size_report.py krita_build_cache.py apply_mobile_shell.py
+        run: python -m py_compile apk_size_report.py krita_build_reporter.py krita_build_cache.py apply_mobile_shell.py
       - name: Test APK size reporting
-        run: python -m unittest discover -s tests -p 'test_apk_size_report.py' -v
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Check canvas ownership boundary
         run: |
           python - <<'PY'
