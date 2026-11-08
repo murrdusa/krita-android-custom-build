@@ -24,7 +24,8 @@ def main(root:Path):
     bridge=own/"mobile_core/engine_bridge.h"
     brush=own/"mobile_core/brush_workspace.h"
     layers=own/"mobile_core/layer_workspace.h"
-    if not all(p.is_file() for p in (shell,bridge,brush,layers)):
+    commands=own/"mobile_core/command_browser.h"
+    if not all(p.is_file() for p in (shell,bridge,brush,layers,commands)):
         raise RuntimeError("Missing Mobile Studio source module")
 
     mainfile=root/"libs/ui/KisMainWindow.cpp"
@@ -91,6 +92,8 @@ def main(root:Path):
         brush.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/layer_workspace.h").write_text(
         layers.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/command_browser.h").write_text(
+        commands.read_text(encoding="utf-8"),encoding="utf-8")
 
     xmlfile=root/"krita/krita5.xmlgui"
     xml=xmlfile.read_text(encoding="utf-8")
