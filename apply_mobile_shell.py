@@ -19,8 +19,9 @@ def main(root:Path):
     root=root.resolve()
     own=Path(__file__).resolve().parent
     shell=own/"mobile_core/mobile_shell.h"
-    if not shell.is_file():
-        raise RuntimeError("Missing mobile_core/mobile_shell.h")
+    brush=own/"mobile_core/brush_workspace.h"
+    if not shell.is_file() or not brush.is_file():
+        raise RuntimeError("Missing mobile_core shell or brush workspace header")
 
     mainfile=root/"libs/ui/KisMainWindow.cpp"
     s=mainfile.read_text(encoding="utf-8")
@@ -79,6 +80,8 @@ def main(root:Path):
     oldheader.write_text(header,encoding="utf-8")
     (root/"libs/ui/mobile_shell.h").write_text(shell.read_text(encoding="utf-8"),
                                              encoding="utf-8")
+    (root/"libs/ui/brush_workspace.h").write_text(
+        brush.read_text(encoding="utf-8"),encoding="utf-8")
 
     xmlfile=root/"krita/krita5.xmlgui"
     xml=xmlfile.read_text(encoding="utf-8")
