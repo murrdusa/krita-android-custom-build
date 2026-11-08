@@ -16,6 +16,8 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMouseEvent>
+#include <QResizeEvent>
+#include <QSize>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPointer>
@@ -50,6 +52,8 @@ public:
         if(!color.isValid() || m_dragMode!=None)return;
         int hue=0,sat=0,value=0,alpha=0;
         color.getHsv(&hue,&sat,&value,&alpha);
+        if(m_sat==sat && m_val==value &&
+           (hue<0 || m_hue==hue))return;
         if(hue>=0)m_hue=hue;
         m_sat=sat;
         m_val=value;
@@ -193,9 +197,31 @@ public:
         connect(m_swatch,&QToolButton::clicked,this,[this]() {
             setExpanded(!m_expanded);
         });
+        m_resize=new QToolButton(this);
+        m_resize->setText(QStringLiteral("⤢"));
+        m_resize->setToolTip(i18n("Cycle color wheel size"));
+        m_resize->setMinimumWidth(32);
+        top->addWidget(m_resize);
+        connect(m_resize,&QToolButton::clicked,this,[this]() {
+            m_sizeLevel=(m_sizeLevel+1)%3;
+            QSettings().setValue(
+                QStringLiteral("MobileStudio/colorWheelSize"),m_sizeLevel);
+            updateForViewport();
+        });
+
+        m_move=new QToolButton(this);
+        m_move->setText(QStringLiteral("✥"));
+        m_move->setToolTip(i18n(
+            "Drag to reposition; double-tap to return to bottom right"));
+        m_move->setMinimumWidth(32);
+        m_move->setAttribute(Qt::WA_AcceptTouchEvents,false);
+        m_move->installEventFilter(this);
+        top->addWidget(m_move);
+
         m_collapse=new QToolButton(this);
         m_collapse->setText(QStringLiteral("−"));
         m_collapse->setToolTip(i18n("Minimize color wheel"));
+        m_collapse->setMinimumWidth(32);
         top->addWidget(m_collapse);
         connect(m_collapse,&QToolButton::clicked,this,[this]() {
             setExpanded(false);
@@ -243,11 +269,18 @@ public:
         root->addWidget(m_contents);
         if(canvasParent)canvasParent->installEventFilter(this);
 
-        m_history=QSettings().value(
+        QSettings saved;
+        m_sizeLevel=qBound(0,saved.value(
+            QStringLiteral("MobileStudio/colorWheelSize"),1).toInt(),2);
+        m_rightInset=qMax(0,saved.value(
+            QStringLiteral("MobileStudio/colorWheelRight"),7).toInt());
+        m_bottomInset=qMax(0,saved.value(
+            QStringLiteral("MobileStudio/colorWheelBottom"),7).toInt());
+        m_history=saved.value(
             QStringLiteral("MobileStudio/recentColors")).toStringList();
         while(m_history.size()>8)m_history.removeLast();
         refreshHistory();
-        setExpanded(QSettings().value(
+        setExpanded(saved.value(
             QStringLiteral("MobileStudio/colorWheelExpanded"),true).toBool());
         refresh();
     }
@@ -259,23 +292,25 @@ public:
         const QColor foreground=provider->fgColor().toQColor();
         if(!foreground.isValid())return;
         m_wheel->showColor(foreground);
-        m_swatch->setStyleSheet(QStringLiteral(
-            "QToolButton{background:%1;color:%2;border:2px solid #a5c4d8;"
-            "border-radius:7px;min-height:35px;padding:3px;}")
-            .arg(foreground.name(),foreground.lightness()<130?
-                                     QStringLiteral("#ffffff"):
-                                     QStringLiteral("#202934")));
+        const QString colorKey=foreground.name(QColor::HexArgb);
+        if(colorKey!=m_lastSwatchColor) {
+            m_lastSwatchColor=colorKey;
+            m_swatch->setStyleSheet(QStringLiteral(
+                "QToolButton{background:%1;color:%2;"
+                "border:2px solid #a5c4d8;border-radius:7px;"
+                "min-height:35px;padding:3px;}")
+                .arg(foreground.name(),foreground.lightness()<130?
+                                         QStringLiteral("#ffffff"):
+                                         QStringLiteral("#202934")));
+        }
     }
     bool expanded() const {return m_expanded;}
     void setExpanded(bool expanded)
     {
-        m_expanded=expanded;
-        m_contents->setVisible(expanded);
-        m_collapse->setVisible(expanded);
-        setFixedSize(expanded?238:72,expanded?316:53);
+        m_wantsExpanded=expanded;
         QSettings().setValue(
             QStringLiteral("MobileStudio/colorWheelExpanded"),expanded);
-        reposition();
+        updateForViewport();
         raise();
     }
 
@@ -283,19 +318,104 @@ protected:
     bool eventFilter(QObject *watched,QEvent *event) override
     {
         if(watched==parentWidget() &&
-           (event->type()==QEvent::Resize || event->type()==QEvent::Show))
-            reposition();
+           (event->type()==QEvent::Resize ||
+            event->type()==QEvent::Show)) {
+            // Recompute for folded/portrait dimensions. If too small,
+            // temporarily collapse without altering user preference.
+            updateForViewport();
+        }
+        if(watched==m_move) {
+            if(event->type()==QEvent::MouseButtonDblClick) {
+                m_rightInset=7;
+                m_bottomInset=7;
+                savePosition();
+                reposition();
+                return true;
+            }
+            if(event->type()==QEvent::MouseButtonPress) {
+                auto *mouse=static_cast<QMouseEvent*>(event);
+                if(mouse->button()!=Qt::LeftButton)return false;
+                m_dragging=true;
+                m_dragStart=mouse->globalPos();
+                m_positionAtStart=pos();
+                m_move->setCursor(Qt::ClosedHandCursor);
+                return true;
+            }
+            if(event->type()==QEvent::MouseMove && m_dragging) {
+                auto *mouse=static_cast<QMouseEvent*>(event);
+                QWidget *parent=parentWidget();
+                if(!parent)return true;
+                const QPoint target=m_positionAtStart+
+                    mouse->globalPos()-m_dragStart;
+                const int x=qBound(0,target.x(),
+                                   qMax(0,parent->width()-width()));
+                const int y=qBound(0,target.y(),
+                                   qMax(0,parent->height()-height()));
+                move(x,y);
+                m_rightInset=qMax(0,parent->width()-width()-x);
+                m_bottomInset=qMax(0,parent->height()-height()-y);
+                return true;
+            }
+            if(event->type()==QEvent::MouseButtonRelease && m_dragging) {
+                m_dragging=false;
+                m_move->unsetCursor();
+                savePosition();
+                return true;
+            }
+        }
         return QFrame::eventFilter(watched,event);
     }
 
 private:
+    static QSize colorPanelSize(int level)
+    {
+        switch(level) {
+        case 0:return QSize(212,303);
+        case 2:return QSize(292,394);
+        default:return QSize(238,330);
+        }
+    }
+    void updateForViewport()
+    {
+        auto *parent=parentWidget();
+        if(!parent)return;
+        // Prefer the requested size, then progressively smaller sizes.
+        // When even the smallest wheel cannot fit, keep a swatch visible.
+        int level=m_sizeLevel;
+        while(level>0 &&
+              (colorPanelSize(level).width()+8>parent->width() ||
+               colorPanelSize(level).height()+8>parent->height()))
+            --level;
+        const bool fits=colorPanelSize(level).width()+8<=parent->width() &&
+                        colorPanelSize(level).height()+8<=parent->height();
+        const bool showWheel=m_wantsExpanded && fits;
+        m_expanded=showWheel;
+        m_contents->setVisible(showWheel);
+        m_resize->setVisible(showWheel);
+        m_move->setVisible(showWheel);
+        m_collapse->setVisible(showWheel);
+        const QSize desired=showWheel?colorPanelSize(level):QSize(72,53);
+        if(size()!=desired)setFixedSize(desired);
+        reposition();
+    }
     void reposition()
     {
         auto *parent=parentWidget();
         if(!parent)return;
-        const int x=qMax(0,parent->width()-width()-7);
-        const int y=qMax(0,parent->height()-height()-7);
+        if(m_dragging)return;
+        const int x=qBound(0,parent->width()-width()-m_rightInset,
+                           qMax(0,parent->width()-width()));
+        const int y=qBound(0,parent->height()-height()-m_bottomInset,
+                           qMax(0,parent->height()-height()));
         move(x,y);
+    }
+    void savePosition()
+    {
+        QSettings settings;
+        settings.setValue(QStringLiteral("MobileStudio/colorWheelRight"),
+                          m_rightInset);
+        settings.setValue(QStringLiteral("MobileStudio/colorWheelBottom"),
+                          m_bottomInset);
     }
     void setNativeColor(const QColor &color,bool final)
     {
@@ -339,10 +459,14 @@ private:
     }
     MobileEngineBridge m_engine;
     QToolButton *m_swatch=nullptr,*m_collapse=nullptr;
+    QToolButton *m_resize=nullptr,*m_move=nullptr;
     QWidget *m_contents=nullptr;
     MobileHueWheel *m_wheel=nullptr;
     QVector<QToolButton*> m_recents;
     QStringList m_history;
-    bool m_expanded=true;
+    QString m_lastSwatchColor;
+    bool m_expanded=true,m_wantsExpanded=true,m_dragging=false;
+    int m_sizeLevel=1,m_rightInset=7,m_bottomInset=7;
+    QPoint m_dragStart,m_positionAtStart;
 };
 #endif // Q_OS_ANDROID
