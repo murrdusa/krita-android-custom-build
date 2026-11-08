@@ -23,7 +23,7 @@ static void require(bool condition,const char *description)
     if(!condition)qFatal("Canvas transfer test failed: %s",description);
 }
 
-class TestSurface final : public QWidget, public MobileCanvasSurface
+class TestSurface : public QWidget, public MobileCanvasSurface
 {
 public:
     TestSurface()
@@ -63,6 +63,26 @@ public:
 private:
     QPointer<QWidget> m_canvas;
     QVBoxLayout *m_layout=nullptr;
+};
+
+// Fault injection for the Android path where a surface has detached the
+// real painting view but returns an invalid result. The transfer layer
+// should reverse that partial mutation without deleting or re-creating
+// Krita's native canvas.
+class FaultyDetachSurface final : public TestSurface
+{
+public:
+    bool failNextDetach=true;
+    QWidget *detachNativeCanvas(QWidget *destinationParent=nullptr) override
+    {
+        QWidget *original=TestSurface::detachNativeCanvas(destinationParent);
+        if(failNextDetach) {
+            failNextDetach=false;
+            Q_UNUSED(original);
+            return nullptr;
+        }
+        return original;
+    }
 };
 
 // A destination that cannot accept a native canvas must leave Krita
@@ -126,7 +146,9 @@ int main(int argc,char **argv)
             "failed attachment altered document state");
 
     for(int cycle=0;cycle<10;++cycle) {
-        auto *mobile=new TestSurface;
+        TestSurface *mobile=(cycle==3)?
+            static_cast<TestSurface*>(new FaultyDetachSurface):
+            new TestSurface;
         require(transfer.enter(mobile),"failed to embed mobile presentation");
         QApplication::processEvents();
         require(transfer.active(),"transfer not active after entering");
@@ -160,6 +182,18 @@ int main(int argc,char **argv)
             backend.setCentralWidget(mobile);
         }
 
+        if(cycle==3) {
+            // A failed detach must leave the mobile host usable, retain
+            // the original canvas, and allow a subsequent safe retry.
+            require(!transfer.leave(),"accepted invalid detached widget");
+            require(transfer.active(),"invalid detach cleared active state");
+            require(backend.centralWidget()==mobile,
+                    "invalid detach replaced central mobile presentation");
+            require(mobile->ownsNativeCanvas(canvas),
+                    "invalid detach orphaned original Krita canvas");
+            require(canvas->property("testDrawingRevision").toInt()==17,
+                    "invalid detach discarded document state");
+        }
         require(transfer.leave(),"failed to restore the native canvas");
         QApplication::processEvents();
         require(!transfer.active(),"transfer still active after returning");
@@ -182,6 +216,6 @@ int main(int argc,char **argv)
 
     qInfo() << "PASS: ten reversible same-window transfers, chrome restore,"
             << "canvas identity, occupied destination, rejected attachment,"
-            << "and occupied backend guards";
+            << "failed detach rollback, and occupied backend guards";
     return 0;
 }
