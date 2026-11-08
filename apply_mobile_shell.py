@@ -23,8 +23,9 @@ def main(root:Path):
     shell=own/"mobile_core/standalone_host.h"
     bridge=own/"mobile_core/engine_bridge.h"
     brush=own/"mobile_core/brush_workspace.h"
-    if not shell.is_file() or not bridge.is_file() or not brush.is_file():
-        raise RuntimeError("Missing standalone host, engine bridge or brush module")
+    layers=own/"mobile_core/layer_workspace.h"
+    if not all(p.is_file() for p in (shell,bridge,brush,layers)):
+        raise RuntimeError("Missing Mobile Studio source module")
 
     mainfile=root/"libs/ui/KisMainWindow.cpp"
     s=mainfile.read_text(encoding="utf-8")
@@ -88,6 +89,8 @@ def main(root:Path):
         bridge.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/brush_workspace.h").write_text(
         brush.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/layer_workspace.h").write_text(
+        layers.read_text(encoding="utf-8"),encoding="utf-8")
 
     xmlfile=root/"krita/krita5.xmlgui"
     xml=xmlfile.read_text(encoding="utf-8")
