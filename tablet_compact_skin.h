@@ -3961,17 +3961,18 @@ private:
             positionOverlays();
         });
         layout->addWidget(new QLabel(i18n("Maximum history rows"),&dialog));
-        auto *rows=new QSlider(Qt::Horizontal,&dialog);
-        rows->setRange(1,4);
+        auto *rows=new KisDoubleSliderSpinBox(&dialog);
+        rows->setRange(1,4,0);
         rows->setValue(m_colorHistoryRows);
-        addTouchSliderRow(layout,rows,1);
-        auto *rowsValue=new QLabel(
-            i18np("%1 row","%1 rows",m_colorHistoryRows),&dialog);
-        layout->addWidget(rowsValue);
-        connect(rows,&QSlider::valueChanged,&dialog,[rowsValue](int n) {
-            rowsValue->setText(i18np("%1 row","%1 rows",n));
-        });
-        connect(rows,&QSlider::valueChanged,&dialog,[this](int value) {
+        rows->setSingleStep(1);
+        rows->setPrefix(i18n("Rows: "));
+        rows->setMinimumHeight(54);
+        rows->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
+        layout->addWidget(rows);
+        connect(rows,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),
+                &dialog,[this](qreal raw) {
+            const int value=qBound(1,qRound(raw),4);
+            if(m_colorHistoryRows==value)return;
             m_colorHistoryRows=value;
             QSettings().setValue(QStringLiteral("TabletUi/colorHistoryRows"),value);
             refreshColors();
@@ -3999,38 +4000,61 @@ private:
             });
         });
         layout->addWidget(new QLabel(i18n("Rotate hue ring"),&dialog));
-        auto *rotation=new QSlider(Qt::Horizontal,&dialog);
-        rotation->setRange(0,359);
-        const int initialRotation=QSettings().value(
-            QStringLiteral("TabletUi/colorHueRotationDegrees"),0).toInt();
-        rotation->setValue(qBound(0,initialRotation,359));
-        rotation->setToolTip(i18n(
-            "Rotate the hue ring without changing the selected paint color"));
-        addTouchSliderRow(layout,rotation,15);
-        auto *rotationValue=new QLabel(
-            QStringLiteral("%1°").arg(rotation->value()),&dialog);
-        layout->addWidget(rotationValue);
-        connect(rotation,&QSlider::valueChanged,&dialog,
-                [this,rotationValue](int degrees) {
-            rotationValue->setText(QStringLiteral("%1°").arg(degrees));
+        auto *rotation=new KisDoubleSliderSpinBox(&dialog);
+        rotation->setRange(0,359,0);
+        rotation->setSingleStep(15);
+        rotation->setSuffix(QStringLiteral("°"));
+        rotation->setValue(qBound(0,QSettings().value(
+            QStringLiteral("TabletUi/colorHueRotationDegrees"),0).toInt(),359));
+        rotation->setMinimumHeight(54);
+        rotation->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
+        layout->addWidget(rotation);
+        connect(rotation,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),
+                &dialog,[this](qreal value) {
             QSettings().setValue(
-                QStringLiteral("TabletUi/colorHueRotationDegrees"),degrees);
-            refreshNativeColorSelectorLayout();
+                QStringLiteral("TabletUi/colorHueRotationDegrees"),qRound(value));
+            updateCompactSelectorRotations();
         });
-        layout->addWidget(new QLabel(i18n("Color wheel size"),&dialog));
-        auto *size=new QSlider(Qt::Horizontal,&dialog);
-        size->setRange(190,380);
+        layout->addWidget(new QLabel(i18n("Rotate color diamond"),&dialog));
+        auto *squareRotation=new KisDoubleSliderSpinBox(&dialog);
+        squareRotation->setRange(0,359,0);
+        squareRotation->setSingleStep(15);
+        squareRotation->setSuffix(QStringLiteral("°"));
+        squareRotation->setValue(qBound(0,QSettings().value(
+            QStringLiteral("TabletUi/colorDiamondRotationDegrees"),0).toInt(),359));
+        squareRotation->setMinimumHeight(54);
+        squareRotation->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
+        layout->addWidget(squareRotation);
+        connect(squareRotation,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),
+                &dialog,[this](qreal value) {
+            QSettings().setValue(QStringLiteral(
+                "TabletUi/colorDiamondRotationDegrees"),qRound(value));
+            updateCompactSelectorRotations();
+        });
+        layout->addWidget(new QLabel(i18n("Color wheel and history size"),&dialog));
+        auto *size=new KisDoubleSliderSpinBox(&dialog);
+        size->setRange(190,380,0);
         size->setValue(m_colorWheelPixels);
-        addTouchSliderRow(layout,size,15);
-        auto *value=new QLabel(QStringLiteral("%1 px").arg(m_colorWheelPixels),&dialog);
-        layout->addWidget(value);
-        connect(size,&QSlider::valueChanged,&dialog,[this,value](int pixels) {
-            m_colorWheelPixels=pixels;
-            value->setText(QStringLiteral("%1 px").arg(pixels));
-            QSettings().setValue(QStringLiteral("TabletUi/colorWheelPixels"),pixels);
-            // A single size setting drives both the wheel and swatches.
+        size->setSingleStep(15);
+        size->setSuffix(i18n(" px"));
+        size->setMinimumHeight(54);
+        size->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
+        layout->addWidget(size);
+        auto *resizeDelay=new QTimer(&dialog);
+        resizeDelay->setSingleShot(true);
+        resizeDelay->setInterval(85);
+        connect(resizeDelay,&QTimer::timeout,&dialog,[this]() {
+            // A single size setting drives both wheel and history.
             refreshColors();
             refreshColorControls();
+        });
+        connect(size,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),
+                &dialog,[this,resizeDelay](qreal raw) {
+            const int pixels=qBound(190,qRound(raw),380);
+            if(m_colorWheelPixels==pixels)return;
+            m_colorWheelPixels=pixels;
+            QSettings().setValue(QStringLiteral("TabletUi/colorWheelPixels"),pixels);
+            resizeDelay->start();
         });
         dialog.exec();
     }
@@ -4039,6 +4063,16 @@ private:
         QSettings().setValue(QStringLiteral("TabletUi/colorExpanded"),m_colorExpanded);
         updateColorDock();
         refreshColorControls();
+    }
+    void updateCompactSelectorRotations() {
+        if(!m_colorDocker)return;
+        // Unlike a wheel type/color model change, changing a rotation
+        // should repaint just the selector shapes, not rebuild the docker.
+        for(QWidget *child:m_colorDocker->findChildren<QWidget*>()) {
+            if(child->inherits("KisVisualEllipticalSelectorShape") ||
+               child->inherits("KisVisualDiamondSelectorShape"))
+                child->update();
+        }
     }
     void refreshNativeColorSelectorLayout() {
         if(m_colorDocker) {
