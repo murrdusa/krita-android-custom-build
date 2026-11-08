@@ -142,104 +142,160 @@ private:
 // Quick shortcuts use the same hold-then-drag interaction model as layers.
 // A short move scrolls normally; holding for 450ms arms reorder and release
 // commits the new order. This avoids native immediate desktop drag behavior.
+// Quick actions share finger, pen and mouse hold-to-reorder semantics.
+// The list handles scrolling itself so Android's QScroller cannot steal
+// the hold or release packets before the reorder operation commits.
 class TabletQuickReorderList final : public QListWidget {
 public:
-    explicit TabletQuickReorderList(QWidget *parent=nullptr)
-        : QListWidget(parent) {
+    explicit TabletQuickReorderList(QWidget *parent=nullptr):QListWidget(parent) {
         setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
         setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
         setSelectionMode(QAbstractItemView::SingleSelection);
         setDragDropMode(QAbstractItemView::NoDragDrop);
-        setMouseTracking(true);
-        viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
-        QScroller::grabGesture(viewport(),QScroller::LeftMouseButtonGesture);
+        viewport()->setAttribute(Qt::WA_AcceptTouchEvents,true);
         viewport()->installEventFilter(this);
         m_hold=new QTimer(this);
         m_hold->setSingleShot(true);
-        m_hold->setInterval(450);
+        m_hold->setInterval(holdMs());
         connect(m_hold,&QTimer::timeout,this,[this]() {
-            if(m_from<0 || m_from>=count())return;
+            if(!m_tracking || m_from<0 || m_from>=count() || m_scrolling)return;
             m_reordering=true;
             m_target=m_from;
-            QScroller::scroller(viewport())->stop();
-            QScroller::ungrabGesture(viewport());
             setCurrentRow(m_from);
             viewport()->setCursor(Qt::ClosedHandCursor);
+            m_edge->start();
+        });
+        m_edge=new QTimer(this);
+        m_edge->setInterval(35);
+        connect(m_edge,&QTimer::timeout,this,[this]() {
+            if(!m_reordering){m_edge->stop();return;}
+            const int y=m_last.y(), height=viewport()->height();
+            const int margin=qMin(55,qMax(26,height/7));
+            const int delta=y<margin?-qBound(5,(margin-y)/2+5,24):
+                (y>height-margin?qBound(5,(y-height+margin)/2+5,24):0);
+            if(delta)verticalScrollBar()->setValue(
+                verticalScrollBar()->value()+delta);
+            updateTarget(m_last);
         });
     }
     std::function<void()> onReordered;
-    bool takeSuppressedClick() {
-        const bool result=m_suppressClick;
-        m_suppressClick=false;
-        return result;
-    }
+    std::function<void(QListWidgetItem*)> onActivated;
+    bool takeSuppressedClick() {return false;}
 protected:
+    enum class Pointer {None, Mouse, Finger, Pen};
+    void beginAt(const QPoint &pos,Pointer input) {
+        m_hold->stop();m_edge->stop();
+        m_tracking=true;m_scrolling=false;m_reordering=false;
+        m_from=indexAt(pos).row();m_target=m_from;
+        m_origin=pos;m_last=pos;m_pointer=input;
+        if(m_from>=0)m_hold->start();
+    }
+    void updateTarget(const QPoint &pos) {
+        if(count()<1)return;
+        QPoint safe(qBound(0,pos.x(),qMax(0,viewport()->width()-1)),
+                    qBound(0,pos.y(),qMax(0,viewport()->height()-1)));
+        const QModelIndex row=indexAt(safe);
+        if(row.isValid())m_target=row.row();
+        if(m_target>=0 && m_target<count())setCurrentRow(m_target);
+    }
+    void moveAt(const QPoint &pos) {
+        if(!m_tracking)return;
+        const QPoint old=m_last;
+        m_last=pos;
+        if(m_reordering){updateTarget(pos);return;}
+        if(!m_scrolling && (pos-m_origin).manhattanLength()>12) {
+            m_scrolling=true;
+            m_hold->stop();
+        }
+        if(m_scrolling)verticalScrollBar()->setValue(
+            verticalScrollBar()->value()+old.y()-pos.y());
+    }
+    bool finishAt(const QPoint &pos) {
+        if(!m_tracking)return false;
+        m_hold->stop();m_edge->stop();
+        if(m_reordering)updateTarget(pos);
+        const Pointer pointer=m_pointer;
+        const bool reordered=m_reordering,scrolled=m_scrolling;
+        const int from=m_from,to=m_target;
+        m_tracking=false;m_reordering=false;m_scrolling=false;
+        m_pointer=Pointer::None;m_from=-1;m_target=-1;
+        viewport()->unsetCursor();
+        if(pointer!=Pointer::Mouse)
+            m_ignoreSynthesizedMouseUntil=QDateTime::currentMSecsSinceEpoch()+320;
+        if(reordered) {
+            if(from>=0 && from<count() && to>=0 && to<count() && from!=to) {
+                QListWidgetItem *item=takeItem(from);
+                insertItem(to,item);
+                setCurrentRow(to);
+                if(onReordered)onReordered();
+            }
+            return true;
+        }
+        if(scrolled)return true;
+        if(pointer!=Pointer::Mouse) {
+            const int row=indexAt(pos).row();
+            if(row>=0 && row==from && onActivated)
+                onActivated(item(row));
+            return true;
+        }
+        return false;
+    }
     bool eventFilter(QObject *watched,QEvent *event) override {
         if(watched!=viewport())
             return QListWidget::eventFilter(watched,event);
-        if(event->type()==QEvent::MouseButtonPress) {
-            auto *mouse=static_cast<QMouseEvent*>(event);
-            if(mouse->button()==Qt::LeftButton) {
-                m_from=indexAt(mouse->pos()).row();
-                m_target=m_from;
-                m_origin=mouse->pos();
-                m_reordering=false;
-                m_suppressClick=false;
-                if(m_from>=0)m_hold->start();
+        const QEvent::Type type=event->type();
+        if(type==QEvent::TouchBegin || type==QEvent::TouchUpdate ||
+           type==QEvent::TouchEnd || type==QEvent::TouchCancel) {
+            if(type==QEvent::TouchCancel) {
+                m_hold->stop();m_edge->stop();m_tracking=false;
+                m_reordering=false;m_scrolling=false;m_pointer=Pointer::None;
+                viewport()->unsetCursor();event->accept();return true;
             }
-        } else if(event->type()==QEvent::MouseMove) {
-            auto *mouse=static_cast<QMouseEvent*>(event);
-            if(!m_reordering && m_hold->isActive() &&
-               (mouse->pos()-m_origin).manhattanLength()>12) {
-                m_hold->stop();
-                m_from=-1;
-            }
-            if(m_reordering) {
-                const int y=mouse->pos().y();
-                QModelIndex at=indexAt(mouse->pos());
-                if(at.isValid())m_target=at.row();
-                if(y<32)verticalScrollBar()->setValue(
-                    verticalScrollBar()->value()-22);
-                else if(y>viewport()->height()-32)
-                    verticalScrollBar()->setValue(
-                        verticalScrollBar()->value()+22);
-                if(m_target>=0 && m_target<count())
-                    setCurrentRow(m_target);
+            QTouchEvent *touch=static_cast<QTouchEvent*>(event);
+            if(touch->touchPoints().isEmpty()){event->accept();return true;}
+            const QPoint pos=touch->touchPoints().first().pos().toPoint();
+            if(type==QEvent::TouchBegin)beginAt(pos,Pointer::Finger);
+            else if(type==QEvent::TouchUpdate)moveAt(pos);
+            else finishAt(pos);
+            event->accept();return true;
+        }
+        if(type==QEvent::TabletPress || type==QEvent::TabletMove ||
+           type==QEvent::TabletRelease) {
+            QTabletEvent *tablet=static_cast<QTabletEvent*>(event);
+            const QPoint pos=tablet->pos();
+            if(type==QEvent::TabletPress)beginAt(pos,Pointer::Pen);
+            else if(type==QEvent::TabletMove)moveAt(pos);
+            else finishAt(pos);
+            event->accept();return true;
+        }
+        if(type==QEvent::MouseButtonPress || type==QEvent::MouseMove ||
+           type==QEvent::MouseButtonRelease) {
+            if(QDateTime::currentMSecsSinceEpoch()<m_ignoreSynthesizedMouseUntil)
                 return true;
-            }
-        } else if(event->type()==QEvent::MouseButtonRelease) {
-            m_hold->stop();
-            if(m_reordering) {
-                m_reordering=false;
-                // The release is consumed below, so no itemClicked is emitted.
-                // Do not suppress the user's next ordinary tap.
-                m_suppressClick=false;
-                viewport()->unsetCursor();
-                const int from=m_from, to=m_target;
-                m_from=-1;
-                QScroller::grabGesture(viewport(),
-                                       QScroller::LeftMouseButtonGesture);
-                if(from>=0 && to>=0 && to<count() && to!=from) {
-                    QListWidgetItem *item=takeItem(from);
-                    insertItem(to,item);
-                    setCurrentRow(to);
-                    if(onReordered)onReordered();
+            QMouseEvent *mouse=static_cast<QMouseEvent*>(event);
+            if(type==QEvent::MouseButtonPress) {
+                if(mouse->button()==Qt::LeftButton)
+                    beginAt(mouse->pos(),Pointer::Mouse);
+            } else if(m_tracking && m_pointer==Pointer::Mouse) {
+                if(type==QEvent::MouseMove) {
+                    moveAt(mouse->pos());
+                    if(m_reordering || m_scrolling)return true;
+                } else {
+                    const bool consumed=finishAt(mouse->pos());
+                    if(consumed)return true;
                 }
-                return true;
             }
-            m_from=-1;
-        } else if(event->type()==QEvent::Leave) {
-            if(!m_reordering)m_hold->stop();
         }
         return QListWidget::eventFilter(watched,event);
     }
 private:
     QTimer *m_hold=nullptr;
-    QPoint m_origin;
-    int m_from=-1;
-    int m_target=-1;
-    bool m_reordering=false;
-    bool m_suppressClick=false;
+    QTimer *m_edge=nullptr;
+    QPoint m_origin,m_last;
+    int m_from=-1,m_target=-1;
+    bool m_tracking=false,m_reordering=false,m_scrolling=false;
+    Pointer m_pointer=Pointer::None;
+    qint64 m_ignoreSynthesizedMouseUntil=0;
 };
 
 class TabletCompactSkin final : public QObject
@@ -2056,9 +2112,8 @@ private:
             QSettings().setValue(QStringLiteral("TabletUi/quickActionsV2"),
                                  selected);
         };
-        connect(quickList,&QListWidget::itemClicked,&dialog,
-                [this,&dialog,quickList](QListWidgetItem *item) {
-            if(!item || quickList->takeSuppressedClick())return;
+        auto runQuick=[this,&dialog](QListWidgetItem *item) {
+            if(!item)return;
             QPointer<QAction> action=resolveQuickAction(
                 item->data(Qt::UserRole).toString());
             if(!action || !action->isEnabled())return;
@@ -2066,7 +2121,9 @@ private:
             QTimer::singleShot(0,this,[action]() {
                 if(action && action->isEnabled())action->trigger();
             });
-        });
+        };
+        quickList->onActivated=runQuick;
+        connect(quickList,&QListWidget::itemClicked,&dialog,runQuick);
         connect(addQuick,&QPushButton::clicked,&dialog,
                 [this,&dialog]() {
             dialog.accept();
