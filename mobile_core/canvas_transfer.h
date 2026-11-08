@@ -94,11 +94,14 @@ public:
         m_tabTimer.stop();
 
         MobileCanvasSurface *surface=m_mobileWindow?m_surface:nullptr;
-        QWidget *native=surface?surface->detachNativeCanvas():nullptr;
-        if(!native && m_canvas) {
-            // Only recover the exact original widget; never create a
-            // replacement, discard the document or fake a successful save.
-            native=m_canvas;
+        QWidget *detached=surface?surface->detachNativeCanvas():nullptr;
+        // The destination is not authoritative about which canvas Krita
+        // owns. Never install an unrelated widget as the backend's central
+        // widget, even if a future surface implementation returns one.
+        QWidget *native=m_canvas.data();
+        if(native && detached!=native) {
+            // Recovery also covers a surface that reports no widget after
+            // having reparented the original native canvas.
             native->hide();
             native->setParent(nullptr);
         }
