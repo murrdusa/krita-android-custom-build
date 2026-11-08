@@ -46,6 +46,9 @@ def inspect(apk: Path) -> dict:
         lambda: {"compressed_bytes": 0, "uncompressed_bytes": 0, "count": 0}
     )
     largest = []
+    asset_folders: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"compressed_bytes": 0, "uncompressed_bytes": 0, "count": 0}
+    )
     abis = set()
     with zipfile.ZipFile(apk) as archive:
         for entry in archive.infolist():
@@ -55,6 +58,17 @@ def inspect(apk: Path) -> dict:
                 parts = entry.filename.split("/")
                 if len(parts) > 2:
                     abis.add(parts[1])
+            if entry.filename.startswith("assets/"):
+                # Group by the resource family, not by single brush files.
+                # assets/share/krita/brushes/foo.bundle -> assets/share/krita/brushes
+                segments = entry.filename.strip("/").split("/")
+                folder = "/".join(segments[:min(4, len(segments)-1)])
+                if not folder:
+                    folder = "assets"
+                bucket = asset_folders[folder]
+                bucket["compressed_bytes"] += entry.compress_size
+                bucket["uncompressed_bytes"] += entry.file_size
+                bucket["count"] += 1
             group = groups[category(entry.filename)]
             group["compressed_bytes"] += entry.compress_size
             group["uncompressed_bytes"] += entry.file_size
@@ -75,6 +89,13 @@ def inspect(apk: Path) -> dict:
         "largest_entries": sorted(
             largest, key=lambda item: -item["compressed_bytes"]
         )[:12],
+        "largest_asset_folders": [
+            {"path": name, **values}
+            for name, values in sorted(
+                asset_folders.items(),
+                key=lambda entry: -entry[1]["compressed_bytes"]
+            )[:12]
+        ],
     }
 
 
@@ -143,6 +164,11 @@ def main() -> int:
         print("  Largest payloads:")
         for item in report["largest_entries"][:8]:
             print(f"    {mib(item['compressed_bytes']):>10}  {item['path']}")
+        if report["largest_asset_folders"]:
+            print("  Largest bundled asset directories:")
+            for item in report["largest_asset_folders"][:8]:
+                print(f"    {mib(item['compressed_bytes']):>10}"
+                      f"  {item['path']}  ({item['count']} files)")
     if reports:
         record_history(output, reports[0])
         destination = output / "apk-size-report.json"
