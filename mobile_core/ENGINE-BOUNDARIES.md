@@ -1,5 +1,26 @@
 # Krita Core / Mobile UI redesign
 
+## Milestone v1.1 — configurable Quick Actions (UI owns chrome)
+
+- `quick_actions.h` replaces the fixed Krita-like footer with a single
+  horizontally scrollable bar, keeping an explicit **+ Add** and **Edit**
+  control even if all shortcuts are removed.
+- Native actions are discovered live via
+  `MobileEngineBridge::availableActions()`; native tools via
+  `MobileEngineBridge::tools()`. The UI stores only stable action/tool IDs
+  in `QSettings`, not QAction pointers or document state. It updates
+  enabled state against Krita's real action collection.
+- User-selected mobile actions (New/Open/Save/Undo/Redo/Layers/Color/Tools,
+  Canvases, and More) invoke existing mobile UI workflows which in turn
+  call Krita's native engine and document services.
+- The chooser offers frequent actions, all available commands/tools,
+  a dedicated tool list, and free-text search; the editor provides drag
+  reordering for pointer/stylus plus explicit Up/Down buttons, removal,
+  Cancel/Save semantics, and a reset-to-defaults path.
+- This milestone is **UI modernization**, not a second command engine or
+  a reduction of Krita's binary dependencies. The same native image,
+  selection, brush and document engines continue to run.
+
 ## Milestone v1.0 — mobile tools and canvas chrome isolation
 
 - `MobileEngineBridge::tools()/selectTool()` enumerates the live
