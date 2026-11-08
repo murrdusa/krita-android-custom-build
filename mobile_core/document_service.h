@@ -65,8 +65,12 @@ public:
             QString title=path.isEmpty()?QStringLiteral("Untitled"):
                           QFileInfo(path).fileName();
             if(title.isEmpty())title=QStringLiteral("Untitled");
+            // A transferred canvas can have no active Qt MDI subwindow
+            // even while Krita's view manager still has a current document.
+            // Use the engine's actual active document as a fallback.
+            const bool current=m_manager && m_manager->document()==doc;
             items.append({title,doc->isModified(),
-                          sub==m_documents->activeSubWindow(),i});
+                          current || sub==m_documents->activeSubWindow(),i});
         }
         return items;
     }
@@ -100,11 +104,37 @@ public:
     bool closeActiveDocument() const
     {
         if(!m_documents)return false;
-        QMdiSubWindow *active=m_documents->activeSubWindow();
-        if(!active)return false;
+        // On Android the native QMdiArea is physically hosted in a second
+        // top-level window. Qt can clear activeSubWindow() during reparenting
+        // even though the Krita view manager still owns the active document.
         const auto windows=m_documents->subWindowList(QMdiArea::CreationOrder);
-        const int index=windows.indexOf(active);
-        return closeDocument(index);
+        const KisDocument *current=m_manager?m_manager->document():nullptr;
+        QMdiSubWindow *active=m_documents->activeSubWindow();
+        if(active && qobject_cast<KisView*>(active->widget()) &&
+           (!current ||
+            qobject_cast<KisView*>(active->widget())->document()==current))
+            return closeDocument(windows.indexOf(active));
+
+        // Prefer the view backed by the engine's active document; do not
+        // arbitrarily close a different document when several are open.
+        if(current) {
+            for(int i=0;i<windows.size();++i) {
+                const auto *view=windows.at(i)?
+                    qobject_cast<KisView*>(windows.at(i)->widget()):nullptr;
+                if(view && view->document()==current)
+                    return closeDocument(i);
+            }
+        }
+
+        // A lone valid view is unambiguous even if no MDI tab is active.
+        int only=-1;
+        for(int i=0;i<windows.size();++i) {
+            if(!windows.at(i) ||
+               !qobject_cast<KisView*>(windows.at(i)->widget()))continue;
+            if(only>=0)return false;
+            only=i;
+        }
+        return only>=0 && closeDocument(only);
     }
 
 
