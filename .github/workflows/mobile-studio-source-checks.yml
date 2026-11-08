@@ -47,7 +47,12 @@ jobs:
                             "MobileStandaloneWindow", "KisMainWindow", "KisDocument"):
               assert forbidden not in transfer, f"Canvas transfer leaked {forbidden}"
               assert forbidden not in surface, f"Canvas surface leaked {forbidden}"
-          assert "m_backend->centralWidget()!=m_canvas" in transfer
+          assert "m_backend->centralWidget()!=m_mobileWindow" in transfer
+          assert "m_backend->setCentralWidget(mobile)" in transfer
+          assert "mobile->setParent(m_backend,Qt::Widget)" in transfer
+          assert "m_backend->hide()" not in transfer
+          assert "showFullScreen()" not in transfer
+          assert "detachNativeCanvas(m_backend)" in transfer
           assert "bool leave()" in transfer
           assert "m_transfer.leave()" in Path("mobile_core/canvas_session.h").read_text()
           print("Canvas ownership invariants intact")
