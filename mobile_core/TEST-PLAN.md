@@ -63,6 +63,45 @@ There is deliberately **no new native file format** and no custom image
 serializer. The old native file dialogs/actions remain in the compatibility
 menus until Android storage and save reliability are proven.
 
+## v1.1 configurable Quick Actions regression tests
+
+This preview replaces the old fixed footer with one **horizontally
+scrollable strip** of shortcuts backed by Krita's native action and tool
+registries. The configuration persists in `QSettings` and never stores
+document state.
+
+- On first launch confirm the default strip contains New, Open, Save,
+  Undo, Redo, Layers, Color and More, and **+ Add** and **Edit**.
+  Scroll sideways with a finger; button taps should activate only the
+  intended command (and never paint on the canvas).
+- Tap **+ Add**. Browse **Frequently used** and **All commands and tools**,
+  and search by command label or internal action ID; choose one. The
+  shortcut should appear in the strip and execute Krita's native command.
+- With a document open add the native Krita Brush/Selection/Move tools
+  under the **Krita tools** filter. Switching them must use Krita's own
+  tool manager. Confirm pen pressure, transformations, and native Undo.
+- Tap **Edit**. Hold and drag an entry above another with **stylus**
+  and with **finger**. If platform touch drag does not initiate reliably,
+  use the Up/Down controls; both should produce the same saved order.
+- Remove an entry, cancel editing and verify it was **not** removed.
+  Repeat and press Save; the change should persist after leaving and
+  reentering Mobile Studio and after restarting Krita.
+- Add several commands and test horizontal scrolling in portrait. Use
+  **Defaults** in Edit, then Save, to recover the eight original commands.
+  Confirm + Add/Edit remain available even if all shortcuts are removed.
+- Add an action currently disabled in Krita (e.g. one that requires a
+  selection). It should stay visible but refuse activation until Krita
+  enables it; do not silently synthesize a disabled native command.
+- Verify New/Open/Save/Undo/Redo/Color/Layers/More keep working without
+  regressions from v1.0. Confirm v0.8 new-canvas desktop resurfacing fix
+  and v0.9 safe document closing behavior.
+
+There is no parallel quick-command interpreter: mobile-only workflow IDs
+dispatch to `MobileStandaloneWindow`, native QAction IDs route to Krita's
+own action collection, and tool IDs route to `KoToolManager`. If an action
+is absent due to a missing plugin, the shortcut is safely disabled and
+remains removable in Edit.
+
 ## v1.0 canvas presentation and native tool picker
 
 This milestone advances the **mobile-first interface**, without replacing
