@@ -116,7 +116,7 @@ def record_history(output: Path, newest: dict) -> None:
     history.append(snapshot)
     path.write_text(json.dumps({
         "format_version": 1, "snapshots": history[-20:]
-    }, indent=2) + "\\n", encoding="utf-8")
+    }, indent=2) + "\n", encoding="utf-8")
     print(f"Size history: {path}")
 
 
