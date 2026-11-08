@@ -23,6 +23,8 @@
 #include <QSet>
 #include <QVector>
 #include <QSignalBlocker>
+#include <QSizePolicy>
+#include <functional>
 
 #include "KisMainWindow.h"
 #include "KisViewManager.h"
