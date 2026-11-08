@@ -10,6 +10,24 @@ SOURCE="$ROOT/persistent/krita"
 OUT="$ROOT/persistent/krita-custom-apks"
 JOBS="$(printenv KRITA_BUILD_JOBS || echo 6)"
 say() { printf '\n==> %s\n' "$*"; }
+# Publication is best-effort: the APK remains valid even if GitHub is offline
+# or its CLI login lacks Release permissions.
+publish_apk() {
+    [[ "${KRITA_PUBLISH_APK:-1}" == 1 ]] || return 0
+    [[ -d "$OUT" ]] || return 0
+    command -v gh >/dev/null 2>&1 || {
+        echo "NOTE: Install/authenticate gh once for automatic APK downloads."
+        return 0
+    }
+    say "Publish Android APK to the stable GitHub download link"
+    local revision
+    revision="$(git -C "$REPO" rev-parse HEAD)"
+    python3 "$REPO/krita_apk_publisher.py" \
+        --output-dir "$OUT" \
+        --revision "$revision" \
+        --state-file "$ROOT/persistent/.krita-published-apk.json" ||
+        echo "WARNING: GitHub APK upload failed; local APK remains available."
+}
 die() { echo "ERROR: $*" >&2; exit 1; }
 [[ "$JOBS" =~ ^[1-9][0-9]*$ ]] || die "Invalid KRITA_BUILD_JOBS"
 for p in git python3 docker; do command -v "$p" >/dev/null || die "Missing $p. See LOCAL-BUILD.md"; done
@@ -38,6 +56,7 @@ if [[ "$MODE" == build ]]; then
        [[ -n "$(find "$OUT" -maxdepth 1 -type f -name '*.apk' -size +0c -print -quit)" ]]; then
         say "No Android application changes; reusing previous successful APK"
         echo "Skipped compilation and packaging. Override with KRITA_FORCE_BUILD=1."
+        publish_apk
         exit 0
     fi
 fi
@@ -132,4 +151,5 @@ if [[ "$MODE" == build ]]; then
     mv "$INPUT_STAMP.tmp" "$INPUT_STAMP"
 fi
 find "$OUT" -maxdepth 1 -name '*.apk' -type f -printf '%p (%s bytes)\n'
+publish_apk
 if command -v wslpath >/dev/null 2>&1; then echo "Windows folder: $(wslpath -w "$OUT")"; fi
