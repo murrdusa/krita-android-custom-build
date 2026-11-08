@@ -82,6 +82,32 @@ public:
         return true;
     }
 
+    // Close through Krita's existing QMdiSubWindow/KisView path.
+    // KisView::closeEvent calls queryClose() on the last view, waits for
+    // active saves and offers Save / Discard / Cancel for modified files.
+    // The mobile UI must not destroy KisDocument or mutate its dirty flag.
+    bool closeDocument(int nativeIndex) const
+    {
+        if(!m_documents || nativeIndex<0)return false;
+        const auto windows=m_documents->subWindowList(QMdiArea::CreationOrder);
+        if(nativeIndex>=windows.size())return false;
+        QPointer<QMdiSubWindow> target=windows.at(nativeIndex);
+        if(!target || !qobject_cast<KisView*>(target->widget()))return false;
+        // The native Save prompt belongs to this document view. Make it
+        // active before querying, so Krita's save handlers target it.
+        m_documents->setActiveSubWindow(target);
+        return target->close();
+    }
+    bool closeActiveDocument() const
+    {
+        if(!m_documents)return false;
+        QMdiSubWindow *active=m_documents->activeSubWindow();
+        if(!active)return false;
+        const auto windows=m_documents->subWindowList(QMdiArea::CreationOrder);
+        const int index=windows.indexOf(active);
+        return closeDocument(index);
+    }
+
     KisMainWindow *legacyHost() const {return m_mainWindow;}
     KisViewManager *manager() const {return m_manager;}
     KisCanvasResourceProvider *brushResources() const {
