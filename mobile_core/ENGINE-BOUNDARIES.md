@@ -1,5 +1,26 @@
 # Krita Core / Mobile UI redesign
 
+## Milestone v1.4 — foreground colors as a Krita service
+
+- `color_workspace.h` provides a compact movable-size-independent
+  overlay in the bottom-right corner of Mobile Studio's actual canvas
+  viewport, rather than a new docker or a separate painting surface.
+- The hue ring and saturation/value square are UI input only. All color
+  changes are forwarded to Krita's existing
+  `KisCanvasResourceProvider::setFGColor(KoColor(...))`, preserving the
+  current document color space and Krita color management. A native
+  advanced picker remains available for precise values.
+- The last eight selected display colors are stored as UI preferences
+  in QSettings. They are shortcuts to foreground color choices, not
+  changes to document pixels. Minimize/expand state is also a setting;
+  the collapsed swatch restores canvas space.
+- `brush_workspace.h` now has a collapsible size/opacity detail row,
+  retaining direct Paint/Erase/Blend preset buttons. Uninitialized Paint
+  modes no longer inherit a current eraser or blender preset.
+- The Krita engine, resource/model life cycles, file I/O and undo stacks
+  remain authoritative. No additional color or brush engine is created.
+- **APK publication remains paused** under `UPLOAD_REQUEST_ID=none`.
+
 ## Milestone v1.3 — mobile gesture and layer interaction
 
 - `touch_reorder_list.h` distinguishes scroll gestures (movement before
