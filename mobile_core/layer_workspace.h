@@ -7,7 +7,7 @@
 #pragma once
 #ifdef Q_OS_ANDROID
 
-#include <QDialog>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QLabel>
@@ -35,17 +35,20 @@
 #include "kis_image.h"
 #include <klocalizedstring.h>
 
-class KritaMobileLayersPanel final : public QDialog
+class KritaMobileLayersPanel final : public QFrame
 {
 public:
     KritaMobileLayersPanel(KisMainWindow *main,KisViewManager *view,
                            QWidget *parent=nullptr)
-        : QDialog(parent),m_main(main),m_view(view)
+        : QFrame(parent),m_main(main),m_view(view)
     {
-        setWindowTitle(i18n("Layers"));
-        setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
+        setObjectName(QStringLiteral("MobileStudioLayersPanel"));
+        setMinimumWidth(268);
+        setMaximumWidth(386);
+        setSizePolicy(QSizePolicy::Preferred,QSizePolicy::Expanding);
         setStyleSheet(
-            "QDialog{background:#27333f;color:#ecf3fc;}"
+            "QFrame#MobileStudioLayersPanel{background:#27333f;"
+            "border-left:2px solid #7599b4;}"
             "QLabel{color:#ecf3fc;font-size:14px;}"
             "QTreeWidget{background:#2e3e4e;color:#f0f5fb;"
             "border:1px solid #718b9f;font-size:14px;}"
@@ -71,7 +74,10 @@ public:
         top->addWidget(m_multi);
         auto *close=new QPushButton(i18n("Close"),this);
         top->addWidget(close);
-        connect(close,&QPushButton::clicked,this,&QDialog::accept);
+        connect(close,&QPushButton::clicked,this,[this]() {
+            if(onRequestClose)onRequestClose();
+            else hide();
+        });
         layout->addLayout(top);
 
         m_tree=new QTreeWidget(this);
@@ -238,7 +244,49 @@ public:
         reload();
     }
 
+    // Called by the host while the panel is visible. A lightweight
+    // native-node signature prevents rebuilding the tree on every tick.
+    // We never cache a duplicate document or layer model.
+    std::function<void()> onRequestClose;
+    void refreshFromEngine()
+    {
+        if(!isVisible())return;
+        if(engineSignature()!=m_signature)reload();
+    }
+    void refreshNow() {reload();}
+
 private:
+    QString engineSignature() const
+    {
+        if(!m_view || !manager())return QStringLiteral("no-view");
+        const auto image=m_view->image().toStrongRef();
+        if(!image || !image->root())return QStringLiteral("no-image");
+        QString key=QString::number(quintptr(image.data()),16);
+        int count=0;
+        std::function<void(KisNodeSP,int)> inspect;
+        inspect=[&](KisNodeSP parent,int depth) {
+            if(!parent || depth>20 || count>=500)return;
+            for(KisNodeSP n=parent->lastChild();n && count<500;
+                n=n->prevSibling()) {
+                if(n->inherits("KisReferenceImagesLayer"))continue;
+                ++count;
+                key+=n->uuid().toString()+QLatin1Char('|')+n->name()+
+                    QLatin1Char('|')+QString::number(n->visible())+
+                    QString::number(n->userLocked())+
+                    QString::number(n->opacity())+
+                    QLatin1Char(':')+QString::number(depth)+QLatin1Char(';');
+                if(n->childCount())inspect(n,depth+1);
+            }
+        };
+        inspect(image->root(),0);
+        const auto selected=manager()->selectedNodes();
+        for(const KisNodeSP &n:selected)
+            if(n)key+=n->uuid().toString();
+        const KisNodeSP active=m_view->activeNode();
+        if(active)key+=active->uuid().toString();
+        return key;
+    }
+
     KisNodeManager *manager() const
     {
         return m_view?m_view->nodeManager():nullptr;
@@ -300,8 +348,16 @@ private:
         auto *m=manager();
         if(!m || !m_view)return;
         const auto image=m_view->image().toStrongRef();
-        if(!image || !image->root())return;
+        if(!image || !image->root()) {
+            m_tree->clear();
+            m_nodes.clear();
+            m_items.clear();
+            m_signature=engineSignature();
+            if(m_summary)m_summary->setText(i18n("No document"));
+            return;
+        }
         const int scroll=m_tree->verticalScrollBar()->value();
+        const bool hadPreviousTree=!m_nodes.isEmpty();
         QSet<KisNode*> expanded;
         for(int i=0;i<m_nodes.size();++i)
             if(auto *item=m_items.value(i,nullptr))
@@ -333,14 +389,16 @@ private:
                 m_items.append(item);
                 if(node->childCount()>0) {
                     visit(node,item,depth+1);
-                    item->setExpanded(expanded.isEmpty() ||
-                                      expanded.contains(node.data()));
+                    item->setExpanded(hadPrevious ?
+                                      expanded.contains(node.data()) :
+                                      !node->collapsed());
                 }
             }
         };
         visit(image->root(),nullptr,0);
         updateRows();
         m_tree->verticalScrollBar()->setValue(scroll);
+        m_signature=engineSignature();
     }
     QPointer<KisMainWindow> m_main;
     KisViewManager *m_view=nullptr;
@@ -351,5 +409,6 @@ private:
     QVector<QTreeWidgetItem*> m_items; // owned by m_tree
     KisNodeList m_selected;
     KisNodeSP m_active;
+    QString m_signature;
 };
 #endif // Q_OS_ANDROID
