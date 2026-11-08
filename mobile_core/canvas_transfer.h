@@ -162,8 +162,18 @@ public:
         QWidget *detached=surface->detachNativeCanvas(m_backend);
         if(detached!=native || surface->ownsNativeCanvas(native)) {
             qWarning() << "Mobile Studio: incorrect canvas returned; keeping host";
-            if(native && native->parentWidget()==m_backend)
-                surface->attachNativeCanvas(native);
+            // The destination may have already removed the original canvas
+            // before reporting a null or different widget. Reattach that
+            // exact saved widget whether its current parent is Krita or an
+            // intermediate container. Do not leave it orphaned behind the
+            // still-active Mobile Studio presentation.
+            if(native && !surface->ownsNativeCanvas(native)) {
+                if(!surface->attachNativeCanvas(native) ||
+                   !surface->ownsNativeCanvas(native)) {
+                    qWarning() << "Mobile Studio: canvas recovery requires "
+                               << "manual intervention; preserving widgets";
+                }
+            }
             mobile->show();
             m_tabTimer.start();
             return false;
