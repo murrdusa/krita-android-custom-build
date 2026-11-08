@@ -63,6 +63,32 @@ There is deliberately **no new native file format** and no custom image
 serializer. The old native file dialogs/actions remain in the compatibility
 menus until Android storage and save reliability are proven.
 
+## v0.8 urgent regression — new canvas must not reveal desktop shell
+
+This addresses the v0.7 screenshot showing desktop File/Edit menus and a
+blank gray view after using Mobile Studio's New Canvas dialog. The upstream
+Android `KisMainWindow::slotFlashWindowHack()` helper schedules
+`hide(); show();` whenever a new Krita view loads. It must not re-show
+the desktop host while its canvas belongs to Mobile Studio.
+
+- Start with Mobile Studio in front and use **New** to create a white
+  2048×2048 document. After pressing Create, the *same mobile header,
+  canvas, brush panel, and footer* should remain in front; a white canvas
+  should be visible and respond to a pressure-sensitive pen.
+- Repeat for transparent canvas and for opening an existing KRA. Confirm
+  Krita's desktop menu bar does **not** appear over Mobile Studio.
+- Create three documents in succession, switch among them, paint and undo.
+  All document views should remain reachable; no gray screen.
+- Press **Back** to return to the original Krita interface. Create a
+  document there; Krita's existing Android display workaround must still
+  operate normally when the mobile canvas is no longer transferred.
+- Repeat v0.7 with the opt-in direct-mobile startup preference. The
+  fallback path must remain usable after an interrupted test.
+
+The fix changes only the Android desktop-window visibility refresh and
+canvas ownership marker. It does not bypass Krita's real document creation,
+raster canvas or file format handlers.
+
 ## v0.7 batch test — independent canvas-session and document navigator
 
 This is a **batched, not yet device-verified** milestone. Krita still
