@@ -262,6 +262,23 @@ private:
     {
         if(!m_more)return;
         QMenu menu(this);
+        auto *mobileStartup=menu.addAction(
+            i18n("Start in Mobile Studio on next launch"));
+        mobileStartup->setCheckable(true);
+        mobileStartup->setChecked(QSettings().value(
+            QStringLiteral("MobileStudio/startDirectly"),false).toBool());
+        mobileStartup->setToolTip(i18n(
+            "Skip desktop controls at launch. An unsuccessful automatic "
+            "start reverts to the Krita fallback."));
+        connect(mobileStartup,&QAction::toggled,this,[](bool enabled) {
+            QSettings settings;
+            settings.setValue(
+                QStringLiteral("MobileStudio/startDirectly"),enabled);
+            settings.setValue(
+                QStringLiteral("MobileStudio/bootPending"),false);
+            settings.sync();
+        });
+        menu.addSeparator();
         auto *saveAs=menu.addAction(i18n("Save As..."));
         connect(saveAs,&QAction::triggered,this,[this]() {
             QTimer::singleShot(0,this,[this]() {
