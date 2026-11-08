@@ -18,6 +18,7 @@
 #include <QTimer>
 #include "engine_bridge.h"
 #include "canvas_transfer.h"
+#include "standalone_host.h"
 
 class MobileAppController final : public QObject
 {
