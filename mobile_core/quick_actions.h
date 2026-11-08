@@ -154,8 +154,9 @@ private:
             {QStringLiteral("mobile:close"),i18n("Close Canvas"),
              i18n("Krita will prompt to save unsaved changes"),
              i18n("Mobile"),false,true},
-            {QStringLiteral("mobile:commands"),i18n("Commands"),
-             i18n("Search all Krita commands"),i18n("Mobile"),true,true},
+            {QStringLiteral("mobile:commands"),i18n("Menus"),
+             i18n("Browse File, Edit, View and search all Krita menus"),
+             i18n("Mobile"),true,true},
             {QStringLiteral("mobile:more"),i18n("More"),
              i18n("Open mobile and legacy menus"),i18n("Mobile"),true,true}
         };
