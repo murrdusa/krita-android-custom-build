@@ -305,6 +305,15 @@ public:
         }
     }
     bool expanded() const {return m_expanded;}
+    // Reserve space for narrow-screen bottom sheets without changing
+    // the user's preferred color wheel size or expanded state.
+    void avoidBottom(int pixels)
+    {
+        const int limit=qMax(0,pixels);
+        if(m_avoidBottom==limit)return;
+        m_avoidBottom=limit;
+        updateForViewport();
+    }
     void setExpanded(bool expanded)
     {
         m_wantsExpanded=expanded;
@@ -384,10 +393,12 @@ private:
         int level=m_sizeLevel;
         while(level>0 &&
               (colorPanelSize(level).width()+8>parent->width() ||
-               colorPanelSize(level).height()+8>parent->height()))
+               colorPanelSize(level).height()+8>
+                   qMax(0,parent->height()-m_avoidBottom)))
             --level;
+        const int availableHeight=qMax(0,parent->height()-m_avoidBottom);
         const bool fits=colorPanelSize(level).width()+8<=parent->width() &&
-                        colorPanelSize(level).height()+8<=parent->height();
+                        colorPanelSize(level).height()+8<=availableHeight;
         const bool showWheel=m_wantsExpanded && fits;
         m_expanded=showWheel;
         m_contents->setVisible(showWheel);
@@ -405,8 +416,9 @@ private:
         if(m_dragging)return;
         const int x=qBound(0,parent->width()-width()-m_rightInset,
                            qMax(0,parent->width()-width()));
-        const int y=qBound(0,parent->height()-height()-m_bottomInset,
-                           qMax(0,parent->height()-height()));
+        const int availableHeight=qMax(0,parent->height()-m_avoidBottom);
+        const int y=qBound(0,availableHeight-height()-m_bottomInset,
+                           qMax(0,availableHeight-height()));
         move(x,y);
     }
     void savePosition()
@@ -467,6 +479,7 @@ private:
     QString m_lastSwatchColor;
     bool m_expanded=true,m_wantsExpanded=true,m_dragging=false;
     int m_sizeLevel=1,m_rightInset=7,m_bottomInset=7;
+    int m_avoidBottom=0;
     QPoint m_dragStart,m_positionAtStart;
 };
 #endif // Q_OS_ANDROID
