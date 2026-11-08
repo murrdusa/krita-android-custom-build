@@ -386,9 +386,11 @@ private:
             auto *btn=new QPushButton(text,&dialog);
             layout->addWidget(btn);
             connect(btn,&QPushButton::clicked,&dialog,
-                    [&dialog,callback]() {
+                    [this,&dialog,callback]() {
                 dialog.accept();
-                QTimer::singleShot(0,&dialog,callback);
+                // The popup is about to be destroyed: post the action to
+                // the persistent panel, not to the popup event receiver.
+                QTimer::singleShot(0,this,callback);
             });
         };
         // Queue native actions on this persistent panel, not on the soon-to-be
