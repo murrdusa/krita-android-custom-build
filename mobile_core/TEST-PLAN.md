@@ -63,6 +63,37 @@ There is deliberately **no new native file format** and no custom image
 serializer. The old native file dialogs/actions remain in the compatibility
 menus until Android storage and save reliability are proven.
 
+## v1.5 responsive canvas panels and movable color controls
+
+This checkpoint is source/build-only until the user explicitly resumes
+APK publication. Keep `UPLOAD_REQUEST_ID=none`.
+
+- With Layers closed, resize the app window between folded portrait,
+  narrow portrait and unfolded landscape. The floating color wheel must
+  remain fully inside the viewport. It must not move the real canvas.
+- Press the color panel **resize** button: cycle between small, regular
+  and large wheel sizes. On screens where the preferred wheel would not
+  fit, it should gracefully use a smaller wheel or a compact swatch.
+- Press and drag the **move handle** with pen and finger to place the
+  wheel elsewhere on the canvas. Double-tap the handle to reset to
+  bottom-right. Fold/unfold and check clamping to screen edges without
+  losing the saved preferred placement.
+- Expand/collapse color and restart Mobile Studio. Confirm preferred
+  size, expansion, and position survive. With zero documents the panel
+  must be hidden, then reappear after creating a document.
+- At canvas viewport widths under 640 pixels, show Layers. It should
+  appear as a **bottom drawer** rather than reducing the live canvas to
+  a narrow vertical strip. Hide it and confirm full canvas access.
+- When the bottom drawer is open, the color panel should stay above
+  it and automatically minimize if insufficient space remains.
+  Closing Layers should restore the preferred wheel state.
+- At wider canvas widths, Layers should return to a right-side dock.
+  Toggle Layers open/closed across orientation changes and verify the
+  same layer selection and native node actions remain intact.
+- Paint with pressure-sensitive pen, switch documents, Undo/Redo,
+  save and reload. Native Krita drawing/canvas input and file formats
+  must remain unchanged.
+
 ## v1.4 floating Krita color workspace and compact brush controls
 
 **Do not upload an APK** until explicitly requested. The WSL compilation
