@@ -1,5 +1,19 @@
 # Krita Core / Mobile UI redesign
 
+## Milestone v1.3 — mobile gesture and layer interaction
+
+- `touch_reorder_list.h` distinguishes scroll gestures (movement before
+  a press-and-hold threshold) from native Qt item drag/drop (movement after
+  a 360 ms hold). It delegates actual model moves and edge autoscrolling
+  to the Qt item view; it never touches Krita's document engine.
+- The Quick Actions strip has a non-resizable inner content widget to
+  preserve a real horizontal scroll range for overflow on narrow screens.
+- The layer panel makes Eye/Lock direct row targets and exposes native
+  layer options on a second tap of the active layer. Commands use
+  `KisNodeManager`, keeping Krita's undo and document ownership.
+- Source and WSL builds continue; APK publishing remains paused by
+  `UPLOAD_REQUEST_ID=none`.
+
 ## Milestone v1.2 — native menu hierarchy
 
 - `MobileEngineBridge::menuRootActions()` exposes Krita's live top-level
