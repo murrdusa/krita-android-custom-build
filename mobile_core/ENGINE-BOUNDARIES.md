@@ -1,5 +1,23 @@
 # Krita Core / Mobile UI redesign
 
+## Milestone v1.5 — responsive overlay ownership
+
+- `MobileColorWorkspace` now owns size presets, drag positioning,
+  double-tap reset and clamped bottom-right positioning. Placement,
+  preferred dimensions and expansion state persist as UI settings.
+  Portrait and folded viewport constraints may temporarily compact the
+  wheel without overwriting the user's chosen size/expanded preference.
+- The independent host's layers panel becomes a bottom drawer when the
+  painting area is narrower than 640 px, and a regular right dock on
+  wider displays. The exact same Krita-backed layer widget is moved
+  between presentation modes; no duplicate layer models or undo state.
+- Color control geometry reserves space above the bottom layer drawer,
+  automatically minimizing when little room remains, so it does not
+  steal pointer input meant for layer rows.
+- Only the independent mobile window controls geometry. Krita remains
+  the authoritative owner of canvas input, color resource, layer nodes,
+  compositing and document lifetime. APK publishing remains paused.
+
 ## Milestone v1.4 — foreground colors as a Krita service
 
 - `color_workspace.h` provides a compact movable-size-independent
