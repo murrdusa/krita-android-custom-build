@@ -92,14 +92,23 @@ def main(root:Path):
     auto returnToCompact=QSharedPointer<bool>::create(false);
     // Release old compact overlays before transferring the native canvas.
     connect(mobilePilotAction,&QAction::toggled,this,
-            [tabletCompact,returnToCompact](bool enabled) {
+            [this,tabletCompact,mobilePilotAction,returnToCompact](bool enabled) {
         if(enabled) {
             *returnToCompact=tabletCompact->isChecked();
             if(*returnToCompact)tabletCompact->setChecked(false);
         } else if(*returnToCompact) {
             *returnToCompact=false;
-            QTimer::singleShot(0,tabletCompact,[tabletCompact]() {
-                if(tabletCompact && !tabletCompact->isChecked())
+            // The native central widget has just crossed Android top-level
+            // windows. A zero-delay Compact UI restore can race its first
+            // Qt layout and leave the MDI canvas blank. Wait for the
+            // desktop handoff; do not turn Compact back on if the user
+            // reopened Mobile Studio or the canvas is still detached.
+            QTimer::singleShot(180,this,[this,tabletCompact,mobilePilotAction]() {
+                if(!tabletCompact || mobilePilotAction->isChecked() ||
+                   !centralWidget() ||
+                   property("_mobileStudioCanvasTransferred").toBool())
+                    return;
+                if(!tabletCompact->isChecked())
                     tabletCompact->setChecked(true);
             });
         }
