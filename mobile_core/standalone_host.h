@@ -13,14 +13,17 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QClipboard>
 #include <QCloseEvent>
 #include <QColorDialog>
 #include <QDialog>
 #include <QFrame>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
 #include <QMainWindow>
+#include <QMessageBox>
 #include <QMdiArea>
 #include <QMdiSubWindow>
 #include <QMenu>
@@ -37,6 +40,7 @@
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QSettings>
+#include <QStringList>
 #include <QCursor>
 #include <QVector>
 #include <functional>
@@ -470,6 +474,50 @@ private:
                 QStringLiteral("KritaTransform/KisToolMove"));
         });
         menu.addSeparator();
+        auto *diagnostics=menu.addAction(i18n("Copy Mobile Studio diagnostics"));
+        diagnostics->setToolTip(i18n(
+            "Copy canvas and toolbar state without filenames or drawing data"));
+        connect(diagnostics,&QAction::triggered,this,[this]() {
+            // Let the popup finish first; clipboard and notification use
+            // Qt's existing native Android integration, not a new window.
+            QTimer::singleShot(0,this,[this]() {
+                const bool canvasPresent=hasNativeCanvas();
+                const bool sameTopLevel=canvasPresent &&
+                    m_nativeCanvas->window()==window();
+                const auto documents=m_engine.openDocuments();
+                const QString report=QStringList({
+                    QStringLiteral("Krita Mobile Studio diagnostics v1"),
+                    QStringLiteral("Host: embedded Qt widget"),
+                    QStringLiteral("Canvas attached: %1").arg(canvasPresent),
+                    QStringLiteral("Canvas shares native window: %1")
+                        .arg(sameTopLevel),
+                    QStringLiteral("Canvas count: %1").arg(documents.size()),
+                    QStringLiteral("Document available: %1")
+                        .arg(m_engine.hasDocument()),
+                    QStringLiteral("Host geometry: %1 x %2")
+                        .arg(width()).arg(height()),
+                    QStringLiteral("Quick Actions visible: %1")
+                        .arg(m_quickActions && m_quickActions->isVisible()),
+                    QStringLiteral("Brush controls visible: %1")
+                        .arg(m_brushWorkspace && m_brushWorkspace->isVisible()),
+                    QStringLiteral("Layers visible: %1")
+                        .arg(m_layers && m_layers->isVisible()),
+                    QStringLiteral("Color controls visible: %1")
+                        .arg(m_colorWorkspace && m_colorWorkspace->isVisible())
+                }).join(QLatin1Char('\n'));
+                QClipboard *clipboard=QGuiApplication::clipboard();
+                if(!clipboard) {
+                    QMessageBox::warning(this,i18n("Diagnostics unavailable"),
+                        i18n("The system clipboard is unavailable."));
+                    return;
+                }
+                clipboard->setText(report);
+                QMessageBox::information(this,i18n("Diagnostics copied"),
+                    i18n("Mobile Studio state copied. You can paste it into "
+                         "a bug report. No document contents or paths "
+                         "were included."));
+            });
+        });
         auto *nativeMenu=m_engine.nativeMenus(&menu);
         nativeMenu->setTitle(i18n("Legacy menus (compatibility)"));
         menu.addMenu(nativeMenu);
