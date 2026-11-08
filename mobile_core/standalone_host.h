@@ -53,6 +53,7 @@
 
 #include "engine_bridge.h"
 #include "brush_workspace.h"
+#include "layer_workspace.h"
 
 class MobileStandaloneWindow final : public QMainWindow
 {
@@ -104,14 +105,25 @@ public:
 
         // The Krita canvas (including its native MDI document view) is
         // transferred into this slot. It is never recreated or resampled.
-        m_canvasSlot=new QWidget(root);
+        auto *workspaceRow=new QWidget(root);
+        auto *workspaceLayout=new QHBoxLayout(workspaceRow);
+        workspaceLayout->setContentsMargins(0,0,0,0);
+        workspaceLayout->setSpacing(0);
+        m_canvasSlot=new QWidget(workspaceRow);
         m_canvasSlot->setObjectName(QStringLiteral("MobileNativeCanvasSlot"));
         m_canvasSlot->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Expanding);
         m_canvasSlot->setMinimumSize(0,0);
         m_canvasLayout=new QVBoxLayout(m_canvasSlot);
         m_canvasLayout->setContentsMargins(0,0,0,0);
         m_canvasLayout->setSpacing(0);
-        layout->addWidget(m_canvasSlot,1);
+        workspaceLayout->addWidget(m_canvasSlot,1);
+        m_layers=new MobileLayerWorkspace(m_engine,workspaceRow);
+        m_layers->onRequestClose=[this]() {
+            if(m_layers)m_layers->hide();
+        };
+        m_layers->hide();
+        workspaceLayout->addWidget(m_layers,0);
+        layout->addWidget(workspaceRow,1);
 
         m_brushWorkspace=new KritaMobileBrushWorkspace(
             m_engine.legacyHost(),m_engine.manager(),root);
@@ -239,50 +251,10 @@ private:
     }
     void openLayers()
     {
-        auto *manager=m_engine.manager();
-        if(!manager || !manager->nodeManager())return;
-        const auto image=manager->image().toStrongRef();
-        if(!image || !image->root())return;
-        QDialog dialog(this);
-        dialog.setWindowTitle(i18n("Layers"));
-        dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
-        dialog.setStyleSheet(
-            "QDialog{background:#283643;color:#eff7ff;}"
-            "QListWidget{background:#2c4051;color:white;font-size:14px;}"
-            "QListWidget::item{min-height:46px;padding:4px;}"
-            "QPushButton{background:#45647e;color:white;min-height:44px;}");
-        auto *layout=new QVBoxLayout(&dialog);
-        auto *heading=new QLabel(i18n("Layers · Krita image model"),&dialog);
-        layout->addWidget(heading);
-        auto *list=new QListWidget(&dialog);
-        list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-        layout->addWidget(list,1);
-        QVector<KisNodeSP> nodes;
-        std::function<void(KisNodeSP,int)> visit;
-        visit=[&](KisNodeSP parent,int depth) {
-            if(!parent || depth>12 || nodes.size()>300)return;
-            for(KisNodeSP node=parent->lastChild();node;node=node->prevSibling()) {
-                nodes.append(node);
-                auto *item=new QListWidgetItem(
-                    QString(depth*2,QLatin1Char(' '))+node->name(),list);
-                item->setData(Qt::UserRole,nodes.size()-1);
-                if(node==manager->activeNode())list->setCurrentItem(item);
-                if(node->childCount())visit(node,depth+1);
-            }
-        };
-        visit(image->root(),0);
-        connect(list,&QListWidget::itemClicked,&dialog,
-                [this,&dialog,&nodes](QListWidgetItem *item) {
-            const int id=item?item->data(Qt::UserRole).toInt():-1;
-            if(id>=0 && id<nodes.size() && m_engine.selectLayer(nodes.at(id)))
-                dialog.accept();
-        });
-        auto *done=new QPushButton(i18n("Close"),&dialog);
-        connect(done,&QPushButton::clicked,&dialog,&QDialog::reject);
-        layout->addWidget(done);
-        dialog.resize(qMax(300,qMin(450,width()-32)),
-                      qMax(360,qMin(660,height()-80)));
-        dialog.exec();
+        if(!m_layers)return;
+        const bool show=!m_layers->isVisible();
+        m_layers->setVisible(show);
+        if(show)m_layers->refresh();
     }
     void openColor()
     {
@@ -301,6 +273,7 @@ private:
     QPointer<QWidget> m_canvasSlot;
     QVBoxLayout *m_canvasLayout=nullptr;
     KritaMobileBrushWorkspace *m_brushWorkspace=nullptr;
+    MobileLayerWorkspace *m_layers=nullptr;
     QLabel *m_document=nullptr;
     QToolButton *m_more=nullptr,*m_saveButton=nullptr;
     QTimer *m_updates=nullptr;
