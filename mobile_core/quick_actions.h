@@ -34,6 +34,7 @@
 #include <klocalizedstring.h>
 
 #include "engine_bridge.h"
+#include "touch_reorder_list.h"
 
 class MobileQuickActions final : public QFrame
 {
@@ -66,7 +67,9 @@ public:
         outer->setSpacing(4);
         m_scroll=new QScrollArea(this);
         m_scroll->setFrameShape(QFrame::NoFrame);
-        m_scroll->setWidgetResizable(true);
+        // Keep the content at its natural width so overflowing actions
+        // remain horizontally scrollable on narrow/folded screens.
+        m_scroll->setWidgetResizable(false);
         m_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         m_scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         m_scroll->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
@@ -268,7 +271,13 @@ private:
             m_row->addWidget(button);
             m_buttons.append(qMakePair(id,QPointer<QToolButton>(button)));
         }
-        m_row->addStretch(1);
+        m_row->activate();
+        // QScrollArea with a fixed-width widget creates a real horizontal
+        // content range; a resizable widget can squeeze all the buttons
+        // into the viewport and make swipe-to-scroll ineffective.
+        m_scroll->widget()->adjustSize();
+        m_scroll->widget()->resize(
+            m_row->sizeHint().width(),m_scroll->viewport()->height());
         refresh();
     }
 
@@ -404,19 +413,15 @@ private:
         title->setStyleSheet(QStringLiteral("font-size:18px;font-weight:600;"));
         layout->addWidget(title);
         auto *hint=new QLabel(i18n(
-            "Hold and drag a row to reorder. Up and Down also work with "
-            "finger or pen. Changes save only when you tap Save."),&dlg);
+            "Hold for a moment, then drag a row to reorder. Swipe normally "
+            "to scroll. Up and Down are available as alternatives. "
+            "Changes save only when you tap Save."),&dlg);
         hint->setWordWrap(true);
         layout->addWidget(hint);
-        auto *list=new QListWidget(&dlg);
-        list->setSelectionMode(QAbstractItemView::SingleSelection);
-        list->setDragEnabled(true);
-        list->setAcceptDrops(true);
-        list->viewport()->setAcceptDrops(true);
-        list->setDropIndicatorShown(true);
-        list->setDragDropMode(QAbstractItemView::InternalMove);
-        list->setDefaultDropAction(Qt::MoveAction);
-        list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        auto *list=new MobileHoldReorderList(&dlg);
+        // Short swipe scrolls; a deliberate 360 ms hold followed by
+        // movement initiates Qt's internal drag/drop reorder. Both
+        // touch-synthesized mouse input and stylus mouse input share it.
         layout->addWidget(list,1);
         const auto populate=[&](const QStringList &ids) {
             list->clear();
