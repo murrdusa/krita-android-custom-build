@@ -11,9 +11,13 @@
 
 #include <QMainWindow>
 #include <QDebug>
+#include <QDockWidget>
+#include <QMenuBar>
 #include <QMdiArea>
 #include <QPointer>
+#include <QStatusBar>
 #include <QTabBar>
+#include <QToolBar>
 #include <QTimer>
 #include <QVector>
 #include <QWidget>
@@ -28,7 +32,10 @@ public:
         m_tabTimer.setInterval(750);
         QObject::connect(&m_tabTimer,&QTimer::timeout,&m_tabTimer,
                          [this]() {
-            if(m_active)hideNativeTabs();
+            if(m_active) {
+                hideNativeTabs();
+                enforceMobileChrome();
+            }
         });
     }
 
@@ -38,6 +45,17 @@ public:
     }
 
     bool active() const {return m_active;}
+
+    // The native Krita QMainWindow remains the only Android top-level.
+    // Called after deferred desktop chrome changes from Krita's old skin.
+    void enforceMobileChrome()
+    {
+        if(!m_active)return;
+        for(const ChromeSnapshot &saved:m_chrome) {
+            if(saved.widget && saved.widget->isVisible())
+                saved.widget->hide();
+        }
+    }
 
     bool enter(MobileCanvasSurface *surface)
     {
@@ -50,8 +68,18 @@ public:
         if(!m_backend->centralWidget())return false;
 
         m_savedWindowState=m_backend->windowState();
+        rememberBackendChrome();
+        // Make Mobile Studio a child presentation widget before moving
+        // the real painting canvas. Only Krita's existing QMainWindow
+        // owns an Android native window / GL compositor surface.
+        mobile->hide();
+        mobile->setParent(m_backend,Qt::Widget);
         QWidget *native=m_backend->takeCentralWidget();
-        if(!native)return false;
+        if(!native) {
+            mobile->setParent(nullptr);
+            m_chrome.clear();
+            return false;
+        }
 
         m_canvas=native;
         m_surface=surface;
@@ -66,11 +94,15 @@ public:
             // An incomplete attachment must leave desktop Krita usable.
             // Never detach an unrelated canvas from the destination.
             if(surface->ownsNativeCanvas(native))
-                surface->detachNativeCanvas();
+                surface->detachNativeCanvas(m_backend);
             native->hide();
-            native->setParent(nullptr);
+            if(native->parentWidget()!=m_backend)
+                native->setParent(m_backend);
             m_backend->setCentralWidget(native);
             native->show();
+            mobile->hide();
+            mobile->setParent(nullptr);
+            m_chrome.clear();
             m_backend->setProperty("_mobileStudioCanvasTransferred",false);
             m_surface=nullptr;
             m_canvas=nullptr;
@@ -78,14 +110,25 @@ public:
             return false;
         }
 
+        // The native window stays visible throughout. Replacing its
+        // central presentation widget avoids Android full-screen window
+        // overlap and avoids reparenting the GL canvas across top-levels
+        // on every Back/enter cycle.
+        m_backend->setCentralWidget(mobile);
         m_active=true;
         hideNativeTabs();
         m_tabTimer.start();
-        mobile->showFullScreen();
+        enforceMobileChrome();
+        mobile->show();
         mobile->raise();
-        mobile->activateWindow();
-        m_backend->hide();
+        m_backend->show();
+        m_backend->activateWindow();
         surface->refreshCanvasSurface();
+        // A delayed desktop toolbar restoration may follow the toggle.
+        QPointer<QMainWindow> backend=m_backend;
+        QTimer::singleShot(320,m_backend,[this,backend]() {
+            if(backend && m_active)enforceMobileChrome();
+        });
         return true;
     }
 
@@ -97,44 +140,46 @@ public:
         // setCentralWidget() would DELETE it. Refuse to discard another
         // canvas, even when the UI is asking to return to desktop.
         if(!m_backend || !m_canvas || !m_mobileWindow || !m_surface ||
-           (m_backend->centralWidget() &&
-            m_backend->centralWidget()!=m_canvas)) {
-            qWarning() << "Mobile Studio: rejected desktop handoff; native canvas"
-                       << "or window missing, or backend central widget occupied";
+           m_backend->centralWidget()!=m_mobileWindow) {
+            qWarning() << "Mobile Studio: rejected embedded handoff; canvas"
+                       << "or mobile host missing, or backend central widget replaced";
             return false;
         }
         m_tabTimer.stop();
 
-        MobileCanvasSurface *surface=m_mobileWindow?m_surface:nullptr;
-        QWidget *detached=surface?surface->detachNativeCanvas():nullptr;
-        // The destination is not authoritative about which canvas Krita
-        // owns. Never install an unrelated widget as the backend's central
-        // widget, even if a future surface implementation returns one.
+        MobileCanvasSurface *surface=m_surface;
+        QWidget *mobile=m_mobileWindow;
+        // Never let Qt delete Mobile Studio while it still owns the native
+        // painting canvas. The canvas is reparented directly to the shared
+        // Krita top-level before replacing the central presentation widget.
         QWidget *native=m_canvas.data();
-        if(native && detached!=native &&
-           m_backend->centralWidget()!=native) {
-            // Recovery also covers a surface that reports no widget after
-            // having reparented the original native canvas.
-            native->hide();
-            native->setParent(nullptr);
+        mobile->hide();
+        QWidget *detached=surface->detachNativeCanvas(m_backend);
+        if(detached!=native || surface->ownsNativeCanvas(native)) {
+            qWarning() << "Mobile Studio: incorrect canvas returned; keeping host";
+            if(native && native->parentWidget()==m_backend)
+                surface->attachNativeCanvas(native);
+            mobile->show();
+            m_tabTimer.start();
+            return false;
         }
-        if(m_backend && native && m_backend->centralWidget()!=native)
-            m_backend->setCentralWidget(native);
+        QWidget *removed=m_backend->takeCentralWidget();
+        if(removed!=mobile) {
+            qWarning() << "Mobile Studio: backend presentation changed mid-handoff";
+            if(removed)m_backend->setCentralWidget(removed);
+            surface->attachNativeCanvas(native);
+            mobile->show();
+            m_tabTimer.start();
+            return false;
+        }
+        m_backend->setCentralWidget(native);
         restoreNativeTabs();
-
-        // Android hosts both surfaces in the same Qt application. Hide
-        // the mobile top-level *before* showing the desktop window again,
-        // otherwise the two surfaces can briefly overlap and leave a
-        // stale footer over an otherwise empty desktop canvas.
-        if(m_mobileWindow)m_mobileWindow->hide();
+        restoreBackendChrome();
 
         if(m_backend) {
             m_backend->setProperty("_mobileStudioCanvasTransferred",false);
-            if(m_backend->windowState()!=m_savedWindowState)
-                m_backend->setWindowState(m_savedWindowState);
             m_backend->show();
-            if(native)native->show();
-            m_backend->raise();
+            native->show();
             m_backend->activateWindow();
             // Returning the native widget changes its top-level window.
             // Let Qt finish the Android surface/MDI layout pass before
@@ -168,6 +213,38 @@ public:
     }
 
 private:
+    struct ChromeSnapshot {
+        QPointer<QWidget> widget;
+        bool wasVisible=false;
+    };
+
+    void rememberBackendChrome()
+    {
+        m_chrome.clear();
+        if(!m_backend)return;
+        const auto remember=[this](QWidget *widget) {
+            if(!widget)return;
+            for(const ChromeSnapshot &entry:m_chrome)
+                if(entry.widget==widget)return;
+            m_chrome.append({widget,widget->isVisible()});
+        };
+        remember(m_backend->menuBar());
+        remember(m_backend->statusBar());
+        // Snapshot before embedding the mobile host so nested mobile
+        // controls are never confused with Krita's legacy desktop chrome.
+        for(QToolBar *bar:m_backend->findChildren<QToolBar*>())
+            remember(bar);
+        for(QDockWidget *dock:m_backend->findChildren<QDockWidget*>())
+            remember(dock);
+    }
+
+    void restoreBackendChrome()
+    {
+        for(const ChromeSnapshot &entry:m_chrome)
+            if(entry.widget)entry.widget->setVisible(entry.wasVisible);
+        m_chrome.clear();
+    }
+
     struct TabSnapshot {
         QPointer<QTabBar> bar;
         int minimumHeight=0;
@@ -209,6 +286,7 @@ private:
     MobileCanvasSurface *m_surface=nullptr; // Lifetime guarded by m_mobileWindow
     Qt::WindowStates m_savedWindowState=Qt::WindowNoState;
     QVector<TabSnapshot> m_tabs;
+    QVector<ChromeSnapshot> m_chrome;
     QTimer m_tabTimer;
     bool m_active=false;
 };
