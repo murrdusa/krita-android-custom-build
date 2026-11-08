@@ -34,6 +34,35 @@ rendered inside Mobile Studio. The prototype is opt-in and reversible.
 - **Rotation/resizing:** Rotate or unfold the device while the new window
   is active. Neither canvas nor brush panel should disappear permanently.
 
+## Layer workspace v0.4 — inline, nonmodal canvas companion
+
+The Layers control now toggles a nonmodal panel on the side of the live
+painting canvas. This UI is new; all operations still delegate to Krita's
+original undo-enabled node manager.
+
+Test on an expendable canvas:
+- Tap Layers, draw a stroke with the panel open, and press main-window
+  Undo/Redo without closing the panel. Neither should be blocked.
+- Create, duplicate, delete, group and reorder layers while the panel is open.
+  The tree should update after structural Undo/Redo and external changes.
+- Change tabs/documents, then open Layers and confirm only current document
+  layers appear, with no stale names from the previous document.
+- Tap Close on the panel and then reopen it; verify it occupies no canvas
+  space while hidden and doesn't reset the painting state.
+- Fold/unfold or rotate the phone: panel should remain usable and canvas
+  should receive pen pressure with the panel open. If the canvas becomes too
+  narrow in portrait mode, that is a UI layout issue to fix next.
+- Expand nested groups, collapse all, and use Undo or another native
+  change: group expansion state should not unexpectedly reset.
+- Tap multi-select and verify the highlighted node selection matches
+  duplicate/group/delete operations. Confirm Undo history is native.
+- Back out to the legacy window with the panel open, then return to
+  Mobile Studio. The canvas and document must remain intact.
+
+This version does not yet attempt touch drag/drop reordering or a miniature
+thumbnail catalog, and does not remove the legacy Krita backend service.
+The engine-first boundary is unchanged.
+
 ## Layer workspace v0.2 checks
 
 The new Layers panel now reads Krita's real node tree, preserving nested
