@@ -232,14 +232,18 @@ public:
         if(m_colorWorkspace)m_colorWorkspace->raise();
         refresh();
     }
-    QWidget *releaseEngineCanvas()
+    QWidget *releaseEngineCanvas(QWidget *destinationParent=nullptr)
     {
         QWidget *canvas=m_nativeCanvas;
         if(!canvas)return nullptr;
         m_nativeCanvas=nullptr;
         m_canvasLayout->removeWidget(canvas);
         canvas->hide();
-        canvas->setParent(nullptr);
+        // The destination can be the same Android top-level Krita window.
+        // Reparent directly rather than briefly making Krita's live GL
+        // canvas a standalone Android window.
+        if(canvas->parentWidget()!=destinationParent)
+            canvas->setParent(destinationParent);
         return canvas;
     }
     bool hasEngineCanvas() const {return m_nativeCanvas!=nullptr;}
@@ -253,9 +257,9 @@ public:
         attachEngineCanvas(nativeCanvas);
         return m_nativeCanvas==nativeCanvas;
     }
-    QWidget *detachNativeCanvas() override
+    QWidget *detachNativeCanvas(QWidget *destinationParent=nullptr) override
     {
-        return releaseEngineCanvas();
+        return releaseEngineCanvas(destinationParent);
     }
     bool ownsNativeCanvas(QWidget *nativeCanvas) const override
     {
