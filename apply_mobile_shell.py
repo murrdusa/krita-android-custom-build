@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Install the opt-in Krita-engine mobile UI proof into the patched Android tree.
+"""Install the opt-in independent mobile WINDOW into the Krita Android tree.
 
-Run AFTER all legacy UI patches. It does not replace the canvas, paint engine,
-document model or normal Krita defaults. Every edit is anchor-checked.
+This is an incremental migration path, not yet a standalone executable.
+Run AFTER existing patches. The window hosts Krita's native MDI canvas
+while desktop KisMainWindow temporarily remains the engine service.
+All edits are source-anchored and reversible by switching the mode off.
 """
 from pathlib import Path
 import hashlib
@@ -18,46 +20,48 @@ def one(source, old, new, label):
 def main(root:Path):
     root=root.resolve()
     own=Path(__file__).resolve().parent
-    shell=own/"mobile_core/mobile_shell.h"
+    shell=own/"mobile_core/standalone_host.h"
+    bridge=own/"mobile_core/engine_bridge.h"
     brush=own/"mobile_core/brush_workspace.h"
-    if not shell.is_file() or not brush.is_file():
-        raise RuntimeError("Missing mobile_core shell or brush workspace header")
+    if not shell.is_file() or not bridge.is_file() or not brush.is_file():
+        raise RuntimeError("Missing standalone host, engine bridge or brush module")
 
     mainfile=root/"libs/ui/KisMainWindow.cpp"
     s=mainfile.read_text(encoding="utf-8")
     s=one(s,'#include "tablet_compact_skin.h"',
-          '#include "tablet_compact_skin.h"\n#include "mobile_shell.h"\n#include <QSharedPointer>',
+          '#include "tablet_compact_skin.h"\n#include "standalone_host.h"\n#include <QSharedPointer>',
           "main window include")
 
     native='''    auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);'''
-    injected='''    // Opt-in alternate shell, OFF by default. The existing compact mode
-    // remains untouched until the user explicitly opens this pilot.
+    injected='''    // Independent window prototype is opt-in and never auto-starts.
     QAction *mobilePilotAction = new QAction(
         KisIconUtils::loadIcon("draw-freehand"),
-        i18n("Mobile Engine Pilot"),this);
+        i18n("Mobile Studio (experimental)"),this);
     mobilePilotAction->setCheckable(true);
     mobilePilotAction->setChecked(false);
     mobilePilotAction->setToolTip(i18n(
-        "Experimental mobile workspace using Krita's native canvas"));
+        "Open the independent mobile shell with Krita's native canvas"));
     actionCollection()->addAction(
         QStringLiteral("tablet_mobile_engine_pilot"),mobilePilotAction);
     auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);
-    auto *mobilePilot = new KritaMobilePilot(
-        this,d->mdiArea,d->viewManager,mobilePilotAction);
-    // Restore the user's previous Compact/normal choice after pilot exit.
     auto returnToCompact=QSharedPointer<bool>::create(false);
+    // Release old compact overlays before transferring the native canvas.
     connect(mobilePilotAction,&QAction::toggled,this,
-            [tabletCompact,mobilePilot,returnToCompact](bool enabled) {
+            [tabletCompact,returnToCompact](bool enabled) {
         if(enabled) {
             *returnToCompact=tabletCompact->isChecked();
             if(*returnToCompact)tabletCompact->setChecked(false);
-        }
-        mobilePilot->setActive(enabled);
-        if(!enabled && *returnToCompact) {
+        } else if(*returnToCompact) {
             *returnToCompact=false;
-            tabletCompact->setChecked(true);
+            QTimer::singleShot(0,tabletCompact,[tabletCompact]() {
+                if(tabletCompact && !tabletCompact->isChecked())
+                    tabletCompact->setChecked(true);
+            });
         }
     });
+    auto *mobileStudio = new MobileAppController(
+        this,d->mdiArea,d->viewManager,mobilePilotAction);
+    Q_UNUSED(mobileStudio);
     connect(tabletCompact,&QAction::toggled,this,
             [mobilePilotAction](bool compact) {
         if(compact && mobilePilotAction->isChecked())
@@ -78,8 +82,10 @@ def main(root:Path):
             m_compactBar->addAction(pilot);''',
         "compact-mode launch action")
     oldheader.write_text(header,encoding="utf-8")
-    (root/"libs/ui/mobile_shell.h").write_text(shell.read_text(encoding="utf-8"),
-                                             encoding="utf-8")
+    (root/"libs/ui/standalone_host.h").write_text(
+        shell.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/engine_bridge.h").write_text(
+        bridge.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/brush_workspace.h").write_text(
         brush.read_text(encoding="utf-8"),encoding="utf-8")
 
@@ -104,7 +110,7 @@ def main(root:Path):
     cmake=cmake.replace(oldhash[0],
         f'set(krita5_xmlgui_hash_expected "{digest}")',1)
     cmakefile.write_text(cmake,encoding="utf-8")
-    print(f"Installed opt-in Krita Mobile Pilot; XMLGUI checksum {digest}")
+    print(f"Installed opt-in independent mobile WINDOW; XMLGUI checksum {digest}")
 
 if __name__=="__main__":
     if len(sys.argv)!=2:
