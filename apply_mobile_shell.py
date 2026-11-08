@@ -74,6 +74,50 @@ def main(root:Path):
             mobilePilotAction->setChecked(false);
     });'''
     s=one(s,native,injected,"pilot action initialization")
+
+    # Krita Android's legacy display refresh hides and RE-SHOWS
+    # KisMainWindow after a document is opened or created.  In Mobile
+    # Studio that window is intentionally hidden while its live canvas
+    # belongs to our independent window. Re-showing the original window
+    # steals focus and covers the canvas with an empty desktop shell.
+    # Guard both the initial call AND its deferred show() callback, since
+    # a flash may have been scheduled just before switching windows.
+    flash_old='''void KisMainWindow::slotFlashWindowHack()
+{
+    if (!d->flashWindowHackInProgress) {
+        d->flashWindowHackInProgress = true;
+        QTimer::singleShot(0, this, [this] {
+            hide();
+            QTimer::singleShot(0, this, [this] {
+                show();
+                d->flashWindowHackInProgress = false;
+            });
+        });
+    }
+}'''
+    flash_new='''void KisMainWindow::slotFlashWindowHack()
+{
+    if (property("_mobileStudioCanvasTransferred").toBool()) {
+        return;
+    }
+    if (!d->flashWindowHackInProgress) {
+        d->flashWindowHackInProgress = true;
+        QTimer::singleShot(0, this, [this] {
+            if (property("_mobileStudioCanvasTransferred").toBool()) {
+                d->flashWindowHackInProgress = false;
+                return;
+            }
+            hide();
+            QTimer::singleShot(0, this, [this] {
+                if (!property("_mobileStudioCanvasTransferred").toBool()) {
+                    show();
+                }
+                d->flashWindowHackInProgress = false;
+            });
+        });
+    }
+}'''
+    s=one(s,flash_old,flash_new,"Android desktop refresh protection")
     mainfile.write_text(s,encoding="utf-8")
 
     # Compact mode is normally enabled at startup; expose the opt-in pilot
