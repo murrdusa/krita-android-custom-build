@@ -55,6 +55,7 @@ public:
                                QScroller::LeftMouseButtonGesture);
         layout->addWidget(items,1);
         const auto documents=engine.openDocuments();
+        int activeIndex=-1;
         for(const auto &document:documents) {
             QString text=(document.active?QStringLiteral("●  "):
                                            QStringLiteral("    "))+
@@ -65,10 +66,13 @@ public:
             item->setToolTip(document.title+
                 (document.modified?i18n(" (unsaved changes)"):QString()));
             if(document.active) {
+                if(activeIndex<0)activeIndex=document.nativeIndex;
                 item->setBackground(QColor(49,106,140));
                 items->setCurrentItem(item);
             }
         }
+        if(activeIndex<0 && documents.size()==1)
+            activeIndex=documents.first().nativeIndex;
         if(documents.isEmpty()) {
             auto *item=new QListWidgetItem(i18n("No open canvases"),items);
             item->setFlags(Qt::NoItemFlags);
@@ -125,8 +129,12 @@ public:
             // Save/Discard/Cancel dialog is shown above the live canvas,
             // rather than behind the document switcher.
             const MobileEngineBridge native=engine;
-            QTimer::singleShot(0,parent,[native]() {
-                native.closeActiveDocument();
+            QTimer::singleShot(0,parent,[native,activeIndex]() {
+                // Use the exact view selected when this chooser opened.
+                // A hidden desktop QMainWindow may not have any current
+                // QMdiSubWindow even though Krita has a live document.
+                if(activeIndex>=0)native.closeDocument(activeIndex);
+                else native.closeActiveDocument();
             });
         }
         else if(desiredIndex>=0)engine.activateDocument(desiredIndex);
