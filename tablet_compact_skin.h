@@ -1179,6 +1179,13 @@ private:
             "QLineEdit{min-height:45px;background:#3a4351;color:white;"
             "border:1px solid #748497;border-radius:8px;padding:5px;}"
             "QListWidget::item{min-height:47px;}"
+            "QScrollBar:vertical{background:#2d3642;width:20px;"
+            "border:0;border-radius:9px;}"
+            "QScrollBar::handle:vertical{background:#729dbb;"
+            "min-height:65px;border-radius:9px;}"
+            "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0px;}"
+            "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{"
+            "background:transparent;}"
             "QTabBar::tab{min-height:47px;padding:6px 12px;}");
     }
     QVBoxLayout *makeTouchSettingsPage(QDialog &dialog,const QString &title) {
@@ -1198,7 +1205,7 @@ private:
         // Android delivers finger drags as synthesized mouse gestures for
         // these scroll areas. Match the working action/brush list behavior.
         scroll->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
-        scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
         QScroller::grabGesture(scroll->viewport(),
                                QScroller::LeftMouseButtonGesture);
         auto *page=new QWidget(scroll);
@@ -1540,7 +1547,7 @@ private:
         settingsScroll->setWidgetResizable(true);
         settingsScroll->setFrameShape(QFrame::NoFrame);
         settingsScroll->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
-        settingsScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        settingsScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
         QScroller::grabGesture(settingsScroll->viewport(),
                                QScroller::LeftMouseButtonGesture);
         auto *settingsPage=new QWidget(settingsScroll);
