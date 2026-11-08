@@ -1,5 +1,35 @@
 # Mobile Studio — first independent-window smoke test
 
+## v1.11 functional regression: empty home, canvas close, Quick Actions
+
+These are **on-device checks**, not claims of a passed Android test.
+
+- Launch Mobile Studio without a document: only the Back/header and the
+  large New Canvas/Open Drawing empty state should be needed. The
+  paint-only Quick Actions footer and Add/Edit buttons must be absent.
+- Create a blank canvas: the editable Quick Actions bar returns, with
+  visible labels and no blank gray scroll section. Save, reopen and
+  verify the bar still contains the configured shortcuts.
+- From the Canvases dialog, close an unmodified document and verify
+  the workspace returns to its empty state, including hiding shortcuts.
+- Open and alter a KRA document, then select Close Current Canvas.
+  Verify Krita's native Save / Discard / Cancel prompt appears *above*
+  the mobile canvas. Cancel must retain every edit and the document;
+  Save must preserve modifications on disk, and Discard must close
+  without silently saving.
+- Repeat the close test when no MDI subwindow is selected after moving
+  between desktop, Compact UI and Mobile Studio. Close must still
+  select Krita's current document, not a random other open file.
+- With three open documents, ensure the Canvases chooser identifies the
+  active canvas; switching, closing that canvas, and switching again
+  must not accidentally close a different file.
+- Tap Quick Actions + Add, select an action, confirm, and repeat Edit
+  (reorder, remove, Defaults, Cancel, Save). After each accepted change
+  the buttons must remain visible and swipeable. Cancel must leave
+  saved shortcuts unchanged; an unchanged Save must not rebuild them.
+- If an earlier build accidentally persisted an empty shortcut list,
+  use Edit → Defaults → Save. Do not reset all Krita settings.
+
 ## v1.10 rejected-handoff and APK size auditing
 
 - In a controlled Qt developer build, install a disposable second central
