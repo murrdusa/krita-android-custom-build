@@ -3056,8 +3056,9 @@ private:
     }
     void openCanvasBackgroundSettings() {
         if(!m_vm || !m_vm->document())return;
-        const auto image=m_vm->image().toStrongRef();
+        auto image=m_vm->image().toStrongRef();
         if(!image || !image->root())return;
+        KisImage *rawImage=image.data();
         QDialog dialog(m_main);
         auto *layout=makeTouchSettingsPage(dialog,i18n("Canvas background"));
         auto *note=new QLabel(i18n(
@@ -3065,9 +3066,9 @@ private:
             "background does not add a paint layer."),&dialog);
         note->setWordWrap(true);
         layout->addWidget(note);
-        const auto useColor=[this,image](const KoColor &color) {
-            image->setDefaultProjectionColor(color);
-            image->root()->setDirty(image->bounds());
+        const auto useColor=[this,rawImage](const KoColor &color) {
+            rawImage->setDefaultProjectionColor(color);
+            rawImage->root()->setDirty(rawImage->bounds());
             if(KisDocument *document=m_vm->document())
                 document->setModified(true);
         };
