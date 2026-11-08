@@ -4633,7 +4633,7 @@ private:
                 QStringLiteral("TabletUi/colorHueRotationDegrees"),qRound(value));
             updateCompactSelectorRotations();
         });
-        layout->addWidget(new QLabel(i18n("Rotate color diamond"),&dialog));
+        layout->addWidget(new QLabel(i18n("Rotate color square"),&dialog));
         auto *squareRotation=new KisDoubleSliderSpinBox(&dialog);
         squareRotation->setRange(0,359,0);
         squareRotation->setSingleStep(15);
