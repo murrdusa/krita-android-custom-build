@@ -266,6 +266,7 @@ public:
                                      QStringLiteral("#ffffff"):
                                      QStringLiteral("#202934")));
     }
+    bool expanded() const {return m_expanded;}
     void setExpanded(bool expanded)
     {
         m_expanded=expanded;
