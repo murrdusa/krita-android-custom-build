@@ -63,6 +63,39 @@ There is deliberately **no new native file format** and no custom image
 serializer. The old native file dialogs/actions remain in the compatibility
 menus until Android storage and save reliability are proven.
 
+## v1.4 floating Krita color workspace and compact brush controls
+
+**Do not upload an APK** until explicitly requested. The WSL compilation
+check can run normally while `UPLOAD_REQUEST_ID=none`.
+
+- With an open document, verify a compact **color wheel in the bottom-right
+  of the canvas**. Drag the hue ring, then the inner saturation/value
+  square with a pen and finger. The actual Krita brush color must update
+  and strokes should use the selected foreground color.
+- Select **Advanced color** to adjust precise color/alpha. The Qt dialog
+  should appear over the mobile window and return to the Krita canvas.
+- Switch documents with different active color settings; the wheel should
+  track the active Krita resource rather than retaining its own color.
+- Choose multiple colors. The eight recent swatches should update, and
+  tapping one should restore that color through Krita's resource manager.
+  Restart and confirm the recent choices persist.
+- Tap the color swatch to minimize the wheel and again to expand it.
+  Also use the Quick Actions **Color** shortcut to toggle its state.
+  The minimized swatch must remain clickable and the preference persist.
+- Open Layers beside the canvas, rotate, fold, unfold, and resize the
+  painting area. The wheel should stay inside the bottom-right of the
+  *canvas*, without overwriting the layer sidebar's hit targets. On
+  narrow screens the wheel may cover artwork; minimizing must recover
+  that space, not resize the actual Krita paint device.
+- Collapse the detailed brush size/opacity row using the new +/−
+  control. Paint/Erase/Blend mode buttons and Brushes remain available.
+  Expand again and confirm brush size and opacity retain their values.
+- Select an eraser or blender preset, then switch back to Paint. The
+  first Paint preset chosen should not accidentally reuse an eraser.
+  Each mode should still remember its last selected Krita preset.
+- Repeat a paint/erase stroke, Undo/Redo, Save/Save As and New Canvas.
+  The new color UI must not alter Krita's native input/brush/undo engine.
+
 ## v1.3 touch and stylus interaction checks — upload paused
 
 This is a WSL compilation milestone, not an APK publication request.
