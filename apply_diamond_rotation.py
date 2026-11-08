@@ -108,7 +108,7 @@ void KisVisualDiamondSelectorShape::drawCursor(QPainter &painter)''',
     # In Compact UI, use a slimmer hue ring. The diamond then expands
     # toward the ring automatically via getSpaceForSquare(). Normal Krita
     # retains its original ring geometry and minimum slider target.
-    visual=root/"libs/widgets/KisVisualColorSelector.cpp"
+    visual=Path(root)/"libs/widgets/KisVisualColorSelector.cpp"
     v=visual.read_text(encoding="utf-8")
     v=one(v,"#include <QVector4D>\n",
           "#include <QVector4D>\n#include <QSettings>\n",
