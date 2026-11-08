@@ -1,6 +1,6 @@
 # On-demand Krita Android APK upload
 
-UPLOAD_REQUEST_ID=none
+UPLOAD_REQUEST_ID=request-20261108-mobile-pilot-0157-a7c4
 
 Normal local builds must **never** upload an APK automatically. The build
 watcher reads this file on each GitHub revision but publishes only when the
