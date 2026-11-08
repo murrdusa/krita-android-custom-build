@@ -63,6 +63,39 @@ There is deliberately **no new native file format** and no custom image
 serializer. The old native file dialogs/actions remain in the compatibility
 menus until Android storage and save reliability are proven.
 
+## v0.7 batch test — independent canvas-session and document navigator
+
+This is a **batched, not yet device-verified** milestone. Krita still
+initializes the backend; only the canvas transfer is contained in
+`canvas_session.h`. Mobile Studio's own window has no desktop MDI
+dependency; open-document listing/switching is through the engine adapter.
+
+- Open two different `.kra` documents and create one new canvas. Tap the
+  **document name in the top bar** to show all three canvases; choose each
+  and verify that its drawing, layer tree, brush settings, and undo history
+  correspond to that document. The switcher never closes documents.
+- Modify an unsaved document and open the switcher. An asterisk should
+  appear beside the correct document. Switch away and back; no changes lost.
+- Use **New** and **Open** directly from the switcher, then save the new
+  document. File dialogs must stay in the mobile window.
+- Repeatedly enter/exit Mobile Studio using the top-left **Back** action;
+  verify the original desktop/compact canvas and menus return correctly.
+- In More, opt in to **Start in Mobile Studio on next launch** and restart
+  the app. It should enter the independent mobile window directly.
+  Turning the option off should restore the normal Krita startup.
+- If an automatic launch fails/crashes before its startup check completes,
+  the next launch should restore normal Krita UI rather than trap you in
+  a recurring startup crash. This setting is OFF by default.
+- In portrait/folded orientation, verify that tapping the document title is
+  possible without accidentally pressing Back. If labels are clipped,
+  report the screen orientation and screenshot.
+- Re-run the v0.6 new/open/save tests, pressure-sensitive pen strokes,
+  brush switching, native layer undo, and canvas rotation.
+
+**Do not test on the only copy of an important drawing.** v0.7 is an
+architectural preview; it deliberately does not expose native Close
+Document until unsaved-change confirmation has been reviewed.
+
 ## Required smoke checks
 
 - **Canvas transfer:** Create/open a document, enter Mobile Studio,
