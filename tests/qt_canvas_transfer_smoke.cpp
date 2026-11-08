@@ -65,6 +65,20 @@ private:
     QVBoxLayout *m_layout=nullptr;
 };
 
+// A destination that cannot accept a native canvas must leave Krita
+// exactly as it was. This is an error path that can occur on Android when
+// a canvas slot has already been torn down.
+class RejectingSurface final : public QWidget, public MobileCanvasSurface
+{
+public:
+    QWidget *canvasSurfaceWindow() override {return this;}
+    bool attachNativeCanvas(QWidget *) override {return false;}
+    QWidget *detachNativeCanvas(QWidget *destinationParent=nullptr) override {return nullptr;}
+    bool ownsNativeCanvas(QWidget *) const override {return false;}
+    bool hasNativeCanvas() const override {return false;}
+    void refreshCanvasSurface() override {}
+};
+
 int main(int argc,char **argv)
 {
     QApplication app(argc,argv);
@@ -102,6 +116,14 @@ int main(int argc,char **argv)
     require(!transfer.enter(&occupied),"accepted occupied destination");
     require(backend.centralWidget()==canvas,"changed desktop after refused entry");
     require(!transfer.active(),"marked refused entry active");
+
+    RejectingSurface refusing;
+    require(!transfer.enter(&refusing),"accepted rejected canvas attachment");
+    require(!transfer.active(),"marked failed attachment active");
+    require(backend.centralWidget()==canvas,
+            "native canvas was lost during failed attachment");
+    require(canvas->property("testDrawingRevision").toInt()==17,
+            "failed attachment altered document state");
 
     for(int cycle=0;cycle<10;++cycle) {
         auto *mobile=new TestSurface;
@@ -159,6 +181,7 @@ int main(int argc,char **argv)
     }
 
     qInfo() << "PASS: ten reversible same-window transfers, chrome restore,"
-            << "canvas identity, occupied-destination and occupied-backend guards";
+            << "canvas identity, occupied destination, rejected attachment,"
+            << "and occupied backend guards";
     return 0;
 }
