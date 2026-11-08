@@ -57,3 +57,25 @@ jobs:
           assert "m_transfer.leave()" in Path("mobile_core/canvas_session.h").read_text()
           print("Canvas ownership invariants intact")
           PY
+
+  qt-canvas-host-test:
+    # This runs the real Qt-only transfer code offscreen on Linux.
+    # No Krita engine, Android emulator, APK, or publishing credentials.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt 5 Widgets development headers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends qtbase5-dev pkg-config
+      - name: Build Qt-only canvas transfer smoke test
+        run: |
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+            tests/qt_canvas_transfer_smoke.cpp \
+            -o /tmp/krita-canvas-transfer-smoke \
+            $(pkg-config --cflags --libs Qt5Widgets)
+      - name: Exercise native canvas handoffs offscreen
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /tmp/krita-canvas-transfer-smoke
