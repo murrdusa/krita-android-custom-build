@@ -43,11 +43,19 @@ def main(root:Path):
     auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);
     auto *mobilePilot = new KritaMobilePilot(
         this,d->mdiArea,d->viewManager,mobilePilotAction);
+    // Restore the user's previous Compact/normal choice after pilot exit.
+    auto returnToCompact=QSharedPointer<bool>::create(false);
     connect(mobilePilotAction,&QAction::toggled,this,
-            [tabletCompact,mobilePilot](bool enabled) {
-        if(enabled && tabletCompact->isChecked())
-            tabletCompact->setChecked(false);
+            [tabletCompact,mobilePilot,returnToCompact](bool enabled) {
+        if(enabled) {
+            *returnToCompact=tabletCompact->isChecked();
+            if(*returnToCompact)tabletCompact->setChecked(false);
+        }
         mobilePilot->setActive(enabled);
+        if(!enabled && *returnToCompact) {
+            *returnToCompact=false;
+            tabletCompact->setChecked(true);
+        }
     });
     connect(tabletCompact,&QAction::toggled,this,
             [mobilePilotAction](bool compact) {
