@@ -18,6 +18,8 @@
 #include "kis_node_manager.h"
 #include "kis_node.h"
 #include "kis_image.h"
+#include "kis_paint_layer.h"
+#include "kis_layer_properties_icons.h"
 #include <KoToolManager.h>
 
 class MobileEngineBridge final {
@@ -55,6 +57,91 @@ public:
         nodes->slotUiActivatedNode(node);
         nodes->slotSetSelectedNodes(KisNodeList{node});
         return true;
+    }
+    // Native commands and native undo. UI widgets never mutate the
+    // node tree directly or create their own shadow layer state.
+    bool isLiveNode(KisNodeSP node) const {
+        return node && node->graphListener() && node->parent();
+    }
+    bool setNodeVisibility(KisNodeSP node,bool visible) const {
+        if(!isLiveNode(node) || !m_manager)return false;
+        const auto image=m_manager->image().toStrongRef();
+        if(!image)return false;
+        KisLayerPropertiesIcons::setNodePropertyAutoUndo(
+            node,KisLayerPropertiesIcons::visible,visible,image);
+        return true;
+    }
+    bool setNodeLocked(KisNodeSP node,bool locked) const {
+        if(!isLiveNode(node) || !m_manager)return false;
+        const auto image=m_manager->image().toStrongRef();
+        if(!image)return false;
+        KisLayerPropertiesIcons::setNodePropertyAutoUndo(
+            node,KisLayerPropertiesIcons::locked,locked,image);
+        return true;
+    }
+    bool setNodeAlphaLocked(KisNodeSP node,bool locked) const {
+        if(!isLiveNode(node) || !m_manager ||
+           !node->inherits("KisPaintLayer"))return false;
+        const auto image=m_manager->image().toStrongRef();
+        if(!image)return false;
+        KisLayerPropertiesIcons::setNodePropertyAutoUndo(
+            node,KisLayerPropertiesIcons::alphaLocked,locked,image);
+        return true;
+    }
+    bool renameNode(KisNodeSP node,const QString &name) const {
+        if(!isLiveNode(node) || !m_manager || !m_manager->nodeManager() ||
+           name.trimmed().isEmpty())return false;
+        m_manager->nodeManager()->setNodeName(node,name.trimmed());
+        return true;
+    }
+    bool setNodeOpacity(KisNodeSP node,int percent) const {
+        if(!isLiveNode(node) || !m_manager || !m_manager->nodeManager())
+            return false;
+        m_manager->nodeManager()->setNodeOpacity(
+            node,qRound(255.0*qBound(0,percent,100)/100.0));
+        return true;
+    }
+    bool addPaintLayer() const {
+        return m_manager && m_manager->nodeManager() &&
+            bool(m_manager->nodeManager()->createPaintLayer());
+    }
+    void duplicateSelected() const {
+        if(m_manager && m_manager->nodeManager())
+            m_manager->nodeManager()->duplicateActiveNode();
+    }
+    void deleteSelected() const {
+        if(m_manager && m_manager->nodeManager())
+            m_manager->nodeManager()->removeNode();
+    }
+    void moveSelectedUp() const {
+        if(m_manager && m_manager->nodeManager())
+            m_manager->nodeManager()->raiseNode();
+    }
+    void moveSelectedDown() const {
+        if(m_manager && m_manager->nodeManager())
+            m_manager->nodeManager()->lowerNode();
+    }
+    void groupSelected(bool clipping=false) const {
+        if(!m_manager || !m_manager->nodeManager())return;
+        if(clipping)m_manager->nodeManager()->createQuickClippingGroup();
+        else m_manager->nodeManager()->createQuickGroup();
+    }
+    void ungroup() const {
+        if(m_manager && m_manager->nodeManager())
+            m_manager->nodeManager()->quickUngroup();
+    }
+    KisNodeList selectedNodes() const {
+        return m_manager && m_manager->nodeManager()?
+            m_manager->nodeManager()->selectedNodes():KisNodeList();
+    }
+    void setSelectedNodes(const KisNodeList &nodes) const {
+        if(!m_manager || !m_manager->nodeManager() || nodes.isEmpty())return;
+        auto *manager=m_manager->nodeManager();
+        // Keep current active node included in the selection when possible.
+        KisNodeSP active=m_manager->activeNode();
+        if(!nodes.contains(active))
+            manager->slotUiActivatedNode(nodes.last());
+        manager->slotSetSelectedNodes(nodes);
     }
     void freehandBrush() const {
         KoToolManager::instance()->switchToolRequested(
