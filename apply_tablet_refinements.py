@@ -247,6 +247,7 @@ def main(root: Path):
     connect(customizeQuick, &QAction::triggered, this,
             [this, tabletQuickAvailable, tabletQuickDefaults]() {
         QDialog dialog(this);
+        dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
         dialog.setWindowTitle(i18n("Customize Quick Actions"));
         auto *layout = new QVBoxLayout(&dialog);
         auto *info = new QLabel(i18n("Check actions to show. Drag rows to change their order."), &dialog);

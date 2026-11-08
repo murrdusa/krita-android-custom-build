@@ -192,6 +192,7 @@ def main(root: Path):
     connect(tabletSettings, &QAction::triggered, this, [this]() {
         QSettings stored;
         QDialog dialog(this);
+        dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
         dialog.setWindowTitle(i18n("Tablet Controls"));
         dialog.setStyleSheet(
             "QDialog{background:#29313b;color:#edf3f9;}"

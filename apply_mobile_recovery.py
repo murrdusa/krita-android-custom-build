@@ -31,7 +31,7 @@ def main(root):
             // background scan of the device. The source files are never
             // changed, renamed, moved or deleted by this workflow.
             QDialog dialog(this);
-            dialog.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
+            dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
             dialog.setWindowTitle(i18n("Recover Krita work"));
             dialog.resize(qMax(300,qMin(445,width()-26)),
                           qMax(405,qMin(675,height()-36)));
