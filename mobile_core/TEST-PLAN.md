@@ -63,6 +63,41 @@ There is deliberately **no new native file format** and no custom image
 serializer. The old native file dialogs/actions remain in the compatibility
 menus until Android storage and save reliability are proven.
 
+## v1.8 generic canvas surface contract — source-only
+
+This milestone keeps `UPLOAD_REQUEST_ID=none`; WSL compilation is
+allowed, APK publication is not.
+
+- Run the source patcher and confirm the Qt-only contract preflight:
+  neither `canvas_transfer.h` nor `canvas_surface.h` may include
+  `standalone_host.h`, `engine_bridge.h`, Krita document classes or
+  Krita desktop-window types.
+- With no document open, enter/exit Mobile Studio twice. Krita's
+  original welcome page must return after exiting, and the mobile
+  empty-workspace screen must still offer New/Open.
+- With several modified documents, repeatedly enter, paint with stylus,
+  change views, save, then return to Krita. The exact same native MDI
+  canvas must follow the session, preserving pressure-sensitive
+  strokes, file names, layer trees, and Undo/Redo histories.
+- Creating a canvas in mobile mode must not raise the hidden desktop
+  window (v0.8 regression). No document should be silently closed,
+  recreated, or autosaved by entering/exiting.
+- Open a disposable document and test switching between folded,
+  portrait and unfolded landscape, including the layer drawer and
+  movable color wheel. On returning to desktop, the native tab strip
+  must regain its dimensions and visibility.
+- Test a rejected entry (e.g. a destination already containing a
+  canvas or a backend with no central widget, in a controlled dev
+  environment). It should return false without replacing either
+  canvas, and the launcher should return to unchecked.
+- Test Save/Discard/Cancel for a modified document. The generic surface
+  handoff must never intercept Krita's native unsaved-change workflow.
+
+The `MobileCanvasSurface` interface is an abstract Qt widget ownership
+contract. `MobileStandaloneWindow` implements it; the transfer service
+never includes that window's concrete type. Krita's document/command
+services remain the only modules needing its concrete desktop APIs.
+
 ## v1.7 Qt canvas-host transfer — upload remains paused
 
 This milestone moves the reversible widget handoff into a **Qt-only**
