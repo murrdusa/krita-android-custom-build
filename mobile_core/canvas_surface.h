@@ -32,6 +32,10 @@ public:
     // some canvas is present. Used to detect partial/failed transfers.
     virtual bool ownsNativeCanvas(QWidget *nativeCanvas) const = 0;
 
+    // Refuse entry if the destination already has a native canvas.
+    // Do not detach an unrelated widget merely to recover from failure.
+    virtual bool hasNativeCanvas() const = 0;
+
     virtual void refreshCanvasSurface() = 0;
 };
 
