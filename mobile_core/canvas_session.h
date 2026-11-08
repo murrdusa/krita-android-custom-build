@@ -8,6 +8,7 @@
 #pragma once
 #ifdef Q_OS_ANDROID
 #include <QObject>
+#include <QEvent>
 #include <QMainWindow>
 #include <QMdiArea>
 #include <QPointer>
@@ -27,9 +28,10 @@ public:
                         QMdiArea *mdi,
                         const MobileEngineBridge &bridge,
                         QAction *entry)
-        : QObject(backend),m_transfer(backend,mdi),m_bridge(bridge),
-          m_entry(entry)
+        : QObject(backend),m_transfer(backend,mdi),m_backend(backend),
+          m_bridge(bridge),m_entry(entry)
     {
+        if(m_backend)m_backend->installEventFilter(this);
         connect(entry,&QAction::toggled,this,[this](bool value) {
             if(value)enter();else leave();
         });
@@ -76,6 +78,24 @@ public:
         delete m_host;
     }
 
+protected:
+    bool eventFilter(QObject *watched,QEvent *event) override
+    {
+        // Krita may show its desktop window from a deferred loader or
+        // Android display-refresh callback. While the mobile host owns the
+        // canvas, that window must not cover it. Only a return to desktop
+        // through MobileCanvasTransfer is allowed to make it visible.
+        if(watched==m_backend && m_transfer.active() &&
+           event->type()==QEvent::Show) {
+            QTimer::singleShot(0,this,[this]() {
+                if(!m_transfer.active() || !m_backend)return;
+                if(m_backend->isVisible())m_backend->hide();
+                if(m_host && m_host->isVisible())m_host->raise();
+            });
+        }
+        return QObject::eventFilter(watched,event);
+    }
+
 private:
     void enter()
     {
@@ -97,6 +117,7 @@ private:
         m_transfer.leave();
     }
     MobileCanvasTransfer m_transfer;
+    QPointer<QMainWindow> m_backend;
     MobileEngineBridge m_bridge;
     QPointer<QAction> m_entry;
     MobileStandaloneWindow *m_host=nullptr;
