@@ -63,6 +63,42 @@ There is deliberately **no new native file format** and no custom image
 serializer. The old native file dialogs/actions remain in the compatibility
 menus until Android storage and save reliability are proven.
 
+## v0.9 document lifecycle and empty workspace
+
+This batch moves **document closing** into the mobile engine adapter,
+while leaving Krita responsible for unsaved-change confirmation, saving,
+autosave cleanup, and document/view destruction.
+
+Use disposable or backed-up files:
+
+- Enter Mobile Studio with zero documents. It should show the mobile
+  **Your canvas workspace** home, rather than Krita's desktop welcome
+  screen. New Canvas and Open Drawing should both work here.
+- Create two canvases. Draw on each, switch using the top document name.
+  The top title and dirty indicator must track the selected document.
+- With a modified canvas active, choose **Canvases → Close current canvas**.
+  Verify the native **Save / Discard / Cancel** prompt appears *over the
+  mobile workspace*. Cancel must leave the drawing untouched. Save
+  must retain the drawing on disk; Discard must not overwrite anything.
+- Close an unmodified canvas. The other canvas should become active.
+  Close the last canvas: the mobile empty workspace should appear, and
+  Layers/brush controls should stop offering document-only operations.
+- From the empty workspace create another canvas, paint, undo, save,
+  and open another KRA. The native canvas must reappear (not gray).
+- Repeat Close from **More → Close current canvas**. If the Save dialog
+  is cancelled, the document must stay open and appear in the switcher.
+- Use **Back** to restore the original Krita interface, then enter
+  Mobile Studio again with no document and with one document open.
+  The original Krita canvas, welcome screen and Android refresh must
+  continue functioning.
+- Repeat the Android v0.8 bug regression: opening or creating a file
+  must not bring the hidden desktop window over Mobile Studio.
+
+This still uses Krita's existing KisMainWindow lifecycle, but all
+mobile-facing close/open/save operations are routed through one adapter.
+The mobile empty state hides Krita's desktop welcome page without deleting
+that page or bypassing any native image machinery.
+
 ## v0.8 urgent regression — new canvas must not reveal desktop shell
 
 This addresses the v0.7 screenshot showing desktop File/Edit menus and a
