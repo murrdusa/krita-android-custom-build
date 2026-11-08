@@ -1,5 +1,34 @@
 # Krita Core / Mobile UI redesign
 
+## Engineering state — independent window v0.1 (November 2026)
+
+The current test milestone is no longer a painter toolbar over Krita's
+existing window. **Mobile Studio owns a separate top-level window, its
+navigation, panels and layout**, and temporarily hosts the **actual** Krita
+widgetStack containing the live MDI canvas. It does not reimplement painting,
+pressure delivery, saving, undo or pixel formats.
+
+Code boundaries in this milestone:
+
+- `mobile_core/engine_bridge.h`: one-way access to native image, node, tool
+  and action APIs. No new paint engine.
+- `mobile_core/standalone_host.h`: own top-level application window and
+  reversible canvas-widget transfer; the original Krita window is hidden
+  as the backend service.
+- `mobile_core/brush_workspace.h`: independent brush preset discovery,
+  size, opacity, and Paint/Erase/Blend controls, using Krita's registry.
+- `apply_mobile_shell.py`: an integration shim into the existing Android
+  executable. This shim and the still-created desktop host are **temporary**.
+- `mobile_core/TEST-PLAN.md`: required on-device checks before replacing
+  the desktop startup path or deleting legacy modules.
+
+This is **not yet a fully standalone binary or a smaller packaged app**.
+The next gate is to validate canvas transfer and file dialogs on actual
+Android, then separate engine bootstrap/document management from desktop
+`KisMainWindow`. Delete old interface code only after native replacements
+survive the required tests.
+
+
 ## Objective
 
 A mobile-first drawing application **powered by Krita's native engine**, not an imitation
