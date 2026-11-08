@@ -39,7 +39,8 @@ def paths(repo,*args):
 def fingerprint(repo):
     h=hashlib.sha256(b"krita-app-inputs-v1\0")
     for rel in sorted(paths(repo,"ls-files")):
-        if rel in NON_APP or rel.startswith(".github/") or rel.endswith(".md"):
+        if (rel in NON_APP or rel.startswith((".github/", "tests/"))
+                or rel.endswith(".md")):
             continue
         item=repo/rel
         data=sha(item) if item.is_file() else "missing"
