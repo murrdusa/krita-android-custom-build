@@ -75,9 +75,18 @@ public:
         connect(browse,&QToolButton::clicked,this,[this]() {
             openPresetBrowser(m_slot);
         });
+        m_detailToggle=new QToolButton(this);
+        m_detailToggle->setToolTip(i18n("Show or hide detailed brush controls"));
+        m_detailToggle->setMinimumSize(36,42);
+        buttons->addWidget(m_detailToggle);
+        connect(m_detailToggle,&QToolButton::clicked,this,[this]() {
+            setDetailsExpanded(!m_detailsExpanded);
+        });
         root->addLayout(buttons);
 
-        auto *controlRow=new QHBoxLayout;
+        m_controls=new QWidget(this);
+        auto *controlRow=new QHBoxLayout(m_controls);
+        controlRow->setContentsMargins(0,0,0,0);
         controlRow->setSpacing(6);
         m_presetName=new QLabel(i18n("Current brush"),this);
         m_presetName->setMinimumWidth(70);
@@ -99,7 +108,9 @@ public:
         m_opacity->setSingleStep(5);
         m_opacity->setMinimumHeight(43);
         controlRow->addWidget(m_opacity,2);
-        root->addLayout(controlRow);
+        root->addWidget(m_controls);
+        setDetailsExpanded(QSettings().value(
+            QStringLiteral("MobileStudio/brushDetailsExpanded"),true).toBool());
 
         connect(m_size,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),
                 this,[this](qreal size) {
@@ -150,6 +161,15 @@ public:
     }
 
 private:
+    void setDetailsExpanded(bool expanded)
+    {
+        m_detailsExpanded=expanded;
+        if(m_controls)m_controls->setVisible(expanded);
+        if(m_detailToggle)m_detailToggle->setText(
+            expanded?QStringLiteral("−"):QStringLiteral("+"));
+        QSettings().setValue(
+            QStringLiteral("MobileStudio/brushDetailsExpanded"),expanded);
+    }
     static bool inCategory(const KisPaintOpPresetSP &preset,int slot)
     {
         if(!preset)return false;
@@ -217,9 +237,12 @@ private:
         const QString name=QSettings().value(
             QStringLiteral("MobilePilot/brushSlot%1").arg(slot)).toString();
         KisPaintOpPresetSP preset=findPreset(name);
-        if(!preset && slot==0)
+        // Never restore a cached eraser or blender as the Paint preset.
+        // An unsaved mode receives a matching native Krita preset.
+        if(!preset && slot==0 &&
+           inCategory(resources()->currentPreset(),0))
             preset=resources()->currentPreset();
-        if(!preset && slot!=0)preset=firstPresetFor(slot);
+        if(!preset)preset=firstPresetFor(slot);
         if(preset)setNativePreset(preset);
         setEraser(slot==1);
         m_slot=slot;
@@ -331,6 +354,9 @@ private:
     MobileEngineBridge m_engine;
     QToolButton *m_modes[3]={nullptr,nullptr,nullptr};
     QLabel *m_presetName=nullptr;
+    QWidget *m_controls=nullptr;
+    QToolButton *m_detailToggle=nullptr;
+    bool m_detailsExpanded=true;
     KisDoubleSliderSpinBox *m_size=nullptr,*m_opacity=nullptr;
     KisResourceModel *m_model=nullptr;
     QTimer *m_refresh=nullptr;
