@@ -1716,7 +1716,133 @@ private:
             }
             addQuick->setText(i18n("Added to Quick"));
         });
-        tabs->addTab(actionsPage,i18n("Krita actions"));
+        tabs->addTab(actionsPage,i18n("Actions"));
+        // Give back access to Krita's real File/Edit/View/Image/Layer/etc.
+        // menus. They are deliberately hidden on the Compact canvas, but
+        // their actions are still available and should never disappear.
+        auto *menusPage=new QWidget(tabs);
+        auto *menusLayout=new QVBoxLayout(menusPage);
+        menusLayout->setContentsMargins(6,7,6,7);
+        menusLayout->setSpacing(8);
+        auto *menuIntro=new QLabel(
+            i18n("Browse the full Krita menus by category. "
+                 "Choose a command, then tap Run."),menusPage);
+        menuIntro->setWordWrap(true);
+        menusLayout->addWidget(menuIntro);
+        auto *menuCategory=new QComboBox(menusPage);
+        menuCategory->setMinimumHeight(52);
+        menusLayout->addWidget(menuCategory);
+        auto *menuSearch=new QLineEdit(menusPage);
+        menuSearch->setPlaceholderText(i18n("Find an item in this menu"));
+        menuSearch->setClearButtonEnabled(true);
+        menuSearch->setMinimumHeight(49);
+        menusLayout->addWidget(menuSearch);
+        auto *menuItems=new QListWidget(menusPage);
+        menuItems->setSelectionMode(QAbstractItemView::SingleSelection);
+        menuItems->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        menuItems->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        menuItems->setIconSize(QSize(25,25));
+        menuItems->setWordWrap(true);
+        menuItems->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
+        QScroller::grabGesture(menuItems->viewport(),
+                               QScroller::LeftMouseButtonGesture);
+        menuItems->setStyleSheet("QListWidget::item{min-height:56px;padding:7px;}");
+        menusLayout->addWidget(menuItems,1);
+        auto *runMenu=new QPushButton(i18n("Run selected menu command"),menusPage);
+        runMenu->setMinimumHeight(55);
+        runMenu->setEnabled(false);
+        menusLayout->addWidget(runMenu);
+        QVector<QPointer<QMenu>> nativeMenus;
+        if(QMenuBar *normalBar=m_main->menuBar()) {
+            for(QAction *top:normalBar->actions()) {
+                if(!top || !top->menu())continue;
+                QString name=top->text();
+                name.remove(QLatin1Char('&'));
+                name=name.trimmed();
+                if(name.isEmpty())continue;
+                menuCategory->addItem(name);
+                nativeMenus.append(top->menu());
+            }
+        }
+        QVector<QPointer<QAction>> currentMenuActions;
+        auto fillMenu=[menuCategory,menuItems,menuSearch,runMenu,
+                       &nativeMenus,&currentMenuActions]() {
+            menuItems->clear();
+            currentMenuActions.clear();
+            runMenu->setEnabled(false);
+            const int index=menuCategory->currentIndex();
+            if(index<0 || index>=nativeMenus.size() ||
+               !nativeMenus.at(index))return;
+            std::function<void(QMenu*,QString,int)> append;
+            append=[&](QMenu *menu,QString prefix,int depth) {
+                if(!menu || depth>3 || currentMenuActions.size()>400)return;
+                for(QAction *action:menu->actions()) {
+                    if(!action || action->isSeparator())continue;
+                    QString name=action->text();
+                    name.remove(QLatin1Char('&'));
+                    name=name.trimmed();
+                    if(name.isEmpty() ||
+                       name.contains(QStringLiteral("No Entries"),
+                                     Qt::CaseInsensitive))continue;
+                    if(QMenu *sub=action->menu()) {
+                        // A huge dynamically generated Recent Files menu is
+                        // neither a reliable action list nor the gallery.
+                        if(name.contains(QStringLiteral("Open Recent"),
+                                         Qt::CaseInsensitive))continue;
+                        append(sub,prefix+name+QStringLiteral(" / "),depth+1);
+                        continue;
+                    }
+                    const int actionIndex=currentMenuActions.size();
+                    currentMenuActions.append(action);
+                    auto *item=new QListWidgetItem(
+                        action->icon(),prefix+name,menuItems);
+                    item->setData(Qt::UserRole,actionIndex);
+                    if(!action->isEnabled())
+                        item->setFlags(item->flags()&~Qt::ItemIsEnabled);
+                }
+            };
+            append(nativeMenus.at(index),QString(),0);
+            const QString term=menuSearch->text().trimmed();
+            if(!term.isEmpty())
+                for(int n=0;n<menuItems->count();++n) {
+                    QListWidgetItem *item=menuItems->item(n);
+                    item->setHidden(!item->text().contains(
+                        term,Qt::CaseInsensitive));
+                }
+        };
+        connect(menuCategory,QOverload<int>::of(&QComboBox::currentIndexChanged),
+                &dialog,[fillMenu](int){fillMenu();});
+        connect(menuSearch,&QLineEdit::textChanged,&dialog,
+                [menuItems](const QString &term) {
+            for(int i=0;i<menuItems->count();++i) {
+                QListWidgetItem *item=menuItems->item(i);
+                item->setHidden(!item->text().contains(
+                    term,Qt::CaseInsensitive));
+            }
+        });
+        connect(menuItems,&QListWidget::itemSelectionChanged,&dialog,
+                [menuItems,runMenu]() {
+            QListWidgetItem *item=menuItems->currentItem();
+            runMenu->setEnabled(item &&
+                (item->flags()&Qt::ItemIsEnabled));
+        });
+        connect(runMenu,&QPushButton::clicked,&dialog,
+                [this,&dialog,menuItems,&currentMenuActions]() {
+            QListWidgetItem *item=menuItems->currentItem();
+            if(!item)return;
+            const int index=item->data(Qt::UserRole).toInt();
+            if(index<0 || index>=currentMenuActions.size())return;
+            QPointer<QAction> action=currentMenuActions.at(index);
+            if(!action || !action->isEnabled())return;
+            dialog.accept();
+            QTimer::singleShot(0,this,[action]() {
+                if(action && action->isEnabled())action->trigger();
+            });
+        });
+        connect(menuItems,&QListWidget::itemDoubleClicked,&dialog,
+                [runMenu](QListWidgetItem*) {runMenu->click();});
+        if(menuCategory->count()>0)fillMenu();
+        tabs->insertTab(1,menusPage,i18n("Menus"));
         auto *quickScroll=new QScrollArea(tabs);
         quickScroll->setWidgetResizable(true);
         quickScroll->setFrameShape(QFrame::NoFrame);
