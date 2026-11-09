@@ -39,6 +39,33 @@ Switch only the mobile chrome around it.
   Source CI compiles and runs this offscreen, separately from Android
   APK compilation.
 
+## Follow-up: dynamic chrome and document safety
+
+- The Qt-only dock adapter now discovers native Krita menu/toolbar/docker
+  and MDI tab widgets that appear **after** Mobile Studio has opened.
+  They are hidden while mobile controls are active and restored to their
+  prior visibility and tab geometry on Back.
+- The bottom brush/Quick Actions dock collapses on the zero-document
+  welcome state and returns after New/Open, without changing
+  `QMainWindow::centralWidget()`. The layers side dock can open or close
+  without reparenting the canvas.
+- Stationary-mode Quick Actions defer New, Open, Save, Save As, document
+  switching, menu browsers and Close Canvas until after the initiating
+  Qt button click. Close captures the exact native MDI view with
+  `QPointer`, then Krita revalidates it before invoking its own
+  Save / Discard / Cancel behavior. Ambiguous multi-view close is
+  disabled in the shared Quick Actions strip.
+- If the original central canvas is replaced by Krita while the
+  stationary pilot is inactive, the next entry discards only the
+  obsolete mobile dock widgets and installs fresh controls around
+  the current Krita central widget. It never restores the old canvas
+  into an occupied central slot.
+- The document title now elides in a narrow phone header and retains
+  its full text in a tooltip. This does not affect document identity.
+- Expanded offscreen Qt tests cover these transitions, but actual
+  Android EGL, modal dialog stacking and phone sizing still require
+  testing before making stationary mode the default.
+
 ## Remaining integration milestones
 
 1. Confirm Qt5 Android build compiles the launcher integration and verify
