@@ -1,5 +1,32 @@
 # Mobile Studio — Android painting and mode-switch smoke test
 
+## v1.22 portrait layers dock with a stationary Krita canvas
+
+- Opt into the stationary canvas UI (not the older persistent-host path).
+  On a portrait phone, open a disposable drawing and the Layers panel.
+  The mobile layers widget should dock **below** Krita's painting
+  viewport instead of taking ~268px of its narrow horizontal width.
+  It should be capped to roughly half of the available vertical space.
+- Rotate into landscape or unfold to a wide viewport while Layers is
+  visible. It should move to the **right**; rotate back into portrait
+  and it should return to the bottom. Neither transition may call
+  `takeCentralWidget`, `setCentralWidget` or `setParent` on Krita's
+  native canvas. Check pen strokes, zoom, undo and layer selection
+  before and after each rotation.
+- In stationary-mode More → Copy stationary canvas diagnostics, confirm
+  **Native window** dimensions, **Mobile layers dock location**, and
+  **Native central widget unchanged**. The latter should stay true.
+- The Qt-only smoke test resizes the native QMainWindow from 900px to
+  390px while the layers dock is visible, checks its dock area changes
+  side → bottom → side and the original central widget and parent
+  identity remain unchanged.
+- On the zero-document screen, Layers and Color are disabled and the
+  mobile bottom brush/Quick Actions panel is hidden. Creating a
+  document restores the controls. The full-range calibrated finger
+  pressure model is not changed by these layout transitions.
+- Keep the stationary-canvas experiment opt-in until native Android
+  drawing and real orientation gestures have been verified.
+
 ## v1.21 stationary canvas document and chrome resilience
 
 - In the opt-in stationary canvas mode, switch between two KRA drawings
