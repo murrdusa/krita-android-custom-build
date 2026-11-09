@@ -19,7 +19,7 @@ Open a painting document in **Mobile Studio → More**:
   Press **Save** to store the range; Cancel leaves the prior range intact.
 
 The minimum and maximum are the *contact diameters* at which simulated
-pressure reaches 16% and 96%. Maximum must exceed minimum by at least
+pressure reaches 0% and 100%. Maximum must exceed minimum by at least
 1 logical pixel. The initial approximate defaults are **8 and 24 logical
 pixels**; actual hardware may require substantially different values.
 
@@ -41,19 +41,23 @@ reported major/minor contact diameter in logical pixels. The prototype
 uses `D = sqrt(width × height)`; this is a contact-size proxy, **not
 physical force measurement**.
 
-`P = 0.16 + 0.80 × clamp((D - min) / (max - min), 0, 1)`
+`P = clamp((D - min) / (max - min), 0, 1)`
 
 **A thumb can now begin at higher simulated pressure than a pinky**,
 provided the device reports a larger contact area and the calibration
 range spans both. The first dab uses its *absolute measured diameter*,
 not a fixed per-stroke baseline. Larger/smaller contacts during the
-stroke change the target pressure.
+stroke change the target pressure. At 0%, some brush presets may create
+a faint mark or no mark at all, because Krita's own pressure curves
+control the final width and opacity.
 
 Smoothing remains in place: changes under 0.015 are ignored, sudden
 changes are capped at 0.18 per sample before applying a 0.26-step
 low-pass filter. Duplicate touch events do not repeatedly advance it.
 The first valid sample initializes to the calibrated target immediately,
-so it does not begin at a false 52% pressure.
+so it does not begin at a false 52% pressure. There is **no artificial
+minimum or maximum pressure floor/ceiling** beyond Krita's native
+0–100% pressure domain.
 
 When valid contact size is unavailable, the original Krita touch
 pressure is used; during a stroke the last valid smoothed reading is
@@ -65,8 +69,10 @@ retain their original behavior.
 
 1. With a disposable drawing, enable the feature and select a brush
    whose size or opacity responds to Krita's pressure sensor.
-2. Set the minimum using a small fingertip contact and the maximum using
-   a wide, flattened fingertip contact. Save the calibration.
+2. Set the minimum using a small fingertip contact (0% pressure) and
+   the maximum using a wide, flattened fingertip contact (100% pressure).
+   Save the calibration. Use a brush with visible low-pressure behavior
+   when testing near the minimum.
 3. Draw separate strokes using a pinky and a thumb. The thumb should
    produce a thicker/stronger stroke from the **first dab**, provided
    their observed contact diameters differ.
