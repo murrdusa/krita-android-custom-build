@@ -7,7 +7,7 @@
  * of rewriting the mobile document UI, views or save prompts.
  */
 #pragma once
-#ifdef Q_OS_ANDROID
+#if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
 #include <QSharedPointer>
 #include <QString>
 class KisDocument;
