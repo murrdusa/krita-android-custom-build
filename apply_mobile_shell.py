@@ -413,7 +413,37 @@ KisMainWindow * KisView::mainWindow() const''',
           '#include "tablet_compact_skin.h"\n#include "canvas_session.h"\n#include "krita_standalone_pilot.h"\n#include "lightweight_canvas_host.h"\n#include "desktop_host_adapters.h"\n#include "mdi_view_host_adapter.h"\n#include "native_startup_policy.h"\n#include <QSettings>\n#include <QSharedPointer>',
           "main window include")
 
-    native='''    auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);'''
+    # During opted-in independent startup, Krita still provides its
+    # resource registries, actions and one Android Qt window, but does
+    # not need to instantiate every legacy desktop docker widget. A
+    # stale pending flag means an earlier launch crashed: that restart
+    # MUST recreate the complete desktop fallback.
+    s=one(s,
+          '''    KoToolBoxFactory toolBoxFactory;
+    QDockWidget *toolbox = createDockWidget(&toolBoxFactory);''',
+          '''#ifdef Q_OS_ANDROID
+    QSettings nativeBootstrapSettings;
+    const bool mobileNativePreferred =
+        MobileNativeStartupPolicy::mayDeferDesktopUi(nativeBootstrapSettings);
+    setProperty("_mobileNativeDesktopDeferred",mobileNativePreferred);
+    qInfo() << "Krita desktop docker creation deferred:"
+            << mobileNativePreferred;
+#else
+    const bool mobileNativePreferred = false;
+#endif
+    KoToolBoxFactory toolBoxFactory;
+    QDockWidget *toolbox = mobileNativePreferred ? nullptr :
+                                            createDockWidget(&toolBoxFactory);''',
+          "independent startup desktop toolbox bypass")
+    s=one(s,
+          '    if (cfg.toolOptionsInDocker()) {',
+          '    if (!mobileNativePreferred && cfg.toolOptionsInDocker()) {',
+          "independent startup desktop tool options bypass")
+    s=one(s,
+          '    for (KoDockFactoryBase *factory : KoDockRegistry::instance()->sortedDockWidgetFactories()) {',
+          '    if (!mobileNativePreferred)\\n    for (KoDockFactoryBase *factory : KoDockRegistry::instance()->sortedDockWidgetFactories()) {',
+          "independent startup legacy docker factory bypass")
+        native='''    auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);'''
     injected='''    // Independent window prototype is opt-in and never auto-starts.
     QAction *mobilePilotAction = new QAction(
         KisIconUtils::loadIcon("draw-freehand"),
@@ -482,7 +512,15 @@ KisMainWindow * KisView::mainWindow() const''',
                  phase,pending?i18n("Yes"):i18n("No"),lastPanel));
     });
 #endif
-    auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);
+    TabletCompactSkin *compactSkin = nullptr;
+    if (mobileNativePreferred) {
+        // The real engine owns all visible drawing controls. Do not
+        // allocate a second Krita-bridged Mobile Studio controller,
+        // compact UI widget tree, or MDI document service.
+        mobilePilotAction->setEnabled(false);
+        qInfo() << "Legacy mobile controller skipped on native startup";
+    } else {
+    compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);
     auto returnToCompact=QSharedPointer<bool>::create(false);
     // Release old compact overlays before transferring the native canvas.
     connect(mobilePilotAction,&QAction::toggled,this,
@@ -525,6 +563,12 @@ KisMainWindow * KisView::mainWindow() const''',
         qWarning() << "Mobile Studio host unavailable; native Krita preserved";
     }
     Q_UNUSED(mobileStudio);
+    connect(tabletCompact,&QAction::toggled,this,
+            [mobilePilotAction](bool compact) {
+        if(compact && mobilePilotAction->isChecked())
+            mobilePilotAction->setChecked(false);
+    });
+    } // Legacy Mobile Studio and Compact Skin are not created in native mode.
 #ifdef Q_OS_ANDROID
     // Opt-in Android launch into a distinct Krita host. Still uses
     // Krita's application startup libraries, but no desktop MDI view.
@@ -570,13 +614,18 @@ KisMainWindow * KisView::mainWindow() const''',
         });
         readyTimer->start();
     });
-#endif
-    connect(tabletCompact,&QAction::toggled,this,
-            [mobilePilotAction](bool compact) {
-        if(compact && mobilePilotAction->isChecked())
-            mobilePilotAction->setChecked(false);
-    });'''
+#endif'''
     s=one(s,native,injected,"pilot action initialization")
+    # The upstream Compact Skin patch also inserts a signal connection
+    # directly after the allocation. A skipped allocation must not
+    # attach a null receiver (or later dereference it).
+    s=one(s,
+          '''    connect(tabletCompact, &QAction::toggled, compactSkin,
+            [compactSkin](bool enabled) { compactSkin->setCompactActive(enabled); });''',
+          '''    if (compactSkin)
+        connect(tabletCompact, &QAction::toggled, compactSkin,
+                [compactSkin](bool enabled) { compactSkin->setCompactActive(enabled); });''',
+          "skip compact skin connection without a receiver")
 
     # Krita Android's legacy display refresh hides and RE-SHOWS
     # KisMainWindow after a document is opened or created.  In Mobile
