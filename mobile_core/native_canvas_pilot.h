@@ -139,6 +139,11 @@ public:
     bool enter()
     {
         if(!ready() || !m_chrome.activate())return false;
+        // The native Krita canvas is *not* transferred. This separate
+        // flag suppresses the old Android window flash only while our
+        // dock-based controls are visible.
+        if(m_backend)
+            m_backend->setProperty("_mobileStudioPresentationActive",true);
         m_refresh.start();
         refresh();
         return true;
@@ -148,7 +153,10 @@ public:
     {
         m_refresh.stop();
         if(m_color)m_color->hide();
-        return m_chrome.deactivate();
+        const bool restored=m_chrome.deactivate();
+        if(m_backend)
+            m_backend->setProperty("_mobileStudioPresentationActive",false);
+        return restored;
     }
 
     void enforceMobileChrome() {m_chrome.enforceMobileChrome();}
@@ -254,6 +262,16 @@ private:
             if(m_backend)MobileToolBrowser::open(m_engine,m_backend);
         });
         menu.addSeparator();
+        auto *nativeMode=menu.addAction(i18n(
+            "Experimental stationary canvas UI (next restart)"));
+        nativeMode->setCheckable(true);
+        nativeMode->setChecked(QSettings().value(
+            QStringLiteral("MobileStudio/nativeDockCanvasV1"),false).toBool());
+        QObject::connect(nativeMode,&QAction::toggled,nativeMode,[](bool on) {
+            QSettings settings;
+            settings.setValue(QStringLiteral("MobileStudio/nativeDockCanvasV1"),on);
+            settings.sync();
+        });
         auto *pressure=menu.addAction(i18n("Experimental finger pressure"));
         pressure->setCheckable(true);
         pressure->setChecked(QSettings().value(
