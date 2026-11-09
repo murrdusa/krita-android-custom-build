@@ -20,6 +20,7 @@
 #include <QtGlobal>
 #include <cmath>
 #include "finger_pressure_settings.h"
+#include "finger_contact_source.h"
 #ifdef Q_OS_ANDROID
 #include "finger_raw_bridge.h"
 #endif
@@ -78,10 +79,13 @@ public:
                                      finalPressure);
                     app->setProperty("_mobileFingerAreaLastUniqueSteps",
                                      stroke.uniqueBins.size());
-                    app->setProperty("_mobileFingerAreaLastSource",
-                                     stroke.lastFromRaw?
-                                         QStringLiteral("Android raw touch"):
-                                         QStringLiteral("Qt touch ellipse"));
+                    const QString source=stroke.source.mode==
+                        MobileFingerContactSource::AndroidRaw?
+                        (stroke.usedCorrectedQt?
+                         QStringLiteral("Android raw / aligned Qt fallback"):
+                         QStringLiteral("Android raw touch")):
+                        QStringLiteral("Qt touch ellipse");
+                    app->setProperty("_mobileFingerAreaLastSource",source);
                 }
             }
             stroke=Stroke{};
@@ -113,9 +117,9 @@ public:
         const QSizeF ellipse=point.ellipseDiameters();
         // Qt may use (-1,-1) for unavailable dimensions. Their product
         // is positive, so reject each axis before taking the square root.
-        qreal diameter=(ellipse.width()>0 && ellipse.height()>0)?
+        const qreal qtDiameter=(ellipse.width()>0 && ellipse.height()>0)?
             std::sqrt(ellipse.width()*ellipse.height()):0.0;
-        bool fromRaw=false;
+        qreal rawDiameter=0;
 #ifdef Q_OS_ANDROID
         // MotionEvent history and raw touch-major/minor are captured in
         // MainActivity before Qt dispatch. Match pointer ID and event
@@ -124,15 +128,21 @@ public:
             MobileFingerRawBridge::Sample sample;
             if(MobileFingerRawBridge::nearest(point.id(),
                 static_cast<quint64>(eventTime),&sample)) {
-                diameter=sample.diameter;
-                fromRaw=true;
+                rawDiameter=sample.diameter;
             }
         }
 #endif
-        if(!std::isfinite(diameter) || diameter<1 || diameter>250) {
-            // Both Android raw data and Qt ellipse may be absent.
+        const auto measurement=MobileFingerContactSource::select(
+            stroke.source,qtDiameter,rawDiameter,
+            stroke.response.useRawAndroid);
+        if(!measurement.valid()) {
+            // Missing or mismatched sources must not inject false brush
+            // pressure. Keep the last valid smoothed result, if any.
             return stroke.hasSample?stroke.smoothed:originalPressure;
         }
+        const qreal diameter=measurement.diameter;
+        if(measurement.correctedQtFallback)
+            stroke.usedCorrectedQt=true;
 
         if(!stroke.hasSample) {
             // Absolute area calibration. The first dab now reflects the
@@ -140,7 +150,6 @@ public:
             stroke.smoothed=MobileFingerPressureSettings::mapDiameter(
                 diameter,stroke.range,stroke.response.gamma);
             stroke.lastTarget=stroke.smoothed;
-            stroke.lastFromRaw=fromRaw;
             stroke.lastDiameter=diameter;
             stroke.lastSampleTime=eventTime;
             stroke.minDiameter=diameter;
@@ -168,7 +177,6 @@ public:
             qreal(50.0));
         stroke.lastSampleTime=eventTime;
         stroke.lastDiameter=diameter;
-        stroke.lastFromRaw=fromRaw;
         stroke.minDiameter=qMin(stroke.minDiameter,diameter);
         stroke.maxDiameter=qMax(stroke.maxDiameter,diameter);
         stroke.uniqueBins.insert(qRound(diameter*4.0));
@@ -208,7 +216,8 @@ private:
         QSet<int> uniqueBins;
         qreal noise=0.006;
         qreal lastTarget=0;
-        bool lastFromRaw=false;
+        MobileFingerContactSource::State source;
+        bool usedCorrectedQt=false;
         qreal lastDiameter=0;
         qreal minDiameter=0;
         qreal maxDiameter=0;
