@@ -13,12 +13,16 @@
 
 #include <QCoreApplication>
 #include <QSettings>
+#include <QSet>
 #include <QSizeF>
 #include <QThread>
 #include <QTouchEvent>
 #include <QtGlobal>
 #include <cmath>
 #include "finger_pressure_settings.h"
+#ifdef Q_OS_ANDROID
+#include "finger_raw_bridge.h"
+#endif
 
 class MobileFingerContactPressure final
 {
@@ -72,6 +76,12 @@ public:
                                      stroke.maxDiameter);
                     app->setProperty("_mobileFingerAreaLastPressure",
                                      finalPressure);
+                    app->setProperty("_mobileFingerAreaLastUniqueSteps",
+                                     stroke.uniqueBins.size());
+                    app->setProperty("_mobileFingerAreaLastSource",
+                                     stroke.lastFromRaw?
+                                         QStringLiteral("Android raw touch"):
+                                         QStringLiteral("Qt touch ellipse"));
                 }
             }
             stroke=Stroke{};
@@ -95,33 +105,45 @@ public:
             stroke.enabled=settings.value(
                 QString::fromLatin1(settingKey()),false).toBool();
             stroke.range=MobileFingerPressureSettings::read(settings);
+            stroke.response=MobileFingerPressureSettings::readResponse(settings);
         }
         stroke.lastTimestamp=eventTime;
         if(!stroke.enabled)return originalPressure;
 
         const QSizeF ellipse=point.ellipseDiameters();
-        const qreal width=ellipse.width();
-        const qreal height=ellipse.height();
-        if(!std::isfinite(width) || !std::isfinite(height) ||
-           width<=0 || height<=0) {
-            // Some Android drivers return zero / unavailable touch size.
-            // Preserve the previous sample instead of injecting a spike.
+        qreal diameter=std::sqrt(ellipse.width()*ellipse.height());
+        bool fromRaw=false;
+#ifdef Q_OS_ANDROID
+        // MotionEvent history and raw touch-major/minor are captured in
+        // MainActivity before Qt dispatch. Match pointer ID and event
+        // uptime; stale/multi-finger data must never affect a brush.
+        if(stroke.response.useRawAndroid) {
+            MobileFingerRawBridge::Sample sample;
+            if(MobileFingerRawBridge::nearest(point.id(),
+                static_cast<quint64>(eventTime),&sample)) {
+                diameter=sample.diameter;
+                fromRaw=true;
+            }
+        }
+#endif
+        if(!std::isfinite(diameter) || diameter<1 || diameter>250) {
+            // Both Android raw data and Qt ellipse may be absent.
             return stroke.hasSample?stroke.smoothed:originalPressure;
         }
-        const qreal diameter=std::sqrt(width*height);
-        if(!std::isfinite(diameter) || diameter<1 || diameter>250)
-            return stroke.hasSample?stroke.smoothed:originalPressure;
 
         if(!stroke.hasSample) {
             // Absolute area calibration. The first dab now reflects the
             // actual finger contact size rather than a fixed 52% baseline.
             stroke.smoothed=MobileFingerPressureSettings::mapDiameter(
-                diameter,stroke.range);
+                diameter,stroke.range,stroke.response.gamma);
+            stroke.lastTarget=stroke.smoothed;
+            stroke.lastFromRaw=fromRaw;
             stroke.lastDiameter=diameter;
             stroke.lastSampleTime=eventTime;
             stroke.minDiameter=diameter;
             stroke.maxDiameter=diameter;
             stroke.samples=1;
+            stroke.uniqueBins.insert(qRound(diameter*4.0));
             stroke.hasSample=true;
             return stroke.smoothed;
         }
@@ -129,7 +151,7 @@ public:
         // and maximum. Unlike per-stroke normalization, a thumb starts at
         // higher pressure than a pinky when its contact is larger.
         const qreal target=MobileFingerPressureSettings::mapDiameter(
-            diameter,stroke.range);
+            diameter,stroke.range,stroke.response.gamma);
 
         // Small measurement jitter should not fluctuate brush opacity.
         // Cap sudden jumps, then low-pass filter at ~25% per input sample.
@@ -137,26 +159,34 @@ public:
         if(eventTime==stroke.lastSampleTime &&
            qAbs(diameter-stroke.lastDiameter)<0.001)
             return stroke.smoothed;
+        const qreal elapsed=qBound(qreal(4.0),
+            eventTime>stroke.lastSampleTime?
+                qreal(eventTime-stroke.lastSampleTime):qreal(16.0),
+            qreal(50.0));
         stroke.lastSampleTime=eventTime;
         stroke.lastDiameter=diameter;
+        stroke.lastFromRaw=fromRaw;
         stroke.minDiameter=qMin(stroke.minDiameter,diameter);
         stroke.maxDiameter=qMax(stroke.maxDiameter,diameter);
+        stroke.uniqueBins.insert(qRound(diameter*4.0));
         ++stroke.samples;
+        const qreal motion=qAbs(target-stroke.lastTarget);
+        if(motion<0.06)
+            stroke.noise=qBound(qreal(0.002),
+                stroke.noise*0.9+motion*0.1,qreal(0.04));
+        else
+            stroke.noise=qMax(qreal(0.002),stroke.noise*0.98);
+        stroke.lastTarget=target;
         const qreal error=target-stroke.smoothed;
-        if(qAbs(error)>0.015) {
-            stroke.smoothed=qBound(
-                MobileFingerPressureSettings::minPressure(),
-                stroke.smoothed+qBound(qreal(-0.18),error,qreal(0.18))*0.26,
-                MobileFingerPressureSettings::maxPressure());
-        } else if(target==MobileFingerPressureSettings::minPressure() ||
-                  target==MobileFingerPressureSettings::maxPressure()) {
-            // An EMA approaches its limit asymptotically. Once a stable
-            // finger has reached an exact calibrated endpoint, snap the
-            // remaining sub-deadband difference so 0% and 100% are both
-            // attainable within a single continuous stroke. Interior
-            // fluctuations still obey the original jitter deadband.
+        const qreal alpha=MobileFingerPressureSettings::adaptiveAlpha(
+            error,stroke.noise,stroke.response.stability,elapsed);
+        // No fixed 1.5% dead zone: slow real pressure changes remain
+        // observable while measured jitter gets a smaller filter alpha.
+        stroke.smoothed=qBound(qreal(0.0),
+            stroke.smoothed+error*alpha,qreal(1.0));
+        if((target==0.0 || target==1.0) &&
+           qAbs(target-stroke.smoothed)<0.002)
             stroke.smoothed=target;
-        }
         return stroke.smoothed;
     }
 
@@ -171,6 +201,11 @@ private:
         MobileFingerPressureSettings::Range range{
             MobileFingerPressureSettings::defaultMin(),
             MobileFingerPressureSettings::defaultMax()};
+        MobileFingerPressureSettings::Response response;
+        QSet<int> uniqueBins;
+        qreal noise=0.006;
+        qreal lastTarget=0;
+        bool lastFromRaw=false;
         qreal lastDiameter=0;
         qreal minDiameter=0;
         qreal maxDiameter=0;
