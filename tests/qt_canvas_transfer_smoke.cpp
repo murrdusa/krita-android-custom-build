@@ -12,6 +12,8 @@
 #include <QLabel>
 #include <QMainWindow>
 #include <QMdiArea>
+#include <QSettings>
+#include <QTemporaryDir>
 #include <QMenuBar>
 #include <QStatusBar>
 #include <QToolBar>
@@ -60,8 +62,13 @@ public:
     }
     bool hasNativeCanvas() const override {return !m_canvas.isNull();}
     void refreshCanvasSurface() override {}
+    void setMobilePresentationEnabled(bool enabled) override {
+        m_mobilePresentationEnabled=enabled;
+    }
+    bool mobilePresentationEnabled() const {return m_mobilePresentationEnabled;}
 
 private:
+    bool m_mobilePresentationEnabled=true;
     QPointer<QWidget> m_canvas;
     QVBoxLayout *m_layout=nullptr;
 };
@@ -134,6 +141,14 @@ public:
 int main(int argc,char **argv)
 {
     QApplication app(argc,argv);
+    app.setOrganizationName(QStringLiteral("KritaMobileCanvasTest"));
+    app.setApplicationName(QStringLiteral("PersistentCanvas"));
+    QTemporaryDir settingsDirectory;
+    require(settingsDirectory.isValid(),"failed to allocate isolated test settings");
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,
+                       settingsDirectory.path());
+    QSettings().setValue("MobileStudio/persistentCanvasHostV1",false);
     QMainWindow backend;
     backend.setObjectName(QStringLiteral("TestKritaBackend"));
     backend.resize(820,600);
@@ -250,11 +265,56 @@ int main(int argc,char **argv)
         delete mobile;
     }
 
+    // Explicit opt-in stable host: the first entry may still reparent
+    // once, but every subsequent Back/enter must change only the controls.
+    // This test must not force experimental mode into the Android default.
+    QSettings().setValue("MobileStudio/persistentCanvasHostV1",true);
+    MobileCanvasTransfer persistent(&backend,mdi);
+    auto *stableSurface=new TestSurface;
+    require(persistent.enter(stableSurface),
+            "failed initial persistent-host canvas attachment");
+    require(persistent.persistentHostInstalled(),
+            "persistent opt-in was not honored");
+    require(persistent.active(),"persistent host did not enter mobile mode");
+    const int parentChangesAfterInstall=parentObserver.escapes;
+    for(int i=0;i<10;++i) {
+        require(persistent.leave(),"persistent host refused desktop mode");
+        QApplication::processEvents();
+        require(!persistent.active(),"persistent host still in mobile mode");
+        require(backend.centralWidget()==stableSurface,
+                "persistent mode replaced its original central host");
+        require(stableSurface->ownsNativeCanvas(canvas),
+                "persistent mode detached the original Krita canvas");
+        require(!stableSurface->mobilePresentationEnabled(),
+                "persistent mode left mobile controls visible on Back");
+        require(backend.menuBar()->isVisible()==menuVisible &&
+                backend.statusBar()->isVisible()==statusVisible,
+                "persistent mode did not restore native desktop menu/status");
+        require(parentObserver.escapes==parentChangesAfterInstall,
+                "persistent Back detached the native canvas");
+        require(persistent.enter(stableSurface),
+                "persistent mode failed to reenter Mobile Studio");
+        QApplication::processEvents();
+        require(stableSurface->mobilePresentationEnabled(),
+                "persistent mode did not restore mobile controls");
+        require(!backend.menuBar()->isVisible() &&
+                !backend.statusBar()->isVisible(),
+                "persistent reentry exposed desktop chrome");
+        require(parentObserver.escapes==parentChangesAfterInstall,
+                "persistent reentry detached the native canvas");
+        require(canvas->property("testDrawingRevision").toInt()==17,
+                "persistent mode changed document identity");
+    }
+    require(persistent.leave(),"persistent final desktop return failed");
+    require(stableSurface->ownsNativeCanvas(canvas),
+            "persistent host lost its canvas on final Back");
+
     qInfo() << "Entry-side transient top-level parent changes:"
             << parentObserver.escapes
             << "(separately tracked; the Back path has zero)";
     qInfo() << "PASS: ten reversible same-window transfers, chrome restore,"
             << "canvas identity, occupied destination, rejected attachment,"
-            << "failed detach rollback, and occupied backend guards";
+            << "failed detach rollback, occupied backend guards,"
+            << "and ten persistent-host chrome-only mode switches";
     return 0;
 }
