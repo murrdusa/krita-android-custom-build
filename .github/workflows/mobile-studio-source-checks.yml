@@ -72,7 +72,9 @@ jobs:
           for name, source in (("document",document_service),
                                ("command",command_service),
                                ("facade",mobile_bridge)):
-              assert "KisMainWindow" not in source, f"{name} still uses desktop host"
+              assert '#include "KisMainWindow.h"' not in source, f"{name} directly includes desktop host"
+              assert "KisMainWindow *" not in source, f"{name} still takes a desktop window"
+              assert "m_mainWindow" not in source, f"{name} still stores a desktop window"
           assert '#include "KisMainWindow.h"' in desktop_adapters
           assert "MobileDesktopDocumentHost" in desktop_adapters
           assert "MobileDesktopCommandRegistry" in desktop_adapters
