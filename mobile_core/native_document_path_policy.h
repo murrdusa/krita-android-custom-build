@@ -29,6 +29,15 @@ public:
                (isProviderUri(path) || QFile::exists(path));
     }
 
+    static QString saveDialogStartPath(const QString &currentPath,
+                                       const QString &picturesFolder)
+    {
+        // A provider document is a file identity, not a filesystem
+        // directory. Keep the picker away from content:// identifiers.
+        return currentPath.isEmpty() || isProviderUri(currentPath)?
+            picturesFolder:currentPath;
+    }
+
     static bool needsSaveAs(const QString &path,bool saveAs,
                             bool recovered,bool unsupportedMime)
     {

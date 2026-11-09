@@ -127,10 +127,11 @@ public:
                                 KoFileDialog::SaveFile,
                                 QStringLiteral("MobileStudioNativeSaveAs"));
             dialog.setCaption(QObject::tr("Save drawing"));
-            const QString proposed=currentPath.isEmpty()?
-                QStandardPaths::writableLocation(
-                    QStandardPaths::PicturesLocation):
-                currentPath;
+            const QString proposed=
+                MobileNativeDocumentPathPolicy::saveDialogStartPath(
+                    currentPath,
+                    QStandardPaths::writableLocation(
+                        QStandardPaths::PicturesLocation));
             if(!proposed.isEmpty())dialog.setDefaultDir(proposed,true);
             const QString nativeMime=QString::fromLatin1(
                 guardedDocument->nativeFormatMimeType());

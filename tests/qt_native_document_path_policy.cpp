@@ -43,6 +43,13 @@ int main(int argc,char **argv)
             "unsupported provider MIME bypassed Save As");
     require(P::needsSaveAs(QString(),false,false,false),
             "unsaved document had no Save As picker");
+    const QString pictures=tmp.filePath(QStringLiteral("Pictures"));
+    require(P::saveDialogStartPath(provider,pictures)==pictures,
+            "provider file was passed as a Save As directory");
+    require(P::saveDialogStartPath(QString(),pictures)==pictures,
+            "untitled document lacked a Save As directory");
+    require(P::saveDialogStartPath(realFile,pictures)==realFile,
+            "local Save As failed to retain its suggested file path");
     qInfo()<<"PASS: provider URI open/save, local path existence,"
             <<"explicit Save As, recovery and MIME guards";
     return 0;

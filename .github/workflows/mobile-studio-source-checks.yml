@@ -218,6 +218,7 @@ jobs:
           native_docs=Path("mobile_core/krita_standalone_documents.h").read_text()
           assert 'MobileNativeDocumentPathPolicy::mayAttemptOpen(path)' in native_docs
           assert 'MobileNativeDocumentPathPolicy::needsSaveAs(' in native_docs
+          assert 'MobileNativeDocumentPathPolicy::saveDialogStartPath(' in native_docs
           assert '!QFile::exists(path))return false' not in native_docs
           assert 'native_document_path_policy=own/"mobile_core/native_document_path_policy.h"' in shell_patch
           assert '(root/"libs/ui/native_document_path_policy.h").write_text(' in shell_patch
