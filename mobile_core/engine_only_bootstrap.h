@@ -5,6 +5,7 @@
  * this interface, not the native painting controller or its Qt widgets.
  */
 #pragma once
+#include <QtGlobal> // Defines Q_OS_ANDROID before checking the platform.
 #ifdef Q_OS_ANDROID
 class MobileEngineOnlyBootstrap final
 {
