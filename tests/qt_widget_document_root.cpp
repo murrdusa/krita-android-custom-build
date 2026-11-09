@@ -92,6 +92,11 @@ int main(int argc,char **argv)
         QApplication::processEvents();
         require(mobile->ownsNativeCanvas(canvas) && canvas->window()==&backend,
                 "generic document host moved the canvas to another top-level");
+        if(tab->isVisible() || tab->maximumHeight()!=0)
+            qWarning() << "Generic root tab state:" << "visible="
+                       << tab->isVisible() << "minimum=" << tab->minimumHeight()
+                       << "maximum=" << tab->maximumHeight()
+                       << "parent=" << tab->parentWidget();
         require(!tab->isVisible() && tab->maximumHeight()==0,
                 "generic host did not hide native document tabs");
         require(transfer.leave(),"could not return to generic document host");

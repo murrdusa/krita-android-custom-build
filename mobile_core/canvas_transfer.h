@@ -159,6 +159,11 @@ public:
         m_backend->show();
         m_backend->activateWindow();
         surface->refreshCanvasSurface();
+        // Qt may show child widgets again while installing a new central
+        // widget. Reassert hidden document tabs after the mobile host
+        // and backend have both completed their show/layout transitions.
+        // This works for a generic QWidget document root, not only MDI.
+        hideNativeTabs();
         // A delayed desktop toolbar restoration may follow the toggle.
         // Bind delayed work to the transfer's own QObject timer rather
         // than to Krita's longer-lived main window. The callback must not

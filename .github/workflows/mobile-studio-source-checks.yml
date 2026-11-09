@@ -118,7 +118,7 @@ jobs:
           assert "subWindowList(" not in document_service
           assert "KisView.h" not in document_service
           assert '#include <QMdiArea>' not in mobile_bridge
-          assert "new MobileMdiViewHostAdapter(d->mdiArea,d->viewManager)" in shell_patch
+          assert "new MobileMdiViewHostAdapter(documentRoot,manager)" in desktop_adapters
           assert 'view_guard=own/"mobile_core/view_identity_guard.h"' in shell_patch
           assert '(root/"libs/ui/view_identity_guard.h").write_text(' in shell_patch
           assert "closeDocumentView(activeView)" in switcher
