@@ -34,7 +34,7 @@ public:
         setObjectName(QStringLiteral("_mobileNativeEngineWorkspaces"));
         // The factory installs the native activation router as each
         // document is attached. Refresh after, not before, that turn.
-        if(auto *root=host ? qobject_cast<MobileNativeViewStack*>(
+        if(auto *root=host ? dynamic_cast<MobileNativeViewStack*>(
                                  host->nativeCanvas()) : nullptr) {
             QObject::connect(root,&QStackedWidget::currentChanged,this,
                              [this](int) {
