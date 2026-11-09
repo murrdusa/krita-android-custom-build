@@ -426,7 +426,14 @@ private:
         } else if(id==QStringLiteral("mobile:canvases")) {
             MobileDocumentSwitcher::open(m_engine,this);
         } else if(id==QStringLiteral("mobile:close")) {
-            m_engine.closeActiveDocument();
+            // Same guarded identity as Canvases and More. Never let an
+            // ambiguous or stale MDI selection close an unrelated view.
+            for(const auto &document:m_engine.openDocuments()) {
+                if(document.active && document.nativeView) {
+                    m_engine.closeDocumentView(document.nativeView);
+                    break;
+                }
+            }
         } else if(id==QStringLiteral("mobile:commands")) {
             MobileCommandBrowser::open(m_engine,this);
         } else if(id==QStringLiteral("mobile:more")) {
