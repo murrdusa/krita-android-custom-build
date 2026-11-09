@@ -24,6 +24,7 @@
 #include "KisPart.h"
 #include "dialogs/kis_delayed_save_dialog.h"
 #include "document_host_port.h"
+#include "native_document_rollback.h"
 #include "host_services.h"
 #include "krita_standalone_runtime.h"
 #include "native_krita_save_host.h"
@@ -75,11 +76,16 @@ public:
         }
 
         KisPart::instance()->addDocument(document);
+        QPointer<KisDocument> guardedDocument=document;
         if(!attachNewDocument(document)) {
-            // Native KisView teardown may already have removed the
-            // document, so never remove an unregistered one twice.
-            if(isRegistered(document))
-                KisPart::instance()->removeDocument(document);
+            MobileFailedDocumentAttach::rollback(
+                guardedDocument,
+                [](KisDocument *candidate) {
+                    return isRegistered(candidate);
+                },
+                [](KisDocument *candidate) {
+                    KisPart::instance()->removeDocument(candidate);
+                });
             return false;
         }
         return true;

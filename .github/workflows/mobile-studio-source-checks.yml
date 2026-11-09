@@ -211,12 +211,16 @@ jobs:
           assert 'standalone_krita_documents=own/"mobile_core/krita_standalone_documents.h"' in shell_patch
           assert '(root/"libs/ui/krita_standalone_documents.h").write_text(' in shell_patch
           native_docs=Path("mobile_core/krita_standalone_documents.h").read_text()
+          assert "MobileFailedDocumentAttach::rollback(" in native_docs
+          assert "MobileFailedDocumentAttach::rollback(" in Path("mobile_core/document_service.h").read_text()
+          assert '(root/"libs/ui/native_document_rollback.h").write_text(' in shell_patch
+          assert 'native_document_rollback=own/"mobile_core/native_document_rollback.h"' in shell_patch
           for fragment in ("class MobileKritaStandaloneDocuments final",
                            "public MobileDocumentHostPort",
                            "KisPart::instance()->createDocument()",
                            "document->openPath(path,KisDocument::None)",
                            "KisPart::instance()->addDocument(document)",
-                           "KisPart::instance()->removeDocument(document)",
+                           "KisPart::instance()->removeDocument(candidate)",
                            "m_runtime->attachDocument(document,m_saver)",
                            "KisDelayedSaveDialog idle(",
                            "guardedDocument->saveAs(target,targetMime,true)",
@@ -385,6 +389,14 @@ jobs:
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Test guarded close-time Save delegation
         run: /tmp/krita-native-save-host-test
+      - name: Build guarded native document rollback Qt regression
+        run: |
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+            tests/qt_native_document_rollback.cpp \
+            -o /tmp/krita-native-document-rollback-test \
+            $(pkg-config --cflags --libs Qt5Core)
+      - name: Check destroyed and registered document rollback
+        run: /tmp/krita-native-document-rollback-test
       - name: Build mobile startup policy regression test
         run: |
           c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \

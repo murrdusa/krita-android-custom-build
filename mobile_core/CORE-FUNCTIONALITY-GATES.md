@@ -157,6 +157,13 @@ serialization or brushes.
   full `kritaui` compilation. If that preflight passes, the complete
   native UI target is still compiled. APK packaging and upload stay
   disabled in compile mode.
+- Native view attachment failure now uses a `QPointer<KisDocument>`
+  rollback guard in both new-canvas and file-open paths. A failing
+  `KisPart::createView` may synchronously delete the document through
+  last-view teardown. The guarded path checks surviving registration
+  before removing an orphan and never double-removes a freed document.
+  A new Qt test covers destroyed identities, orphan cleanup, repeated
+  rollback, and unregistered documents.
 - The opt-in stationary canvas header was found consuming hundreds of
   pixels of height on a real device. The top dock is now capped at 76
   logical pixels and its title/header widget is height-fixed; a Qt

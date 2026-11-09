@@ -28,6 +28,7 @@
 #include "KisPart.h"
 #include "kis_config.h"
 #include "document_host_port.h"
+#include "native_document_rollback.h"
 #include "view_host_port.h"
 #include "view_identity_guard.h"
 
@@ -106,8 +107,21 @@ public:
         // A failed host attach must not leave an orphaned, registered
         // Krita document with no view. The host port's false result
         // explicitly guarantees that it did not retain a native view.
+        QPointer<KisDocument> guardedDocument=document;
         if(!m_host->attachNewDocument(document)) {
-            KisPart::instance()->removeDocument(document);
+            // The last native view may destroy its document when
+            // adoption fails. Do not remove that document twice.
+            MobileFailedDocumentAttach::rollback(
+                guardedDocument,
+                [](KisDocument *candidate) {
+                    if(!KisPart::instance())return false;
+                    for(const auto &registered:KisPart::instance()->documents())
+                        if(registered==candidate)return true;
+                    return false;
+                },
+                [](KisDocument *candidate) {
+                    KisPart::instance()->removeDocument(candidate);
+                });
             return false;
         }
         return true;
