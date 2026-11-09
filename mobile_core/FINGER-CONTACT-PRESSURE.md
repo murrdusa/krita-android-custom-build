@@ -51,11 +51,14 @@ stroke change the target pressure. At 0%, some brush presets may create
 a faint mark or no mark at all, because Krita's own pressure curves
 control the final width and opacity.
 
-Smoothing remains in place: changes under 0.015 are ignored, sudden
-changes are capped at 0.18 per sample before applying a 0.26-step
-low-pass filter. Duplicate touch events do not repeatedly advance it.
-The first valid sample initializes to the calibrated target immediately,
-so it does not begin at a false 52% pressure. There is **no artificial
+Smoothing remains in place: interior changes under 0.015 are ignored,
+sudden changes are capped at 0.18 per sample before applying a 0.26-step
+low-pass filter. When the finger remains at the calibrated minimum or
+maximum and the filter is within 0.015 of the endpoint, it finishes at
+**exactly 0% or 100%** instead of stopping slightly short. Duplicate
+touch events do not repeatedly advance it. The first valid sample
+initializes to the calibrated target immediately, so it does not
+begin at a false 52% pressure. There is **no artificial
 minimum or maximum pressure floor/ceiling** beyond Krita's native
 0–100% pressure domain.
 
