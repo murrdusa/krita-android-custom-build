@@ -835,8 +835,12 @@ private:
         m_clipBusy=false;
         m_clipImage.clear();
         m_clipRestoreActive.clear();
-        m_clipParent.clear();
+        m_clipParents.clear();
         m_clipPendingWrappers.clear();
+        m_clipAfterUnwrap=nullptr;
+        m_clipMoveSource.clear();
+        m_clipExpectedParent.clear();
+        m_clipExpectedBelow.clear();
         QTimer::singleShot(120,this,[this]() {reload();});
     }
 
@@ -881,34 +885,34 @@ private:
             finishCompactClipRebuild();
             return;
         }
-        KisNodeSP parent=m_clipParent;
-        if(!parent) {
-            finishCompactClipRebuild();
-            return;
-        }
-        KisNodeList ordered;
-        for(KisNodeSP node=parent->firstChild();node;
-            node=node->nextSibling())ordered.append(node);
-        for(int i=0;i<ordered.size();) {
-            KisNodeSP base=ordered.at(i);
-            if(isCompactClipWrapper(base) || inheritsAlpha(base) ||
-               !base->inherits("KisLayer")){++i;continue;}
-            KisNodeList cluster{base};
-            int j=i+1;
-            while(j<ordered.size() && inheritsAlpha(ordered.at(j))) {
-                cluster.append(ordered.at(j));++j;
+        while(!m_clipParents.isEmpty()) {
+            KisNodeSP parent=m_clipParents.first();
+            if(!parent){m_clipParents.removeFirst();continue;}
+            KisNodeList ordered;
+            for(KisNodeSP node=parent->firstChild();node;
+                node=node->nextSibling())ordered.append(node);
+            for(int i=0;i<ordered.size();) {
+                KisNodeSP base=ordered.at(i);
+                if(isCompactClipWrapper(base) || inheritsAlpha(base) ||
+                   !base->inherits("KisLayer")){++i;continue;}
+                KisNodeList cluster{base};
+                int j=i+1;
+                while(j<ordered.size() && inheritsAlpha(ordered.at(j))) {
+                    cluster.append(ordered.at(j));++j;
+                }
+                if(cluster.size()>1 &&
+                   m->canMoveLayers(cluster,false)) {
+                    m->slotUiActivatedNode(base);
+                    m->slotSetSelectedNodes(cluster);
+                    m->createQuickGroup();
+                    QTimer::singleShot(100,this,[this,base,parent,cluster]() {
+                        waitCompactClipGroup(base,parent,cluster,0);
+                    });
+                    return;
+                }
+                i=j;
             }
-            if(cluster.size()>1 &&
-               m->canMoveLayers(cluster,false)) {
-                m->slotUiActivatedNode(base);
-                m->slotSetSelectedNodes(cluster);
-                m->createQuickGroup();
-                QTimer::singleShot(100,this,[this,base,parent,cluster]() {
-                    waitCompactClipGroup(base,parent,cluster,0);
-                });
-                return;
-            }
-            i=j;
+            m_clipParents.removeFirst();
         }
         finishCompactClipRebuild();
     }
@@ -929,14 +933,44 @@ private:
         } else if(pending) {
             qWarning() << "Mobile Studio: compact clip ungroup timed out";
             finishCompactClipRebuild();
+        } else if(m_clipAfterUnwrap) {
+            // Reorder against the *logical* flat layer stack, then build
+            // the hidden Krita clip groups back around the new neighbors.
+            auto operation=std::move(m_clipAfterUnwrap);
+            m_clipAfterUnwrap=nullptr;
+            operation();
+            QTimer::singleShot(95,this,[this]() {
+                waitCompactClipMove(0);
+            });
         } else {
-            // Krita's layer juggler has finished its asynchronous work.
-            // Now regroup the current bottom-to-top alpha runs.
             continueCompactClipRebuild();
         }
     }
 
-    void beginCompactClipRebuild(KisNodeSP parent,KisNodeSP restore)
+    void waitCompactClipMove(int attempt)
+    {
+        if(!m_clipBusy || !m_engine.manager() ||
+           m_engine.manager()->image().toStrongRef()!=m_clipImage) {
+            finishCompactClipRebuild();return;
+        }
+        if(m_clipMoveSource &&
+           (m_clipMoveSource->parent()!=m_clipExpectedParent ||
+            m_clipMoveSource->prevSibling()!=m_clipExpectedBelow)) {
+            if(attempt<35) {
+                QTimer::singleShot(95,this,[this,attempt]() {
+                    waitCompactClipMove(attempt+1);
+                });
+            } else {
+                qWarning() << "Mobile Studio: layer move did not settle";
+                finishCompactClipRebuild();
+            }
+        } else continueCompactClipRebuild();
+    }
+
+    void beginCompactClipRebuild(
+        KisNodeSP parent,KisNodeSP restore,
+        std::function<void()> afterUnwrap={},
+        KisNodeSP otherParent=KisNodeSP())
     {
         auto *m=manager();
         auto *vm=m_engine.manager();
@@ -944,9 +978,15 @@ private:
         m_clipImage=vm->image().toStrongRef();
         if(!m_clipImage)return;
         m_clipBusy=true;
-        m_clipParent=parent;
+        m_clipParents=QList<KisNodeSP>{parent};
+        if(otherParent && otherParent!=parent)
+            m_clipParents.append(otherParent);
         m_clipRestoreActive=restore;
+        m_clipAfterUnwrap=std::move(afterUnwrap);
         m_clipPendingWrappers.clear();
+        m_clipMoveSource.clear();
+        m_clipExpectedParent.clear();
+        m_clipExpectedBelow.clear();
         std::function<void(KisNodeSP)> ungroup=[&](KisNodeSP container) {
             for(KisNodeSP child=container->firstChild();child;
                 child=child->nextSibling()) {
@@ -956,13 +996,62 @@ private:
                 }
             }
         };
-        ungroup(parent);
+        for(const KisNodeSP &container:m_clipParents)
+            ungroup(container);
         for(const KisNodeSP &wrapper:m_clipPendingWrappers) {
             m->slotUiActivatedNode(wrapper);
             m->slotSetSelectedNodes(KisNodeList{wrapper});
             m->quickUngroup();
         }
         QTimer::singleShot(100,this,[this]() {waitCompactClipUngroup(0);});
+    }
+
+    void moveCompactLayer(KisNodeSP source,KisNodeSP target,
+                          bool insertAbove,bool intoGroup=false)
+    {
+        auto *m=manager();
+        auto *vm=m_engine.manager();
+        if(m_clipBusy || m_reorderPending || !m || !vm ||
+           !source || !target || source==target)return;
+        KisNodeSP oldParent=logicalParent(source);
+        KisNodeSP destination=intoGroup?target:logicalParent(target);
+        if(!oldParent || !destination || !source->parent() ||
+           !destination->allowAsChild(source) ||
+           !m->canMoveLayer(source,false))return;
+        // Never move a folder inside its own descendants.
+        for(KisNodeSP p=destination;p;p=p->parent())
+            if(p==source)return;
+        auto onFlattened=[this,source,target,destination,
+                          intoGroup,insertAbove]() {
+            auto *nodes=manager();
+            if(!nodes || !source || !target || !destination ||
+               !destination->allowAsChild(source))return;
+            KisNodeSP below=intoGroup?destination->lastChild():
+                (insertAbove?target:target->prevSibling());
+            if(below==source && source->parent()==destination)return;
+            m_clipMoveSource=source;
+            m_clipExpectedParent=destination;
+            m_clipExpectedBelow=below;
+            nodes->moveNodesDirect(KisNodeList{source},destination,below);
+        };
+        beginCompactClipRebuild(oldParent,source,onFlattened,destination);
+    }
+
+    void moveCompactLayerAt(KisNodeSP source,const QPoint &screenPos)
+    {
+        if(!m_tree || !source)return;
+        const QPoint inView=m_tree->viewport()->mapFromGlobal(screenPos);
+        QTreeWidgetItem *targetItem=m_tree->itemAt(inView);
+        if(!targetItem)return;
+        const int index=m_items.indexOf(targetItem);
+        if(index<0 || index>=m_nodes.size())return;
+        KisNodeSP target=m_nodes.at(index);
+        if(!target || target==source)return;
+        const QRect rect=m_tree->visualItemRect(targetItem);
+        const bool insertAbove=inView.y()<rect.center().y();
+        const bool intoGroup=target->inherits("KisGroupLayer") &&
+                             inView.x()>rect.center().x();
+        moveCompactLayer(source,target,insertAbove,intoGroup);
     }
 
     void tapLayer(KisNodeSP node,QTreeWidgetItem *item)
@@ -1279,9 +1368,13 @@ private:
     KisNodeSP m_active;
     bool m_clipBusy=false;
     KisImageSP m_clipImage;
-    KisNodeSP m_clipParent;
+    QList<KisNodeSP> m_clipParents;
     KisNodeSP m_clipRestoreActive;
     KisNodeList m_clipPendingWrappers;
+    std::function<void()> m_clipAfterUnwrap;
+    KisNodeSP m_clipMoveSource;
+    KisNodeSP m_clipExpectedParent;
+    KisNodeSP m_clipExpectedBelow;
     QString m_signature;
     bool m_reorderPending=false;
 };
