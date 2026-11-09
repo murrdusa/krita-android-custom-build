@@ -10,10 +10,10 @@
 #if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
 
 #include <QMainWindow>
+#include <QAbstractScrollArea>
 #include <QDebug>
 #include <QDockWidget>
 #include <QMenuBar>
-#include <QMdiArea>
 #include <QPointer>
 #include <QSettings>
 #include <QStatusBar>
@@ -27,7 +27,7 @@
 class MobileCanvasTransfer final
 {
 public:
-    MobileCanvasTransfer(QMainWindow *backend,QMdiArea *documents)
+    MobileCanvasTransfer(QMainWindow *backend,QWidget *documents)
         : m_backend(backend),m_documents(documents),
           m_persistentRequestedAtStartup(QSettings().value(
               QStringLiteral("MobileStudio/persistentCanvasHostV1"),
@@ -259,7 +259,7 @@ public:
             // requesting its repaint. This does not create a view.
             const QPointer<QWidget> restored=native;
             const QPointer<QMainWindow> backend=m_backend;
-            const QPointer<QMdiArea> documents=m_documents;
+            const QPointer<QWidget> documents=m_documents;
             QTimer::singleShot(0,m_backend,[restored,backend,documents]() {
                 // A rapid second toggle may already have moved this
                 // widget back into Mobile Studio. Never paint an old
@@ -269,12 +269,7 @@ public:
                 restored->show();
                 restored->updateGeometry();
                 restored->update();
-                if(documents) {
-                    documents->updateGeometry();
-                    documents->update();
-                    if(documents->viewport())
-                        documents->viewport()->update();
-                }
+                refreshDocumentRoot(documents);
             });
         }
 
@@ -288,6 +283,19 @@ public:
     }
 
 private:
+    // Krita presently supplies QMdiArea, but this adapter only needs
+    // a QWidget document root. It requests a viewport repaint for
+    // scroll-area roots without depending on native MDI ownership.
+    static void refreshDocumentRoot(QWidget *documents)
+    {
+        if(!documents)return;
+        documents->updateGeometry();
+        documents->update();
+        if(auto *scroll=qobject_cast<QAbstractScrollArea*>(documents)) {
+            if(scroll->viewport())scroll->viewport()->update();
+        }
+    }
+
     // After a chrome-only mode switch QMainWindow needs to redistribute
     // space freed/occupied by headers, dockers and status bars. Ask the
     // existing native paint surface to recalculate and repaint *after*
@@ -297,7 +305,7 @@ private:
         const QPointer<QMainWindow> backend=m_backend;
         const QPointer<QWidget> host=m_mobileWindow;
         const QPointer<QWidget> canvas=m_canvas;
-        const QPointer<QMdiArea> documents=m_documents;
+        const QPointer<QWidget> documents=m_documents;
         QTimer::singleShot(0,&m_tabTimer,
             [this,backend,host,canvas,documents,expectedMobileState]() {
                 // A rapid return/reentry may invalidate the queued state.
@@ -307,12 +315,7 @@ private:
                    m_active!=expectedMobileState)return;
                 canvas->updateGeometry();
                 canvas->update();
-                if(documents) {
-                    documents->updateGeometry();
-                    documents->update();
-                    if(documents->viewport())
-                        documents->viewport()->update();
-                }
+                refreshDocumentRoot(documents);
             });
     }
 
@@ -383,7 +386,7 @@ private:
     }
 
     QPointer<QMainWindow> m_backend;
-    QPointer<QMdiArea> m_documents;
+    QPointer<QWidget> m_documents;
     QPointer<QWidget> m_mobileWindow;
     QPointer<QWidget> m_canvas;
     MobileCanvasSurface *m_surface=nullptr; // Lifetime guarded by m_mobileWindow
