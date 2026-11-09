@@ -11,7 +11,7 @@ class MobileEngineOnlyBootstrap final
 {
 public:
     // Called after Krita resource, tool and paintop registration.
-    // Asynchronous canvas success/failure is handled by the V2 policy.
+    // Failures emit Qt/Android logs without changing startup modes.
     static bool launch();
 };
 #endif

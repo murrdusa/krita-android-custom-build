@@ -67,8 +67,7 @@ public:
             return true;
         }
 
-        // Persist the latest phase so a crash can be diagnosed after
-        // Krita's desktop fallback restarts the Android process.
+        // Persist the last startup phase and emit logcat checkpoints.
         auto stage=[](const char *name,bool pending=true) {
             QSettings settings;
             settings.setValue(
@@ -79,7 +78,7 @@ public:
             settings.sync();
             qWarning() << "Standalone engine checkpoint:" << name;
         };
-        stage("Creating embedded Qt host");
+        stage("Creating native drawing host");
         auto *window=directRoot ? directRoot :
             new MobileLightweightCanvasHost;
         if(!directRoot && !window->embedInExistingWindow(nativeWindow)) {
@@ -144,14 +143,6 @@ public:
         auto *engineOnlyAction=makeAction(
             "Engine-only on next launch (experimental)");
         auto *architectureAction=makeAction("Engine separation status");
-        auto *directRootAction=makeAction(
-            "Direct engine window next launch (experimental)");
-        directRootAction->setCheckable(true);
-        {
-            QSettings settings;
-            directRootAction->setChecked(
-                MobileEngineOnlyStartupPolicy::directHostEnabled(settings));
-        }
         QObject::connect(brushesAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleBrushes();});
         QObject::connect(layersAction,&QAction::triggered,window,
@@ -179,21 +170,12 @@ public:
                 MobileEngineOnlyStartupPolicy::enabled(settings));
         }
         engineOnlyAction->setToolTip(QObject::tr(
-            "Experimental: restart into Krita's painting engine "
-            "without constructing KisMainWindow, desktop MDI, or dockers. "
-            "An interrupted launch restores original Krita on restart."));
+            "Launch directly into the independent native drawing window."));
         QObject::connect(engineOnlyAction,&QAction::toggled,window,
-                         [nativeStartup,directRootAction](bool on) {
+                         [nativeStartup](bool on) {
             QSettings settings;
             MobileEngineOnlyStartupPolicy::setEnabled(settings,on);
             if(on)nativeStartup->setChecked(false);
-            else directRootAction->setChecked(false);
-        });
-        QObject::connect(directRootAction,&QAction::toggled,window,
-                         [engineOnlyAction](bool on) {
-            QSettings settings;
-            MobileEngineOnlyStartupPolicy::setDirectHostEnabled(settings,on);
-            if(on)engineOnlyAction->setChecked(true);
         });
         // Avoid an overflow chevron hiding the primary drawing tools.
         // Less-common operations stay in an explicit, labeled menu.
@@ -203,8 +185,7 @@ public:
             {brushesAction,layersAction,colorAction,toolsAction},
             {newAction,openAction,previousAction,nextAction,
              saveAsAction,closeAction,nativeStartup,
-             engineOnlyAction,directRootAction,
-             architectureAction,exitAction})) {
+             engineOnlyAction,architectureAction,exitAction})) {
             qWarning() << "Independent Krita command layout unavailable";
         }
 
@@ -349,7 +330,7 @@ public:
         // The real KisCanvas2 must become visible before Qt initializes
         // brush resources and its OpenGL context. Both the initial canvas
         // and later documents use the same native KisPart engine path.
-        stage("Showing embedded engine test canvas");
+        stage("Showing native drawing canvas");
         window->show();
         window->raise();
         window->suppressNativeStatusChrome();
@@ -359,13 +340,10 @@ public:
             if(!alive)return;
             stage("Creating first native Krita document and view");
             if(!documents->createCanvas(
-                       QStringLiteral("Engine test"),512,512,72,true)) {
+                       QStringLiteral("Untitled"),512,512,72,true)) {
                 stage("Krita refused first native document creation");
                 if(firstCanvasReady)firstCanvasReady(false);
-                QMessageBox::warning(
-                    alive.data(),QObject::tr("Engine test"),
-                    QObject::tr("Native view initialization failed. "
-                                "The existing Krita interface is unchanged."));
+                qCritical() << "Mobile Studio: first document creation failed";
                 return;
             }
             // KisStatusBar::setView() attaches the zoom control once
