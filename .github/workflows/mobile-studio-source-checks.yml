@@ -87,7 +87,19 @@ jobs:
           assert "takeCentralWidget(" not in native_chrome
           assert "setCentralWidget(" not in native_chrome
           assert "m_nativeCanvas->setParent(" not in native_chrome
-          print("Canvas ownership, stationary-chrome and finger pressure invariants intact")
+          assert "Qt::RightDockWidgetArea" in native_chrome
+          pilot = Path("mobile_core/native_canvas_pilot.h").read_text()
+          for component in ("MobileNativeCanvasChrome", "MobileQuickActions",
+                            "KritaMobileBrushWorkspace", "KritaMobileLayersPanel",
+                            "MobileColorWorkspace", "MobileDocumentSwitcher"):
+              assert component in pilot, f"Native stationary pilot missing {component}"
+          assert "setCentralWidget(" not in pilot
+          assert "takeCentralWidget(" not in pilot
+          assert "m_nativeCanvas->setParent(" not in pilot
+          session = Path("mobile_core/canvas_session.h").read_text()
+          assert '#include "native_canvas_pilot.h"' in session
+          assert "new MobileNativeCanvasPilot" not in session
+          print("Canvas ownership, disabled stationary pilot and finger pressure invariants intact")
           PY
 
   qt-canvas-host-test:
