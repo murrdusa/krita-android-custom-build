@@ -502,6 +502,23 @@ private:
                 calibration.exec();
             });
         });
+        auto *stationaryHost=menu.addAction(
+            i18n("Experimental stationary canvas UI (next restart)"));
+        stationaryHost->setCheckable(true);
+        stationaryHost->setChecked(QSettings().value(
+            QStringLiteral("MobileStudio/nativeDockCanvasV1"),false)
+            .toBool());
+        stationaryHost->setToolTip(i18n(
+            "Off by default. Try Mobile Studio controls as Qt dockers "
+            "around Krita's original canvas without moving the canvas. "
+            "Separate from the older persistent-host experiment. "
+            "Requires an app restart; save test drawings first."));
+        connect(stationaryHost,&QAction::toggled,this,[](bool enabled) {
+            QSettings settings;
+            settings.setValue(
+                QStringLiteral("MobileStudio/nativeDockCanvasV1"),enabled);
+            settings.sync();
+        });
         auto *stableHost=menu.addAction(
             i18n("Experimental persistent canvas host (next restart)"));
         stableHost->setCheckable(true);
