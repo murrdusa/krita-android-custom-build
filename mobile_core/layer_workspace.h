@@ -46,6 +46,8 @@
 #include "commands/KisNodeRenameCommand.h"
 #include "kis_node_manager.h"
 #include "kis_node.h"
+#include "kis_layer.h"
+#include "kis_paint_layer.h"
 #include "kis_image.h"
 #include <klocalizedstring.h>
 
@@ -458,6 +460,16 @@ private:
                 (int(node->opacity())*100+127)/255));
         QAction *blendAction=menu.addAction(i18n("Blending mode…"));
         blendAction->setEnabled(node->colorSpace()!=nullptr);
+        auto *paint=qobject_cast<KisPaintLayer*>(node.data());
+        auto *layer=qobject_cast<KisLayer*>(node.data());
+        QAction *alphaLock=menu.addAction(i18n("Alpha lock"));
+        alphaLock->setCheckable(true);
+        alphaLock->setChecked(paint && paint->alphaLocked());
+        alphaLock->setEnabled(paint!=nullptr);
+        QAction *inheritAlpha=menu.addAction(i18n("Inherit alpha (clipping)"));
+        inheritAlpha->setCheckable(true);
+        inheritAlpha->setChecked(layer && layer->alphaChannelDisabled());
+        inheritAlpha->setEnabled(layer!=nullptr);
         QAction *properties=menu.addAction(i18n("Layer properties"));
         menu.addSeparator();
         QAction *duplicate=menu.addAction(i18n("Duplicate"));
@@ -585,6 +597,13 @@ private:
                 m->setNodeCompositeOp(node,mode);
         } else if(chosen==properties) {
             m->nodeProperties(node);
+        } else if(chosen==alphaLock || chosen==inheritAlpha) {
+            // Krita's native layer manager applies its undoable node
+            // property commands and respects layer-type constraints.
+            // The context menu targets exactly the tapped layer.
+            if(!m_engine.selectLayer(node))return;
+            if(chosen==alphaLock)m->toggleAlphaLock();
+            else m->toggleInheritAlpha();
         } else if(chosen==merge || chosen==flatten) {
             // Invoke the native Krita layer manager so group/mask
             // semantics, disabled states and image undo stay intact.
