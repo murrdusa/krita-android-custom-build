@@ -275,6 +275,9 @@ int main(int argc,char **argv)
     // once, but every subsequent Back/enter must change only the controls.
     // This test must not force experimental mode into the Android default.
     QSettings().setValue("MobileStudio/persistentCanvasHostV1",true);
+    // The independent finger-pressure prototype must never be reset when
+    // switching interface implementations or destroying a UI overlay.
+    QSettings().setValue("MobileStudio/fingerContactPressureV1",true);
     MobileCanvasTransfer persistent(&backend,mdi);
     auto *stableSurface=new TestSurface;
     require(persistent.enter(stableSurface),
@@ -286,10 +289,16 @@ int main(int argc,char **argv)
             backend.property("_mobileStudioPresentationActive").toBool(),
             "persistent entry did not set canvas/presentation flags");
     const int parentChangesAfterInstall=parentObserver.escapes;
+    // Settings are picked up on the first attachment, not mid-session.
+    // Toggling the preference off while Krita still owns the embedded
+    // canvas must not make a later Back try to physically detach it.
+    QSettings().setValue("MobileStudio/persistentCanvasHostV1",false);
     for(int i=0;i<10;++i) {
         require(persistent.leave(),"persistent host refused desktop mode");
         QApplication::processEvents();
         require(!persistent.active(),"persistent host still in mobile mode");
+        require(persistent.persistentHostInstalled(),
+                "persistent canvas host unexpectedly changed mid-session");
         require(backend.property("_mobileStudioCanvasTransferred").toBool() &&
                 !backend.property("_mobileStudioPresentationActive").toBool(),
                 "persistent Back lost ownership or left mobile mode active");
@@ -319,6 +328,9 @@ int main(int argc,char **argv)
                 "persistent reentry detached the native canvas");
         require(canvas->property("testDrawingRevision").toInt()==17,
                 "persistent mode changed document identity");
+        require(QSettings().value(
+                    "MobileStudio/fingerContactPressureV1").toBool(),
+                "finger pressure prototype was altered by mode switching");
     }
     require(persistent.leave(),"persistent final desktop return failed");
     require(stableSurface->ownsNativeCanvas(canvas),
