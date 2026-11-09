@@ -405,6 +405,11 @@ private:
         QAction *moveUp=menu.addAction(i18n("Move up"));
         QAction *moveDown=menu.addAction(i18n("Move down"));
         menu.addSeparator();
+        QAction *merge=menu.addAction(i18n("Merge with layer below"));
+        merge->setEnabled(m_engine.canRun("merge_layer"));
+        QAction *flatten=menu.addAction(i18n("Flatten layer to paint"));
+        flatten->setEnabled(m_engine.canRun("flatten_layer"));
+        menu.addSeparator();
         QAction *group=menu.addAction(i18n("Group selection"));
         QAction *clipping=menu.addAction(i18n("Krita clipping group"));
         QAction *ungroup=nullptr;
@@ -469,6 +474,22 @@ private:
             m->setNodeOpacity(node,(dialog.intValue()*255+50)/100);
         } else if(chosen==properties) {
             m->nodeProperties(node);
+        } else if(chosen==merge || chosen==flatten) {
+            // Invoke the native Krita layer manager so group/mask
+            // semantics, disabled states and image undo stay intact.
+            // Never merge a stale node belonging to another canvas.
+            auto *view=m_engine.manager();
+            if(!view || !view->image().toStrongRef() ||
+               m_reorderPending)return;
+            KisNodeSP ancestor=node;
+            const KisImageSP image=view->image().toStrongRef();
+            while(ancestor && ancestor!=image->root())
+                ancestor=ancestor->parent();
+            if(ancestor!=image->root())return;
+            if(view->activeNode()!=node)
+                m_engine.selectLayer(node);
+            if(!m_engine.run(chosen==merge?"merge_layer":"flatten_layer"))
+                qWarning() << "Mobile Studio: Krita layer operation unavailable";
         } else if(chosen==group) {
             m->createQuickGroup();
         } else if(chosen==clipping) {
