@@ -568,6 +568,11 @@ private:
                     QStringLiteral("Canvas attached: %1").arg(canvasPresent),
                     QStringLiteral("Canvas shares native window: %1")
                         .arg(sameTopLevel),
+                    QStringLiteral("Persistent canvas host installed: %1")
+                        .arg(window()->property(
+                            "_mobileStudioPersistentCanvasHost").toBool()),
+                    QStringLiteral("Mobile presentation active: %1")
+                        .arg(m_mobilePresentationEnabled),
                     QStringLiteral("Canvas count: %1").arg(documents.size()),
                     QStringLiteral("Document available: %1")
                         .arg(m_engine.hasDocument()),
