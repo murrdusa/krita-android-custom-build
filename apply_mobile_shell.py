@@ -26,6 +26,7 @@ def main(root:Path):
     transfer=own/"mobile_core/canvas_transfer.h"
     native_chrome=own/"mobile_core/native_canvas_chrome.h"
     native_pilot=own/"mobile_core/native_canvas_pilot.h"
+    lightweight=own/"mobile_core/lightweight_canvas_host.h"
     surface=own/"mobile_core/canvas_surface.h"
     switcher=own/"mobile_core/document_switcher.h"
     bridge=own/"mobile_core/engine_bridge.h"
@@ -50,7 +51,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,back_policy,transfer,native_chrome,native_pilot,surface,switcher,bridge,document_service,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+               (shell,session,back_policy,transfer,native_chrome,native_pilot,lightweight,surface,switcher,bridge,document_service,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
                 reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
@@ -59,7 +60,7 @@ def main(root:Path):
     # Keep the mobile widgets/engine facade unaware of this legacy class,
     # so a future lightweight application host can replace it in one place.
     desktop_dependent=(desktop_adapters,mdi_view_adapter)
-    qt_host_components=(session,back_policy,transfer,native_chrome,native_pilot,surface)
+    qt_host_components=(session,back_policy,transfer,native_chrome,native_pilot,lightweight,surface)
     mobile_frontend=(shell,bridge,host_services,document_service,document_port,view_port,view_guard,
                      command_service,command_port,switcher,brush,color,layers,
                      commands,quick,mdi_identity,pressure_calibration,pressure_settings,
@@ -90,7 +91,7 @@ def main(root:Path):
     mainfile=root/"libs/ui/KisMainWindow.cpp"
     s=mainfile.read_text(encoding="utf-8")
     s=one(s,'#include "tablet_compact_skin.h"',
-          '#include "tablet_compact_skin.h"\n#include "canvas_session.h"\n#include "desktop_host_adapters.h"\n#include "mdi_view_host_adapter.h"\n#include <QSharedPointer>',
+          '#include "tablet_compact_skin.h"\n#include "canvas_session.h"\n#include "lightweight_canvas_host.h"\n#include "desktop_host_adapters.h"\n#include "mdi_view_host_adapter.h"\n#include <QSharedPointer>',
           "main window include")
 
     native='''    auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);'''
@@ -226,6 +227,8 @@ def main(root:Path):
         native_chrome.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/native_canvas_pilot.h").write_text(
         native_pilot.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/lightweight_canvas_host.h").write_text(
+        lightweight.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/canvas_surface.h").write_text(
         surface.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_switcher.h").write_text(
