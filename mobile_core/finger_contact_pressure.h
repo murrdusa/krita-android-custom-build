@@ -11,8 +11,10 @@
  */
 #pragma once
 
+#include <QCoreApplication>
 #include <QSettings>
 #include <QSizeF>
+#include <QThread>
 #include <QTouchEvent>
 #include <QtGlobal>
 #include <cmath>
@@ -53,6 +55,24 @@ public:
             const qreal finalPressure=stroke.active && stroke.enabled &&
                 stroke.hasSample && stroke.pointId==point.id()?
                 stroke.smoothed:originalPressure;
+            // One in-memory diagnostic per completed stroke. This avoids
+            // per-event settings writes and never records coordinates,
+            // images, paths or stylus pressure. The UI can report whether
+            // the device/Qt platform actually supplied a contact ellipse.
+            if(stroke.active && stroke.enabled &&
+               stroke.pointId==point.id()) {
+                QCoreApplication *app=QCoreApplication::instance();
+                if(app && QThread::currentThread()==app->thread()) {
+                    app->setProperty("_mobileFingerAreaLastSampleCount",
+                                     stroke.samples);
+                    app->setProperty("_mobileFingerAreaLastMinDiameter",
+                                     stroke.minDiameter);
+                    app->setProperty("_mobileFingerAreaLastMaxDiameter",
+                                     stroke.maxDiameter);
+                    app->setProperty("_mobileFingerAreaLastPressure",
+                                     finalPressure);
+                }
+            }
             stroke=Stroke{};
             return finalPressure;
         }
@@ -90,6 +110,9 @@ public:
             stroke.baseline=diameter;
             stroke.smoothed=0.52;
             stroke.lastDiameter=diameter;
+            stroke.minDiameter=diameter;
+            stroke.maxDiameter=diameter;
+            stroke.samples=1;
             stroke.hasSample=true;
             return stroke.smoothed;
         }
@@ -109,6 +132,9 @@ public:
             return stroke.smoothed;
         stroke.lastSampleTime=eventTime;
         stroke.lastDiameter=diameter;
+        stroke.minDiameter=qMin(stroke.minDiameter,diameter);
+        stroke.maxDiameter=qMax(stroke.maxDiameter,diameter);
+        ++stroke.samples;
         const qreal error=target-stroke.smoothed;
         if(qAbs(error)>0.015)
             stroke.smoothed=qBound(qreal(0.16),
@@ -127,6 +153,9 @@ private:
         ulong lastSampleTime=0;
         qreal baseline=0;
         qreal lastDiameter=0;
+        qreal minDiameter=0;
+        qreal maxDiameter=0;
         qreal smoothed=0.52;
+        int samples=0;
     };
 };
