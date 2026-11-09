@@ -1,8 +1,8 @@
 name: Krita Android custom build (experimental)
 
+# Android builds run incrementally on the user's WSL build watcher.
+# GitHub remains an opt-in fallback and must not launch Android builds on push.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       mode:
