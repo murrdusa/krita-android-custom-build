@@ -263,13 +263,14 @@ jobs:
         run: /tmp/krita-lightweight-canvas-host-test
       - name: Build MDI-free native multi-document view host
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+          c++ -std=c++17 -fPIC -g -fsanitize=address -fno-omit-frame-pointer -DKRITA_MOBILE_QT_TEST -I. \
             tests/qt_native_view_stack.cpp \
             -o /tmp/krita-native-view-stack-test \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Verify view lifecycle and twelve canvas-preserving UI switches
         env:
           QT_QPA_PLATFORM: offscreen
+          ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
         run: /tmp/krita-native-view-stack-test
       - name: Build no-reparent mobile chrome smoke test
         run: |
