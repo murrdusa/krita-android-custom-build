@@ -75,9 +75,9 @@ int main(int argc,char **argv)
     MobileNativeStartupPolicy::setEnabled(s,true);
     const Decision first=MobileNativeStartupPolicy::beginOncePerProcess(s);
     const Decision second=MobileNativeStartupPolicy::beginOncePerProcess(s);
-    require(first==Decision::Launch && second==Decision::Launch &&
+    require(first==Decision::Launch && second==Decision::Skip &&
             MobileNativeStartupPolicy::enabled(s),
-            "second same-process main window falsely activated recovery");
+            "second same-process main window duplicated engine or recovery");
     app.setProperty(MobileNativeStartupPolicy::processDecisionKey(),QVariant());
     QSettings nextProcess(dir.filePath(QStringLiteral("native.ini")),
                           QSettings::IniFormat);
