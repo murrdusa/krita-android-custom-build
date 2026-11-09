@@ -49,6 +49,10 @@ A small addition to Krita's existing Android `MainActivity.dispatchTouchEvent` r
 
 When `KoPointerEvent` asks for a finger's pressure, the converter selects raw data only if the pointer ID and event timestamp match within 50 ms. The buffer is limited to 96 samples; no coordinates or paths are retained. All pen and multi-finger events continue through the original routes.
 
+**Gesture isolation:** new finger gestures, cancellation, and the addition of another finger clear the raw buffer so recycled Android pointer IDs cannot reuse an earlier stroke's measurements. Raw capture is gated behind the original finger-pressure enable setting; when the experiment is disabled, the Android layer does not collect new raw contact-size samples.
+
+**Source consistency:** Qt and raw Android may report different units on some screens. Each stroke locks to the first valid source. If Android raw data was selected and temporarily disappears, a ratio learned from simultaneous raw/Qt readings converts the Qt fallback into the same contact-size scale. If no reliable ratio exists, the brush retains its last valid smoothed pressure rather than jumping between incompatible measurement scales. A stroke that started on Qt stays on Qt; a later-arriving raw sample only becomes eligible for the next stroke.
+
 Raw Android size is normalized by Android display density, which may not exactly match Qt's logical-pixel scale on every device. This is why the live diagnostics name the measurement source and the raw preference can be disabled. The Android Java-to-C++ path has compiled, but real size values still need phone testing.
 
 ## On-device tests
@@ -65,7 +69,8 @@ Raw Android size is normalized by Android display density, which may not exactly
 
 - `mobile_core/finger_pressure_settings.h` — calibrated curve and adaptive coefficient.
 - `mobile_core/finger_contact_pressure.h` — stroke state, smoothing, diagnostics and raw fallback.
-- `mobile_core/finger_raw_bridge.h` — thread-safe raw sample ring buffer.
+- `mobile_core/finger_raw_bridge.h` — thread-safe raw sample ring buffer with opt-in capture gating and reset on new/cancelled gestures.
+- `mobile_core/finger_contact_source.h` — per-stroke Qt/raw source lock and scale-aligned fallback when raw data drops out.
 - `mobile_core/finger_pressure_calibration.h` — scrollable calibration UI and live sensor-level graph.
 - `apply_finger_contact_pressure.py` and `apply_finger_raw_motion.py` — optional Krita Android source patches.
 - `tests/qt_finger_contact_pressure.cpp`, `tests/qt_finger_pressure_calibration.cpp`, and `tests/qt_finger_raw_bridge.cpp` — synthetic regression tests. These do not prove that a specific phone exports usable contact data.
