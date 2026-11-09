@@ -96,9 +96,11 @@ jobs:
           assert "selected>=0" in mdi_adapter
           assert "if(candidate>=0)" in mdi_adapter
           assert "QPointer<QMdiArea> m_area" in mdi_adapter
-          assert "QMdiArea" not in document_service
+          assert '#include <QMdiArea>' not in document_service
+          assert "m_documents" not in document_service
+          assert "subWindowList(" not in document_service
           assert "KisView.h" not in document_service
-          assert "QMdiArea" not in mobile_bridge
+          assert '#include <QMdiArea>' not in mobile_bridge
           assert "new MobileMdiViewHostAdapter(d->mdiArea,d->viewManager)" in shell_patch
           assert "closeDocumentView(activeView)" in switcher
           assert "activateDocumentView(desiredView)" in switcher
