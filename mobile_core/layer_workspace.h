@@ -36,6 +36,11 @@
 #include "engine_bridge.h"
 #include "native_layer_reorder_policy.h"
 #include <QSettings>
+#include <chrono>
+#include <future>
+#include <memory>
+#include "kis_processing_applicator.h"
+#include "commands/kis_image_layer_move_command.h"
 #include "kis_node_manager.h"
 #include "kis_node.h"
 #include "kis_image.h"
@@ -278,40 +283,94 @@ public:
     void refreshNow() {if(!m_reorderPending)reload();}
 
 private:
-    // Native single-layer reorder goes through Krita's undoable indexed
-    // move command. Do not invoke the compressed multi-layer juggler
-    // and immediately traverse its asynchronously changing node tree.
+    // A reorder is a Krita image stroke, not a legacy direct-command
+    // edit. It enters the same document undo stack used by pen strokes.
+    // Node order is bottom-to-top, whereas the displayed tree is
+    // top-to-bottom. Use sibling anchors, not the old indexed move API:
+    // that API treats "move up one" as a self-anchor and returns false.
     void reorderNode(KisNodeSP node,bool towardTop)
     {
         if(m_reorderPending || !node)return;
         auto *view=m_engine.manager();
         auto *nodes=manager();
         if(!view || !nodes)return;
-        auto image=view->image().toStrongRef();
+        KisImageSP image=view->image().toStrongRef();
         KisNodeSP parent=node->parent();
-        if(!image || !image->root() || !image->undoAdapter() ||
+        if(!image || !image->root() ||
            !parent || !parent->isEditable(false) ||
            !parent->allowAsChild(node))return;
-        const int next=MobileNativeLayerReorderPolicy::targetIndex(
+
+        // Ensure no stale layer from another open document is moved.
+        KisNodeSP ancestor=node;
+        while(ancestor && ancestor!=image->root())
+            ancestor=ancestor->parent();
+        if(ancestor!=image->root())return;
+
+        const auto plan=MobileNativeLayerReorderPolicy::plan(
             parent->index(node),int(parent->childCount()),towardTop);
-        if(next<0)return;
+        if(!plan.valid)return;
+
+        KisNodeSP above=plan.anchorIndex>=0 ?
+                        parent->at(plan.anchorIndex) : KisNodeSP();
+        if((plan.anchorIndex>=0 && !above) ||
+           above==node || (above && above->parent()!=parent))return;
+
+        // Selection is UI state; the following command is the actual
+        // undoable document mutation. Never use a different document's
+        // image or Krita's desktop node-manager reorder action.
+        if(!m_engine.selectLayer(node))return;
 
         m_reorderPending=true;
-        QSettings settings;
-        settings.setValue(QStringLiteral("MobileStudio/nativeLayerMoveStage"),
-                          QStringLiteral("Krita indexed node move dispatched"));
-        settings.sync();
-        // The active view must own the selected layer. Never dispatch a
-        // stale or cross-document node identity to the undo adapter.
-        if(!m_engine.selectLayer(node)) {
+        checkpointMove(QStringLiteral("Native reorder stroke queued"));
+        auto *command=new KisImageLayerMoveCommand(
+            image,node,parent,above,true);
+        KisProcessingApplicator stroke(
+            image,KisNodeList(),KisProcessingApplicator::NONE,
+            KisImageSignalVector(),command->text());
+        stroke.applyCommand(command,KisStrokeJobData::SEQUENTIAL,
+                            KisStrokeJobData::EXCLUSIVE);
+        auto completion=std::make_shared<std::future<bool>>(
+            stroke.successfullyCompletedFuture());
+        stroke.end();
+        awaitReorder(completion);
+    }
+
+    void awaitReorder(const std::shared_ptr<std::future<bool>> &result)
+    {
+        // Do not block the Qt UI thread or walk the node graph while
+        // Krita is applying/reversing a processing stroke.
+        if(!result || !result->valid()) {
             m_reorderPending=false;
+            checkpointMove(QStringLiteral("Native reorder future unavailable"));
+            reload();
             return;
         }
-        nodes->moveNodeAt(node,parent,next);
-        QTimer::singleShot(150,this,[this]() {
-            m_reorderPending=false;
-            reload();
-        });
+        if(result->wait_for(std::chrono::milliseconds(0))!=
+           std::future_status::ready) {
+            QTimer::singleShot(40,this,[this,result]() {
+                awaitReorder(result);
+            });
+            return;
+        }
+        bool succeeded=false;
+        try {
+            succeeded=result->get();
+        } catch(const std::future_error &) {
+            succeeded=false;
+        }
+        m_reorderPending=false;
+        checkpointMove(succeeded ?
+            QStringLiteral("Native reorder stroke committed to Undo"):
+            QStringLiteral("Native reorder stroke not completed"));
+        reload();
+    }
+
+    static void checkpointMove(const QString &stage)
+    {
+        QSettings settings;
+        settings.setValue(QStringLiteral("MobileStudio/nativeLayerMoveStage"),
+                          stage);
+        settings.sync();
     }
 
     void showLayerActions(KisNodeSP node,QTreeWidgetItem *item)

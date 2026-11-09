@@ -449,3 +449,26 @@ Persisted diagnostic checkpoints distinguish missing document/canvas
 from a color widget that fails to become visible. These are
 suspected causes, not a device-proven fix. Native compilation and
 device testing are required.
+
+
+## Single-layer reordering fix after 665c56b device feedback
+
+The user confirmed the Color wheel is restored and downward
+reordering works, but upward reordering does nothing, and changes
+do not appear in Undo. Krita's actual KisNodeFacade::moveNode
+(quint32 index) resolves the insertion anchor as `at(index-1)`
+*before removing the moving node*, and immediately rejects
+`aboveThis == node`. That explains the failed one-slot upward
+move, which previously selected itself.
+
+The new native controls use explicit bottom-to-top sibling anchors
+with `KisImageLayerMoveCommand` and a
+`KisProcessingApplicator` processing stroke, rather than
+`KisNodeManager::moveNodeAt` / legacy synchronous undo adapter.
+The stroke's completion future gates panel refresh and subsequent
+reorders, protecting image tree consistency. Both upward/downward
+plans and simulated reverse moves are covered by Qt tests, though
+actual Android history integration requires on-device verification.
+The layer menu and Up/Down buttons share the same command path.
+Color wheel code is unchanged. Multi-selected reorder remains
+unsupported until a safe grouped undo transaction is validated.
