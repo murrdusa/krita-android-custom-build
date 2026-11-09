@@ -1,13 +1,11 @@
 /*
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Krita-backed document and native canvas-view lifecycle service.
- * Mobile UI never constructs KisMainWindow or QMdiArea. This adapter
- * owns the final, explicit dependency on those legacy operations:
- * creation, open, safe save, active view selection and close.
- *
- * Moving from a legacy host to a future lightweight Krita engine host
- * should require replacing this service rather than changing mobile UI.
+ * Krita-backed document transaction service. The mobile UI depends on
+ * swappable document and view ports, not Krita's desktop MDI widget.
+ * All view activation, guarded close, and native Save/Discard/Cancel
+ * delegation go through the view-host contract. A lightweight Krita
+ * host can replace the adapters without rewriting mobile workflows.
  */
 #pragma once
 #ifdef Q_OS_ANDROID
