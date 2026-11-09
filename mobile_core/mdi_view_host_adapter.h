@@ -24,6 +24,12 @@ public:
     MobileMdiViewHostAdapter(QMdiArea *area,KisViewManager *manager)
         : m_area(area),m_manager(manager) {}
 
+    QPointer<QObject> currentDocument() const override
+    {
+        return m_manager?
+            QPointer<QObject>(m_manager->document()):QPointer<QObject>();
+    }
+
     QVector<ViewSnapshot> openViews() const override
     {
         QVector<ViewSnapshot> result;
