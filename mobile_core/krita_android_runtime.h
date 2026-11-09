@@ -1,9 +1,8 @@
 /*
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Mobile Studio's process-level Android application bootstrap.
- * Uses Krita's Qt application and actual engine, but does not invoke
- * KisApplication::start for a normal launcher session.
+ * Mobile Studio's Android application bootstrap. The native executable
+ * never invokes Krita's desktop application startup.
  */
 #pragma once
 #include <QtGlobal>
@@ -14,7 +13,7 @@ class KisApplicationArguments;
 class KRITAUI_EXPORT MobileKritaAndroidRuntime final
 {
 public:
-    enum class Result { UseLegacyInvocation, Started, Failed };
+    enum class Result { Started, Failed };
     static Result launch(KisApplication &app,
                          const KisApplicationArguments &args);
 };

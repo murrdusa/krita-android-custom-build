@@ -10,7 +10,6 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QMetaObject>
-#include <QSettings>
 #include "KisApplication.h"
 #include "KisApplicationArguments.h"
 #include "KisAndroidDonations.h"
@@ -21,25 +20,23 @@
 #include "kis_spin_box_unit_manager.h"
 #include "krita_application_entry.h"
 #include "android_document_intents.h"
-#include "engine_only_startup_policy.h"
 #include <config-qt-patches-present.h>
 
 MobileKritaAndroidRuntime::Result MobileKritaAndroidRuntime::launch(
     KisApplication &app,const KisApplicationArguments &args)
 {
-    // File intents, batch conversion, sessions and explicit legacy
-    // preferences keep Krita's original command-line handling.
-    const bool normal=args.fileLayer().isEmpty() && args.session().isEmpty() &&
-        args.workspace().isEmpty() && args.windowLayout().isEmpty() &&
-        !args.doNewImage() && !args.doTemplate() &&
-        !args.exportAs() && !args.exportSequence() &&
-        args.exportFileName().isEmpty() &&
-        !args.canvasOnly() && !args.fullScreen();
-    const QSettings settings;
-    if(!normal || !MobileEngineOnlyStartupPolicy::enabled(settings))
-        return Result::UseLegacyInvocation;
+    // This APK has one application: the native Mobile Studio painting
+    // host. External files are queued below; there is no desktop UI
+    // to fall back into on any Android launch.
+    if(!args.fileLayer().isEmpty() || !args.session().isEmpty() ||
+       !args.workspace().isEmpty() || !args.windowLayout().isEmpty() ||
+       args.exportAs() || args.exportSequence() ||
+       !args.exportFileName().isEmpty() || args.canvasOnly() ||
+       args.fullScreen() || args.doNewImage() || args.doTemplate()) {
+        qWarning() << "Mobile Studio: desktop-only launch flags ignored";
+    }
 
-    qInfo() << "Mobile Studio: independent Android process startup";
+    qInfo() << "Mobile Studio: standalone Android process startup";
     MobileAndroidDocumentIntents::activate();
     for(const QString &file:args.filenames())
         MobileAndroidDocumentIntents::enqueue(file);
@@ -107,8 +104,7 @@ MobileKritaAndroidRuntime::Result MobileKritaAndroidRuntime::launch(
     // Hide the Krita splash and launch the only native drawing window.
     // An initialization failure is an error, not an automatic UI switch.
     app.hideSplashScreen();
-    if(!MobileKritaApplicationEntry::start(
-           args,true,true,false,false,false,false))
+    if(!MobileKritaApplicationEntry::start())
         return Result::Failed;
 
     app.verifyMetatypeRegistration();

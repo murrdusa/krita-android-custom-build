@@ -1,34 +1,26 @@
 /*
  * SPDX-License-Identifier: GPL-2.0-or-later
- * Android window bootstrap policy, separate from KisApplication.
+ *
+ * The Android app always opens its own Krita-backed drawing host.
  */
 #include "krita_application_entry.h"
 #ifdef Q_OS_ANDROID
 #include <QDebug>
 #include <QSettings>
-#include "KisApplicationArguments.h"
 #include "engine_only_startup_policy.h"
 #include "engine_only_bootstrap.h"
 
-bool MobileKritaApplicationEntry::start(
-    const KisApplicationArguments &args,
-    bool needsWindow,bool showWindow,bool batchRun,
-    bool doNewImage,bool doTemplate,bool queuedIntents)
+bool MobileKritaApplicationEntry::start()
 {
-    // Ordinary launches use only the independent native painting root.
-    // External file and explicit session invocations need native
-    // document-intent support before the legacy routing can be removed.
-    const bool compatible=needsWindow && showWindow && !batchRun &&
-        !doNewImage && !doTemplate && !queuedIntents &&
-        args.fileLayer().isEmpty() &&
-        args.session().isEmpty() && args.workspace().isEmpty() &&
-        args.windowLayout().isEmpty() &&
-        !args.canvasOnly() && !args.fullScreen();
-
+    // Preserve crash diagnostics without providing or selecting another
+    // application interface. Canvas success is reported asynchronously.
     QSettings settings;
-    if(MobileEngineOnlyStartupPolicy::begin(settings,compatible)!=
-       MobileEngineOnlyStartupPolicy::Decision::Launch)
-        return false;
+    const QString pending=MobileEngineOnlyStartupPolicy::pendingKey();
+    if(settings.value(pending,false).toBool())
+        settings.setValue(
+            QStringLiteral("MobileStudio/previousBootInterrupted"),true);
+    settings.setValue(pending,true);
+    settings.sync();
 
     if(MobileEngineOnlyBootstrap::launch())
         return true;

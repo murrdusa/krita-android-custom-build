@@ -532,11 +532,7 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
         '''    KisPart *kisPart = KisPart::instance();
 #ifdef Q_OS_ANDROID
     // Native Android startup is owned by the application entry module.
-    const bool engineOnlyBoot=MobileKritaApplicationEntry::start(
-        args,needsMainWindow,showmainWindow,d->batchRun,
-        doNewImage,doTemplate,
-        !d->earlyRemoteArguments.isEmpty() ||
-        !d->earlyFileOpenEvents.isEmpty());
+    const bool engineOnlyBoot=MobileKritaApplicationEntry::start();
 #else
     const bool engineOnlyBoot=false;
 #endif
@@ -1324,29 +1320,21 @@ install(FILES org.kde.krita.desktop''',
     entry=one(entry,
         '#include <KisApplication.h>',
         '''#include <KisApplication.h>
-#ifdef Q_OS_ANDROID
-#include <krita_android_runtime.h>
-#endif''',
-        "Android process bootstrap include")
+#include <krita_android_runtime.h>''',
+        "Mobile-only process bootstrap include")
     entry=one(entry,
         '''    if (!app.start(args)) {
         KisUsageLogger::log("Could not start Krita Application");
         return 1;
     }''',
-        '''#ifdef Q_OS_ANDROID
-    const auto mobileResult=MobileKritaAndroidRuntime::launch(app,args);
-    const bool startupReady=
-        mobileResult==MobileKritaAndroidRuntime::Result::Started ||
-        (mobileResult==MobileKritaAndroidRuntime::Result::UseLegacyInvocation &&
-         app.start(args));
-#else
-    const bool startupReady=app.start(args);
-#endif
-    if (!startupReady) {
-        KisUsageLogger::log("Could not start painting application");
+        '''    // Compiled only by the native mobile_studio Android target.
+    // Never enter the original desktop session or recovery path.
+    if (MobileKritaAndroidRuntime::launch(app,args) !=
+        MobileKritaAndroidRuntime::Result::Started) {
+        KisUsageLogger::log("Could not start Mobile Studio");
         return 1;
     }''',
-        "Android independent main entry")
+        "Mobile-only native entry without desktop fallback")
     # The original desktop main.cc remains untouched; Android's native
     # library compiles an independent app-specific translation unit.
     (root/"krita/mobile_studio_main.cc").write_text(entry,encoding="utf-8")
