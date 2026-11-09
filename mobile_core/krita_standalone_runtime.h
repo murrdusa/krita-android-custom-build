@@ -12,6 +12,8 @@
 #include <QPointer>
 #include <QSharedPointer>
 #include <kactioncollection.h>
+#include <KoToolFactoryBase.h>
+#include <KoToolRegistry.h>
 #include "KisPart.h"
 #include "KisView.h"
 #include "KisViewManager.h"
@@ -66,6 +68,13 @@ public:
         // KisViewManager(QWidget*,...) does not set its QObject parent.
         runtime->m_manager->setParent(runtime);
         runtime->m_manager->setQtMainWindow(host);
+        // Krita's KisMainWindow registers plugin tool actions before
+        // KisView::setViewManager() requests the active brush. Without
+        // this, KoToolManager can select a tool whose actions were never
+        // created for the independent host.
+        for(KoToolFactoryBase *factory:KoToolRegistry::instance()->values()) {
+            if(factory)factory->createActions(runtime->m_actions.data());
+        }
         runtime->m_actions->addAssociatedWidget(host);
         runtime->m_commands=QSharedPointer<MobileStandaloneKritaActions>::create(
             runtime->m_actions,host);

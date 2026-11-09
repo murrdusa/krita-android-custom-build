@@ -191,6 +191,12 @@ serialization or brushes.
   native path policy has focused Qt regression coverage for local
   files, missing paths, provider URIs, explicit Save As, autosave
   recovery and unsupported formats. It is an opt-in prototype change.
+- Native standalone runtime now mirrors Krita 6.0.4 desktop's
+  paint-tool initialization boundary by registering each
+  `KoToolFactoryBase` action through `KoToolRegistry` before
+  `KisView::setViewManager()` requests the default brush. This
+  prevents a valid canvas from having a missing tool action registry.
+  The pilot remains opt-in and requires device validation.
 - The opt-in stationary canvas header was found consuming hundreds of
   pixels of height on a real device. The top dock is now capped at 76
   logical pixels and its title/header widget is height-fixed; a Qt

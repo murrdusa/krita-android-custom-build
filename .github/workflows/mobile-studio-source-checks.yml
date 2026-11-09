@@ -272,6 +272,8 @@ jobs:
           assert 'mobile_native_engine_compile_probe.cpp' in shell_patch
           native_runtime = Path("mobile_core/krita_standalone_runtime.h").read_text()
           for fragment in ("class MobileKritaStandaloneRuntime final",
+                           "KoToolRegistry::instance()->values()",
+                           "factory->createActions(runtime->m_actions.data())",
                            "new KisKActionCollection(",
                            "new KisViewManager(host,runtime->m_actions)",
                            "runtime->m_manager->setParent(runtime)",
