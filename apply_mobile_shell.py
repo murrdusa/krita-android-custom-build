@@ -22,6 +22,7 @@ def main(root:Path):
     own=Path(__file__).resolve().parent
     shell=own/"mobile_core/standalone_host.h"
     session=own/"mobile_core/canvas_session.h"
+    startup_policy=own/"mobile_core/mobile_startup_policy.h"
     back_policy=own/"mobile_core/android_back_policy.h"
     transfer=own/"mobile_core/canvas_transfer.h"
     native_chrome=own/"mobile_core/native_canvas_chrome.h"
@@ -56,7 +57,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,standalone_krita_runtime,standalone_krita_documents,surface,switcher,bridge,document_service,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+               (shell,session,startup_policy,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,standalone_krita_runtime,standalone_krita_documents,surface,switcher,bridge,document_service,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
                 reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
@@ -371,6 +372,8 @@ KisMainWindow * KisView::mainWindow() const''',
         shell.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/canvas_session.h").write_text(
         session.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/mobile_startup_policy.h").write_text(
+        startup_policy.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/android_back_policy.h").write_text(
         back_policy.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/canvas_transfer.h").write_text(

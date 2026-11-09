@@ -73,7 +73,14 @@ jobs:
           startup = Path("mobile_core/canvas_session.h").read_text()
           assert "void attemptAutomaticStartup(int remaining)" in startup
           assert "attemptAutomaticStartup(12)" in startup
-          assert "m_backend->isVisible() && m_backend->centralWidget()" in startup
+          assert 'MobileStartupPolicy::ready(' in startup
+          assert 'MobileStartupPolicy::begin(settings)' in startup
+          assert 'MobileStartupPolicy::complete(settings,sessionActive())' in startup
+          assert 'mobile_startup_policy.h' in startup
+          assert 'if(!isReady && remaining>0)' in startup
+          assert 'QStringLiteral("MobileStudio/startDirectly"),true' in Path("mobile_core/standalone_host.h").read_text()
+          assert 'startup_policy=own/"mobile_core/mobile_startup_policy.h"' in Path("apply_mobile_shell.py").read_text()
+          assert '(root/"libs/ui/mobile_startup_policy.h").write_text(' in Path("apply_mobile_shell.py").read_text()
           assert "QStringLiteral(\"MobileStudio/bootPending\"),false" in startup
           assert "QTimer::singleShot(4500" not in startup
           assert "manual recovery available in Settings" in startup
@@ -343,6 +350,14 @@ jobs:
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Test guarded close-time Save delegation
         run: /tmp/krita-native-save-host-test
+      - name: Build mobile startup policy regression test
+        run: |
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+            tests/qt_mobile_startup_policy.cpp \
+            -o /tmp/krita-mobile-startup-test \
+            $(pkg-config --cflags --libs Qt5Core)
+      - name: Verify mobile-first launch, opt-out and crash recovery
+        run: /tmp/krita-mobile-startup-test
       - name: Build MDI-free native multi-document view host
         run: |
           c++ -std=c++17 -fPIC -g -fsanitize=address -fno-omit-frame-pointer -DKRITA_MOBILE_QT_TEST -I. \

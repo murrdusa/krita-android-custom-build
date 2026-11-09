@@ -120,6 +120,13 @@ serialization or brushes.
   fall back safely to Krita; existing installs may need to manually
   reenable the startup preference. Full Android device verification
   is still pending.
+- Mobile-first startup now defaults on for **new installations**
+  while respecting an explicit saved opt-out or the existing crash guard.
+  The Qt-only `mobile_startup_policy.h` prevents repeated reparenting
+  on a failed startup: readiness can be retried, but the actual
+  painting-widget handoff is attempted only once. A new Qt regression
+  validates settings persistence, failure recovery and readiness.
+  Existing APKs require rebuilding; saved opt-outs remain authoritative.
 - The opt-in stationary canvas header was found consuming hundreds of
   pixels of height on a real device. The top dock is now capped at 76
   logical pixels and its title/header widget is height-fixed; a Qt

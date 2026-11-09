@@ -21,6 +21,7 @@
 #include <QTimer>
 #include <memory>
 #include "engine_bridge.h"
+#include "mobile_startup_policy.h"
 #include "android_back_policy.h"
 #include "canvas_transfer.h"
 #include "native_canvas_chrome.h" // Qt-only stationary canvas UI architecture
@@ -55,24 +56,14 @@ public:
                qApp->property("_mobileStudioBootHandled").toBool())return;
             qApp->setProperty("_mobileStudioBootHandled",true);
             QSettings settings;
-            if(!settings.value(
-                    QStringLiteral("MobileStudio/startDirectly"),false)
-                    .toBool())return;
-            if(settings.value(
-                    QStringLiteral("MobileStudio/bootPending"),false)
-                    .toBool()) {
-                settings.setValue(
-                    QStringLiteral("MobileStudio/startDirectly"),false);
-                settings.setValue(
-                    QStringLiteral("MobileStudio/bootPending"),false);
-                settings.sync();
+            const auto decision=MobileStartupPolicy::begin(settings);
+            if(decision==MobileStartupPolicy::Decision::NoAutostart)
+                return;
+            if(decision==MobileStartupPolicy::Decision::RecoverNativeKrita) {
                 qWarning() << "Mobile Studio: incomplete previous boot;"
                            << "manual recovery available in Settings";
                 return;
             }
-            settings.setValue(
-                QStringLiteral("MobileStudio/bootPending"),true);
-            settings.sync();
             QTimer::singleShot(250,this,[this]() {
                 attemptAutomaticStartup(12);
             });
@@ -170,49 +161,37 @@ private:
     void attemptAutomaticStartup(int remaining)
     {
         if(sessionActive()) {
-            // A verified successful launch must clear the crash marker
-            // immediately, not 4.5 seconds later: a quick app restart
-            // should not permanently disable the user's preference.
             QSettings settings;
-            settings.setValue(
-                QStringLiteral("MobileStudio/bootPending"),false);
-            settings.sync();
+            MobileStartupPolicy::complete(settings,true);
             return;
         }
-        if(m_entry && m_backend && qApp &&
-           m_backend->isVisible() && m_backend->centralWidget() &&
-           !m_transitioning && !qApp->activeModalWidget()) {
-            if(m_entry->isChecked()) {
-                const QSignalBlocker blocked(m_entry);
-                m_entry->setChecked(false);
-            }
-            // Signals synchronously invoke enter(). Recheck whether it
-            // actually succeeded before persisting a successful boot.
-            m_entry->setChecked(true);
-            if(sessionActive()) {
-                QSettings settings;
-                settings.setValue(
-                    QStringLiteral("MobileStudio/bootPending"),false);
-                settings.sync();
-                return;
-            }
-        }
-        if(remaining>0) {
+        const bool isReady=m_entry && m_backend && qApp &&
+            MobileStartupPolicy::ready(
+                m_backend->isVisible(),
+                m_backend->centralWidget()!=nullptr,
+                m_transitioning,
+                qApp->activeModalWidget()!=nullptr);
+        // Qt can delay Krita's native document root. Retry only this
+        // harmless readiness check, never an actual rejected canvas
+        // handoff (which could be a failed GL ownership transaction).
+        if(!isReady && remaining>0) {
             QTimer::singleShot(300,this,[this,remaining]() {
                 attemptAutomaticStartup(remaining-1);
             });
             return;
         }
-        // Bounded fallback: preserve Krita's original canvas and
-        // expose Settings > Mobile Studio for a manual retry.
+        if(isReady) {
+            if(m_entry->isChecked()) {
+                const QSignalBlocker blocked(m_entry);
+                m_entry->setChecked(false);
+            }
+            m_entry->setChecked(true); // enter() runs synchronously.
+        }
         QSettings settings;
-        settings.setValue(
-            QStringLiteral("MobileStudio/startDirectly"),false);
-        settings.setValue(
-            QStringLiteral("MobileStudio/bootPending"),false);
-        settings.sync();
-        qWarning() << "Mobile Studio: automatic entry unavailable;"
-                   << "open Settings > Mobile Studio (experimental)";
+        MobileStartupPolicy::complete(settings,sessionActive());
+        if(!sessionActive())
+            qWarning() << "Mobile Studio: automatic entry failed;"
+                       << "open Settings > Mobile Studio (experimental)";
     }
 
     bool sessionActive() const

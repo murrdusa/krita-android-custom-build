@@ -477,7 +477,7 @@ private:
             i18n("Start in Mobile Studio on next launch"));
         mobileStartup->setCheckable(true);
         mobileStartup->setChecked(QSettings().value(
-            QStringLiteral("MobileStudio/startDirectly"),false).toBool());
+            QStringLiteral("MobileStudio/startDirectly"),true).toBool());
         mobileStartup->setToolTip(i18n(
             "Skip desktop controls at launch. An unsuccessful automatic "
             "start reverts to the Krita fallback."));
