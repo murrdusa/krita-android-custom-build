@@ -27,6 +27,7 @@ def main(root:Path):
     switcher=own/"mobile_core/document_switcher.h"
     bridge=own/"mobile_core/engine_bridge.h"
     document_service=own/"mobile_core/document_service.h"
+    mdi_identity=own/"mobile_core/mdi_view_identity.h"
     command_service=own/"mobile_core/command_service.h"
     brush=own/"mobile_core/brush_workspace.h"
     color=own/"mobile_core/color_workspace.h"
@@ -39,7 +40,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,transfer,surface,switcher,bridge,document_service,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+               (shell,session,transfer,surface,switcher,bridge,document_service,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
                 reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
@@ -50,7 +51,7 @@ def main(root:Path):
     desktop_dependent=(document_service,command_service)
     qt_host_components=(session,transfer,surface)
     mobile_frontend=(shell,bridge,switcher,brush,color,layers,
-                     commands,quick,pressure_calibration,pressure_settings,
+                     commands,quick,mdi_identity,pressure_calibration,pressure_settings,
                      reorder,tools,documents,*qt_host_components)
     for module in mobile_frontend:
         contents=module.read_text(encoding="utf-8")
@@ -200,6 +201,8 @@ def main(root:Path):
         bridge.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_service.h").write_text(
         document_service.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/mdi_view_identity.h").write_text(
+        mdi_identity.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/command_service.h").write_text(
         command_service.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/brush_workspace.h").write_text(
