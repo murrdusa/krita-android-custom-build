@@ -85,6 +85,9 @@ jobs:
           assert "finger_pressure_settings.h" in pressure_input
           assert "MobileFingerPressureSettings::adaptiveAlpha(" in pressure_input
           assert "MobileFingerRawBridge::nearest(" in pressure_input
+          assert "MobileFingerContactSource::select(" in pressure_input
+          assert "finger_contact_source.h" in pressure_input
+          assert "finger_contact_source.h" in Path("apply_finger_contact_pressure.py").read_text()
           pressure_ui = Path("mobile_core/finger_pressure_calibration.h").read_text()
           assert "fingerPressureCurveGamma" in pressure_ui
           assert "fingerPressureStability" in pressure_ui
@@ -205,6 +208,14 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: /tmp/krita-finger-area-pressure-test
+      - name: Compile Qt/raw finger source-switch regression
+        run: |
+          c++ -std=c++17 -fPIC -I. \
+            tests/qt_finger_contact_source.cpp \
+            -o /tmp/krita-finger-source-test \
+            $(pkg-config --cflags --libs Qt5Core)
+      - name: Verify raw contact dropouts do not change brush pressure scale
+        run: /tmp/krita-finger-source-test
       - name: Compile raw Android contact Qt-only regression
         run: |
           c++ -std=c++17 -fPIC -I. \
