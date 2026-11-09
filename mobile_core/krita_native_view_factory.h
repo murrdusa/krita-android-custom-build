@@ -48,8 +48,10 @@ public:
             QStringLiteral("Untitled"):document->path();
         if(!stack->adoptView(view,document,title,[guarded]() {
             if(!guarded || !guarded->close())return false;
-            // closeEvent accepts/cancels first, then delete later.
-            if(guarded)guarded->deleteLater();
+            // Close may be canceled. Once accepted, destroy the native
+            // view synchronously while its Krita view manager is alive.
+            // Deferring deletion could outlive the manager during quit.
+            if(guarded)delete guarded.data();
             return true;
         })) {
             delete view; // KisPart unregisters via KisView destructor.

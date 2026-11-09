@@ -168,6 +168,9 @@ jobs:
           assert "retainsOriginalCanvas()" in lightweight
           assert "createNativeDocumentRoot()" in lightweight
           assert "nativeViewPort()" in lightweight
+          assert "void closeEvent(QCloseEvent *event) override" in lightweight
+          assert "event->ignore();" in lightweight
+          assert "delete guarded.data()" in Path("mobile_core/krita_native_view_factory.h").read_text()
           assert 'native_krita_save_host=own/"mobile_core/native_krita_save_host.h"' in shell_patch
           assert 'native_krita_factory=own/"mobile_core/krita_native_view_factory.h"' in shell_patch
           assert '(root/"libs/ui/krita_native_view_factory.h").write_text(' in shell_patch

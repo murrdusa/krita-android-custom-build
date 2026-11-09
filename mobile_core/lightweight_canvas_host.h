@@ -8,6 +8,7 @@
  */
 #pragma once
 #if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
+#include <QCloseEvent>
 #include <QMainWindow>
 #include <QPointer>
 #include <QWidget>
@@ -91,6 +92,25 @@ public:
     QWidget *nativeCanvas() const {return m_canvas.data();}
     MobileHostServices services() const {return m_services;}
     bool mobileVisible() const {return m_mobileChrome.active();}
+
+protected:
+    void closeEvent(QCloseEvent *event) override
+    {
+        // Native documents must receive their own Save/Discard/Cancel
+        // transaction before the Qt host can destroy their paint views.
+        // An unavailable/destroyed view or a canceled dialog fails closed.
+        if(m_nativeViewPort) {
+            const auto pending=m_nativeViewPort->openViews();
+            for(const auto &entry:pending) {
+                if(!entry.nativeView ||
+                   !m_nativeViewPort->closeView(entry.nativeView)) {
+                    event->ignore();
+                    return;
+                }
+            }
+        }
+        QMainWindow::closeEvent(event);
+    }
 
 private:
     QPointer<QWidget> m_canvas;

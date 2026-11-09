@@ -105,12 +105,15 @@ int main(int argc,char **argv)
             "selected native view rejected for save");
     require(!MobileViewIdentityGuard::maySave(root->openViews(),bid,doc2),
             "inactive view incorrectly allowed to save");
+    require(!host.close() && host.isVisible() &&
+            root->openViews().size()==2 && closeCalls==1,
+            "Qt window close bypassed canceled native document prompt");
     require(!root->closeView(aid) && root->openViews().size()==2 &&
-            root->currentDocument()==doc1 && closeCalls==1,
+            root->currentDocument()==doc1 && closeCalls==2,
             "canceled native close destroyed document");
     approve=true;
     require(root->closeView(aid) && root->openViews().size()==1 &&
-            root->currentDocument()==doc2 && closeCalls==2 &&
+            root->currentDocument()==doc2 && closeCalls==3 &&
             a->property("drawingRevision").toInt()==17,
             "accepted close targeted wrong view or destroyed canvas");
     require(!root->closeView(aid) && !root->activateView(aid),
@@ -120,6 +123,19 @@ int main(int argc,char **argv)
             !root->activateView(bid) && !root->closeView(bid) &&
             host.retainsOriginalCanvas(),
             "destroyed engine document left dangerous view operations");
+    // A native view is allowed to delete itself synchronously from
+    // its close callback, just as the real Krita factory does. That
+    // destroys the QObject while closeImpl is still on the stack.
+    auto *doc3=new QObject(&host);
+    auto *c=new QWidget;
+    QPointer<QObject> cid=c;
+    QPointer<QWidget> guardedC=c;
+    require(root->adoptView(c,doc3,QStringLiteral("Close now"),
+                            [c](){delete c;return true;}),
+            "could not adopt synchronous-close test widget");
+    require(root->closeView(cid) && !guardedC &&
+            root->openViews().isEmpty(),
+            "synchronous native widget destruction invalidated stack");
     retainedPort=services.views;
     expiredView=bid;
     } // Destroy the real Qt host, its document root and child views.
@@ -128,7 +144,8 @@ int main(int argc,char **argv)
             !retainedPort->activateView(expiredView) &&
             !retainedPort->closeView(expiredView),
             "view port accessed freed native host after destruction");
-    qInfo() << "PASS: MDI-free view stack, native close cancellation,"
-            << "12 no-reparent transitions, destroyed host safety";
+    qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
+            << "synchronous native destruction, twelve no-reparent"
+            << "transitions and destroyed-host safety";
     return 0;
 }
