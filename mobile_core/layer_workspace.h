@@ -1272,6 +1272,7 @@ private:
             m_touchHoldTimer->stop();
             m_touches.clear();
             m_touchPrimary.clear();
+            m_touchControl.clear();
             m_touchHeld=false;
             m_touchPinching=false;
             m_edgeScrollTimer->stop();
@@ -1291,12 +1292,20 @@ private:
                 if(m_touches.isEmpty()) {
                     m_touchPrimary=item.node;
                     m_touchLast=pos;
+                    // Qt may route touch on a small eye/lock/alpha button
+                    // to its touch-enabled viewport. Preserve that
+                    // button's action rather than selecting the layer.
+                    auto *hit=qobject_cast<QToolButton*>(
+                        QApplication::widgetAt(pos));
+                    m_touchControl=(hit &&
+                        !m_rowButtons.contains(hit) &&
+                        m_tree->isAncestorOf(hit))?hit:nullptr;
                     m_touchHeld=false;
                     m_touchMoved=false;
                     m_touchScrolling=false;
                     m_touchPinching=false;
                     m_touchPinchReady=false;
-                    m_touchHoldTimer->start();
+                    if(!m_touchControl)m_touchHoldTimer->start();
                 }
                 m_touches.insert(id,item);
             }
@@ -1348,6 +1357,7 @@ private:
             m_edgeScrollTimer->stop();
             hideLayerDropPreview();
             const KisNodeSP source=m_touchPrimary;
+            const QPointer<QToolButton> control=m_touchControl;
             const KisNodeSP a=m_touchPinchA;
             const KisNodeSP b=m_touchPinchB;
             const QPoint last=m_touchLast;
@@ -1357,13 +1367,15 @@ private:
             const bool scrolling=m_touchScrolling;
             const bool pinching=m_touchPinching;
             m_touchPrimary.clear();m_touchPinchA.clear();
-            m_touchPinchB.clear();
+            m_touchPinchB.clear();m_touchControl.clear();
             m_touchHeld=false;m_touchMoved=false;
             m_touchPinching=false;m_touchPinchReady=false;
             m_touchScrolling=false;
             if(source)suppressSyntheticClick(source);
             if(group)groupPinchedTiles(a,b);
-            else if(!pinching && !scrolling && source) {
+            else if(!pinching && !scrolling && control) {
+                control->click();
+            } else if(!pinching && !scrolling && source) {
                 if(moved)moveCompactLayerAt(source,last);
                 else if(!held) {
                     if(auto *item=itemForNode(source))tapLayer(source,item);
@@ -1383,7 +1395,7 @@ private:
         if(m_clipBusy || m_reorderPending)
             return QFrame::eventFilter(watched,event);
         auto *tile=qobject_cast<QToolButton*>(watched);
-        const int index=m_rowButtons.indexOf(tile);
+        const int index=tile?m_rowButtons.indexOf(tile):-1;
         if(index>=0 && type==QEvent::TabletPress) {
             auto *pen=static_cast<QTabletEvent*>(event);
             m_penTracking=true;
@@ -1760,6 +1772,7 @@ private:
     };
     QHash<int,TileTouch> m_touches;
     KisNodeSP m_touchPrimary,m_touchPinchA,m_touchPinchB;
+    QPointer<QToolButton> m_touchControl;
     QPoint m_touchLast;
     qreal m_touchPinchDistance=0;
     bool m_touchHeld=false,m_touchMoved=false,m_touchScrolling=false;
