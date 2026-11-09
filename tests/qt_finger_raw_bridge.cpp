@@ -29,6 +29,15 @@ int main(int argc,char **argv)
             "raw contact mixed different fingers");
     require(!MobileFingerRawBridge::nearest(2,1100,&sample),
             "raw contact reused a stale sample");
+    MobileFingerRawBridge::reset();
+    require(!MobileFingerRawBridge::nearest(2,1000,&sample),
+            "new gesture reused previous touch size on recycled pointer ID");
+    MobileFingerRawBridge::record(2,1000,26,20,2.0,false);
+    require(MobileFingerRawBridge::nearest(2,1000,&sample),
+            "fresh gesture could not publish its first contact");
+    MobileFingerRawBridge::reset();
+    require(!MobileFingerRawBridge::nearest(2,1000,&sample),
+            "multitouch/cancel reset did not discard single-finger samples");
     require(!MobileFingerRawBridge::nearest(2,0,&sample),
             "raw contact should not guess when Qt has no event time");
     MobileFingerRawBridge::record(2,1010,30,20,2.0,true);
@@ -49,8 +58,8 @@ int main(int argc,char **argv)
             "raw buffer retained old contacts after its bounded window");
     require(MobileFingerRawBridge::nearest(4,3192,&sample),
             "recent Android historical samples not matched");
-    qInfo() << "PASS: density-adjusted raw MotionEvent size, pointer identity,"
-            << "historical matching, stale/invalid sample rejection,"
-            << "bounded history and size-only live diagnostics";
+    qInfo() << "PASS: gesture and multitouch resets, density-adjusted"
+            << "raw touch size, pointer identity, historical matching,"
+            << "stale/invalid sample rejection and bounded history";
     return 0;
 }
