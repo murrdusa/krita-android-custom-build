@@ -30,6 +30,7 @@ def main(root:Path):
     native_view_stack=own/"mobile_core/native_view_stack.h"
     native_krita_save_host=own/"mobile_core/native_krita_save_host.h"
     native_krita_factory=own/"mobile_core/krita_native_view_factory.h"
+    standalone_krita_runtime=own/"mobile_core/krita_standalone_runtime.h"
     surface=own/"mobile_core/canvas_surface.h"
     switcher=own/"mobile_core/document_switcher.h"
     bridge=own/"mobile_core/engine_bridge.h"
@@ -54,7 +55,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,surface,switcher,bridge,document_service,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+               (shell,session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,standalone_krita_runtime,surface,switcher,bridge,document_service,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
                 reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
@@ -188,7 +189,55 @@ KisMainWindow * KisView::mainWindow() const''',
     return qtMainWindow();
 }''',
            "Qt-native lightweight dialog parent")
+    mc=one(mc,'''int KisViewManager::viewCount() const
+{
+    KisMainWindow *mw  = qobject_cast<KisMainWindow*>(d->mainWindow);
+    if (mw) {
+        return mw->viewCount();
+    }
+    return 0;
+}''',
+           '''int KisViewManager::viewCount() const
+{
+    KisMainWindow *mw  = qobject_cast<KisMainWindow*>(d->mainWindow);
+    if (mw) {
+        return mw->viewCount();
+    }
+#ifdef Q_OS_ANDROID
+    // A native Qt window has no MDI; count only registered Krita
+    // engine views belonging to this specific view manager.
+    int count=0;
+    if (KisPart::instance()) {
+        for (const QPointer<KisView> &candidate : KisPart::instance()->views()) {
+            if (candidate && candidate->viewManager()==this)
+                ++count;
+        }
+    }
+    return count;
+#else
+    return 0;
+#endif
+}''',
+           "Krita native view count")
     managercpp.write_text(mc,encoding="utf-8")
+
+    # Krita 6.0.4 canvas uses a desktop window for color-management
+    # operations, although its manager already stores QMainWindow.
+    canvasfile=root/"libs/ui/canvas/kis_canvas2.cpp"
+    canvas=canvasfile.read_text(encoding="utf-8")
+    canvas=one(canvas,
+               'QWindow *mainWindowNativeWindow = m_d->view->mainWindow()->windowHandle();',
+               '''QWidget *nativeHost=m_d->view->viewManager()->
+            mainWindowAsQWidget();
+        QWindow *mainWindowNativeWindow=nativeHost?
+            nativeHost->windowHandle():nullptr;''',
+               "native canvas color-managed surface parent")
+    canvas=one(canvas,
+               'QWidget *mainWindow = m_d->view->mainWindow();',
+               '''QWidget *mainWindow = m_d->view->viewManager()->
+        mainWindowAsQWidget();''',
+               "native canvas config parent")
+    canvasfile.write_text(canvas,encoding="utf-8")
 
     mainfile=root/"libs/ui/KisMainWindow.cpp"
     s=mainfile.read_text(encoding="utf-8")
@@ -337,6 +386,8 @@ KisMainWindow * KisView::mainWindow() const''',
         native_krita_save_host.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/krita_native_view_factory.h").write_text(
         native_krita_factory.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/krita_standalone_runtime.h").write_text(
+        standalone_krita_runtime.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/canvas_surface.h").write_text(
         surface.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_switcher.h").write_text(

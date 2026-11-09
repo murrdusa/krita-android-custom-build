@@ -87,6 +87,16 @@ serialization or brushes.
   into Krita's source tree but is **not instantiated, compiled as an
   Android APK or verified on a device**. It remains isolated until
   standalone manager construction and GL lifetime are validated.
+- `krita_standalone_runtime.h` now stages a separate real Krita
+  `KisKActionCollection` and `KisViewManager` owned by a lightweight
+  `QMainWindow`, without creating a desktop `KisMainWindow`. Its
+  destruction order retains the manager until all native `KisView`
+  widgets have been released. The Android source adapter fixes native
+  view counting (previously always zero without desktop MDI) and uses
+  the generic Qt host in Krita's canvas surface/color configuration.
+  This engine bootstrap remains **unlaunched and not APK-compiled**:
+  standalone save/open adapters and real Android GL drawing require
+  further implementation and device validation.
 - The opt-in stationary canvas header was found consuming hundreds of
   pixels of height on a real device. The top dock is now capped at 76
   logical pixels and its title/header widget is height-fixed; a Qt

@@ -173,6 +173,21 @@ jobs:
           assert "delete guarded.data()" in Path("mobile_core/krita_native_view_factory.h").read_text()
           assert 'native_krita_save_host=own/"mobile_core/native_krita_save_host.h"' in shell_patch
           assert 'native_krita_factory=own/"mobile_core/krita_native_view_factory.h"' in shell_patch
+          assert 'standalone_krita_runtime=own/"mobile_core/krita_standalone_runtime.h"' in shell_patch
+          assert '(root/"libs/ui/krita_standalone_runtime.h").write_text(' in shell_patch
+          assert 'Krita native view count' in shell_patch
+          assert 'candidate->viewManager()==this' in shell_patch
+          assert 'native canvas color-managed surface parent' in shell_patch
+          assert 'native canvas config parent' in shell_patch
+          native_runtime = Path("mobile_core/krita_standalone_runtime.h").read_text()
+          for fragment in ("class MobileKritaStandaloneRuntime final",
+                           "new KisKActionCollection(",
+                           "new KisViewManager(host,runtime->m_actions)",
+                           "runtime->m_manager->setParent(runtime)",
+                           "delete m_manager.data()",
+                           "m_root->openViews()",
+                           "MobileKritaNativeViewFactory::attach("):
+              assert fragment in native_runtime
           assert '(root/"libs/ui/krita_native_view_factory.h").write_text(' in shell_patch
           assert "removeTrackedCanvas(&d->canvas)" in shell_patch
           assert "d->viewManager->setCurrentView(nullptr)" in shell_patch
@@ -182,7 +197,7 @@ jobs:
                            "manager->inputManager()->addTrackedCanvas(",
                            "view->setViewManager(manager)",
                            "view->slotLoadingFinished()",
-                           "guarded->deleteLater()",
+                           "delete guarded.data()",
                            "QPointer<KisView>",
                            "manager->setCurrentView(view)"):
               assert fragment in native_factory
