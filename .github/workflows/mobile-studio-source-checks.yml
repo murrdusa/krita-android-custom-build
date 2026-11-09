@@ -96,3 +96,13 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: /tmp/krita-finger-area-pressure-test
+      - name: Build min/max finger calibration dialog smoke test
+        run: |
+          c++ -std=c++17 -fPIC -I. \
+            tests/qt_finger_pressure_calibration.cpp \
+            -o /tmp/krita-finger-calibration-test \
+            $(pkg-config --cflags --libs Qt5Widgets)
+      - name: Check calibration ranges and persistence offscreen
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /tmp/krita-finger-calibration-test
