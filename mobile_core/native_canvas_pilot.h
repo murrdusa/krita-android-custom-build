@@ -48,6 +48,11 @@ public:
         if(!backend || !backend->centralWidget())return;
         auto *header=new QFrame;
         header->setObjectName(QStringLiteral("MobileNativeDockHeader"));
+        // Qt's QMainWindow can assign a top docker excess vertical space
+        // when a document title button advertises a preferred height.
+        // This bar is navigation only, never a resizable content panel.
+        header->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
+        header->setMaximumHeight(68);
         auto *headerRow=new QHBoxLayout(header);
         headerRow->setContentsMargins(6,3,6,3);
         headerRow->setSpacing(4);
@@ -66,7 +71,7 @@ public:
         // on narrow Android phone screens. The full title remains in the
         // tooltip, while the visible button elides to the available space.
         m_document->setMinimumWidth(42);
-        m_document->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Preferred);
+        m_document->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
         QObject::connect(m_document,&QToolButton::clicked,m_document,[this]() {
             // Return from the Qt button click before opening a new modal
             // QDialog; Android otherwise can stack a native file picker
