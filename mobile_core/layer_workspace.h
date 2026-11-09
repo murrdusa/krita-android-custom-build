@@ -31,6 +31,8 @@
 #include <QSizePolicy>
 #include <QAction>
 #include <QTimer>
+#include <KoColorSpace.h>
+#include <KoCompositeOpRegistry.h>
 #include <functional>
 
 #include "engine_bridge.h"
@@ -189,6 +191,61 @@ public:
             reload();
         });
         layout->addLayout(creation);
+
+        // Preserve access to the full range of Krita node classes,
+        // rather than adding separate renderers or per-type models.
+        // These actions invoke KisNodeManager::createNode(), including
+        // Krita's built-in dialogs and undo/redo for each node type.
+        auto *addType=new QPushButton(i18n("Add layer / mask…"),this);
+        layout->addWidget(addType);
+        connect(addType,&QPushButton::clicked,this,[this,addType]() {
+            auto *view=m_engine.manager();
+            auto *nodes=manager();
+            if(!nodes || !view)return;
+            const KisImageSP original=view->image().toStrongRef();
+            if(!original)return;
+            QMenu menu(this);
+            menu.setStyleSheet(
+                "QMenu{background:#2c4051;color:#f4f9fe;"
+                "border:1px solid #769bb8;}"
+                "QMenu::item{color:#f4f9fe;min-height:44px;"
+                "padding:9px 14px;}"
+                "QMenu::item:selected{background:#3b7394;"
+                "color:#ffffff;}");
+            QMenu *layers=menu.addMenu(i18n("Layer types"));
+            QMenu *masks=menu.addMenu(i18n("Masks"));
+            struct NewType { QAction *action; const char *type; };
+            QVector<NewType> choices;
+            auto add=[&](QMenu *submenu,const QString &label,
+                         const char *type) {
+                choices.append({submenu->addAction(label),type});
+            };
+            add(layers,i18n("Paint layer"),"KisPaintLayer");
+            add(layers,i18n("Group layer"),"KisGroupLayer");
+            add(layers,i18n("Vector layer"),"KisShapeLayer");
+            add(layers,i18n("Filter layer"),"KisAdjustmentLayer");
+            add(layers,i18n("Fill layer"),"KisGeneratorLayer");
+            add(layers,i18n("Clone layer"),"KisCloneLayer");
+            add(layers,i18n("File layer"),"KisFileLayer");
+            add(masks,i18n("Transparency mask"),"KisTransparencyMask");
+            add(masks,i18n("Filter mask"),"KisFilterMask");
+            add(masks,i18n("Transform mask"),"KisTransformMask");
+            add(masks,i18n("Selection mask"),"KisSelectionMask");
+            add(masks,i18n("Colorize mask"),"KisColorizeMask");
+            add(masks,i18n("Fast color overlay mask"),
+                "FastColorOverlayFilterMask");
+            const QAction *chosen=menu.exec(
+                addType->mapToGlobal(QPoint(0,addType->height())));
+            if(!chosen || !m_engine.manager() ||
+               m_engine.manager()->image().toStrongRef()!=original)
+                return;
+            for(const NewType &candidate:choices) {
+                if(chosen!=candidate.action)continue;
+                if(nodes->createNode(QString::fromLatin1(candidate.type)))
+                    reload();
+                break;
+            }
+        });
 
         auto *operations=new QHBoxLayout;
         addButton(operations,i18n("Up"),[this]() {
@@ -399,6 +456,8 @@ private:
         QAction *opacityAction=menu.addAction(
             i18n("Opacity… (%1%)").arg(
                 (int(node->opacity())*100+127)/255));
+        QAction *blendAction=menu.addAction(i18n("Blending mode…"));
+        blendAction->setEnabled(node->colorSpace()!=nullptr);
         QAction *properties=menu.addAction(i18n("Layer properties"));
         menu.addSeparator();
         QAction *duplicate=menu.addAction(i18n("Duplicate"));
@@ -472,6 +531,58 @@ private:
                 ancestor=ancestor->parent();
             if(ancestor!=originalImage->root())return;
             m->setNodeOpacity(node,(dialog.intValue()*255+50)/100);
+        } else if(chosen==blendAction) {
+            // Enumerate Krita's actual color-space-supported modes
+            // rather than hardcoding a short list of mobile effects.
+            // KisNodeManager commits the selected mode to Krita Undo.
+            auto *view=m_engine.manager();
+            if(!view || !node->colorSpace())return;
+            const KisImageSP original=view->image().toStrongRef();
+            if(!original)return;
+            const KoColorSpace *colorSpace=node->colorSpace();
+            const auto modes=KoCompositeOpRegistry::instance()
+                                 .getCompositeOps(colorSpace);
+            QStringList labels;
+            QStringList ids;
+            for(const auto &mode:modes) {
+                if(!colorSpace->compositeOp(mode.id()))continue;
+                QString label=mode.name();
+                if(label.trimmed().isEmpty())label=mode.id();
+                if(labels.contains(label))
+                    label+=QStringLiteral(" [")+mode.id()+QStringLiteral("]");
+                labels.append(label);
+                ids.append(mode.id());
+            }
+            if(ids.isEmpty())return;
+            QInputDialog dialog(this);
+            dialog.setWindowTitle(i18n("Krita blending mode"));
+            dialog.setLabelText(i18n("Layer blending mode"));
+            dialog.setComboBoxEditable(false);
+            dialog.setComboBoxItems(labels);
+            const int current=ids.indexOf(node->compositeOpId());
+            if(current>=0)dialog.setTextValue(labels.at(current));
+            dialog.setStyleSheet(
+                "QInputDialog{background:#283746;color:#f4f9fe;}"
+                "QLabel{color:#f4f9fe;}"
+                "QComboBox,QLineEdit{background:#eef3f7;color:#172530;"
+                "min-height:43px;}"
+                "QComboBox QAbstractItemView{background:#eef3f7;"
+                "color:#172530;selection-background-color:#3878a4;}"
+                "QPushButton{background:#446781;color:#f4f9fe;"
+                "min-height:42px;}");
+            if(dialog.exec()!=QDialog::Accepted ||
+               !m_engine.manager() ||
+               m_engine.manager()->image().toStrongRef()!=original ||
+               m_reorderPending)return;
+            KisNodeSP ancestor=node;
+            while(ancestor && ancestor!=original->root())
+                ancestor=ancestor->parent();
+            if(ancestor!=original->root() ||
+               node->colorSpace()!=colorSpace)return;
+            const int index=labels.indexOf(dialog.textValue());
+            if(index<0 || index>=ids.size())return;
+            if(const KoCompositeOp *mode=colorSpace->compositeOp(ids.at(index)))
+                m->setNodeCompositeOp(node,mode);
         } else if(chosen==properties) {
             m->nodeProperties(node);
         } else if(chosen==merge || chosen==flatten) {
