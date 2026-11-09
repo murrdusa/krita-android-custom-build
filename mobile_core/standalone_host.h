@@ -503,6 +503,22 @@ private:
                 const bool sameTopLevel=canvasPresent &&
                     m_nativeCanvas->window()==window();
                 const auto documents=m_engine.openDocuments();
+                const QVariant samples=qApp->property(
+                    "_mobileFingerAreaLastSampleCount");
+                const QString fingerSignal=!samples.isValid()?
+                    i18n("not sampled yet"):
+                    samples.toInt()<=0?
+                        i18n("unavailable (Qt reported no contact ellipse)"):
+                        i18n("%1 usable samples").arg(samples.toInt());
+                const QVariant minDiameter=qApp->property(
+                    "_mobileFingerAreaLastMinDiameter");
+                const QVariant maxDiameter=qApp->property(
+                    "_mobileFingerAreaLastMaxDiameter");
+                const QString diameterRange=samples.toInt()>0?
+                    QStringLiteral("%1 to %2 logical px")
+                        .arg(minDiameter.toDouble(),0,'f',1)
+                        .arg(maxDiameter.toDouble(),0,'f',1):
+                    QStringLiteral("unknown");
                 const QString report=QStringList({
                     QStringLiteral("Krita Mobile Studio diagnostics v1"),
                     QStringLiteral("Host: embedded Qt widget"),
@@ -521,7 +537,15 @@ private:
                     QStringLiteral("Layers visible: %1")
                         .arg(m_layers && m_layers->isVisible()),
                     QStringLiteral("Color controls visible: %1")
-                        .arg(m_colorWorkspace && m_colorWorkspace->isVisible())
+                        .arg(m_colorWorkspace && m_colorWorkspace->isVisible()),
+                    QStringLiteral("Finger pressure simulation enabled: %1")
+                        .arg(QSettings().value(
+                            QStringLiteral("MobileStudio/fingerContactPressureV1"),
+                            false).toBool()),
+                    QStringLiteral("Last finger area data: %1")
+                        .arg(fingerSignal),
+                    QStringLiteral("Last finger contact diameter range: %1")
+                        .arg(diameterRange)
                 }).join(QLatin1Char('\n'));
                 QClipboard *clipboard=QGuiApplication::clipboard();
                 if(!clipboard) {
