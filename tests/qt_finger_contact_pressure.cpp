@@ -77,14 +77,14 @@ int main(int argc,char **argv)
     setting.setValue(maxKey,24.0);
     const qreal pinky=touch(device,QEvent::TouchBegin,8,600,
                             Qt::TouchPointPressed);
-    require(qAbs(pinky-0.16)<0.0001,
-            "calibrated minimum did not set initial small-finger pressure");
+    require(qAbs(pinky-0.0)<0.0001,
+            "calibrated minimum did not set initial small-finger pressure to 0");
     touch(device,QEvent::TouchEnd,8,620,Qt::TouchPointReleased);
     const qreal thumb=touch(device,QEvent::TouchBegin,24,700,
                             Qt::TouchPointPressed);
-    require(qAbs(thumb-0.96)<0.0001,
-            "calibrated maximum did not set initial large-finger pressure");
-    require(thumb>pinky+0.75,
+    require(qAbs(thumb-1.0)<0.0001,
+            "calibrated maximum did not set initial large-finger pressure to 100%");
+    require(thumb>pinky+0.99,
             "thumb and pinky incorrectly share the same initial pressure");
     touch(device,QEvent::TouchEnd,24,720,Qt::TouchPointReleased);
 
@@ -92,13 +92,13 @@ int main(int argc,char **argv)
     setting.setValue(minKey,10.0);
     setting.setValue(maxKey,30.0);
     require(qAbs(touch(device,QEvent::TouchBegin,15,800,
-                       Qt::TouchPointPressed)-0.36)<0.0001,
+                       Qt::TouchPointPressed)-0.25)<0.0001,
             "saved custom range not applied to initial dab");
     setting.setValue(minKey,1.0);
     setting.setValue(maxKey,2.0);
     const qreal sameStroke=touch(
         device,QEvent::TouchUpdate,15,810,Qt::TouchPointMoved);
-    require(qAbs(sameStroke-0.36)<0.001,
+    require(qAbs(sameStroke-0.25)<0.001,
             "changing calibration mid-stroke changed pressure unexpectedly");
     touch(device,QEvent::TouchEnd,15,820,Qt::TouchPointReleased);
 
@@ -107,7 +107,7 @@ int main(int argc,char **argv)
     setting.setValue(maxKey,24.0);
     const qreal start=touch(device,QEvent::TouchBegin,15,1000,
                             Qt::TouchPointPressed);
-    require(start>=0.16 && start<=0.96,"initial pressure outside bounds");
+    require(start>=0.0 && start<=1.0,"initial pressure outside 0–100% bounds");
     qreal last=start;
     for(int i=0;i<12;++i) {
         qreal current=touch(device,QEvent::TouchUpdate,23,1010+10*i);
@@ -173,7 +173,7 @@ int main(int argc,char **argv)
                        Qt::TouchPointMoved,1,2,native)-native)<0.00001,
             "multitouch gesture pressure was overridden");
 
-    qInfo() << "PASS: absolute thumb/pinky pressures, custom min/max,"
+    qInfo() << "PASS: full-range 0–100% thumb/pinky pressures, custom min/max,"
             << "mid-stroke calibration stability, disabled fallback,"
             << "area growth/shrink, smoothing, duplicate idempotence,"
             << "missing size, pen and multitouch safety";
