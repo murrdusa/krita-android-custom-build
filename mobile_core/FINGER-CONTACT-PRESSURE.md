@@ -1,85 +1,105 @@
-# Finger contact area as simulated brush pressure (prototype v1)
+# Finger contact area as simulated brush pressure (prototype v2)
 
-This is an opt-in experiment for Krita Android. **Off by default.**
-It preserves Krita's existing touch/pen event routing and never changes
-`QTabletEvent` pressure for an S Pen or other stylus.
+This is an opt-in experiment for Krita Android, **disabled by default**.
+Krita's native touch/pen event routing is unchanged. The existing
+`MobileStudio/fingerContactPressureV1` enable switch is preserved.
 
-## Enable / disable
+## Enable and calibrate
 
-In **Mobile Studio**, open a painting document and choose:
+Open a painting document in **Mobile Studio → More**:
 
-**More → Experimental finger pressure (contact area)**
+- **Experimental finger pressure (contact area):** enable or disable the
+  feature. Changes apply at the start of the next finger stroke.
+- **Calibrate finger pressure (minimum / maximum):** open the new dialog.
+  Use **Capture minimum** and gently touch the pad with a small contact;
+  lift your finger to record its median contact diameter. Use
+  **Capture maximum**, flatten the finger or use a broad contact on the
+  pad, then lift. The dialog also accepts manual values, in Qt logical
+  pixels, if the touchscreen does not provide meaningful contact sizes.
+  Press **Save** to store the range; Cancel leaves the prior range intact.
 
-The checkable action stores the setting in
-`QSettings: MobileStudio/fingerContactPressureV1`. It applies to the
-**next finger stroke** and stays set until switched off. When off, Krita
-uses the exact original touch pressure. This also affects finger painting
-outside Mobile Studio while enabled because the input converter is shared.
+The minimum and maximum are the *contact diameters* at which simulated
+pressure reaches 16% and 96%. Maximum must exceed minimum by at least
+1 logical pixel. The initial approximate defaults are **8 and 24 logical
+pixels**; actual hardware may require substantially different values.
 
-The option works with brushes that actually respond to the **Pressure**
-input sensor. Use a clearly pressure-sensitive brush to try it.
+Settings are saved as:
 
-## Current pressure model
+- `MobileStudio/fingerContactMinDiameterV2`
+- `MobileStudio/fingerContactMaxDiameterV2`
 
-- For one touchscreen contact, sample Qt 5's
-  `QTouchEvent::TouchPoint::ellipseDiameters()` in logical screen pixels.
-  These describe the contact ellipse reported by the Android/Qt driver.
-- Use `sqrt(width × height)` as a contact-diameter proxy, compared to
-  the **first valid sample in that stroke**. No assumptions about physical
-  force, calibrated sensor area or device DPI are made.
-- A new stroke starts near pressure **0.52**.
-  `target = clamp(0.52 + 1.15 × ln(diameter / startingDiameter), 0.16, 0.96)`.
-  The target increases for a wider/larger finger contact.
-- Apply a 0.015 deadband and clamp jumps in target to ±0.18 before a
-  0.26-step exponential moving average. Duplicate touch samples do not
-  repeatedly advance the filter.
-- When no meaningful contact dimensions are provided, preserve Krita's
-  original touch pressure (or the last valid smoothed value within the
-  same stroke) rather than inventing a change.
-- The filter resets at stroke end, after a large event-time gap, or when
-  the point ID changes. Touch gestures with multiple simultaneous points
-  and touchscreen contacts marked with Qt's Pen flag are excluded.
+The calibration is shared between Mobile Studio and finger painting in
+Krita's other UI modes, because the input converter is shared. Each
+stroke snapshots the current calibration on its first touch sample:
+changing values while drawing cannot make the middle of an existing
+stroke jump.
 
-This is **not actual force sensing**. Contact ellipse data may be zero,
-quantized or unrelated to force on some devices, including devices where
-Android itself reports a `MotionEvent.getTouchMajor()` but Qt does not
-expose it. Also, the relative per-stroke baseline cannot vary the first
-dab's pressure; that could be calibrated in a future version.
+## Absolute contact-area pressure mapping
 
-## Device testing
+Krita's Qt 5 `QTouchEvent::TouchPoint::ellipseDiameters()` returns the
+reported major/minor contact diameter in logical pixels. The prototype
+uses `D = sqrt(width × height)`; this is a contact-size proxy, **not
+physical force measurement**.
 
-1. Keep a disposable drawing and a pressure-sensitive brush selected.
-2. Paint with a finger while the option is disabled. Observe the line
-   width/opacity, then enable the option.
-3. Make a long stroke and deliberately roll/flatten the finger to change
-   contact area during the stroke. Observe whether brush width/opacity
-   changes smoothly. Dragging in the same way with the S Pen should
-   behave identically with the option on or off.
-4. Pinch/zoom, pan, use two fingers, save/undo, and switch Mobile Studio
-   modes; these interactions should be unchanged.
-5. After a completed finger stroke, choose
-   **More → Copy Mobile Studio diagnostics** and inspect the values:
-   `Last finger area data` and `Last finger contact diameter range`.
-   If `unavailable`, the Qt touch data was missing; we should explore
-   capturing Android's raw `getTouchMajor/getTouchMinor` as a second
-   implementation, not alter painting pressure blindly.
-6. If the brush jitters or the simulated response is too weak/strong,
-   disable the option and retain the diagnostics. We can later expose
-   smoothing strength, sensitivity, calibration and pressure floor.
+`P = 0.16 + 0.80 × clamp((D - min) / (max - min), 0, 1)`
 
-## Safety and verification
+**A thumb can now begin at higher simulated pressure than a pinky**,
+provided the device reports a larger contact area and the calibration
+range spans both. The first dab uses its *absolute measured diameter*,
+not a fixed per-stroke baseline. Larger/smaller contacts during the
+stroke change the target pressure.
 
-- The patch is in `apply_finger_contact_pressure.py` and adds one
-  isolated Android-only call to Krita's touch pressure accessor in
-  `libs/flake/KoPointerEvent.cpp`.
-- UI toggle is in `mobile_core/standalone_host.h`.
-- `mobile_core/finger_contact_pressure.h` is copied into
-  `libs/flake/finger_contact_pressure.h` at local build time.
-- `tests/qt_finger_contact_pressure.cpp` exercises synthetic touch
-  geometry, rising/falling pressure, smoothing, idempotence, settings
-  disabled, missing data, stylus flags, multi-finger fallback and
-  diagnostic availability without needing an APK.
-- Android compilation and on-device rendering are separate validation
-  steps. The synthetic Qt test cannot prove the phone's touchscreen
-  reports meaningful contact dimensions.
-- APK publication stays disabled; this patch does not upload anything.
+Smoothing remains in place: changes under 0.015 are ignored, sudden
+changes are capped at 0.18 per sample before applying a 0.26-step
+low-pass filter. Duplicate touch events do not repeatedly advance it.
+The first valid sample initializes to the calibrated target immediately,
+so it does not begin at a false 52% pressure.
+
+When valid contact size is unavailable, the original Krita touch
+pressure is used; during a stroke the last valid smoothed reading is
+retained instead of introducing an invalid spike. Multiple fingers,
+screen contacts flagged as a pen, and `QTabletEvent` stylus pressure
+retain their original behavior.
+
+## Testing on an Android device
+
+1. With a disposable drawing, enable the feature and select a brush
+   whose size or opacity responds to Krita's pressure sensor.
+2. Set the minimum using a small fingertip contact and the maximum using
+   a wide, flattened fingertip contact. Save the calibration.
+3. Draw separate strokes using a pinky and a thumb. The thumb should
+   produce a thicker/stronger stroke from the **first dab**, provided
+   their observed contact diameters differ.
+4. Flatten and unflatten your finger during a long stroke. Confirm the
+   response is gradual rather than jittery.
+5. Check your pen and two-finger gestures with the feature on and off.
+   They should behave the same.
+6. Use **More → Copy Mobile Studio diagnostics** to check the saved
+   minimum/maximum and the most recent stroke's observed diameter range.
+   If the contact data is unavailable, adjust values manually only if
+   the hardware reports any usable dimensions; otherwise future versions
+   will need to inspect raw Android `getTouchMajor/getTouchMinor` data.
+
+## Architecture and verification
+
+- `mobile_core/finger_pressure_settings.h` holds validated calibration
+  defaults and the pure absolute mapping formula, shared between UI
+  and Krita's touch input converter.
+- `mobile_core/finger_contact_pressure.h` reads calibration once per
+  stroke, smooths touch pressure, and preserves all previous exclusions.
+- `mobile_core/finger_pressure_calibration.h` provides the modal
+  touch-pad calibration and manual number controls.
+- `apply_mobile_shell.py` copies the UI/settings headers into Krita UI;
+  `apply_finger_contact_pressure.py` copies the input/settings headers
+  into Krita's flake painting library.
+- The synthetic Qt tests verify initial thumb/pinky differences,
+  calibrated bounds, smoothing, invalid settings fallback, persistence,
+  disabled mode, multitouch and stylus preservation. A separate
+  Qt Widgets test verifies the calibration dialog and saved values.
+
+Android compilation is not proof that contact-ellipse measurements are
+supported by a particular phone. Actual pressure response and
+calibration touch-pad input must still be tested on-device.
+
+APK publishing remains paused. No painting, document or source assets
+are removed by this prototype.
