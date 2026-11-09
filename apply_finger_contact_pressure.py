@@ -62,6 +62,12 @@ def main(root: Path) -> None:
     (flake / "finger_pressure_settings.h").write_text(
         settings_header.read_text(encoding="utf-8"), encoding="utf-8",
     )
+    source_selector = own / "mobile_core/finger_contact_source.h"
+    if not source_selector.is_file():
+        raise RuntimeError("Missing per-stroke Qt/raw contact source selector")
+    (flake / "finger_contact_source.h").write_text(
+        source_selector.read_text(encoding="utf-8"), encoding="utf-8",
+    )
     print("Installed optional calibrated finger pressure in KoPointerEvent")
 
 
