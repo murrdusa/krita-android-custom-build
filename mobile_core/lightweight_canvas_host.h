@@ -15,12 +15,29 @@
 #include "host_services.h"
 #include "native_canvas_chrome.h"
 #include "native_view_stack.h"
+#ifdef Q_OS_ANDROID
+#include <KoCanvasSupervisor.h>
+#endif
 
 class MobileLightweightCanvasHost final : public QMainWindow
+#ifdef Q_OS_ANDROID
+    , public KoCanvasSupervisor
+#endif
 {
 public:
     explicit MobileLightweightCanvasHost(QWidget *parent=nullptr)
         : QMainWindow(parent),m_mobileChrome(this) {}
+
+#ifdef Q_OS_ANDROID
+    // Krita 6.0.4's KisCanvasController needs a KoCanvasSupervisor
+    // even when there are no traditional desktop dockers. Returning
+    // an empty list is correct until native observer widgets exist.
+    // Do not impersonate KisMainWindow or borrow its docker instances.
+    QList<KoCanvasObserverBase*> canvasObservers() const override
+    {
+        return {};
+    }
+#endif
 
     // Build a native multi-document root before engine view creation.
     // This is the future Krita bootstrap entrypoint, distinct from
