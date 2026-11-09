@@ -40,6 +40,12 @@ public:
         }
 
         const QTouchEvent::TouchPoint &point=event->touchPoints().first();
+        // Some Android drivers send pens through their touchscreen source.
+        // Respect the Qt Pen flag as well as the QTabletEvent separation.
+        if(point.flags().testFlag(QTouchEvent::TouchPoint::Pen)) {
+            stroke=Stroke{};
+            return originalPressure;
+        }
         const bool released=event->type()==QEvent::TouchEnd ||
             event->type()==QEvent::TouchCancel ||
             point.state()==Qt::TouchPointReleased;
