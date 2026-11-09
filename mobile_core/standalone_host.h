@@ -90,6 +90,7 @@ public:
         setCentralWidget(root);
 
         auto *header=new QFrame(root);
+        m_mobileHeader=header;
         header->setObjectName(QStringLiteral("mobileHeader"));
         auto *top=new QHBoxLayout(header);
         top->setContentsMargins(7,4,7,4);
@@ -272,9 +273,33 @@ public:
     bool hasNativeCanvas() const override {return hasEngineCanvas();}
     void refreshCanvasSurface() override {refresh();}
 
+    // Optional stable-canvas host. Only the controls change between the
+    // two UI modes; the native Krita widgetStack retains its parent.
+    void setMobilePresentationEnabled(bool enabled) override
+    {
+        if(m_mobilePresentationEnabled==enabled)return;
+        m_mobilePresentationEnabled=enabled;
+        if(m_mobileHeader)m_mobileHeader->setVisible(enabled);
+        if(!enabled) {
+            if(m_updates)m_updates->stop();
+            if(m_brushWorkspace)m_brushWorkspace->hide();
+            if(m_quickActions)m_quickActions->hide();
+            if(m_layers)m_layers->hide();
+            if(m_colorWorkspace)m_colorWorkspace->hide();
+            // The native welcome screen and MDI views remain alive and
+            // editable. Never obscure them with the mobile empty state.
+            if(m_canvasStack && m_canvasHolder)
+                m_canvasStack->setCurrentWidget(m_canvasHolder);
+            updateLayerPresentation();
+        } else {
+            refresh();
+            if(m_updates)m_updates->start();
+        }
+    }
+
     void refresh()
     {
-        if(!m_document)return;
+        if(!m_mobilePresentationEnabled || !m_document)return;
         const bool has=m_engine.hasDocument();
         if(m_quickActions) {
             m_quickActions->refresh();
@@ -587,6 +612,8 @@ private:
     }
 
     MobileEngineBridge m_engine;
+    QPointer<QFrame> m_mobileHeader;
+    bool m_mobilePresentationEnabled=true;
     QPointer<QWidget> m_paintingArea;
     QHBoxLayout *m_paintingLayout=nullptr;
     bool m_layersFloating=false;
