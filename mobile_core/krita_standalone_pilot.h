@@ -358,6 +358,31 @@ public:
             if(auto *desktop=qobject_cast<QMainWindow*>(desktopNative.data()))
                 MobileNativeBootstrapAudit::record(desktop);
             if(firstCanvasReady)firstCanvasReady(true);
+            // The Qt Android top-level was exposed before its first
+            // QOpenGLWidget existed. On some phones that leaves the
+            // initial SurfaceView composition grey until the Activity
+            // is backgrounded/restored. An update() or GL projection
+            // refresh alone did not resolve it on the Galaxy Z Fold.
+            // Re-expose this ONE already-initialized top-level once,
+            // after the first document has attached, to follow the
+            // same native surface lifecycle as the proven resume path.
+            // No retry timer, no alternate UI mode, no extra window.
+            if(alive->property("_mobileNativeEngineOnlyRoot").toBool()) {
+                QPointer<MobileLightweightCanvasHost> direct=alive;
+                QTimer::singleShot(0,alive.data(),[direct]() {
+                    if(!direct || !direct->isVisible())return;
+                    qInfo() << "Mobile Studio: first document native surface refresh";
+                    direct->hide();
+                    QTimer::singleShot(50,direct.data(),[direct]() {
+                        if(!direct)return;
+                        direct->show();
+                        direct->raise();
+                        direct->suppressNativeStatusChrome();
+                        if(QWidget *canvas=direct->nativeCanvas())
+                            canvas->update();
+                    });
+                });
+            }
         });
         return true;
     }
