@@ -109,6 +109,24 @@ int main(int argc,char **argv)
                 "desktop MDI tabs leaked into mobile mode");
         require(top->isVisible() && bottom->isVisible(),
                 "mobile docks hidden after activation");
+        if(cycle==2) {
+            // Zero-document welcome screen: hide the empty brush strip
+            // without moving or replacing Krita's native central widget.
+            require(mobile.setBottomPanelVisible(false),
+                    "could not collapse empty mobile brush dock");
+            QApplication::processEvents();
+            require(!mobile.bottomPanelVisible() && !bottom->isVisible(),
+                    "empty mobile brush dock still occupies canvas space");
+            require(canvas->window()==&backend &&
+                    backend.centralWidget()==originalCanvas &&
+                    observer.changes==parentChangesAtInstall,
+                    "collapsing empty brush dock reparented native canvas");
+            require(mobile.setBottomPanelVisible(true),
+                    "could not restore brush dock on document creation");
+            QApplication::processEvents();
+            require(mobile.bottomPanelVisible() && bottom->isVisible(),
+                    "creating a document failed to restore mobile brushes");
+        }
         require(!mobile.sidePanelVisible(),
                 "mobile layers dock should start closed");
         require(mobile.setSidePanelVisible(true),
@@ -205,7 +223,8 @@ int main(int argc,char **argv)
 
     qInfo() << "PASS: 25 chrome-only switches, identical canvas identity,"
             << "no reparenting during switches, tab and desktop restoration,"
-            << "late toolbar/tab restoration, synthetic document retention,"
+            << "empty-document dock recovery, late toolbar/tab restoration,"
+            << "synthetic document retention,"
             << "and desktop recovery when"
             << "Krita unexpectedly replaces its canvas";
     return 0;
