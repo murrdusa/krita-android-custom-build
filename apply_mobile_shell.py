@@ -443,7 +443,7 @@ KisMainWindow * KisView::mainWindow() const''',
           '    for (KoDockFactoryBase *factory : KoDockRegistry::instance()->sortedDockWidgetFactories()) {',
           '    if (!mobileNativePreferred)\\n    for (KoDockFactoryBase *factory : KoDockRegistry::instance()->sortedDockWidgetFactories()) {',
           "independent startup legacy docker factory bypass")
-        native='''    auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);'''
+    native='''    auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);'''
     injected='''    // Independent window prototype is opt-in and never auto-starts.
     QAction *mobilePilotAction = new QAction(
         KisIconUtils::loadIcon("draw-freehand"),
