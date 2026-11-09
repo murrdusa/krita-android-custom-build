@@ -98,15 +98,15 @@ def main(root:Path):
             if(*returnToCompact)tabletCompact->setChecked(false);
         } else if(*returnToCompact) {
             *returnToCompact=false;
-            // The native central widget has just crossed Android top-level
-            // windows. A zero-delay Compact UI restore can race its first
-            // Qt layout and leave the MDI canvas blank. Wait for the
-            // desktop handoff; do not turn Compact back on if the user
-            // reopened Mobile Studio or the canvas is still detached.
+            // Wait for the presentation transition, not just canvas
+            // ownership. In persistent-host mode the native canvas stays
+            // embedded on Back and the Android flash workaround must
+            // remain enabled, but Compact UI can still reactivate after
+            // the Mobile Studio controls are hidden.
             QTimer::singleShot(180,this,[this,tabletCompact,mobilePilotAction]() {
                 if(!tabletCompact || mobilePilotAction->isChecked() ||
                    !centralWidget() ||
-                   property("_mobileStudioCanvasTransferred").toBool())
+                   property("_mobileStudioPresentationActive").toBool())
                     return;
                 if(!tabletCompact->isChecked())
                     tabletCompact->setChecked(true);
