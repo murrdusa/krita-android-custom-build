@@ -267,6 +267,19 @@ jobs:
           assert '(root/"libs/ui/native_startup_policy.h").write_text(' in shell_patch
           assert 'MobileStudio/nativeStartupV1' in Path("mobile_core/canvas_session.h").read_text()
           assert 'MobileNativeStartupPolicy::setEnabled(' in native_pilot
+          assert 'MobileKritaNativeWorkspace(' in native_pilot
+          assert 'workspace->toggleBrushes()' in native_pilot
+          assert 'workspace->toggleLayers()' in native_pilot
+          assert 'workspace->toggleColor()' in native_pilot
+          assert 'workspace->chooseTool()' in native_pilot
+          assert 'native_workspace=own/"mobile_core/krita_native_workspace.h"' in shell_patch
+          assert '(root/"libs/ui/krita_native_workspace.h").write_text(' in shell_patch
+          workspace=Path("mobile_core/krita_native_workspace.h").read_text()
+          assert 'MobileEngineBridge m_engine' in workspace
+          assert 'new KritaMobileBrushWorkspace(m_engine,dock)' in workspace
+          assert 'new KritaMobileLayersPanel(m_engine,dock)' in workspace
+          assert 'new MobileColorWorkspace(m_engine,m_host)' in workspace
+          assert 'MobileToolBrowser::open(m_engine,host)' in workspace
           assert 'MobileNativeStartupPolicy::setEnabled(' in Path("mobile_core/standalone_host.h").read_text()
           assert 'MobileStudio/standaloneLastPhase' in native_pilot
           assert 'MobileStudio/standaloneLaunchPending' in native_pilot

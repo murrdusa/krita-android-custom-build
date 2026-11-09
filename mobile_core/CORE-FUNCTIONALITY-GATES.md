@@ -322,3 +322,16 @@ or failed native launch automatically disables the mode and restores
 the standard Krita fallback on the next launch. The old desktop host
 is still compiled and retained for recovery; this is not yet a binary
 removal of the full KisMainWindow implementation.
+
+
+## Native engine workspace controls (experimental, opt-in)
+
+The independent Qt host can now construct the existing Mobile Studio
+brush, color, layer and tool interfaces directly against its own
+`MobileEngineBridge`, `KisViewManager`, and document host ports.
+The controls are initialized lazily, after at least one native
+document is available; there is no second Krita document model,
+desktop docker borrowing, or shadow brush implementation.
+The engine-test toolbar exposes Brushes / Layers / Color / Tools.
+The controls must pass device interaction and portrait/landscape
+tests before they replace the previous Mobile Studio UI.

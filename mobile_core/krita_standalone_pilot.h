@@ -27,6 +27,7 @@
 #include "document_navigation.h"
 #include "krita_standalone_documents.h"
 #include "krita_standalone_runtime.h"
+#include "krita_native_workspace.h"
 
 class MobileKritaStandalonePilot final
 {
@@ -95,6 +96,10 @@ public:
         auto documents=QSharedPointer<MobileDocumentService>::create(
             services.documents,services.views);
         QPointer<MobileLightweightCanvasHost> alive=window;
+        // Native controls now use the independent manager and host ports,
+        // not the old desktop MDI window or its docker instances.
+        auto *workspace=new MobileKritaNativeWorkspace(
+            window,services,runtime->viewManager());
 
         // Diagnostics, not a new permanent mobile toolbar.
         auto *bar=window->addToolBar(
@@ -109,7 +114,19 @@ public:
         auto *saveAction=bar->addAction(QObject::tr("Save"));
         auto *saveAsAction=bar->addAction(QObject::tr("Save As"));
         auto *closeAction=bar->addAction(QObject::tr("Close view"));
+        auto *brushesAction=bar->addAction(QObject::tr("Brushes"));
+        auto *layersAction=bar->addAction(QObject::tr("Layers"));
+        auto *colorAction=bar->addAction(QObject::tr("Color"));
+        auto *toolsAction=bar->addAction(QObject::tr("Tools"));
         auto *exitAction=bar->addAction(QObject::tr("Exit test"));
+        QObject::connect(brushesAction,&QAction::triggered,window,
+                         [workspace]() {workspace->toggleBrushes();});
+        QObject::connect(layersAction,&QAction::triggered,window,
+                         [workspace]() {workspace->toggleLayers();});
+        QObject::connect(colorAction,&QAction::triggered,window,
+                         [workspace]() {workspace->toggleColor();});
+        QObject::connect(toolsAction,&QAction::triggered,window,
+                         [workspace]() {workspace->chooseTool();});
         auto *nativeStartup=bar->addAction(
             QObject::tr("Start here next launch"));
         nativeStartup->setCheckable(true);
