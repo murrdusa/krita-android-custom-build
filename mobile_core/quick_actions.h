@@ -221,6 +221,14 @@ private:
         }
         if(id.startsWith(QStringLiteral("tool:")))
             return m_engine.hasDocument();
+        if(id==QStringLiteral("mobile:close")) {
+            // Do not enable a destructive command unless Krita can
+            // identify exactly one current view. Multiple views of the
+            // same document are otherwise ambiguous after reparenting.
+            for(const auto &view:m_engine.openDocuments())
+                if(view.active && view.nativeView)return true;
+            return false;
+        }
         if(id.startsWith(QStringLiteral("mobile:")))
             return !mobileNeedsDocument(id) || m_engine.hasDocument();
         return false;
