@@ -775,7 +775,12 @@ private:
                     QLatin1Char('|')+QString::number(n->visible())+
                     QString::number(n->userLocked())+
                     QString::number(n->opacity())+
+                    QString::number(inheritsAlpha(n))+
+                    QString::number(n->collapsed())+
+                    n->compositeOpId()+
                     QLatin1Char(':')+QString::number(depth)+QLatin1Char(';');
+                if(auto *paint=qobject_cast<KisPaintLayer*>(n.data()))
+                    key+=QLatin1Char(paint->alphaLocked()?'1':'0');
                 if(n->childCount())inspect(n,depth+1);
             }
         };
@@ -1506,11 +1511,14 @@ private:
             const bool active=m_active==node;
             const bool group=node->inherits("KisGroupLayer");
             const bool clipped=inheritsAlpha(node);
+            const bool clipBase=node->nextSibling() &&
+                inheritsAlpha(node->nextSibling());
             const QColor background=active?QColor(46,103,139):
                 highlighted?QColor(43,82,114):
                 group?QColor(37,66,83):QColor(42,55,68);
             if(QFrame *frame=m_rowFrames.value(i).data()) {
-                const QString edge=clipped?QStringLiteral("#46b5a5"):
+                const QString edge=(clipped||clipBase)?
+                    QStringLiteral("#46b5a5"):
                     group?QStringLiteral("#74acda"):
                     m_rowDepths.value(i)>0?QStringLiteral("#607c92"):
                                         QStringLiteral("#536879");
