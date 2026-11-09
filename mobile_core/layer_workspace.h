@@ -31,6 +31,13 @@
 #include <QSizePolicy>
 #include <QAction>
 #include <QTimer>
+#include <QTabletEvent>
+#include <QTouchEvent>
+#include <QMouseEvent>
+#include <QCursor>
+#include <QDateTime>
+#include <QLineF>
+#include <QHash>
 #include <QToolButton>
 #include <QPixmap>
 #include <QIcon>
@@ -121,8 +128,10 @@ public:
         m_tree->setSelectionMode(QAbstractItemView::NoSelection);
         m_tree->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
         m_tree->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-        // Swipe-scroll without treating a finger drag as a row click.
-        QScroller::grabGesture(m_tree->viewport(),QScroller::TouchGesture);
+        // The compact tile handler owns touch scrolling and drag gestures.
+        // QScroller otherwise steals a long press before it can reorder.
+        m_tree->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,true);
+        m_tree->viewport()->installEventFilter(this);
         m_tree->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         m_tree->header()->setStretchLastSection(true);
         m_tree->header()->setSectionResizeMode(0,QHeaderView::Stretch);
@@ -130,6 +139,43 @@ public:
                          &QScrollBar::valueChanged,this,
                          [this](int) {updateVisibleLayerThumbnails();});
         layout->addWidget(m_tree,1);
+        m_dragGhost=new QLabel(m_tree->viewport());
+        m_dragGhost->setFixedSize(60,60);
+        m_dragGhost->setAlignment(Qt::AlignCenter);
+        m_dragGhost->setStyleSheet(
+            "QLabel{background:#354858;border:2px solid #8fd5e7;"
+            "border-radius:6px;}");
+        m_dragGhost->setAttribute(Qt::WA_TransparentForMouseEvents);
+        m_dragGhost->hide();
+        m_dropMarker=new QFrame(m_tree->viewport());
+        m_dropMarker->setFixedHeight(4);
+        m_dropMarker->setStyleSheet(
+            "QFrame{background:#56c6a7;border:none;}");
+        m_dropMarker->setAttribute(Qt::WA_TransparentForMouseEvents);
+        m_dropMarker->hide();
+        m_touchHoldTimer=new QTimer(this);
+        m_touchHoldTimer->setSingleShot(true);
+        m_touchHoldTimer->setInterval(450);
+        connect(m_touchHoldTimer,&QTimer::timeout,this,[this]() {
+            if(m_touches.size()==1 && !m_touchScrolling &&
+               !m_touchPinching && m_touchPrimary) {
+                m_touchHeld=true;
+                showLayerDropPreview(m_touchPrimary,m_touchLast);
+            }
+        });
+        m_edgeScrollTimer=new QTimer(this);
+        m_edgeScrollTimer->setInterval(40);
+        connect(m_edgeScrollTimer,&QTimer::timeout,this,[this]() {
+            if(!m_tree || (!m_mouseHeld && !m_touchHeld))return;
+            const QPoint global=m_touchHeld?m_touchLast:m_mouseLast;
+            const QPoint at=m_tree->viewport()->mapFromGlobal(global);
+            QScrollBar *bar=m_tree->verticalScrollBar();
+            if(at.y()<26)bar->setValue(bar->value()-18);
+            else if(at.y()>m_tree->viewport()->height()-26)
+                bar->setValue(bar->value()+18);
+            showLayerDropPreview(m_touchHeld?m_touchPrimary:m_mouseNode,
+                                 global);
+        });
         m_summary=new QLabel(i18n("Select a layer"),this);
         m_summary->setWordWrap(true);
         m_summary->setAlignment(Qt::AlignCenter);
@@ -371,10 +417,15 @@ public:
     std::function<void()> onRequestClose;
     void refreshFromEngine()
     {
-        if(!isVisible() || m_reorderPending)return;
+        if(!isVisible() || m_reorderPending || m_clipBusy ||
+           m_mouseNode || !m_touches.isEmpty())return;
         if(engineSignature()!=m_signature)reload();
+        else updateVisibleLayerThumbnails();
     }
-    void refreshNow() {if(!m_reorderPending)reload();}
+    void refreshNow() {
+        if(!m_reorderPending && !m_clipBusy &&
+           !m_mouseNode && m_touches.isEmpty())reload();
+    }
 
 private:
     // A reorder is a Krita image stroke, not a legacy direct-command
@@ -1054,6 +1105,310 @@ private:
         moveCompactLayer(source,target,insertAbove,intoGroup);
     }
 
+    QTreeWidgetItem *itemForNode(KisNodeSP node) const
+    {
+        const int i=m_nodes.indexOf(node);
+        return i>=0?m_items.value(i,nullptr):nullptr;
+    }
+
+    KisNodeSP nodeAtScreen(const QPoint &screen) const
+    {
+        if(!m_tree)return KisNodeSP();
+        const QPoint inView=m_tree->viewport()->mapFromGlobal(screen);
+        QTreeWidgetItem *item=m_tree->itemAt(inView);
+        const int i=m_items.indexOf(item);
+        return i>=0?m_nodes.value(i):KisNodeSP();
+    }
+
+    void suppressSyntheticClick(KisNodeSP node)
+    {
+        m_suppressedClickNode=node;
+        m_suppressedClickUntil=QDateTime::currentMSecsSinceEpoch()+450;
+    }
+
+    void armMouseLayer(KisNodeSP node,QToolButton *tile,
+                       const QPoint &start)
+    {
+        if(!node || !tile || m_clipBusy || m_reorderPending ||
+           !m_touches.isEmpty())return;
+        if(m_mouseDown && m_mouseNode==node)return;
+        m_mouseNode=node;
+        m_mouseTile=tile;
+        m_mouseStart=start;
+        m_mouseLast=start;
+        m_mouseDown=true;
+        m_mouseHeld=false;
+        m_mouseMoved=false;
+        m_mousePreviouslySelected=(m_active==node);
+        if(qApp)qApp->installEventFilter(this);
+        QTimer::singleShot(450,this,[this,node]() {
+            if(!m_mouseDown || m_mouseNode!=node ||
+               !m_touches.isEmpty())return;
+            m_mouseHeld=true;
+            m_edgeScrollTimer->start();
+            showLayerDropPreview(node,m_mouseLast);
+        });
+    }
+
+    void updateMouseLayer(const QPoint &point)
+    {
+        if(!m_mouseDown || !m_mouseNode)return;
+        m_mouseLast=point;
+        if(m_mouseHeld &&
+           (point-m_mouseStart).manhattanLength()>18) {
+            m_mouseMoved=true;
+            showLayerDropPreview(m_mouseNode,point);
+        }
+    }
+
+    void finishMouseLayer()
+    {
+        if(!m_mouseDown)return;
+        const KisNodeSP source=m_mouseNode;
+        const QPoint point=m_mouseLast;
+        const bool moved=m_mouseHeld && m_mouseMoved;
+        const bool wasHeld=m_mouseHeld;
+        m_mouseNode.clear();
+        m_mouseTile.clear();
+        m_mouseDown=false;
+        m_mouseHeld=false;
+        m_mouseMoved=false;
+        if(qApp)qApp->removeEventFilter(this);
+        m_edgeScrollTimer->stop();
+        hideLayerDropPreview();
+        if(wasHeld) {
+            suppressSyntheticClick(source);
+            if(moved)QTimer::singleShot(0,this,[this,source,point]() {
+                moveCompactLayerAt(source,point);
+            });
+            else if(source && m_active!=source) {
+                if(auto *item=itemForNode(source))tapLayer(source,item);
+            }
+        }
+    }
+
+    void showLayerDropPreview(KisNodeSP source,const QPoint &global)
+    {
+        if(!source || !m_tree || !m_dragGhost || !m_dropMarker)return;
+        QWidget *viewport=m_tree->viewport();
+        const QPoint point=viewport->mapFromGlobal(global);
+        if(!m_dragGhost->isVisible()) {
+            const QImage thumb=source->createThumbnail(
+                54,54,Qt::KeepAspectRatio);
+            if(!thumb.isNull())
+                m_dragGhost->setPixmap(QPixmap::fromImage(thumb));
+            else m_dragGhost->setText(QStringLiteral("▣"));
+            m_dragGhost->show();
+        }
+        m_dragGhost->move(
+            qBound(0,point.x()+8,qMax(0,viewport->width()-60)),
+            qBound(0,point.y()-65,qMax(0,viewport->height()-60)));
+        m_dragGhost->raise();
+        QTreeWidgetItem *target=m_tree->itemAt(point);
+        if(!target || m_nodes.value(m_items.indexOf(target))==source) {
+            m_dropMarker->hide();return;
+        }
+        const QRect rect=m_tree->visualItemRect(target);
+        const bool above=point.y()<rect.center().y();
+        m_dropMarker->setGeometry(0,above?rect.top():rect.bottom()-2,
+                                  viewport->width(),4);
+        m_dropMarker->show();
+        m_dropMarker->raise();
+    }
+
+    void hideLayerDropPreview()
+    {
+        if(m_dragGhost)m_dragGhost->hide();
+        if(m_dropMarker)m_dropMarker->hide();
+    }
+
+    void groupPinchedTiles(KisNodeSP a,KisNodeSP b)
+    {
+        auto *m=manager();
+        if(!m || !a || !b || a==b ||
+           a->parent()!=b->parent() ||
+           isCompactClipWrapper(a->parent()))return;
+        KisNodeSP parent=a->parent();
+        KisNodeList all;
+        for(KisNodeSP n=parent->firstChild();n;n=n->nextSibling())
+            all.append(n);
+        int first=all.indexOf(a),last=all.indexOf(b);
+        if(first<0 || last<0)return;
+        if(first>last)qSwap(first,last);
+        KisNodeList chosen;
+        for(int i=first;i<=last;++i) {
+            KisNodeSP node=all.at(i);
+            if(!node->inherits("KisLayer"))return;
+            chosen.append(node);
+        }
+        if(!m->canMoveLayers(chosen,false))return;
+        m->slotUiActivatedNode(a);
+        m->slotSetSelectedNodes(chosen);
+        m->createQuickGroup();
+        QTimer::singleShot(250,this,[this,a,b,parent]() mutable {
+            KisNodeSP group=a?a->parent():KisNodeSP();
+            if(group && group!=parent &&
+               group==b->parent() &&
+               group->inherits("KisGroupLayer")) {
+                group->setCollapsed(true);
+            }
+            reload();
+        });
+    }
+
+    bool handleNativeLayerTouch(QObject *watched,QEvent *event)
+    {
+        if(!m_tree || m_clipBusy || m_reorderPending)return false;
+        const QEvent::Type type=event->type();
+        if(type!=QEvent::TouchBegin && type!=QEvent::TouchUpdate &&
+           type!=QEvent::TouchEnd && type!=QEvent::TouchCancel)
+            return false;
+        const auto *widget=qobject_cast<QWidget*>(watched);
+        const bool relevant=widget &&
+            (widget==m_tree->viewport() ||
+             m_rowButtons.contains(qobject_cast<QToolButton*>(widget)));
+        if(!relevant && m_touches.isEmpty())return false;
+        if(type==QEvent::TouchCancel) {
+            m_touchHoldTimer->stop();
+            m_touches.clear();
+            m_touchPrimary.clear();
+            m_touchHeld=false;
+            m_touchPinching=false;
+            m_edgeScrollTimer->stop();
+            hideLayerDropPreview();
+            return true;
+        }
+        auto *touch=static_cast<QTouchEvent*>(event);
+        for(const QTouchEvent::TouchPoint &point:touch->touchPoints()) {
+            const int id=point.id();
+            const QPoint pos=point.screenPos().toPoint();
+            const bool released=point.state()&Qt::TouchPointReleased;
+            if(!m_touches.contains(id) && !released && relevant) {
+                TileTouch item;
+                item.node=nodeAtScreen(pos);
+                item.start=pos;
+                item.last=pos;
+                if(m_touches.isEmpty()) {
+                    m_touchPrimary=item.node;
+                    m_touchLast=pos;
+                    m_touchHeld=false;
+                    m_touchMoved=false;
+                    m_touchScrolling=false;
+                    m_touchPinching=false;
+                    m_touchPinchReady=false;
+                    m_touchHoldTimer->start();
+                }
+                m_touches.insert(id,item);
+            }
+            if(m_touches.contains(id))
+                m_touches[id].last=pos;
+        }
+        if(m_touches.size()>=2) {
+            const auto points=m_touches.values();
+            if(!m_touchPinching) {
+                m_touchPinching=true;
+                m_touchHoldTimer->stop();
+                m_touchPinchA=points.at(0).node;
+                m_touchPinchB=points.at(1).node;
+                m_touchPinchDistance=QLineF(
+                    points.at(0).start,points.at(1).start).length();
+            }
+            if(m_touchPinchDistance>=65) {
+                const qreal now=QLineF(
+                    points.at(0).last,points.at(1).last).length();
+                if(now<m_touchPinchDistance*0.55 &&
+                   m_touchPinchDistance-now>45)
+                    m_touchPinchReady=true;
+            }
+        } else if(m_touches.size()==1 && !m_touchPinching &&
+                  (type==QEvent::TouchUpdate || type==QEvent::TouchEnd)) {
+            const TileTouch point=m_touches.constBegin().value();
+            const int travel=(point.last-point.start).manhattanLength();
+            if(!m_touchHeld && travel>12) {
+                m_touchScrolling=true;
+                m_touchHoldTimer->stop();
+                if(m_tree->verticalScrollBar())
+                    m_tree->verticalScrollBar()->setValue(
+                        m_tree->verticalScrollBar()->value()+
+                        m_touchLast.y()-point.last.y());
+            } else if(m_touchHeld && travel>18) {
+                m_touchMoved=true;
+                showLayerDropPreview(m_touchPrimary,point.last);
+                m_edgeScrollTimer->start();
+            }
+            m_touchLast=point.last;
+        }
+        for(const QTouchEvent::TouchPoint &point:touch->touchPoints())
+            if(point.state()&Qt::TouchPointReleased)
+                m_touches.remove(point.id());
+        if(type==QEvent::TouchEnd && touch->touchPoints().isEmpty())
+            m_touches.clear();
+        if(m_touches.isEmpty()) {
+            m_touchHoldTimer->stop();
+            m_edgeScrollTimer->stop();
+            hideLayerDropPreview();
+            const KisNodeSP source=m_touchPrimary;
+            const KisNodeSP a=m_touchPinchA;
+            const KisNodeSP b=m_touchPinchB;
+            const QPoint last=m_touchLast;
+            const bool group=m_touchPinching && m_touchPinchReady;
+            const bool moved=m_touchHeld && m_touchMoved;
+            const bool held=m_touchHeld;
+            const bool scrolling=m_touchScrolling;
+            const bool pinching=m_touchPinching;
+            m_touchPrimary.clear();m_touchPinchA.clear();
+            m_touchPinchB.clear();
+            m_touchHeld=false;m_touchMoved=false;
+            m_touchPinching=false;m_touchPinchReady=false;
+            m_touchScrolling=false;
+            if(source)suppressSyntheticClick(source);
+            if(group)groupPinchedTiles(a,b);
+            else if(!pinching && !scrolling && source) {
+                if(moved)moveCompactLayerAt(source,last);
+                else if(!held) {
+                    if(auto *item=itemForNode(source))tapLayer(source,item);
+                } else if(source!=m_active) {
+                    if(auto *item=itemForNode(source))tapLayer(source,item);
+                }
+            }
+        }
+        event->accept();
+        return true;
+    }
+
+    bool eventFilter(QObject *watched,QEvent *event) override
+    {
+        if(handleNativeLayerTouch(watched,event))return true;
+        const QEvent::Type type=event->type();
+        if(m_clipBusy || m_reorderPending)
+            return QFrame::eventFilter(watched,event);
+        auto *tile=qobject_cast<QToolButton*>(watched);
+        const int index=m_rowButtons.indexOf(tile);
+        if(index>=0 && type==QEvent::TabletPress) {
+            auto *pen=static_cast<QTabletEvent*>(event);
+            m_penTracking=true;
+            armMouseLayer(m_nodes.value(index),tile,pen->globalPos());
+            return true;
+        }
+        if(m_penTracking && m_mouseNode &&
+           (type==QEvent::TabletMove ||
+            type==QEvent::TabletRelease)) {
+            auto *pen=static_cast<QTabletEvent*>(event);
+            updateMouseLayer(pen->globalPos());
+            if(type==QEvent::TabletRelease) {
+                m_penTracking=false;
+                finishMouseLayer();
+                return true;
+            }
+        }
+        if(m_mouseNode && tile==m_mouseTile &&
+           type==QEvent::MouseMove) {
+            updateMouseLayer(
+                static_cast<QMouseEvent*>(event)->globalPos());
+        }
+        return QFrame::eventFilter(watched,event);
+    }
+
     void tapLayer(KisNodeSP node,QTreeWidgetItem *item)
     {
         if(!node || !item || !manager())return;
@@ -1193,7 +1548,18 @@ private:
         tile->setToolTip(node->name()+QStringLiteral(
             "\nTap: select; tap again: layer options"));
         tile->setIconSize(QSize(tileSize-13,tileSize-13));
+        tile->setAttribute(Qt::WA_AcceptTouchEvents,true);
+        tile->installEventFilter(this);
+        QObject::connect(tile,&QToolButton::pressed,this,[this,node,tile]() {
+            armMouseLayer(node,tile,QCursor::pos());
+        });
+        QObject::connect(tile,&QToolButton::released,this,[this,node]() {
+            if(m_mouseNode==node)finishMouseLayer();
+        });
         QObject::connect(tile,&QToolButton::clicked,this,[this,node,item]() {
+            if(m_suppressedClickNode==node &&
+               QDateTime::currentMSecsSinceEpoch()<m_suppressedClickUntil)
+                return;
             tapLayer(node,item);
         });
         const int overlay=22;
@@ -1276,7 +1642,8 @@ private:
 
     void reload()
     {
-        if(m_reorderPending || m_clipBusy)return;
+        if(m_reorderPending || m_clipBusy ||
+           m_mouseNode || !m_touches.isEmpty())return;
         auto *m=manager();
         auto *view=m_engine.manager();
         if(!m || !view)return;
@@ -1375,6 +1742,27 @@ private:
     KisNodeSP m_clipMoveSource;
     KisNodeSP m_clipExpectedParent;
     KisNodeSP m_clipExpectedBelow;
+    struct TileTouch {
+        KisNodeSP node;
+        QPoint start;
+        QPoint last;
+    };
+    QHash<int,TileTouch> m_touches;
+    KisNodeSP m_touchPrimary,m_touchPinchA,m_touchPinchB;
+    QPoint m_touchLast;
+    qreal m_touchPinchDistance=0;
+    bool m_touchHeld=false,m_touchMoved=false,m_touchScrolling=false;
+    bool m_touchPinching=false,m_touchPinchReady=false;
+    QPointer<QTimer> m_touchHoldTimer,m_edgeScrollTimer;
+    QPointer<QLabel> m_dragGhost;
+    QPointer<QFrame> m_dropMarker;
+    KisNodeSP m_mouseNode;
+    QPointer<QToolButton> m_mouseTile;
+    QPoint m_mouseStart,m_mouseLast;
+    bool m_mouseDown=false,m_mouseHeld=false,m_mouseMoved=false;
+    bool m_mousePreviouslySelected=false,m_penTracking=false;
+    KisNodeSP m_suppressedClickNode;
+    qint64 m_suppressedClickUntil=0;
     QString m_signature;
     bool m_reorderPending=false;
 };
