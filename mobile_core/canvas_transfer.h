@@ -99,6 +99,11 @@ public:
         // default until the permanent-host path passes Android testing.
         const bool wantPersistent=m_persistentRequestedAtStartup;
         rememberBackendChrome();
+        // Snapshot the tab visibility while the original backend canvas
+        // is still on screen. After its parent is hidden/replaced, Qt
+        // reports all child tabs as invisible and Back would wrongly
+        // restore them as hidden.
+        hideNativeTabs();
         // Make Mobile Studio a child presentation widget before moving
         // the real painting canvas. Only Krita's existing QMainWindow
         // owns an Android native window / GL compositor surface.
@@ -107,6 +112,7 @@ public:
         QWidget *native=m_backend->takeCentralWidget();
         if(!native) {
             mobile->setParent(nullptr);
+            restoreNativeTabs();
             m_chrome.clear();
             return false;
         }
@@ -133,6 +139,7 @@ public:
             native->show();
             mobile->hide();
             mobile->setParent(nullptr);
+            restoreNativeTabs();
             m_chrome.clear();
             m_backend->setProperty("_mobileStudioCanvasTransferred",false);
             m_backend->setProperty("_mobileStudioPresentationActive",false);

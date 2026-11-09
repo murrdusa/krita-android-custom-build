@@ -104,6 +104,12 @@ int main(int argc,char **argv)
         require(backend.centralWidget()==canvas &&
                 canvas->property("nativeImageRevision").toInt()==84,
                 "generic host lost native widget or its drawing data");
+        if(tab->isVisible()!=oldTabVisible ||
+           tab->minimumHeight()!=tabMin || tab->maximumHeight()!=tabMax)
+            qWarning() << "Generic root restored tab:" << "visible="
+                       << tab->isVisible() << "expected=" << oldTabVisible
+                       << "minimum=" << tab->minimumHeight() << "expected=" << tabMin
+                       << "maximum=" << tab->maximumHeight() << "expected=" << tabMax;
         require(tab->isVisible()==oldTabVisible &&
                 tab->minimumHeight()==tabMin && tab->maximumHeight()==tabMax,
                 "generic host did not restore document tab state");
