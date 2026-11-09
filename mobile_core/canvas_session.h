@@ -157,6 +157,15 @@ private:
         if(sessionActive())return;
         const QScopedValueRollback<bool> transition(m_transitioning,true);
         if(m_nativeCanvasMode) {
+            if(m_nativePilot && !m_nativePilot->ready()) {
+                // A native document/layout operation may legitimately
+                // replace Krita's central widget. The stationary pilot
+                // must never force its old canvas back into that slot.
+                // Tear down only the obsolete mobile docks and create
+                // fresh controls around Krita's *current* central view.
+                m_nativePilot->leave();
+                m_nativePilot.reset();
+            }
             if(!m_nativePilot) {
                 m_nativePilot.reset(
                     new MobileNativeCanvasPilot(m_backend,m_bridge));
