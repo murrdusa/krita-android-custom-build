@@ -177,6 +177,10 @@ private:
     {
         if(!m_ready || !m_chrome.active())return;
         const bool has=m_engine.hasDocument();
+        // A blank document workspace should show only navigation/creation,
+        // not an empty brush-and-actions dock consuming the canvas height.
+        // Opening the first document restores the same controls in place.
+        m_chrome.setBottomPanelVisible(has);
         if(m_document) {
             const QString title=m_engine.activeDocumentTitle();
             m_document->setText(has?
