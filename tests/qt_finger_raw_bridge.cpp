@@ -4,6 +4,8 @@
  */
 #include <QCoreApplication>
 #include <QDebug>
+#include <QSettings>
+#include <QTemporaryDir>
 #include <QtGlobal>
 #include <cmath>
 #include "mobile_core/finger_raw_bridge.h"
@@ -15,6 +17,28 @@ static void require(bool valid,const char *message) {
 int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
+    QCoreApplication::setOrganizationName(QStringLiteral("KritaMobileTest"));
+    QCoreApplication::setApplicationName(QStringLiteral("RawContactBridge"));
+    QTemporaryDir temp;
+    require(temp.isValid(),"isolated settings storage unavailable");
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,
+                       temp.path());
+    QSettings settings;
+    settings.setValue(QStringLiteral("MobileStudio/fingerContactPressureV1"),
+                      false);
+    require(!MobileFingerRawBridge::captureEnabled(1000),
+            "raw Android touch sampling enabled without user opt-in");
+    settings.setValue(QStringLiteral("MobileStudio/fingerContactPressureV1"),
+                      true);
+    require(!MobileFingerRawBridge::captureEnabled(1050),
+            "cached raw sampling flag ignored its rate limit");
+    require(MobileFingerRawBridge::captureEnabled(1220),
+            "raw input did not activate after user enabled the experiment");
+    settings.setValue(QStringLiteral("MobileStudio/fingerContactPressureV1"),
+                      false);
+    require(!MobileFingerRawBridge::captureEnabled(1450),
+            "raw sampling continued after disable");
     MobileFingerRawBridge::Sample sample;
     // Android major/minor are physical px; density=2 maps to logical px.
     MobileFingerRawBridge::record(2,1000,32,18,2.0,false);
@@ -58,7 +82,7 @@ int main(int argc,char **argv)
             "raw buffer retained old contacts after its bounded window");
     require(MobileFingerRawBridge::nearest(4,3192,&sample),
             "recent Android historical samples not matched");
-    qInfo() << "PASS: gesture and multitouch resets, density-adjusted"
+    qInfo() << "PASS: opt-in raw capture gate, gesture and multitouch resets, density-adjusted"
             << "raw touch size, pointer identity, historical matching,"
             << "stale/invalid sample rejection and bounded history";
     return 0;
