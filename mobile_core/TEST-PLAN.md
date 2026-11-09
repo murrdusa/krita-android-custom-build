@@ -1,5 +1,27 @@
 # Mobile Studio — Android painting and mode-switch smoke test
 
+## v1.26 stationary header regression and independent Qt host
+
+- **Screenshot regression:** In the opt-in stationary canvas UI, the
+  top navigation dock must remain a single compact row. The document
+  title, Back, Layers, Color and More must not expand into a tall
+  blue panel covering the painting workspace. On this source version,
+  the top dock has a 76 logical-pixel maximum height. Check the
+  document title with short and long names, then rotate the device.
+- Verify actual drawing, save, layer controls and Back remain
+  functional. The canvas must not be reconstructed or reparented.
+- Compile `qt_native_canvas_chrome.cpp` and check the top dock remains
+  at or below its configured height across 25 switches.
+- Independently compile/run `qt_lightweight_canvas_host.cpp` with
+  `KRITA_MOBILE_QT_TEST`: 12 switches must preserve the exact native
+  widget, while invalidated document services must refuse startup.
+- The lightweight Qt host is *not* used by the shipped Android
+  launcher yet. It does not initialize Krita's real painting engine,
+  so do not treat the fake-host regression as on-device parity.
+- No further cosmetic UI changes until core functionality gates pass;
+  automatic APK uploads remain paused.
+
+
 ## v1.25 stable source and scale for finger contact pressure
 
 - In More → Finger pressure calibration, test the same light-to-broad
