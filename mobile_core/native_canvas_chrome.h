@@ -89,7 +89,8 @@ public:
                 QStringLiteral("MobileStudioNativeSideDock"));
             m_sideDock->setFeatures(QDockWidget::NoDockWidgetFeatures);
             m_sideDock->setAllowedAreas(
-                Qt::LeftDockWidgetArea|Qt::RightDockWidgetArea);
+                Qt::LeftDockWidgetArea|Qt::RightDockWidgetArea|
+                Qt::BottomDockWidgetArea);
             m_sideDock->setTitleBarWidget(new QWidget(m_sideDock));
             m_sideDock->setWidget(sidePanel);
             m_backend->addDockWidget(Qt::RightDockWidgetArea,m_sideDock);
@@ -166,6 +167,7 @@ public:
     bool setSidePanelVisible(bool visible)
     {
         if(!m_active || !ownsUnmovedCanvas() || !m_sideDock)return false;
+        if(visible)placeSidePanelForViewport();
         m_sideDock->setVisible(visible);
         scheduleCanvasUpdate();
         return true;
@@ -184,12 +186,43 @@ public:
             // visibility snapshot instead of leaving them on-screen.
             captureAdditionalDesktopChrome();
             captureAdditionalTabs();
+            if(m_sideDock && m_sideDock->isVisible())
+                placeSidePanelForViewport();
             hideDesktopChrome();
             hideTabs();
         }
     }
 
 private:
+    // Portrait phones often have less than 650 logical px of width.
+    // Krita's existing layer panel needs ~268 px; docking it at the
+    // right would collapse the actual paint area. Move only the mobile
+    // layers docker to the bottom on narrow screens. The Krita canvas
+    // itself is never reparented, recreated or exchanged.
+    void placeSidePanelForViewport()
+    {
+        if(!m_backend || !m_sideDock || !ownsUnmovedCanvas())return;
+        const bool narrow=m_backend->width()<650;
+        const Qt::DockWidgetArea desired=narrow?
+            Qt::BottomDockWidgetArea:Qt::RightDockWidgetArea;
+        if(m_backend->dockWidgetArea(m_sideDock)==desired) {
+            if(narrow)
+                m_sideDock->setMaximumHeight(
+                    qMax(190,qMin(340,m_backend->height()/2)));
+            return;
+        }
+        // A bottom layer panel is capped so it cannot take the whole
+        // portrait canvas viewport after the brush dock is laid out.
+        if(narrow) {
+            m_sideDock->setMaximumHeight(
+                qMax(190,qMin(340,m_backend->height()/2)));
+        } else {
+            m_sideDock->setMaximumHeight(QWIDGETSIZE_MAX);
+        }
+        m_backend->addDockWidget(desired,m_sideDock);
+        scheduleCanvasUpdate();
+    }
+
     struct ChromeSnapshot {
         QPointer<QWidget> widget;
         bool visible=false;
