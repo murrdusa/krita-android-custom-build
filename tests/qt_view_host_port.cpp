@@ -104,9 +104,14 @@ int main(int argc,char **argv)
     // for the active document. Two views of the same KRA are ambiguous.
     host.snapshots[0].active=false;
     host.snapshots[1].active=false;
-    host.snapshots[1].document=&doc2;
+    host.snapshots[1].document=&doc1;
     require(Guard::safeCloseTarget(host.openViews(),&doc2)==&viewB,
             "unique current Krita document view not recovered");
+    // Two views of doc2 without an active tab must be rejected rather
+    // than closing a randomly chosen view of that drawing.
+    host.snapshots[1].document=&doc2;
+    require(!Guard::safeCloseTarget(host.openViews(),&doc2),
+            "two views of current document were treated as unique");
     host.snapshots[1].document=&doc1;
     host.snapshots[0].document=&doc1;
     require(!Guard::safeCloseTarget(host.openViews(),&doc1),
