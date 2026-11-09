@@ -197,6 +197,16 @@ serialization or brushes.
   `KisView::setViewManager()` requests the default brush. This
   prevents a valid canvas from having a missing tool action registry.
   The pilot remains opt-in and requires device validation.
+- The independent engine pilot now has previous/next canvas controls
+  backed by the MDI-free `MobileViewHostPort` and live guarded view IDs.
+  Navigation rejects ambiguous active views, duplicate identities and
+  out-of-sync Krita document selections, and wraps among multiple canvases.
+  The new Qt regression checks these cases; actual Android painting and
+  switch-state behavior still require a device test.
+- Standalone Open runs after the initiating toolbar event, and native
+  Save / Save As / Close now defer against the exact captured view and
+  document. The deferred command refuses a changed selection or an
+  invalidated window instead of acting on another drawing.
 - Native view activation now uses one deferred event for the first
   canvas and one per later document switch. The
   `KisCanvas2::bootstrapFinished` call is single-shot per view,
