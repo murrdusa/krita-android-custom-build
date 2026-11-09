@@ -9,6 +9,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QDebug>
+#include <QMenu>
 #include <QPointer>
 #include <QSharedPointer>
 #include <QSettings>
@@ -146,14 +147,32 @@ public:
                          [workspace]() {workspace->chooseTool();});
         QObject::connect(optionsAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleToolOptions();});
+        // Krita's selection manager already provides these native,
+        // undoable actions. Expose them directly rather than inventing
+        // mobile selection commands or simulating keyboard shortcuts.
+        auto *selectionMenu=new QMenu(QObject::tr("Selection"),window);
+        for(const char *name : {"select_all","deselect","reselect",
+                                "invert_selection","edit_selection",
+                                "convert_to_vector_selection",
+                                "convert_to_raster_selection"}) {
+            if(QAction *action=nativeBridge.action(name))
+                selectionMenu->addAction(action);
+        }
+        QList<QAction*> moreActions{
+            newAction,openAction,previousAction,nextAction,
+            saveAsAction,optionsAction
+        };
+        if(!selectionMenu->isEmpty())
+            moreActions.append(selectionMenu->menuAction());
+        moreActions.append(closeAction);
+        moreActions.append(exitAction);
         // Avoid an overflow chevron hiding the primary drawing tools.
         // Less-common operations stay in an explicit, labeled menu.
         if(!MobileNativeCommandLayout::install(
             window,
             {canvasesAction,undoAction,redoAction,saveAction},
             {brushesAction,layersAction,colorAction,toolsAction},
-            {newAction,openAction,previousAction,nextAction,
-             saveAsAction,optionsAction,closeAction,exitAction})) {
+            moreActions)) {
             qWarning() << "Independent Krita command layout unavailable";
         }
 
