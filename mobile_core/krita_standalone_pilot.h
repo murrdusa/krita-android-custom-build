@@ -117,16 +117,24 @@ public:
                          [views=services.views]() {
             MobileDocumentNavigation::cycle(views,1);
         });
-        // Exercise Krita's genuine image undo stack; this is not a
-        // reconstructed history of mobile gestures. Read the currently
-        // selected native document on every click to avoid stale views.
-        auto history=[views=services.views](bool redo) {
-            if(!views)return;
-            const auto current=views->currentDocument();
-            auto *doc=qobject_cast<KisDocument*>(current.data());
-            if(!doc || !doc->undoStack())return;
-            if(redo)doc->undoStack()->redo();
-            else doc->undoStack()->undo();
+        // Exercise Krita's own undo stack, never a mobile shadow
+        // history. Defer outside the toolbar callback, just like Save,
+        // and require the SAME active canvas/document before dispatch:
+        // switching documents must never undo another drawing.
+        auto history=[alive,views=services.views](bool redo) {
+            if(!alive || !views)return;
+            MobileDeferredViewCommand::schedule(
+                alive.data(),views,
+                [views,redo](const QPointer<QObject> &selected) {
+                    if(!views)return;
+                    const auto current=views->currentDocument();
+                    if(!MobileViewIdentityGuard::maySave(
+                           views->openViews(),selected,current))return;
+                    auto *doc=qobject_cast<KisDocument*>(current.data());
+                    if(!doc || !doc->undoStack())return;
+                    if(redo)doc->undoStack()->redo();
+                    else doc->undoStack()->undo();
+                });
         };
         QObject::connect(undoAction,&QAction::triggered,window,
                          [history](){history(false);});
