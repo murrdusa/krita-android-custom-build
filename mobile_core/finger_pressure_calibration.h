@@ -48,6 +48,9 @@ public:
         return std::sqrt(qMax(qreal(0),sum2/n-(sum/n)*(sum/n)));
     }
     QString observedSource() const {return m_source;}
+    qreal lastHoldSpread() const {return m_holdSpread;}
+    int lastHoldLevels() const {return m_holdLevels;}
+    int lastHoldSamples() const {return m_holdSamples;}
     void setPreferRaw(bool enabled) {m_preferRaw=enabled;}
 
     explicit MobileFingerCalibrationPad(QWidget *parent=nullptr)
@@ -127,7 +130,20 @@ protected:
 
         if(touch->type()==QEvent::TouchEnd ||
            point.state()==Qt::TouchPointReleased) {
+            m_holdSamples=m_samples.size();
+            m_holdLevels=0;
+            m_holdSpread=0;
             if(!m_samples.isEmpty()) {
+                qreal sum=0,sum2=0;
+                QSet<int> levels;
+                for(qreal d:m_samples) {
+                    sum+=d;sum2+=d*d;
+                    levels.insert(qRound(d*4));
+                }
+                m_holdLevels=levels.size();
+                const qreal n=m_samples.size();
+                m_holdSpread=std::sqrt(qMax(qreal(0),
+                    sum2/n-(sum/n)*(sum/n)));
                 std::sort(m_samples.begin(),m_samples.end());
                 // Median rejects spikes from noisy Android touch ellipses.
                 const int middle=m_samples.size()/2;
@@ -179,6 +195,8 @@ private:
     QVector<qreal> m_samples;
     QVector<qreal> m_history;
     QSet<int> m_distinct;
+    qreal m_holdSpread=0;
+    int m_holdLevels=0,m_holdSamples=0;
     QString m_source=QStringLiteral("Qt");
     bool m_preferRaw=true;
     bool m_tracking=false;
@@ -435,6 +453,12 @@ public:
                 tr("medium / response curve");
             m_observed->setText(tr("Captured %1: %2 logical pixels.")
                 .arg(label).arg(diameter,0,'f',1));
+            m_levels->setText(tr(
+                "Last touch: %1 samples, %2 distinct 0.25px levels; "
+                "within-touch spread %3px (includes intentional motion).")
+                .arg(m_pad->lastHoldSamples())
+                .arg(m_pad->lastHoldLevels())
+                .arg(m_pad->lastHoldSpread(),0,'f',2));
             m_mode=Mode::None;
             m_instruction->setText(tr(
                 "Capture the other end of the range, adjust the numbers "
