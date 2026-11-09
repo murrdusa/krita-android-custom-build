@@ -153,6 +153,10 @@ int main(int argc,char **argv)
                 Qt::TouchPointReleased);
     require(qAbs(touchMin->value()-10.0)<0.01,
             "minimum touch capture did not save median diameter");
+    require(touchPad->lastHoldSamples()==3 &&
+            touchPad->lastHoldLevels()==3 &&
+            qAbs(touchPad->lastHoldSpread()-std::sqrt(2.0/3.0))<0.01,
+            "within-touch raw resolution/spread was not measured");
     captureMax->click();
     sendContact(touchPad,&screen,QEvent::TouchBegin,34,
                 Qt::TouchPointPressed);
