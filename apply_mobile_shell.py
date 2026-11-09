@@ -154,19 +154,22 @@ def main(root:Path):
 }'''
     flash_new='''void KisMainWindow::slotFlashWindowHack()
 {
-    if (property("_mobileStudioCanvasTransferred").toBool()) {
+    if ((property("_mobileStudioCanvasTransferred").toBool() ||
+                 property("_mobileStudioPresentationActive").toBool())) {
         return;
     }
     if (!d->flashWindowHackInProgress) {
         d->flashWindowHackInProgress = true;
         QTimer::singleShot(0, this, [this] {
-            if (property("_mobileStudioCanvasTransferred").toBool()) {
+            if ((property("_mobileStudioCanvasTransferred").toBool() ||
+                 property("_mobileStudioPresentationActive").toBool())) {
                 d->flashWindowHackInProgress = false;
                 return;
             }
             hide();
             QTimer::singleShot(0, this, [this] {
-                if (!property("_mobileStudioCanvasTransferred").toBool()) {
+                if (!(property("_mobileStudioCanvasTransferred").toBool() ||
+                 property("_mobileStudioPresentationActive").toBool())) {
                     show();
                 }
                 d->flashWindowHackInProgress = false;
