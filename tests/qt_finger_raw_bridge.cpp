@@ -1,0 +1,56 @@
+/*
+ * Qt-only test for Android MotionEvent touch-major/minor input buffer.
+ * Native Android Java dispatch is covered separately by APK compilation.
+ */
+#include <QCoreApplication>
+#include <QDebug>
+#include <QtGlobal>
+#include <cmath>
+#include "mobile_core/finger_raw_bridge.h"
+
+static void require(bool valid,const char *message) {
+    if(!valid)qFatal("Raw finger touch test failed: %s",message);
+}
+
+int main(int argc,char **argv)
+{
+    QCoreApplication app(argc,argv);
+    MobileFingerRawBridge::Sample sample;
+    // Android major/minor are physical px; density=2 maps to logical px.
+    MobileFingerRawBridge::record(2,1000,32,18,2.0,false);
+    require(MobileFingerRawBridge::nearest(2,1000,&sample),
+            "could not match same pointer and timestamp");
+    require(qAbs(sample.diameter-12.0)<0.001 &&
+            qAbs(sample.major-16.0)<0.001 &&
+            qAbs(sample.minor-9.0)<0.001,
+            "raw Android size was not density normalized");
+    require(!sample.historical,"current MotionEvent marked historical");
+    require(!MobileFingerRawBridge::nearest(3,1000,&sample),
+            "raw contact mixed different fingers");
+    require(!MobileFingerRawBridge::nearest(2,1100,&sample),
+            "raw contact reused a stale sample");
+    require(!MobileFingerRawBridge::nearest(2,0,&sample),
+            "raw contact should not guess when Qt has no event time");
+    MobileFingerRawBridge::record(2,1010,30,20,2.0,true);
+    MobileFingerRawBridge::record(2,1010,40,20,2.0,false);
+    require(MobileFingerRawBridge::nearest(2,1010,&sample) &&
+            !sample.historical && qAbs(sample.major-20.0)<0.001,
+            "current sample did not beat historical sample at same time");
+    require(app.property("_mobileFingerRawDiameter").toDouble()>0.0,
+            "contact dimensions were not exposed for live diagnostics");
+    // Invalid contact dimensions must be ignored.
+    MobileFingerRawBridge::record(2,1200,0,0,2.0,false);
+    require(!MobileFingerRawBridge::nearest(2,1200,&sample),
+            "invalid empty raw contact was accepted");
+    // The native ring buffer is bounded; old strokes cannot be matched.
+    for(int i=0;i<150;++i)
+        MobileFingerRawBridge::record(4,2000+i*8,30,26,2.0,true);
+    require(!MobileFingerRawBridge::nearest(2,1000,&sample),
+            "raw buffer retained old contacts after its bounded window");
+    require(MobileFingerRawBridge::nearest(4,3192,&sample),
+            "recent Android historical samples not matched");
+    qInfo() << "PASS: density-adjusted raw MotionEvent size, pointer identity,"
+            << "historical matching, stale/invalid sample rejection,"
+            << "bounded history and size-only live diagnostics";
+    return 0;
+}
