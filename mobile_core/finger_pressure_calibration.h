@@ -20,6 +20,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QSettings>
+#include <QScrollArea>
 #include <QSizeF>
 #include <QTouchEvent>
 #include <QVBoxLayout>
@@ -47,6 +48,7 @@ public:
         return std::sqrt(qMax(qreal(0),sum2/n-(sum/n)*(sum/n)));
     }
     QString observedSource() const {return m_source;}
+    void setPreferRaw(bool enabled) {m_preferRaw=enabled;}
 
     explicit MobileFingerCalibrationPad(QWidget *parent=nullptr)
         : QFrame(parent)
@@ -92,14 +94,14 @@ protected:
         }
 
         const QSizeF size=point.ellipseDiameters();
-        qreal diameter=std::sqrt(size.width()*size.height());
+        qreal diameter=(size.width()>0 && size.height()>0)?
+            std::sqrt(size.width()*size.height()):0.0;
         m_source=QStringLiteral("Qt touch ellipse");
         // MainActivity captures MotionEvent contact dimensions before Qt
         // dispatch; the size-only diagnostic is used only when timestamps
         // match. Krita's touch events remain unmodified.
         QCoreApplication *app=QCoreApplication::instance();
-        if(app && QSettings().value(QString::fromLatin1(
-            MobileFingerPressureSettings::rawEnabledKey()),true).toBool()) {
+        if(app && m_preferRaw) {
             const quint64 rawTime=app->property(
                 "_mobileFingerRawTimestamp").toULongLong();
             const quint64 qtTime=touch->timestamp();
@@ -115,6 +117,7 @@ protected:
         if(std::isfinite(diameter) && diameter>=1.0 &&
            diameter<=250.0) {
             m_samples.append(diameter);
+            if(m_samples.size()>512)m_samples.removeFirst();
             m_history.append(diameter);
             if(m_history.size()>128)m_history.removeFirst();
             m_distinct.insert(qRound(diameter*4));
@@ -177,6 +180,7 @@ private:
     QVector<qreal> m_history;
     QSet<int> m_distinct;
     QString m_source=QStringLiteral("Qt");
+    bool m_preferRaw=true;
     bool m_tracking=false;
 };
 
@@ -188,14 +192,24 @@ public:
     {
         setWindowTitle(tr("Calibrate finger pressure"));
         setMinimumWidth(310);
-        auto *layout=new QVBoxLayout(this);
+        auto *outer=new QVBoxLayout(this);
+        outer->setContentsMargins(7,7,7,7);
+        auto *scroll=new QScrollArea(this);
+        scroll->setObjectName(QStringLiteral("fingerPressureSettingsScroll"));
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        auto *body=new QWidget(scroll);
+        auto *layout=new QVBoxLayout(body);
         layout->setSpacing(9);
+        outer->addWidget(scroll,1);
 
         auto *description=new QLabel(tr(
-            "Finger contact size controls simulated pressure. A smaller "
-            "contact starts thinner; a larger contact starts thicker. "
-            "The minimum maps to 0%, and the maximum to 100% pressure. "
-            "Some brushes may make no mark at 0%."),this);
+            "Calibrate small and large contacts for 0–100% pressure. "
+            "Adjust response: below 1.0 emphasizes light contact, "
+            "above 1.0 emphasizes broad contact. Higher Stability "
+            "reduces jitter; lower Stability reacts faster. "
+            "Capture a medium contact to fit the curve automatically. "
+            "Some brushes make no mark at 0%."),this);
         description->setWordWrap(true);
         layout->addWidget(description);
 
@@ -288,6 +302,9 @@ public:
         layout->addWidget(m_instruction);
 
         m_pad=new MobileFingerCalibrationPad(this);
+        m_pad->setPreferRaw(m_useRaw->isChecked());
+        connect(m_useRaw,&QCheckBox::toggled,m_pad,
+                &MobileFingerCalibrationPad::setPreferRaw);
         m_pad->setObjectName(QStringLiteral("fingerPressureContactPad"));
         auto *padLayout=new QVBoxLayout(m_pad);
         auto *padText=new QLabel(tr("TOUCH HERE"),m_pad);
@@ -313,7 +330,11 @@ public:
 
         auto *buttons=new QDialogButtonBox(
             QDialogButtonBox::Save|QDialogButtonBox::Cancel,this);
-        layout->addWidget(buttons);
+        layout->addStretch(1);
+        scroll->setWidget(body);
+        outer->addWidget(buttons);
+        // Save/Cancel remain accessible on short phone screens even
+        // when the live diagnostic graph and calibration controls scroll.
         m_save=buttons->button(QDialogButtonBox::Save);
         connect(buttons,&QDialogButtonBox::rejected,this,&QDialog::reject);
         connect(buttons,&QDialogButtonBox::accepted,this,[this]() {
