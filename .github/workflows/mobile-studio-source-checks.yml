@@ -81,7 +81,10 @@ jobs:
           assert 'QStringLiteral("MobileStudio/startDirectly"),true' in Path("mobile_core/standalone_host.h").read_text()
           assert 'startup_policy=own/"mobile_core/mobile_startup_policy.h"' in Path("apply_mobile_shell.py").read_text()
           assert '(root/"libs/ui/mobile_startup_policy.h").write_text(' in Path("apply_mobile_shell.py").read_text()
-          assert "QStringLiteral(\"MobileStudio/bootPending\"),false" in startup
+          policy = Path("mobile_core/mobile_startup_policy.h").read_text()
+          assert 'QStringLiteral("MobileStudio/bootPending"),false' in policy
+          assert 'QStringLiteral("MobileStudio/startDirectly"),false' in policy
+          assert 'QStringLiteral("MobileStudio/startDirectly"),' in policy
           assert "QTimer::singleShot(4500" not in startup
           assert "manual recovery available in Settings" in startup
           document_service = Path("mobile_core/document_service.h").read_text()
