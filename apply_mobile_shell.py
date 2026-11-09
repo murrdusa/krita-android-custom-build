@@ -80,6 +80,8 @@ def main(root:Path):
     app_entry_source=own/"mobile_core/krita_application_entry.cpp"
     android_runtime_header=own/"mobile_core/krita_android_runtime.h"
     android_runtime_source=own/"mobile_core/krita_android_runtime.cpp"
+    android_intents_header=own/"mobile_core/android_document_intents.h"
+    android_intents_source=own/"mobile_core/android_document_intents.cpp"
     native_workspace=own/"mobile_core/krita_native_workspace.h"
     native_reorder_policy=own/"mobile_core/native_layer_reorder_policy.h"
     native_command_layout=own/"mobile_core/native_command_layout.h"
@@ -111,7 +113,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,startup_policy,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,canvas_resume_observer,standalone_krita_runtime,standalone_krita_documents,standalone_engine_session,native_engine_probe,standalone_engine_pilot,native_startup_policy,native_boot_coordinator,native_bootstrap_audit,engine_only_policy,engine_only_root,engine_only_bootstrap_header,engine_only_bootstrap_source,engine_init_header,engine_init_source,app_entry_header,app_entry_source,android_runtime_header,android_runtime_source,native_workspace,native_command_layout,native_reorder_policy,deferred_view_command,document_navigation,surface,switcher,bridge,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+               (shell,session,startup_policy,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,canvas_resume_observer,standalone_krita_runtime,standalone_krita_documents,standalone_engine_session,native_engine_probe,standalone_engine_pilot,native_startup_policy,native_boot_coordinator,native_bootstrap_audit,engine_only_policy,engine_only_root,engine_only_bootstrap_header,engine_only_bootstrap_source,engine_init_header,engine_init_source,app_entry_header,app_entry_source,android_runtime_header,android_runtime_source,android_intents_header,android_intents_source,native_workspace,native_command_layout,native_reorder_policy,deferred_view_command,document_navigation,surface,switcher,bridge,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
                 reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
@@ -121,7 +123,7 @@ def main(root:Path):
     # so a future lightweight application host can replace it in one place.
     desktop_dependent=(desktop_adapters,mdi_view_adapter)
     qt_host_components=(session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,surface)
-    mobile_frontend=(standalone_engine_session,engine_only_root,engine_only_policy,engine_only_bootstrap_header,engine_only_bootstrap_source,engine_init_header,engine_init_source,app_entry_header,app_entry_source,android_runtime_header,android_runtime_source,native_bootstrap_audit,native_boot_coordinator,native_command_layout,native_workspace,native_reorder_policy,native_startup_policy,canvas_resume_observer,deferred_view_command,document_navigation,shell,bridge,host_services,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,
+    mobile_frontend=(standalone_engine_session,engine_only_root,engine_only_policy,engine_only_bootstrap_header,engine_only_bootstrap_source,engine_init_header,engine_init_source,app_entry_header,app_entry_source,android_runtime_header,android_runtime_source,android_intents_header,android_intents_source,native_bootstrap_audit,native_boot_coordinator,native_command_layout,native_workspace,native_reorder_policy,native_startup_policy,canvas_resume_observer,deferred_view_command,document_navigation,shell,bridge,host_services,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,
                      command_service,command_port,switcher,brush,color,layers,
                      commands,quick,mdi_identity,pressure_calibration,pressure_settings,
                      reorder,tools,documents,*qt_host_components)
@@ -463,7 +465,8 @@ KisMainWindow * KisView::mainWindow() const''',
         '''#include "KisAndroidDonations.h"''',
         '''#include "KisAndroidDonations.h"
 #include "krita_engine_initialization.h"
-#include "krita_application_entry.h"''',
+#include "krita_application_entry.h"
+#include "android_document_intents.h"''',
         "Android engine-only application bootstrap headers")
     # Preserve Android display-density scaling for the independent
     # process startup. Its singleton pointer lives on KisApplication;
@@ -558,6 +561,39 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
                 qWarning() << "Engine-only file intent requires native"
                            << " routing; reopen this file through Open:" << fileName;''',
         "guard late Android open intent without desktop window")
+    # Android's MainActivity forwards onNewIntent() through
+    # KisApplication::fileOpenRequested. Send it directly to the native
+    # Krita document host rather than an absent desktop main window.
+    app=one(app,
+        '''void KisApplication::fileOpenRequested(const QString &url)
+{''',
+        '''void KisApplication::fileOpenRequested(const QString &url)
+{
+#ifdef Q_OS_ANDROID
+    if (MobileAndroidDocumentIntents::enqueue(url))
+        return;
+#endif''',
+        "route Android file open to native engine")
+    # The existing QtSingleApplication signal delivers files to an
+    # already-running instance through remoteArguments().
+    app=one(app,
+        '''void KisApplication::remoteArguments(const QString &message)
+{''',
+        '''void KisApplication::remoteArguments(const QString &message)
+{
+#ifdef Q_OS_ANDROID
+    if (MobileAndroidDocumentIntents::active()) {
+        const KisApplicationArguments incoming=
+            KisApplicationArguments::deserialize(
+                QByteArray::fromBase64(message.toLatin1()));
+        if(incoming.filenames().isEmpty())
+            qWarning() << "Mobile Studio: remote request has no file paths";
+        for(const QString &path:incoming.filenames())
+            MobileAndroidDocumentIntents::enqueue(path);
+        return;
+    }
+#endif''',
+        "route remote file launch to native engine")
     app=one(app,
         '''    Q_FOREACH(const QByteArray &message, d->earlyRemoteArguments) {
         executeRemoteArguments(message, d->mainWindow);
@@ -1115,6 +1151,10 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
         android_runtime_header.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/krita_android_runtime.cpp").write_text(
         android_runtime_source.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/android_document_intents.h").write_text(
+        android_intents_header.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/android_document_intents.cpp").write_text(
+        android_intents_source.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/krita_native_workspace.h").write_text(
         native_workspace.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/native_layer_reorder_policy.h").write_text(
@@ -1142,6 +1182,7 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
         krita_engine_initialization.cpp
         krita_application_entry.cpp
         krita_android_runtime.cpp
+        android_document_intents.cpp
         KisAndroidDonations.cpp''',
         "real Android kritaui engine compilation gate")
     ui_cmake_file.write_text(ui_cmake,encoding="utf-8")

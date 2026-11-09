@@ -20,7 +20,7 @@ bool MobileKritaApplicationEntry::start(
     // document-intent support before the legacy routing can be removed.
     const bool compatible=needsWindow && showWindow && !batchRun &&
         !doNewImage && !doTemplate && !queuedIntents &&
-        args.filenames().isEmpty() && args.fileLayer().isEmpty() &&
+        args.fileLayer().isEmpty() &&
         args.session().isEmpty() && args.workspace().isEmpty() &&
         args.windowLayout().isEmpty() &&
         !args.canvasOnly() && !args.fullScreen();

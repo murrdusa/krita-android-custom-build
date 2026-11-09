@@ -20,6 +20,7 @@
 #include "kis_document_aware_spin_box_unit_manager.h"
 #include "kis_spin_box_unit_manager.h"
 #include "krita_application_entry.h"
+#include "android_document_intents.h"
 #include "engine_only_startup_policy.h"
 #include <config-qt-patches-present.h>
 
@@ -28,8 +29,7 @@ MobileKritaAndroidRuntime::Result MobileKritaAndroidRuntime::launch(
 {
     // File intents, batch conversion, sessions and explicit legacy
     // preferences keep Krita's original command-line handling.
-    const bool normal=args.filenames().isEmpty() &&
-        args.fileLayer().isEmpty() && args.session().isEmpty() &&
+    const bool normal=args.fileLayer().isEmpty() && args.session().isEmpty() &&
         args.workspace().isEmpty() && args.windowLayout().isEmpty() &&
         !args.doNewImage() && !args.doTemplate() &&
         !args.exportAs() && !args.exportSequence() &&
@@ -40,6 +40,9 @@ MobileKritaAndroidRuntime::Result MobileKritaAndroidRuntime::launch(
         return Result::UseLegacyInvocation;
 
     qInfo() << "Mobile Studio: independent Android process startup";
+    MobileAndroidDocumentIntents::activate();
+    for(const QString &file:args.filenames())
+        MobileAndroidDocumentIntents::enqueue(file);
 
     KisConfig cfg(false);
     const QString opengl=cfg.canvasState();

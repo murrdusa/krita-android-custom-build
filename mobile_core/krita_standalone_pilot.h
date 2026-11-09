@@ -23,6 +23,7 @@
 #include <QWidget>
 
 #include "document_service.h"
+#include "android_document_intents.h"
 #include "deferred_view_command.h"
 #include "document_navigation.h"
 #include "document_workflow.h"
@@ -336,10 +337,14 @@ public:
         window->suppressNativeStatusChrome();
         QTimer::singleShot(0,window,
                            [alive,documents,stage,firstCanvasReady,
-                            desktopNative]() {
+                            desktopNative,intentHost=services.documents]() {
             if(!alive)return;
             stage("Creating first native Krita document and view");
-            if(!documents->createCanvas(
+            // Cold-start Android file intents open before a blank document
+            // is created. Shares/reopens do not accumulate untitled tabs.
+            const int opened=MobileAndroidDocumentIntents::attachAndOpen(
+                alive.data(),intentHost);
+            if(opened==0 && !documents->createCanvas(
                        QStringLiteral("Untitled"),512,512,72,true)) {
                 stage("Krita refused first native document creation");
                 if(firstCanvasReady)firstCanvasReady(false);
