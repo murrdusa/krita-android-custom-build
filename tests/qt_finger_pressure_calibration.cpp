@@ -7,6 +7,10 @@
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QPushButton>
+#include <QCheckBox>
+#include <QLabel>
+#include <QSlider>
+#include <QScrollArea>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTouchDevice>
@@ -50,6 +54,18 @@ int main(int argc,char **argv)
     auto *buttons=dialog.findChild<QDialogButtonBox*>();
     require(minimum && maximum && pad && buttons,
             "calibration control missing");
+    auto *curve=dialog.findChild<QSlider*>(
+        QStringLiteral("fingerPressureCurveGamma"));
+    auto *stability=dialog.findChild<QSlider*>(
+        QStringLiteral("fingerPressureStability"));
+    auto *raw=dialog.findChild<QCheckBox*>(
+        QStringLiteral("fingerPressureRawAndroid"));
+    auto *scroll=dialog.findChild<QScrollArea*>(
+        QStringLiteral("fingerPressureSettingsScroll"));
+    require(curve && stability && raw && scroll,
+            "response curve / smoothing / raw / scroll controls missing");
+    require(curve->value()==100 && stability->value()==50 && raw->isChecked(),
+            "incorrect default response settings");
     auto *save=buttons->button(QDialogButtonBox::Save);
     require(save && save->isEnabled(),"default calibration is invalid");
     require(qAbs(minimum->value()-8.0)<0.01 &&
@@ -63,9 +79,16 @@ int main(int argc,char **argv)
     minimum->setValue(12.0);
     maximum->setValue(35.0);
     require(save->isEnabled(),"valid custom range not accepted");
+    curve->setValue(55);
+    stability->setValue(80);
+    raw->setChecked(false);
     save->click();
     require(dialog.result()==QDialog::Accepted,"Save did not accept dialog");
     const auto calibrated=MobileFingerPressureSettings::read(QSettings());
+    const auto response=MobileFingerPressureSettings::readResponse(QSettings());
+    require(qAbs(response.gamma-0.55)<0.001 &&
+            qAbs(response.stability-0.80)<0.001 && !response.useRawAndroid,
+            "curve, stability or raw preference were not saved");
     require(qAbs(calibrated.minimum-12.0)<0.01 &&
             qAbs(calibrated.maximum-35.0)<0.01,
             "calibration changes were not persisted");
@@ -90,6 +113,11 @@ int main(int argc,char **argv)
             qAbs(remin->value()-12.0)<0.01 &&
             qAbs(remax->value()-35.0)<0.01,
             "saved calibration not restored on reopening");
+    require(reopened.findChild<QSlider*>(
+            QStringLiteral("fingerPressureCurveGamma"))->value()==55 &&
+            reopened.findChild<QSlider*>(
+            QStringLiteral("fingerPressureStability"))->value()==80,
+            "response and smoothing not restored on reopening");
 
     // Simulate actual finger contact on the calibration pad, not merely
     // manual spin-box edits: both capture buttons must set the measured
@@ -101,11 +129,18 @@ int main(int argc,char **argv)
         QStringLiteral("fingerCaptureMinimum"));
     auto *captureMax=touchDialog.findChild<QPushButton*>(
         QStringLiteral("fingerCaptureMaximum"));
+    auto *captureMedium=touchDialog.findChild<QPushButton*>(
+        QStringLiteral("fingerCaptureMedium"));
+    auto *touchCurve=touchDialog.findChild<QSlider*>(
+        QStringLiteral("fingerPressureCurveGamma"));
+    auto *levels=touchDialog.findChild<QLabel*>(
+        QStringLiteral("fingerPressureLevels"));
     auto *touchMin=touchDialog.findChild<QDoubleSpinBox*>(
         QStringLiteral("fingerPressureMinimum"));
     auto *touchMax=touchDialog.findChild<QDoubleSpinBox*>(
         QStringLiteral("fingerPressureMaximum"));
-    require(touchPad && captureMin && captureMax && touchMin && touchMax,
+    require(touchPad && captureMin && captureMax && captureMedium &&
+            touchMin && touchMax && touchCurve && levels,
             "touch calibration controls missing");
     QTouchDevice screen;
     screen.setType(QTouchDevice::TouchScreen);
@@ -127,6 +162,22 @@ int main(int argc,char **argv)
                 Qt::TouchPointReleased);
     require(qAbs(touchMax->value()-35.0)<0.01,
             "maximum touch capture did not save median diameter");
+    captureMedium->click();
+    sendContact(touchPad,&screen,QEvent::TouchBegin,14,
+                Qt::TouchPointPressed);
+    sendContact(touchPad,&screen,QEvent::TouchUpdate,15,
+                Qt::TouchPointMoved);
+    sendContact(touchPad,&screen,QEvent::TouchEnd,16,
+                Qt::TouchPointReleased);
+    // Between calibrated 10 and 35px, medium=15px corresponds to
+    // position=0.2. Fitted gamma log(.5)/log(.2) ~= 0.43.
+    require(touchCurve->value()>=42 && touchCurve->value()<=44,
+            "medium contact did not fit the response curve");
+    require(touchPad->distinctLevels()>=6 &&
+            touchPad->observedSamples()>=9,
+            "diagnostics did not count quantized sensor readings");
+    require(levels->text().contains("distinct"),
+            "sensor level diagnostic label was not refreshed");
     captureMin->click();
     sendContact(touchPad,&screen,QEvent::TouchBegin,0,
                 Qt::TouchPointPressed);
@@ -135,7 +186,9 @@ int main(int argc,char **argv)
     require(qAbs(touchMin->value()-10.0)<0.01,
             "missing contact size corrupted captured calibration");
 
-    qInfo() << "PASS: touch-pad median capture, unavailable-area safety,"
+    qInfo() << "PASS: response curve/stability controls, Android raw toggle,"
+            << "live distinct-level graph, three-level calibration,"
+            << "touch-pad median capture, unavailable-area safety,"
             << "calibration UI defaults, invalid range validation,"
             << "Save persistence, reopen and full 0–100% pressure endpoints";
     return 0;
