@@ -472,3 +472,12 @@ actual Android history integration requires on-device verification.
 The layer menu and Up/Down buttons share the same command path.
 Color wheel code is unchanged. Multi-selected reorder remains
 unsupported until a safe grouped undo transaction is validated.
+
+
+The native layer Rename action is also routed through the same
+`KisProcessingApplicator` undoable document stroke; its former
+`KisNodeManager::setNodeName` legacy direct-command path was removed.
+The panel now awaits completion of the rename or reorder stroke
+before reconstructing the node tree. Add/delete and visibility/lock
+remain on Krita's existing mechanisms and should be validated
+separately if their undo history is also affected.

@@ -41,6 +41,7 @@
 #include <memory>
 #include "kis_processing_applicator.h"
 #include "commands/kis_image_layer_move_command.h"
+#include "commands/KisNodeRenameCommand.h"
 #include "kis_node_manager.h"
 #include "kis_node.h"
 #include "kis_image.h"
@@ -320,10 +321,20 @@ private:
         // image or Krita's desktop node-manager reorder action.
         if(!m_engine.selectLayer(node))return;
 
+        runNativeLayerStroke(image,
+            new KisImageLayerMoveCommand(image,node,parent,above,true),
+            QStringLiteral("Native reorder"));
+    }
+
+    void runNativeLayerStroke(KisImageSP image,KUndo2Command *command,
+                              const QString &operation)
+    {
+        if(!image || !command || m_reorderPending) {
+            delete command;
+            return;
+        }
         m_reorderPending=true;
-        checkpointMove(QStringLiteral("Native reorder stroke queued"));
-        auto *command=new KisImageLayerMoveCommand(
-            image,node,parent,above,true);
+        checkpointMove(operation+QStringLiteral(" stroke queued"));
         KisProcessingApplicator stroke(
             image,KisNodeList(),KisProcessingApplicator::NONE,
             KisImageSignalVector(),command->text());
@@ -332,23 +343,24 @@ private:
         auto completion=std::make_shared<std::future<bool>>(
             stroke.successfullyCompletedFuture());
         stroke.end();
-        awaitReorder(completion);
+        awaitReorder(completion,operation);
     }
 
-    void awaitReorder(const std::shared_ptr<std::future<bool>> &result)
+    void awaitReorder(const std::shared_ptr<std::future<bool>> &result,
+                      const QString &operation)
     {
         // Do not block the Qt UI thread or walk the node graph while
         // Krita is applying/reversing a processing stroke.
         if(!result || !result->valid()) {
             m_reorderPending=false;
-            checkpointMove(QStringLiteral("Native reorder future unavailable"));
+            checkpointMove(operation+QStringLiteral(" future unavailable"));
             reload();
             return;
         }
         if(result->wait_for(std::chrono::milliseconds(0))!=
            std::future_status::ready) {
-            QTimer::singleShot(40,this,[this,result]() {
-                awaitReorder(result);
+            QTimer::singleShot(40,this,[this,result,operation]() {
+                awaitReorder(result,operation);
             });
             return;
         }
@@ -359,9 +371,9 @@ private:
             succeeded=false;
         }
         m_reorderPending=false;
-        checkpointMove(succeeded ?
-            QStringLiteral("Native reorder stroke committed to Undo"):
-            QStringLiteral("Native reorder stroke not completed"));
+        checkpointMove(operation+
+            (succeeded?QStringLiteral(" stroke committed to Undo"):
+                       QStringLiteral(" stroke not completed")));
         reload();
     }
 
@@ -406,8 +418,21 @@ private:
             const QString next=QInputDialog::getText(
                 this,i18n("Rename layer"),i18n("Layer name"),
                 QLineEdit::Normal,node->name(),&ok);
-            if(ok && !next.trimmed().isEmpty())
-                m->setNodeName(node,next.trimmed());
+            if(ok && !next.trimmed().isEmpty() &&
+               next.trimmed()!=node->name() && !m_reorderPending) {
+                KisImageSP image=m_engine.manager() ?
+                    m_engine.manager()->image().toStrongRef() : KisImageSP();
+                KisNodeSP ancestor=node;
+                while(ancestor && image && ancestor!=image->root())
+                    ancestor=ancestor->parent();
+                if(image && ancestor==image->root()) {
+                    runNativeLayerStroke(image,
+                        new KisNodeRenameCommand(
+                            node,node->name(),next.trimmed()),
+                        QStringLiteral("Native layer rename"));
+                    return; // Refresh only after stroke finishes.
+                }
+            }
         } else if(chosen==properties) {
             m->nodeProperties(node);
         } else if(chosen==group) {

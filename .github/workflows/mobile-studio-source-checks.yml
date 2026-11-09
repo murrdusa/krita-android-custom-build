@@ -332,6 +332,9 @@ jobs:
           assert 'new KisImageLayerMoveCommand(' in layer_source
           assert 'KisProcessingApplicator stroke(' in layer_source
           assert 'stroke.successfullyCompletedFuture()' in layer_source
+          assert 'runNativeLayerStroke(image,' in layer_source
+          assert 'new KisNodeRenameCommand(' in layer_source
+          assert 'm->setNodeName(node,next.trimmed())' not in layer_source
           assert 'stroke.end();' in layer_source
           assert 'awaitReorder(completion);' in layer_source
           assert 'm_engine.selectLayer(node)' in layer_source
