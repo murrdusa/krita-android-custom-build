@@ -118,9 +118,26 @@ PY
   echo "## PASS: Native Krita engine sources compiled into kritaui"
   exit 0
 fi
-cmake --build . --target install --parallel "${KRITA_BUILD_JOBS:-2}"
+# Preserve a complete native/Qt deployment log and surface its ACTUAL
+# terminal error in GitHub's short watcher excerpts. Native installation
+# can fail during androiddeployqt *after* all compilation reaches 100%.
+NATIVE_LOG="$BUILDDIR/mobile-studio-native-install.log"
+if ! cmake --build . --target install --parallel "${KRITA_BUILD_JOBS:-2}" 2>&1 | tee "$NATIVE_LOG"; then
+  echo "ERROR: Mobile Studio native install/Android Qt deployment failed" >&2
+  grep -nEi 'error:|fatal error|failure:|BUILD FAILED|No target|No such file|FAILED|Error [12]|Exception' "$NATIVE_LOG" | tail -n 24 >&2 || true
+  echo "--- LAST NATIVE BUILD LINES ---" >&2
+  tail -n 55 "$NATIVE_LOG" >&2
+  exit 1
+fi
 cd "$SOURCE"
-python3 build-tools/ci-scripts/build-android-package.py --package-type debug
+PACKAGE_LOG="$BUILDDIR/mobile-studio-apk-packaging.log"
+if ! python3 build-tools/ci-scripts/build-android-package.py --package-type debug 2>&1 | tee "$PACKAGE_LOG"; then
+  echo "ERROR: Mobile Studio Android APK packaging failed" >&2
+  grep -nEi 'error:|fatal error|failure:|BUILD FAILED|No target|No such file|FAILED|Error [12]|Exception' "$PACKAGE_LOG" | tail -n 24 >&2 || true
+  echo "--- LAST APK PACKAGING LINES ---" >&2
+  tail -n 55 "$PACKAGE_LOG" >&2
+  exit 1
+fi
 
 DEST="$HOME/persistent/krita-custom-apks"
 mkdir -p "$DEST"
