@@ -633,3 +633,20 @@ The next major boundary is extracting resource/plugin/brush
 registration out of the giant `KisApplication` initialization method;
 that is required before a truly separate APK/process entrypoint can
 replace original Krita startup without losing engine functionality.
+
+## Fast prototype: direct root and independent Android identity
+
+After the user requested faster iteration without layered crash recovery,
+Android starts `MobileLightweightCanvasHost` directly. V2 wrapper
+construction and V3 startup selection have been removed from the normal
+launch. The small policy preserves explicit desktop compatibility for
+unsupported intents/sessions but no longer disables the direct engine
+after crashes. Startup checkpoints and Qt logcat messages remain.
+
+The Android debug application is now packaged as
+`org.krita.mobilestudio.debug`, with its own launcher label. Qt and Java
+package namespaces remain Krita's for binary/JNI compatibility; this is
+separate packaging, not yet a separate engine executable or a stripped
+Krita dependency set. The new Android application has fresh sandboxed
+settings and documents. Focus next on removing desktop bootstrap
+initialization after the direct host is validated by local compilation.

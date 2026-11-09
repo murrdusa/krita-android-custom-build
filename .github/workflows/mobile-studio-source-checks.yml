@@ -337,6 +337,10 @@ jobs:
           assert '#include "KisMainWindow.h"' not in onlyPolicy + onlyRoot
           assert '#include <QMdiArea>' not in onlyPolicy + onlyRoot
           assert 'MobileEngineOnlyRoot final : public QMainWindow' in onlyRoot
+          assert 'applicationId "org.krita.mobilestudio"' in shell_patch
+          assert 'android:label="Krita Mobile Studio"' in shell_patch
+          assert 'org.krita.android.DocumentSaverService' in shell_patch
+          assert 'org.krita.mobilestudio.debug' in Path("build-in-krita-container.sh").read_text()
           assert 'm_drawingHost->close()' in onlyRoot
           assert 'native_bootstrap_audit=own/"mobile_core/native_bootstrap_audit.h"' in shell_patch
           assert '(root/"libs/ui/native_bootstrap_audit.h").write_text(' in shell_patch

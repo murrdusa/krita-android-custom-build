@@ -12,7 +12,8 @@ BUILDDIR="$KDECI_WORKDIR_PATH/krita/_build"
 
 [[ -f "$SOURCE/.krita_android_custom_patch_applied" ]] || { echo 'Patched source missing' >&2; exit 1; }
 [[ -f "$SOURCE/build-tools/ci-scripts/build-android-package.py" ]] || { echo 'Krita package script missing' >&2; exit 1; }
-grep -q 'applicationIdSuffix ".debug"' "$SOURCE/packaging/android/apk/build.gradle" || { echo 'Separate debug app ID not configured' >&2; exit 1; }
+grep -q 'applicationIdSuffix ".debug"' "$SOURCE/packaging/android/apk/build.gradle" || { echo 'Debug variant missing' >&2; exit 1; }
+grep -q 'applicationId "org.krita.mobilestudio"' "$SOURCE/packaging/android/apk/build.gradle" || { echo 'Mobile Studio package ID missing' >&2; exit 1; }
 [[ -d "$KDECI_SHARED_INSTALL_PATH" ]] || { echo 'Qt/Krita Android deps missing' >&2; exit 1; }
 
 # Krita 5.3.4 Android requires libavfilter, but some versions of KDE's
@@ -129,4 +130,4 @@ while IFS= read -r -d '' apk; do
   ((count+=1))
 done < <(find "$KDECI_WORKDIR_PATH/krita/_packaging" -maxdepth 4 -type f -name '*.apk' -print0)
 [[ "$count" -gt 0 ]] || { echo 'No APK found' >&2; exit 1; }
-echo 'APK created. Verify the Android package ID is org.krita.debug.'
+echo 'APK created. Android app ID: org.krita.mobilestudio.debug.'

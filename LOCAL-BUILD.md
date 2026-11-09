@@ -100,3 +100,25 @@ Transfer the APK to your Android tablet. The v2 build is still experimental: ret
 - **Future ccache improvement:** Persistent incremental CMake builds provide the initial speedup. Compiler caching can be added later if measurement shows a need.
 
 References: [Krita Android build guide](https://docs.krita.org/en/untranslatable_pages/building/build_krita_for_android.html) and [Krita Docker build guide](https://docs.krita.org/en/untranslatable_pages/building/build_krita_with_docker_on_linux.html).
+
+## Independent Mobile Studio APK
+
+The customized debug build now has Android application ID
+`org.krita.mobilestudio.debug` and launcher name **Krita Mobile Studio**.
+It installs separately from the official Krita and earlier
+`org.krita.debug` test builds. This is an independent Android app
+package but still uses the genuine Krita paint engine, resource
+registries and libraries. Existing drawings/settings in the old
+package are not automatically copied to the new app.
+
+For a crash report, reproduce the problem with USB debugging enabled,
+then run the following from a terminal with Android `adb` available:
+
+```bash
+adb logcat -d -v threadtime -b main -b crash > mobile-studio-crash.log
+```
+
+Share the relevant crash excerpt or log after checking it for other
+applications' private details. Startup log lines contain `Mobile Studio:`
+and `Standalone engine checkpoint:`. No automatic UI fallback is
+activated after a crash; reopening starts the same native drawing host.

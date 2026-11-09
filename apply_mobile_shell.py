@@ -1140,7 +1140,41 @@ KisMainWindow * KisView::mainWindow() const''',
     cmake=cmake.replace(oldhash[0],
         f'set(krita5_xmlgui_hash_expected "{digest}")',1)
     cmakefile.write_text(cmake,encoding="utf-8")
-    print(f"Installed opt-in independent mobile WINDOW; XMLGUI checksum {digest}")
+    # Package Mobile Studio as an independently installable Android app.
+    # Keep Krita's Qt/Java namespace; changing only applicationId avoids
+    # rewriting the JNI bindings and Java activity class paths.
+    gradlefile=root/"packaging/android/apk/build.gradle"
+    gradle=gradlefile.read_text(encoding="utf-8")
+    gradle=one(gradle,
+        '    defaultConfig {\n        compileSdk androidCompileSdkVersion.toInteger()',
+        '    defaultConfig {\n        applicationId "org.krita.mobilestudio"\n'
+        '        compileSdk androidCompileSdkVersion.toInteger()',
+        "Mobile Studio app identifier")
+    gradlefile.write_text(gradle,encoding="utf-8")
+
+    manifestfile=root/"packaging/android/apk/AndroidManifest.xml"
+    manifest=manifestfile.read_text(encoding="utf-8")
+    manifest=one(manifest,
+        'android:label="Krita"\n                 android:icon=',
+        'android:label="Krita Mobile Studio"\n                 android:icon=',
+        "Mobile Studio application label")
+    manifest=one(manifest,
+        'android:label="Krita"\n                  android:screenOrientation=',
+        'android:label="Krita Mobile Studio"\n                  android:screenOrientation=',
+        "Mobile Studio activity label")
+    manifest=one(manifest,
+        'android:name=".android.DocumentSaverService"',
+        'android:name="org.krita.android.DocumentSaverService"',
+        "fully qualified save service")
+    manifestfile.write_text(manifest,encoding="utf-8")
+
+    debugManifest=root/"packaging/android/apk/flavors/debug/AndroidManifest.xml"
+    debugXml=debugManifest.read_text(encoding="utf-8")
+    debugXml=one(debugXml,'android:label="Krita Debug"',
+                 'android:label="Krita Mobile Studio"',
+                 "Mobile Studio debug label")
+    debugManifest.write_text(debugXml,encoding="utf-8")
+    print(f"Installed independent Mobile Studio app; XMLGUI checksum {digest}")
 
 if __name__=="__main__":
     if len(sys.argv)!=2:
