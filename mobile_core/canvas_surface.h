@@ -39,6 +39,13 @@ public:
     // Do not detach an unrelated widget merely to recover from failure.
     virtual bool hasNativeCanvas() const = 0;
 
+    // In persistent-host experiments, hide/show mobile chrome while the
+    // existing Krita canvas remains parented to this surface. The default
+    // transfer path never needs to call this method.
+    virtual void setMobilePresentationEnabled(bool enabled) {
+        Q_UNUSED(enabled);
+    }
+
     virtual void refreshCanvasSurface() = 0;
 };
 
