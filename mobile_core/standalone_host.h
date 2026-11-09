@@ -490,10 +490,11 @@ private:
             settings.sync();
         });
         auto *fingerCalibration=menu.addAction(
-            i18n("Calibrate finger pressure (minimum / maximum)"));
+            i18n("Finger pressure calibration + live diagnostics"));
         fingerCalibration->setToolTip(i18n(
-            "Calibrate absolute finger contact sizes by touching a pad "
-            "or entering values manually. Takes effect next stroke."));
+            "Calibrate light, medium and broad contacts, adjust the "
+            "response curve and stability, and see raw contact levels. "
+            "Saved changes apply on the next finger stroke."));
         connect(fingerCalibration,&QAction::triggered,this,[this]() {
             QTimer::singleShot(0,this,[this]() {
                 MobileFingerPressureCalibrationDialog calibration(this);
