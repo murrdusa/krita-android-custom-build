@@ -18,13 +18,14 @@
 #include <QTouchEvent>
 #include <QtGlobal>
 #include <cmath>
+#include "finger_pressure_settings.h"
 
 class MobileFingerContactPressure final
 {
 public:
     static constexpr const char *settingKey()
     {
-        return "MobileStudio/fingerContactPressureV1";
+        return MobileFingerPressureSettings::enabledKey();
     }
 
     static qreal pressure(const QTouchEvent *event,qreal originalPressure)
@@ -87,8 +88,13 @@ public:
             stroke.pointId=point.id();
             // Load once per stroke, never on every high-rate brush sample.
             // The user can toggle the experiment between strokes.
-            stroke.enabled=QSettings().value(
+            // Both enabled state and calibration are snapshotted at the
+            // start of each stroke. Changes during a stroke cannot cause
+            // a pressure jump half-way through the painted line.
+            QSettings settings;
+            stroke.enabled=settings.value(
                 QString::fromLatin1(settingKey()),false).toBool();
+            stroke.range=MobileFingerPressureSettings::read(settings);
         }
         stroke.lastTimestamp=eventTime;
         if(!stroke.enabled)return originalPressure;
@@ -107,22 +113,23 @@ public:
             return stroke.hasSample?stroke.smoothed:originalPressure;
 
         if(!stroke.hasSample) {
-            stroke.baseline=diameter;
-            stroke.smoothed=0.52;
+            // Absolute area calibration. The first dab now reflects the
+            // actual finger contact size rather than a fixed 52% baseline.
+            stroke.smoothed=MobileFingerPressureSettings::mapDiameter(
+                diameter,stroke.range);
             stroke.lastDiameter=diameter;
+            stroke.lastSampleTime=eventTime;
             stroke.minDiameter=diameter;
             stroke.maxDiameter=diameter;
             stroke.samples=1;
             stroke.hasSample=true;
             return stroke.smoothed;
         }
-        // Relative to this finger's contact size at stroke start. This
-        // works across screen densities without pretending to know grams
-        // of force. Larger contact area -> higher simulated pressure.
-        const qreal relative=diameter/stroke.baseline;
-        const qreal target=qBound(qreal(0.16),
-                                  qreal(0.52)+qreal(1.15)*std::log(relative),
-                                  qreal(0.96));
+        // Absolute contact size relative to the user's calibrated minimum
+        // and maximum. Unlike per-stroke normalization, a thumb starts at
+        // higher pressure than a pinky when its contact is larger.
+        const qreal target=MobileFingerPressureSettings::mapDiameter(
+            diameter,stroke.range);
 
         // Small measurement jitter should not fluctuate brush opacity.
         // Cap sudden jumps, then low-pass filter at ~25% per input sample.
@@ -137,9 +144,10 @@ public:
         ++stroke.samples;
         const qreal error=target-stroke.smoothed;
         if(qAbs(error)>0.015)
-            stroke.smoothed=qBound(qreal(0.16),
+            stroke.smoothed=qBound(
+                MobileFingerPressureSettings::minPressure(),
                 stroke.smoothed+qBound(qreal(-0.18),error,qreal(0.18))*0.26,
-                qreal(0.96));
+                MobileFingerPressureSettings::maxPressure());
         return stroke.smoothed;
     }
 
@@ -151,11 +159,13 @@ private:
         int pointId=-1;
         ulong lastTimestamp=0;
         ulong lastSampleTime=0;
-        qreal baseline=0;
+        MobileFingerPressureSettings::Range range{
+            MobileFingerPressureSettings::defaultMin(),
+            MobileFingerPressureSettings::defaultMax()};
         qreal lastDiameter=0;
         qreal minDiameter=0;
         qreal maxDiameter=0;
-        qreal smoothed=0.52;
+        qreal smoothed=MobileFingerPressureSettings::minPressure();
         int samples=0;
     };
 };
