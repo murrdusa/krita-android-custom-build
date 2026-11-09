@@ -88,6 +88,24 @@ int main(int argc,char **argv)
             "thumb and pinky incorrectly share the same initial pressure");
     touch(device,QEvent::TouchEnd,24,720,Qt::TouchPointReleased);
 
+    // With absolute 0-100% mapping, sustained contact at either end must
+    // eventually reach the exact endpoint, not stall just short of it
+    // because a low-pass filter approaches its target asymptotically.
+    const qreal minStart=touch(device,QEvent::TouchBegin,8,740,
+                                Qt::TouchPointPressed);
+    require(qAbs(minStart)<0.00001,"small finger did not start at 0%");
+    qreal expanded=minStart;
+    for(int i=0;i<70;++i)
+        expanded=touch(device,QEvent::TouchUpdate,24,750+10*i);
+    require(qAbs(expanded-1.0)<0.00001,
+            "sustained maximum contact did not reach exact 100%");
+    qreal contracted=expanded;
+    for(int i=0;i<70;++i)
+        contracted=touch(device,QEvent::TouchUpdate,8,1460+10*i);
+    require(qAbs(contracted)<0.00001,
+            "sustained minimum contact did not return to exact 0%");
+    touch(device,QEvent::TouchEnd,8,2170,Qt::TouchPointReleased);
+
     // A new calibration changes the mapping for the next stroke.
     setting.setValue(minKey,10.0);
     setting.setValue(maxKey,30.0);
@@ -173,7 +191,8 @@ int main(int argc,char **argv)
                        Qt::TouchPointMoved,1,2,native)-native)<0.00001,
             "multitouch gesture pressure was overridden");
 
-    qInfo() << "PASS: full-range 0–100% thumb/pinky pressures, custom min/max,"
+    qInfo() << "PASS: exact full-range 0–100% thumb/pinky endpoints,"
+            << "sustained smoothed endpoint convergence, custom min/max,"
             << "mid-stroke calibration stability, disabled fallback,"
             << "area growth/shrink, smoothing, duplicate idempotence,"
             << "missing size, pen and multitouch safety";
