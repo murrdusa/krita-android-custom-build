@@ -1,5 +1,30 @@
 # Krita Core / Mobile UI redesign
 
+## Milestone v1.15 — persistent-host opt-in (source implementation)
+
+- `MobileStudio/persistentCanvasHostV1` defaults to `false`, keeping
+  the existing single-window transfer path unchanged for normal users.
+- When enabled, the first Mobile Studio entry still attaches Krita's
+  native canvas/MDI widget to the mobile central host once. Subsequent
+  Back/enter cycles retain that same QObject/QWidget hierarchy and
+  change only visibility of the mobile header, brush/Quick Actions,
+  layer/color UI, and desktop Krita menu/toolbar/dock chrome.
+- The Qt-only `MobileCanvasSurface::setMobilePresentationEnabled`
+  contract keeps `MobileCanvasTransfer` independent of the UI class.
+  The controller must not delete the persistent host on Back or
+  failed reentry: that would destroy Krita's attached painting view.
+- Desktop Krita's `QMainWindow::centralWidget()` will remain the
+  embedded mobile presentation wrapper for the remainder of that
+  process. This is the primary remaining compatibility risk and must
+  be tested with native document operations, dialogs, input and
+  canvas OpenGL rendering before enabling it by default.
+- The user can disable the experiment with a restart; the in-memory
+  host is not detached mid-session. The finger-contact-pressure proxy
+  remains separately controlled and disabled by default.
+- The source-only Qt test now exercises ten repeated control-only
+  mode switches and checks that parent-change events remain unchanged
+  after installation. It is not a substitute for on-device paint tests.
+
 ## Milestone v1.14 — unparenting audit and native-canvas protection
 
 - Qt 5's `QMainWindow::takeCentralWidget()` calls
