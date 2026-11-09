@@ -1271,6 +1271,46 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
     digest=hashlib.md5(''.join(xml.split()).encode()).hexdigest()
     cmake=cmake.replace(oldhash[0],
         f'set(krita5_xmlgui_hash_expected "{digest}")',1)
+    # Android gets its own real native application target and entry file.
+    # The output library name stays "krita" because upstream Android's
+    # Java JNI bindings and its manifest load libkrita.so.
+    cmake=one(cmake,
+        'set(krita_SRCS main.cc)',
+        '''if(ANDROID AND QT_MAJOR_VERSION STREQUAL "5")
+    set(krita_SRCS mobile_studio_main.cc)
+    set(KRITA_APPLICATION_TARGET mobile_studio)
+    set(QTANDROID_EXPORTED_TARGET mobile_studio CACHE STRING
+        "Android native application target" FORCE)
+else()
+    set(krita_SRCS main.cc)
+    set(KRITA_APPLICATION_TARGET krita)
+endif()''',
+        "Native Android entrypoint source target")
+    cmake=one(cmake,
+        '''if (ANDROID AND QT_MAJOR_VERSION STREQUAL "5")
+    kis_add_library(krita SHARED ${krita_SRCS})
+    target_link_libraries(krita PRIVATE Qt5::AndroidExtras)
+elseif (WIN32)''',
+        '''if (ANDROID AND QT_MAJOR_VERSION STREQUAL "5")
+    kis_add_library(mobile_studio SHARED ${krita_SRCS})
+    set_target_properties(mobile_studio PROPERTIES OUTPUT_NAME "krita")
+    target_link_libraries(mobile_studio PRIVATE Qt5::AndroidExtras)
+elseif (WIN32)''',
+        "Native Mobile Studio Android build target")
+    cmake=one(cmake,
+        '''target_link_libraries(krita
+    PRIVATE''',
+        '''target_link_libraries(${KRITA_APPLICATION_TARGET}
+    PRIVATE''',
+        "Link real native application target")
+    cmake=one(cmake,
+        '''    install(TARGETS krita ${INSTALL_TARGETS_DEFAULT_ARGS})
+endif()
+install(FILES org.kde.krita.desktop''',
+        '''    install(TARGETS ${KRITA_APPLICATION_TARGET} ${INSTALL_TARGETS_DEFAULT_ARGS})
+endif()
+install(FILES org.kde.krita.desktop''',
+        "Install native Mobile Studio artifact")
     cmakefile.write_text(cmake,encoding="utf-8")
     # The Android process now enters Mobile Studio's own startup
     # routine directly from main(), skipping KisApplication::start on
@@ -1303,7 +1343,9 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
         return 1;
     }''',
         "Android independent main entry")
-    mainfile.write_text(entry,encoding="utf-8")
+    # The original desktop main.cc remains untouched; Android's native
+    # library compiles an independent app-specific translation unit.
+    (root/"krita/mobile_studio_main.cc").write_text(entry,encoding="utf-8")
 
     # Package Mobile Studio as an independently installable Android app.
     # Keep Krita's Qt/Java namespace; changing only applicationId avoids
