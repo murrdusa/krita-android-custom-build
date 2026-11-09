@@ -143,6 +143,8 @@ public:
         // on every Back/enter cycle.
         m_backend->setCentralWidget(mobile);
         m_persistentHostInstalled=wantPersistent;
+        m_backend->setProperty("_mobileStudioPersistentCanvasHost",
+                               m_persistentHostInstalled);
         m_active=true;
         hideNativeTabs();
         m_tabTimer.start();
@@ -266,6 +268,8 @@ public:
         m_surface=nullptr;
         m_mobileWindow=nullptr;
         m_canvas=nullptr;
+        m_backend->setProperty("_mobileStudioPersistentCanvasHost",false);
+        m_persistentHostInstalled=false;
         m_active=false;
         return true;
     }
