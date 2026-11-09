@@ -91,6 +91,8 @@ jobs:
           assert "captureAdditionalDesktopChrome()" in native_chrome
           assert "captureAdditionalTabs()" in native_chrome
           assert "setBottomPanelVisible(bool visible)" in native_chrome
+          assert "placeSidePanelForViewport()" in native_chrome
+          assert "Qt::BottomDockWidgetArea" in native_chrome
           pilot = Path("mobile_core/native_canvas_pilot.h").read_text()
           for component in ("MobileNativeCanvasChrome", "MobileQuickActions",
                             "KritaMobileBrushWorkspace", "KritaMobileLayersPanel",
@@ -102,6 +104,7 @@ jobs:
           assert "QPointer<QObject> selectedView;" in pilot
           assert "m_engine.closeDocumentView(selectedView)" in pilot
           assert "m_chrome.setBottomPanelVisible(has)" in pilot
+          assert "m_chrome.sidePanelAtBottom()" in pilot
           assert 'id==QStringLiteral("mobile:commands")' in pilot
           assert "return activeCount==1;" in quick_actions
           session = Path("mobile_core/canvas_session.h").read_text()
