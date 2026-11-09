@@ -21,6 +21,7 @@
 #include <QTimer>
 #include "engine_bridge.h"
 #include "canvas_transfer.h"
+#include "native_canvas_chrome.h" // Qt-only stationary canvas UI architecture
 #include "standalone_host.h"
 
 class MobileAppController final : public QObject
