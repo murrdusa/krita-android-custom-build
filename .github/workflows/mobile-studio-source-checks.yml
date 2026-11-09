@@ -329,6 +329,8 @@ jobs:
           assert 'm_color->isVisibleTo(canvas)' in workspace
           layer_source=Path("mobile_core/layer_workspace.h").read_text()
           assert 'MobileNativeLayerReorderPolicy::targetIndex(' in layer_source
+          assert 'native_reorder_policy=own/"mobile_core/native_layer_reorder_policy.h"' in shell_patch
+          assert '(root/"libs/ui/native_layer_reorder_policy.h").write_text(' in shell_patch
           assert 'nodes->moveNodeAt(node,parent,next);' in layer_source
           assert 'm_reorderPending' in layer_source
           assert 'm->raiseNode();reload();' not in layer_source
