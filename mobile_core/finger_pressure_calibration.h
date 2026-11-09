@@ -125,7 +125,8 @@ public:
         auto *description=new QLabel(tr(
             "Finger contact size controls simulated pressure. A smaller "
             "contact starts thinner; a larger contact starts thicker. "
-            "The minimum maps to 16%, and the maximum to 96% pressure."),this);
+            "The minimum maps to 0%, and the maximum to 100% pressure. "
+            "Some brushes may make no mark at 0%."),this);
         description->setWordWrap(true);
         layout->addWidget(description);
 
