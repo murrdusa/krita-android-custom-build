@@ -246,8 +246,8 @@ serialization or brushes.
 | Input | Stylus and S Pen, multi-finger gestures, opt-in calibrated finger pressure without interfering with pen/multitouch | Implemented prototype; real touch-size hardware validation pending |
 | Persistence | Save/reopen KRA preserving paint, groups, masks, brush resources and canvas coordinates | Uses Krita serializer; round-trip validation pending |
 | Host independence | Mobile document, command and view services build without a desktop-window/MDI dependency | **Three backend ports integrated; Android build validation and Qt regression checks ongoing** |
-| Replacement host | Launch/paint/save via a lightweight host that initializes Krita engines without constructing the full desktop `KisMainWindow` | **Not yet implemented** |
-| APK | Build deployable Android package; no regressions on target phone | Android builds running; on-device signoff pending; automatic upload paused |
+| Replacement host | Launch/paint/save via a lightweight host using Krita engines and MDI-free views | **Independent host verified on Android for paint, Undo/Redo and save/reopen; optional startup and panels need device validation; old desktop bootstrap remains built** |
+| APK | Build deployable Android package; no regressions on target phone | WSL incremental builds and tests operational; initial independent-engine device smoke successful; broader device signoff pending; automatic upload paused |
 
 None of the above on-device gates can be marked passed merely because
 an APK compiled, and no test should use irreplaceable artwork.

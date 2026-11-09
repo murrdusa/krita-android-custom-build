@@ -1,49 +1,73 @@
-# First Android device smoke test — standalone Krita engine
+# Independent Krita Android host — device acceptance test
 
-This test uses the opt-in **Settings → Standalone Engine Test (experimental)**
-window, not the default mobile UI. The Android debug app ID is
-`org.krita.debug` to avoid replacing an existing Krita installation.
+The independent MDI-free drawing engine already passed initial device
+smoke testing for painting, Undo/Redo, saving, and reopening KRA files.
+The newer opt-in native-startup path and direct brush/layer/color/tool
+panels still require validation. **Only use disposable artwork.**
 
-## Prerequisites
+## Getting the build
 
-- Build/install a debug APK from the GitHub Actions `[android-build]` run.
-- Use **only disposable drawings**. Never test on existing unsaved art.
-- The standalone window is *experimental*: source and Qt tests do not prove
-  that Android OpenGL, brush input, or SAF saving work on the phone.
+- Let the running **WSL local build watcher** compile the latest commit.
+  Confirm `BUILD SUCCESS` for the exact head SHA in its console or
+  in GitHub's `local/android-wsl-build` status. Do not install an
+  older APK after a later code change.
+- Find the local Android debug APK in
+  `/home/pokem/krita-local-android/persistent/krita-custom-apks`
+  from WSL or `\\wsl$\Ubuntu\home\pokem\krita-local-android\persistent\krita-custom-apks`
+  in Explorer, adjusting the distribution name if different.
+- APK publishing to GitHub Releases stays paused. The debug app uses a
+  different package identifier from regular Krita.
 
-## Minimal acceptance test (in order)
+## A. Manual standalone smoke test
 
-1. Open the debug app. Confirm it launches the existing working UI.
-2. Open **Settings → Standalone Engine Test (experimental)**.
-   A separate 512×512 blank document should appear. If it fails, note the
-   warning and return to the original UI without modifying existing art.
-3. Make a few strokes with a stylus and with a finger. Verify that the
-   visible strokes and dirty document state change, without a blank canvas,
-   crash, or unrecoverable rendering artifacts.
-4. Use **Undo** and **Redo**. Verify the same Krita strokes are removed and
-   restored.
-5. Press **New**. Use **Previous canvas** and **Next canvas** to switch
-   between the original and second drawings. Each drawing must retain its
-   own strokes and history.
-6. Use **Save As** to save one disposable drawing as a KRA file. Close that
-   view, use **Open** to reopen the file, and verify the actual pixels and
-   canvas size. A provider permission error or a file-picker path issue is
-   a failed test, not a reason to discard the original document.
-7. Make an unsaved stroke and press **Close view**. Test **Cancel** first,
-   then retry with **Save** or **Discard** on disposable artwork.
-8. Rotate the phone, background/foreground the app, switch documents again,
-   and confirm painting still works. Return to Krita and reopen the saved
-   KRA file.
+1. Open the debug app using its existing Krita or Mobile Studio UI.
+2. Select **Open independent Krita engine now** from Mobile Studio
+   More, or **Settings → Standalone Engine Test (experimental)**.
+3. Confirm the drawing view appears *inside the same Android window*,
+   with a functioning 512×512 initial Krita canvas.
+4. Paint with pen and finger; Undo and Redo the strokes.
+5. Press **New** and choose a custom size/DPI and background. Create
+   two or more canvases and mark each with different strokes.
+6. Switch with **Previous canvas**, **Next canvas**, and **Canvases**.
+   Confirm each drawing's image, active layer, and undo history stay
+   independent.
+7. Use **Save As**, **Close view**, **Open** to round-trip a disposable
+   KRA. Verify strokes, canvas size and layers survive reopening.
+8. Make an unsaved stroke, then **Close view**. Test Cancel, Save and
+   Discard on disposable documents. Cancel must keep the drawing open.
+9. Try **Brushes**, **Layers**, **Color**, and **Tools**. Verify the
+   controls can select actual Krita presets, nodes, colors, and tools.
+   Check strokes still work afterward, then hide the panels.
+10. Rotate the device, background/resume the app, switch canvases,
+    then try painting again. Use **Exit test** and confirm the original
+    Krita interface and any untouched documents are intact.
 
-## What to report on failure
+## B. Native startup (separate opt-in gate)
 
-- Which numbered step failed and whether the original interface still works.
-- The exact message, a screenshot, or Android logcat around the crash.
-- Phone model, Android version, and whether the action used finger or pen.
-- Whether the document had unsaved changes and whether a file picker was open.
+1. Save all documents. In the independent host, enable
+   **Start here next launch**, or enable the corresponding item under
+   Krita Settings or Mobile Studio More.
+2. Fully close and relaunch the debug app. The independent engine
+   should appear without opening the older Mobile Studio overlay.
+3. Test painting, undo, Open, Save, canvas switching, and the optional
+   brush/layer/color/tool controls.
+4. Use **Exit test** to return to the desktop fallback. Disable
+   independent startup if you prefer the old interface next launch.
+5. If the native startup crashes, reopen the app. It must disable
+   independent startup automatically and recover to original Krita
+   instead of looping. Under **Settings → Last Standalone Engine Test
+   Status**, report the last checkpoint and last native control.
 
-**Release gate:** do not switch the new host on by default until drawing,
-document identity, save/reopen, and lifecycle tests pass on an actual device.
-This smoke test only proves the minimum native integration needed for
-continued development; it does not sign off on brushes, layers, masking,
-gesture handling, or the new mobile UI.
+## Reporting
+
+Provide the failing step, screenshot or exact error message, and
+whether it was a pen/finger interaction, dialog, window rotation, or
+background/resume event. If the app terminates, retrieve **Settings →
+Last Standalone Engine Test Status** on the next launch. An Android
+logcat trace is useful but not required to report a useful checkpoint.
+
+**Release gate:** The native startup and its direct brush/layer/color
+controls are still experimental. Desktop Krita initialization
+continues to run behind the independent shell for resource/plugin
+bootstrap and recovery. Do not remove that backend until these
+on-device flows pass across multiple documents and lifecycle events.

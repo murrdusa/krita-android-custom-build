@@ -1,11 +1,12 @@
 /*
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Real Krita document operations for the unlaunched independent Qt host.
+ * Real Krita document operations for the independent Qt host.
  * Reuses KisPart/KisDocument import/export and Android-aware KoFileDialog;
  * never serializes painting or KRA files in Mobile Studio.
  *
- * The desktop host adapter remains the shipped implementation.
+ * The desktop host remains an explicit fallback while native startup
+ * and multi-document lifecycle are tested on-device.
  */
 #pragma once
 #ifdef Q_OS_ANDROID

@@ -2,8 +2,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
  * Opt-in Krita engine bootstrap for a QMainWindow without KisMainWindow.
- * Still source-staged: not launched or APK-compiled until painting,
- * EGL and save transactions pass on Android.
+ * Device-validated for basic painting, Undo/Redo and KRA save/reopen.
+ * Optional native-startup and controller interactions require further testing.
  */
 #pragma once
 #ifdef Q_OS_ANDROID

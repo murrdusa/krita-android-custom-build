@@ -1,8 +1,8 @@
 /*
  * SPDX-License-Identifier: GPL-2.0-or-later
- * Future real-Krita view attachment for the independent Qt document root.
- * NOT called by the Android launcher until standalone KisViewManager and
- * Android GL painting are validated. Krita retains all painting engines.
+ * Real Krita view attachment for the independent Qt document root.
+ * Opt-in native engine launch and basic pen painting are device-validated;
+ * Krita retains all original painting and rendering engines.
  */
 #pragma once
 #ifdef Q_OS_ANDROID
