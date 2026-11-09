@@ -414,31 +414,73 @@ KisMainWindow * KisView::mainWindow() const''',
           '#include "tablet_compact_skin.h"\n#include "canvas_session.h"\n#include "krita_standalone_pilot.h"\n#include "lightweight_canvas_host.h"\n#include "desktop_host_adapters.h"\n#include "mdi_view_host_adapter.h"\n#include "native_startup_policy.h"\n#include "native_boot_coordinator.h"\n#include <QSettings>\n#include <QSharedPointer>',
           "main window include")
 
-    # During opted-in independent startup, Krita still provides its
-    # resource registries, actions and one Android Qt window, but does
-    # not need to instantiate every legacy desktop docker widget. A
-    # stale pending flag means an earlier launch crashed: that restart
-    # MUST recreate the complete desktop fallback.
+    # Decide on Android's native host as soon as the actual main-window
+    # constructor begins, before allocating the desktop workspace model
+    # or its view manager. This also arms crash recovery earlier than the
+    # previous docker-only bootstrap gate.
     s=one(s,
-          '''    KoToolBoxFactory toolBoxFactory;
-    QDockWidget *toolbox = createDockWidget(&toolBoxFactory);''',
-          '''#ifdef Q_OS_ANDROID
+          '''    KisScopedPerformanceLogger perfLog(QStringLiteral("KisMainWindow::KisMainWindow"));''',
+          '''    KisScopedPerformanceLogger perfLog(QStringLiteral("KisMainWindow::KisMainWindow"));
+#ifdef Q_OS_ANDROID
     QSettings nativeBootstrapSettings;
-    // Register a crash-recovery marker BEFORE the desktop constructor
-    // can fail. If this lightweight boot crashes, next launch sees
-    // the pending marker and creates Krita's full fallback UI.
     const auto nativeBootDecision =
         MobileNativeStartupPolicy::beginOncePerProcess(nativeBootstrapSettings);
     setProperty("_mobileNativeBootDecision",int(nativeBootDecision));
     const bool mobileNativePreferred =
         nativeBootDecision==MobileNativeStartupPolicy::Decision::Launch;
     setProperty("_mobileNativeDesktopDeferred",mobileNativePreferred);
-    qInfo() << "Krita desktop docker creation deferred:"
-            << mobileNativePreferred;
+    qInfo() << "Krita native Qt shell selected:" << mobileNativePreferred;
 #else
     const bool mobileNativePreferred = false;
-#endif
-    KoToolBoxFactory toolBoxFactory;
+#endif''',
+          "early native host startup decision")
+
+    # Resource and plugin registries are loaded by Krita's application
+    # startup and by the independent view manager. Desktop workspace
+    # menu tracking is not needed when that window is just the Android
+    # native top-level container.
+    s=one(s,
+          '''    d->workspacemodel = new KisResourceModel(ResourceType::Workspaces, this);
+    connect(d->workspacemodel, SIGNAL(modelReset()), this, SLOT(updateWindowMenu()));
+    connect(d->workspacemodel, SIGNAL(rowsInserted(QModelIndex,int,int)), this, SLOT(updateWindowMenu()));
+    connect(d->workspacemodel, SIGNAL(rowsRemoved(QModelIndex,int,int)), this, SLOT(updateWindowMenu()));''',
+          '''    if (!mobileNativePreferred) {
+        d->workspacemodel = new KisResourceModel(ResourceType::Workspaces, this);
+        connect(d->workspacemodel, SIGNAL(modelReset()), this, SLOT(updateWindowMenu()));
+        connect(d->workspacemodel, SIGNAL(rowsInserted(QModelIndex,int,int)), this, SLOT(updateWindowMenu()));
+        connect(d->workspacemodel, SIGNAL(rowsRemoved(QModelIndex,int,int)), this, SLOT(updateWindowMenu()));
+    }''',
+          "omit desktop workspace menu model on native bootstrap")
+
+    # Keep the painting engine, resource registration, tool factories
+    # and plugin setup intact. The style picker and help-menu widgets
+    # are strictly desktop presentation and are restored on fallback.
+    s=one(s,
+          '''    // Style menu actions
+    d->styleActions = new QActionGroup(this);''',
+          '''    // Style menu actions
+    if (!mobileNativePreferred) {
+    d->styleActions = new QActionGroup(this);''',
+          "native bootstrap omits style picker begin")
+    s=one(s,
+          '''    connect(d->styleActions, SIGNAL(triggered(QAction*)),
+            this, SLOT(slotUpdateWidgetStyle()));''',
+          '''    connect(d->styleActions, SIGNAL(triggered(QAction*)),
+            this, SLOT(slotUpdateWidgetStyle()));
+    } // Desktop style picker is not needed by the independent host.''',
+          "native bootstrap omits style picker end")
+    s=one(s,
+          '''    if (isHelpMenuEnabled() && !d->helpMenu) {''',
+          '''    if (!mobileNativePreferred && isHelpMenuEnabled() && !d->helpMenu) {''',
+          "native bootstrap omits desktop help menu")
+
+    # During opted-in independent startup, Krita still provides its
+    # resource registries, actions and one Android Qt window, but does
+    # not need to instantiate every legacy desktop docker widget.
+    s=one(s,
+          '''    KoToolBoxFactory toolBoxFactory;
+    QDockWidget *toolbox = createDockWidget(&toolBoxFactory);''',
+          '''    KoToolBoxFactory toolBoxFactory;
     QDockWidget *toolbox = mobileNativePreferred ? nullptr :
                                             createDockWidget(&toolBoxFactory);''',
           "independent startup desktop toolbox bypass")

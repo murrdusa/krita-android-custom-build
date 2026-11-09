@@ -263,6 +263,13 @@ jobs:
           assert 'tablet_native_engine_autostart' in shell_patch
           assert 'MobileNativeStartupPolicy::beginOncePerProcess(nativeBootstrapSettings)' in shell_patch
           assert 'static Decision beginOncePerProcess(' in Path("mobile_core/native_startup_policy.h").read_text()
+          assert 'early native host startup decision' in shell_patch
+          assert 'omit desktop workspace menu model on native bootstrap' in shell_patch
+          assert 'native bootstrap omits style picker begin' in shell_patch
+          assert 'native bootstrap omits style picker end' in shell_patch
+          assert 'native bootstrap omits desktop help menu' in shell_patch
+          assert 'if (!mobileNativePreferred && isHelpMenuEnabled()' in shell_patch
+          assert 'Krita native Qt shell selected:' in shell_patch
           assert 'setProperty("_mobileNativeBootDecision",int(nativeBootDecision))' in shell_patch
           assert 'property("_mobileNativeBootDecision").toInt()' in shell_patch
           assert 'static bool mayDeferDesktopUi(' in Path("mobile_core/native_startup_policy.h").read_text()

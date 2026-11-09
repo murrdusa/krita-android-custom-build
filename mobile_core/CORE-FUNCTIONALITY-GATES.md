@@ -377,3 +377,23 @@ verifies successful launch and unavailable/hidden host fallbacks.
 Krita still builds one KisMainWindow as an Android native window,
 resource/bootstrap provider and desktop recovery route. The native
 painting host itself does not adopt a desktop MDI canvas.
+
+
+## Native-shell bootstrap reduction after 7b254de device acceptance
+
+Device testing of 7b254de passed independent startup, pen drawing,
+Undo/Redo, Brushes/Layers/Color/Tools, custom multi-canvases, KRA
+save/reopen, unsaved close cancel, background/resume and restoration
+of full desktop Krita after opt-out. A visually unexpected desktop UI
+remains unclassified pending screenshots; do not remove or reparent
+those widgets by inference.
+
+The native-startup decision now runs at the start of the main-window
+constructor, before allocating its view manager or desktop workspace
+menu model. On opted-in native startup, unused desktop-only workspace
+menu tracking, style chooser actions and help menu widget are skipped,
+along with the previously removed docker factories and legacy
+Mobile Studio controller. Krita's painting engine, resource/plugin
+registration, main Android top-level widget, native view manager,
+and document services remain intact. On the next launch after a
+crash or explicit opt-out, the full desktop shell is restored.
