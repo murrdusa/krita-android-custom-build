@@ -41,6 +41,15 @@ public:
                Qt::FindDirectChildrenOnly))
             delete runtime;
 #endif
+        if(m_embeddedParent) {
+            // Native painting must not be interrupted by Krita's
+            // Android hide/show refresh workaround. Release the guard
+            // and re-enable desktop menus when leaving this host.
+            m_embeddedParent->setProperty("_mobileNativeHostActive",false);
+            m_embeddedParent->setProperty("_mobileNativeDesktopDeferred",false);
+            QMetaObject::invokeMethod(m_embeddedParent.data(),
+                                      "updateWindowMenu",Qt::QueuedConnection);
+        }
         // Restore exactly the original desktop fallback visibility.
         if(m_desktopStatusBar)
             m_desktopStatusBar->setVisible(m_desktopStatusWasVisible);
@@ -55,6 +64,7 @@ public:
            parentWidget() || m_canvas || centralWidget())return false;
         setParent(desktop,Qt::Widget);
         m_embeddedParent=desktop;
+        desktop->setProperty("_mobileNativeHostActive",true);
         // Do not expose the original Krita footer behind our child host.
         // Do not create a new status bar merely to hide it.
         if(auto *desktopStatus=desktop->findChild<QStatusBar*>(

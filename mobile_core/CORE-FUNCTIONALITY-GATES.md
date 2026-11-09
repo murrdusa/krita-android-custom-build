@@ -411,3 +411,18 @@ the underlying original desktop status bar during embedding and restores
 its previous visibility on Exit. Automated Qt tests cover the footer,
 widget ownership, canvas preservation, and fallback restoration.
 Device testing is still required to confirm the footer stays hidden.
+
+
+## Passive desktop MDI on independent boot
+
+Independent Android startup now leaves the retained desktop QMdiArea
+unconfigured for tab UI, skips the welcome QScrollArea and desktop
+MDI window layout restoration, and does not rebuild Krita's desktop
+workspace/document menu on each native document-open notification.
+The independent KisViews still use their own native document stack.
+The original QMdiArea and welcome widget remain allocated for safety;
+this is not yet a separate executable without KisMainWindow.
+The independent child host also disables the underlying desktop
+hide/show refresh workaround while painting, then clears that guard
+when exiting. Full desktop setup remains available on the next
+opt-out or failed-startup recovery launch. Device verification pending.

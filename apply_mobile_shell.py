@@ -435,6 +435,54 @@ KisMainWindow * KisView::mainWindow() const''',
 #endif''',
           "early native host startup decision")
 
+    # The Private constructor runs before KisMainWindow::KisMainWindow()
+    # sets the process decision. Read the preference and the old pending
+    # marker here so a recovery boot still constructs full desktop UI.
+    s=one(s,
+          '''        welcomeScroller = new QScrollArea();
+        welcomeScroller->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        welcomeScroller->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        welcomeScroller->setWidget(welcomePage);
+        welcomeScroller->setWidgetResizable(true);
+
+        widgetStack->addWidget(welcomeScroller);
+        widgetStack->addWidget(mdiArea);
+        mdiArea->setTabsMovable(true);
+        mdiArea->setActivationOrder(QMdiArea::ActivationHistoryOrder);
+        mdiArea->setDocumentMode(true);
+        mdiArea->setOption(QMdiArea::DontMaximizeSubWindowOnActivation);
+#ifdef HAVE_QMDIAREA_ALWAYS_SHOW_SUBWINDOW_TITLE
+        mdiArea->setOption(QMdiArea::AlwaysShowSubwindowNameInTitleBar);
+#endif /* HAVE_QMDIAREA_ALWAYS_SHOW_SUBWINDOW_TITLE */''',
+          '''        bool nativeUiPreferred=false;
+#ifdef Q_OS_ANDROID
+        nativeUiPreferred=MobileNativeStartupPolicy::mayDeferDesktopUi(
+            QSettings());
+#endif
+        if (nativeUiPreferred) {
+            // Keep the original welcome widget, but not its desktop
+            // scroll container or configured MDI tab presentation.
+            widgetStack->addWidget(welcomePage);
+        } else {
+            welcomeScroller = new QScrollArea();
+            welcomeScroller->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+            welcomeScroller->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+            welcomeScroller->setWidget(welcomePage);
+            welcomeScroller->setWidgetResizable(true);
+            widgetStack->addWidget(welcomeScroller);
+        }
+        widgetStack->addWidget(mdiArea);
+        if (!nativeUiPreferred) {
+            mdiArea->setTabsMovable(true);
+            mdiArea->setActivationOrder(QMdiArea::ActivationHistoryOrder);
+            mdiArea->setDocumentMode(true);
+            mdiArea->setOption(QMdiArea::DontMaximizeSubWindowOnActivation);
+#ifdef HAVE_QMDIAREA_ALWAYS_SHOW_SUBWINDOW_TITLE
+            mdiArea->setOption(QMdiArea::AlwaysShowSubwindowNameInTitleBar);
+#endif /* HAVE_QMDIAREA_ALWAYS_SHOW_SUBWINDOW_TITLE */
+        }''',
+          "defer welcome scroll and MDI tab setup")
+
     # Resource and plugin registries are loaded by Krita's application
     # startup and by the independent view manager. Desktop workspace
     # menu tracking is not needed when that window is just the Android
@@ -451,6 +499,23 @@ KisMainWindow * KisView::mainWindow() const''',
         connect(d->workspacemodel, SIGNAL(rowsRemoved(QModelIndex,int,int)), this, SLOT(updateWindowMenu()));
     }''',
           "omit desktop workspace menu model on native bootstrap")
+
+    # Native view activation belongs to MobileNativeViewStack, not the
+    # desktop QMdiArea. Preserve the latter only for recovery.
+    s=one(s,
+          '''    d->mdiArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    d->mdiArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    d->mdiArea->setTabPosition(QTabWidget::North);
+    d->mdiArea->setTabsClosable(true);
+    d->mdiArea->setAcceptDrops(true);''',
+          '''    if (!mobileNativePreferred) {
+        d->mdiArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        d->mdiArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        d->mdiArea->setTabPosition(QTabWidget::North);
+        d->mdiArea->setTabsClosable(true);
+        d->mdiArea->setAcceptDrops(true);
+    }''',
+          "defer unused desktop MDI controls")
 
     # Keep the painting engine, resource registration, tool factories
     # and plugin setup intact. The style picker and help-menu widgets
@@ -473,6 +538,20 @@ KisMainWindow * KisView::mainWindow() const''',
           '''    if (isHelpMenuEnabled() && !d->helpMenu) {''',
           '''    if (!mobileNativePreferred && isHelpMenuEnabled() && !d->helpMenu) {''',
           "native bootstrap omits desktop help menu")
+
+    # When independent KisDocuments are opened, Krita's original
+    # documentOpened signal would otherwise rebuild a desktop workspace
+    # menu and traverse its resource list unnecessarily.
+    s=one(s,
+          '''void KisMainWindow::updateWindowMenu()
+{''',
+          '''void KisMainWindow::updateWindowMenu()
+{
+#ifdef Q_OS_ANDROID
+    if (property("_mobileNativeDesktopDeferred").toBool())
+        return; // Native Qt document switcher owns the visible UI.
+#endif''',
+          "skip desktop workspace menu updates while native")
 
     # During opted-in independent startup, Krita still provides its
     # resource registries, actions and one Android Qt window, but does
@@ -656,6 +735,34 @@ KisMainWindow * KisView::mainWindow() const''',
                 [compactSkin](bool enabled) { compactSkin->setCompactActive(enabled); });''',
           "skip compact skin connection without a receiver")
 
+    # Leave the desktop main-window layout unrestored until the next
+    # full desktop boot; Android window sizing/orientation still runs.
+    s=one(s,
+          '''    QTabBar *tabBar = d->findTabBarHACK();
+    if (tabBar) {
+        tabBar->setElideMode(Qt::ElideRight);
+        // load customized tab style
+        customizeTabBar();
+        tabBar->setExpanding(true);
+        tabBar->setAcceptDrops(true);
+        tabBar->setChangeCurrentOnDrag(true);
+    }
+
+    applyMainWindowSettings(d->windowStateConfig);''',
+          '''    if (!mobileNativePreferred) {
+        QTabBar *tabBar = d->findTabBarHACK();
+        if (tabBar) {
+            tabBar->setElideMode(Qt::ElideRight);
+            // load customized tab style
+            customizeTabBar();
+            tabBar->setExpanding(true);
+            tabBar->setAcceptDrops(true);
+            tabBar->setChangeCurrentOnDrag(true);
+        }
+        applyMainWindowSettings(d->windowStateConfig);
+    }''',
+          "defer desktop MDI window layout restoration")
+
     # Krita Android's legacy display refresh hides and RE-SHOWS
     # KisMainWindow after a document is opened or created.  In Mobile
     # Studio that window is intentionally hidden while its live canvas
@@ -679,21 +786,24 @@ KisMainWindow * KisView::mainWindow() const''',
     flash_new='''void KisMainWindow::slotFlashWindowHack()
 {
     if ((property("_mobileStudioCanvasTransferred").toBool() ||
-                 property("_mobileStudioPresentationActive").toBool())) {
+                 property("_mobileStudioPresentationActive").toBool() ||
+                  property("_mobileNativeHostActive").toBool())) {
         return;
     }
     if (!d->flashWindowHackInProgress) {
         d->flashWindowHackInProgress = true;
         QTimer::singleShot(0, this, [this] {
             if ((property("_mobileStudioCanvasTransferred").toBool() ||
-                 property("_mobileStudioPresentationActive").toBool())) {
+                 property("_mobileStudioPresentationActive").toBool() ||
+                  property("_mobileNativeHostActive").toBool())) {
                 d->flashWindowHackInProgress = false;
                 return;
             }
             hide();
             QTimer::singleShot(0, this, [this] {
                 if (!(property("_mobileStudioCanvasTransferred").toBool() ||
-                 property("_mobileStudioPresentationActive").toBool())) {
+                 property("_mobileStudioPresentationActive").toBool() ||
+                  property("_mobileNativeHostActive").toBool())) {
                     show();
                 }
                 d->flashWindowHackInProgress = false;

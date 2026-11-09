@@ -264,6 +264,12 @@ jobs:
           assert 'MobileNativeStartupPolicy::beginOncePerProcess(nativeBootstrapSettings)' in shell_patch
           assert 'static Decision beginOncePerProcess(' in Path("mobile_core/native_startup_policy.h").read_text()
           assert 'early native host startup decision' in shell_patch
+          assert 'defer welcome scroll and MDI tab setup' in shell_patch
+          assert 'defer unused desktop MDI controls' in shell_patch
+          assert 'skip desktop workspace menu updates while native' in shell_patch
+          assert 'defer desktop MDI window layout restoration' in shell_patch
+          assert 'property("_mobileNativeHostActive").toBool()' in shell_patch
+          assert '_mobileNativeHostActive' in Path("mobile_core/lightweight_canvas_host.h").read_text()
           assert 'omit desktop workspace menu model on native bootstrap' in shell_patch
           assert 'native bootstrap omits style picker begin' in shell_patch
           assert 'native bootstrap omits style picker end' in shell_patch

@@ -39,6 +39,8 @@ int main(int argc,char **argv)
           "engine created a second native top-level window");
     check(desktopStatus->isHidden(),
           "old desktop status bar leaked behind native host");
+    check(krita.property("_mobileNativeHostActive").toBool(),
+          "native painting refresh protection not enabled");
     auto *root=host->createNativeDocumentRoot();
     check(root && root->parentWidget()==host &&
           root->window()==&krita && host->retainsOriginalCanvas(),
@@ -88,6 +90,8 @@ int main(int argc,char **argv)
           "test host teardown altered the desktop canvas");
     check(desktopStatus->isVisible(),
           "original desktop status bar did not return after Exit");
+    check(!krita.property("_mobileNativeHostActive").toBool(),
+          "desktop refresh protection stayed enabled after exit");
     qInfo() << "PASS: native footer hidden, rotation widgets retained,"
             << "original desktop status restored on exit";
     return 0;
