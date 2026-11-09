@@ -264,7 +264,7 @@ jobs:
           assert 'MobileNativeStartupPolicy::begin(nativeBootstrapSettings)' in shell_patch
           assert 'setProperty("_mobileNativeBootDecision",int(nativeBootDecision))' in shell_patch
           assert 'property("_mobileNativeBootDecision").toInt()' in shell_patch
-          assert 'MobileNativeStartupPolicy::mayDeferDesktopUi(' in Path("mobile_core/native_startup_policy.h").read_text()
+          assert 'static bool mayDeferDesktopUi(' in Path("mobile_core/native_startup_policy.h").read_text()
           assert 'if (!mobileNativePreferred && cfg.toolOptionsInDocker())' in shell_patch
           assert 'if (!mobileNativePreferred)' in shell_patch
           assert 'Legacy mobile controller skipped on native startup' in shell_patch
