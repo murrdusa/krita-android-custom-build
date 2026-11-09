@@ -134,10 +134,18 @@ def main(root:Path):
             this,d->viewManager,d->mdiArea);
     // UI and canvas lifecycle consume a host-neutral service bundle.
     // All legacy desktop dependencies are confined to the adapter.
-    auto *mobileStudio = new MobileAppController(
-        this,mobileServices.documentRoot,
-        MobileEngineBridge(mobileServices,d->viewManager),
-        mobilePilotAction);
+    MobileAppController *mobileStudio=nullptr;
+    if(mobileServices.ready()) {
+        mobileStudio=new MobileAppController(
+            this,mobileServices.documentRoot,
+            MobileEngineBridge(mobileServices,d->viewManager),
+            mobilePilotAction);
+    } else {
+        // Leave native Krita functional if its document root or host
+        // services are unavailable during Android initialization.
+        mobilePilotAction->setEnabled(false);
+        qWarning() << "Mobile Studio host unavailable; native Krita preserved";
+    }
     Q_UNUSED(mobileStudio);
     connect(tabletCompact,&QAction::toggled,this,
             [mobilePilotAction](bool compact) {
