@@ -8,9 +8,10 @@
 #pragma once
 #include <QtGlobal>
 #ifdef Q_OS_ANDROID
+#include "kritaui_export.h"
 class KisApplication;
 class KisApplicationArguments;
-class MobileKritaAndroidRuntime final
+class KRITAUI_EXPORT MobileKritaAndroidRuntime final
 {
 public:
     enum class Result { UseLegacyInvocation, Started, Failed };
