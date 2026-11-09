@@ -14,8 +14,6 @@
 
 #include <QFileInfo>
 #include <QMessageBox>
-#include <QMdiArea>
-#include <QMdiSubWindow>
 #include <QPointer>
 #include <QSharedPointer>
 #include <QStandardPaths>
@@ -30,178 +28,87 @@
 #include "KisDocument.h"
 #include "KisImportExportManager.h"
 #include "KisPart.h"
-#include "KisView.h"
 #include "KisViewManager.h"
 #include "kis_config.h"
-#include "mdi_view_identity.h"
 #include "document_host_port.h"
+#include "view_host_port.h"
 
 class MobileDocumentService final
 {
 public:
     MobileDocumentService(QSharedPointer<MobileDocumentHostPort> host,
-                          KisViewManager *manager,
-                          QMdiArea *documents)
-        : m_host(std::move(host)),m_manager(manager),
-          m_documents(documents) {}
+                          QSharedPointer<MobileViewHostPort> viewHost,
+                          KisViewManager *manager)
+        : m_host(std::move(host)),m_viewHost(std::move(viewHost)),
+          m_manager(manager) {}
 
-    struct OpenDocument {
-        QString title;
-        bool modified=false;
-        bool active=false;
-        int nativeIndex=-1;
-        // Opaque guarded identity: delayed actions must never resolve an
-        // old index against a different MDI ordering. Do not expose
-        // Krita's document or MDI implementation to mobile UI widgets.
-        QPointer<QObject> nativeView;
-    };
+    using OpenDocument=MobileViewHostPort::ViewSnapshot;
 
     QVector<OpenDocument> openDocuments() const
     {
-        QVector<OpenDocument> items;
-        if(!m_documents)return items;
-        const auto windows=m_documents->subWindowList(QMdiArea::CreationOrder);
-        items.reserve(windows.size());
-        const KisDocument *current=m_manager?m_manager->document():nullptr;
-        for(int i=0;i<windows.size();++i) {
-            QMdiSubWindow *sub=windows.at(i);
-            auto *view=sub?qobject_cast<KisView*>(sub->widget()):nullptr;
-            KisDocument *doc=view?view->document():nullptr;
-            if(!doc)continue;
-            const QString path=doc->path();
-            QString title=path.isEmpty()?QStringLiteral("Untitled"):
-                          QFileInfo(path).fileName();
-            if(title.isEmpty())title=QStringLiteral("Untitled");
-            items.append({title,doc->isModified(),false,i,
-                          MobileMdiViewIdentity::capture(sub)});
-        }
-
-        // A document can have multiple KisView windows. Comparing each
-        // view's document to the manager's current document would label
-        // several rows active and Close Current could target the wrong
-        // view. Select exactly one valid view, or none if ambiguous.
-        int selected=-1;
-        QMdiSubWindow *mdiActive=m_documents->activeSubWindow();
-        const auto *mdiView=mdiActive?
-            qobject_cast<KisView*>(mdiActive->widget()):nullptr;
-        if(mdiView && (!current || mdiView->document()==current)) {
-            for(int i=0;i<items.size();++i) {
-                if(items[i].nativeView==mdiActive) {
-                    selected=i;
-                    break;
-                }
-            }
-        }
-
-        if(selected<0 && current) {
-            int candidate=-1;
-            for(int i=0;i<items.size();++i) {
-                const auto *sub=windows.at(items.at(i).nativeIndex);
-                const auto *view=sub?
-                    qobject_cast<KisView*>(sub->widget()):nullptr;
-                if(view && view->document()==current) {
-                    if(candidate>=0) {
-                        // Multiple views of the same document but no
-                        // reliable active MDI selection: refuse to guess.
-                        candidate=-1;
-                        break;
-                    }
-                    candidate=i;
-                }
-            }
-            selected=candidate;
-        }
-
-        // The lone view is unambiguous even when the view manager has
-        // briefly cleared its active document during a Qt reparent.
-        if(selected<0 && items.size()==1)selected=0;
-        if(selected>=0)items[selected].active=true;
-        return items;
+        return m_viewHost?m_viewHost->openViews():QVector<OpenDocument>{};
     }
-    // Resolves against the live MDI list, never the index captured when
-    // a popup opened. A destroyed view automatically invalidates QPointer.
+
+    // The view provider owns identity validation. Never resolve an
+    // outdated creation-order index against a changed MDI document list.
     bool activateDocumentView(const QPointer<QObject> &identity) const
     {
-        if(!m_documents || !identity)return false;
-        QPointer<QMdiSubWindow> target=
-            MobileMdiViewIdentity::resolve(m_documents,identity);
-        if(!target || !qobject_cast<KisView*>(target->widget()))return false;
-        m_documents->setActiveSubWindow(target);
-        return true;
+        return m_viewHost && identity && m_viewHost->activateView(identity);
     }
     bool activateDocument(int nativeIndex) const
     {
-        if(!m_documents || nativeIndex<0)return false;
-        const auto windows=m_documents->subWindowList(QMdiArea::CreationOrder);
-        if(nativeIndex>=windows.size())return false;
-        return activateDocumentView(windows.at(nativeIndex));
+        if(nativeIndex<0)return false;
+        for(const auto &item:openDocuments()) {
+            if(item.nativeIndex==nativeIndex)
+                return activateDocumentView(item.nativeView);
+        }
+        return false;
     }
 
-    // Close through Krita's existing QMdiSubWindow/KisView path.
-    // KisView::closeEvent calls queryClose() on the last view, waits for
-    // active saves and offers Save / Discard / Cancel for modified files.
-    // The mobile UI must not destroy KisDocument or mutate its dirty flag.
+    // Native Krita still owns the Save / Discard / Cancel close prompt.
+    // The view provider is responsible for validating that the captured
+    // identity still represents the same live canvas.
     bool closeDocumentView(const QPointer<QObject> &identity) const
     {
-        if(!m_documents || !identity)return false;
-        QPointer<QMdiSubWindow> target=
-            MobileMdiViewIdentity::resolve(m_documents,identity);
-        if(!target || !qobject_cast<KisView*>(target->widget()))return false;
-        // Native Krita still owns Save/Discard/Cancel and the document.
-        m_documents->setActiveSubWindow(target);
-        // Signal handlers may remove a view during the selection change.
-        return target && target->close();
+        return m_viewHost && identity && m_viewHost->closeView(identity);
     }
     bool closeDocument(int nativeIndex) const
     {
-        if(!m_documents || nativeIndex<0)return false;
-        const auto windows=m_documents->subWindowList(QMdiArea::CreationOrder);
-        if(nativeIndex>=windows.size())return false;
-        return closeDocumentView(windows.at(nativeIndex));
+        if(nativeIndex<0)return false;
+        for(const auto &item:openDocuments()) {
+            if(item.nativeIndex==nativeIndex)
+                return closeDocumentView(item.nativeView);
+        }
+        return false;
     }
     bool closeActiveDocument() const
     {
-        if(!m_documents)return false;
-        // On Android the native QMdiArea is physically hosted in a second
-        // top-level window. Qt can clear activeSubWindow() during reparenting
-        // even though the Krita view manager still owns the active document.
-        const auto windows=m_documents->subWindowList(QMdiArea::CreationOrder);
-        const KisDocument *current=m_manager?m_manager->document():nullptr;
-        QMdiSubWindow *active=m_documents->activeSubWindow();
-        if(active && qobject_cast<KisView*>(active->widget()) &&
-           (!current ||
-            qobject_cast<KisView*>(active->widget())->document()==current))
-            return closeDocument(windows.indexOf(active));
+        const auto views=openDocuments();
+        QPointer<QObject> selected;
+        int count=0;
+        for(const auto &view:views) {
+            if(!view.active || !view.nativeView)continue;
+            ++count;
+            selected=view.nativeView;
+        }
+        if(count==1)return closeDocumentView(selected);
+        if(count>1)return false;
 
-        // Prefer the view backed by the engine's active document; do not
-        // arbitrarily close a different document when several are open.
+        // If native focus is temporarily missing, select a *unique*
+        // view for the manager's document; never close the first of
+        // several possible views, especially if one is modified.
+        KisDocument *current=m_manager?m_manager->document():nullptr;
         if(current) {
-            for(int i=0;i<windows.size();++i) {
-                const auto *view=windows.at(i)?
-                    qobject_cast<KisView*>(windows.at(i)->widget()):nullptr;
-                if(view && view->document()==current)
-                    return closeDocument(i);
+            for(const auto &view:views) {
+                if(!view.nativeView || view.document!=current)continue;
+                if(selected)return false;
+                selected=view.nativeView;
             }
+            if(selected)return closeDocumentView(selected);
         }
-
-        // If the manager still refers to a just-closed document, trust an
-        // existing valid active MDI subwindow rather than refusing to close
-        // every other document in a multi-document session.
-        if(active && windows.contains(active) &&
-           qobject_cast<KisView*>(active->widget()))
-            return closeDocument(windows.indexOf(active));
-
-        // A lone valid view is unambiguous even if no MDI tab is active.
-        int only=-1;
-        for(int i=0;i<windows.size();++i) {
-            if(!windows.at(i) ||
-               !qobject_cast<KisView*>(windows.at(i)->widget()))continue;
-            if(only>=0)return false;
-            only=i;
-        }
-        return only>=0 && closeDocument(only);
+        return views.size()==1 &&
+               closeDocumentView(views.first().nativeView);
     }
-
 
     // Document I/O and image construction are owned by Krita's engine.
     // The mobile shell supplies the dialogs and initiates transactions,
@@ -273,22 +180,23 @@ public:
     bool saveDocumentView(const QPointer<QObject> &identity,
                           bool saveAs=false) const
     {
-        if(!m_host || !m_host->available() || !m_documents ||
-           !m_manager || !identity)return false;
-        const auto items=openDocuments();
+        if(!m_host || !m_host->available() || !m_manager ||
+           !m_viewHost || !identity)return false;
+        // Capture no raw KisView: the provider can replace a view while
+        // Qt dispatches a deferred menu callback. A current snapshot
+        // must still contain exactly this selected identity and the
+        // same live KisDocument currently owned by Krita's manager.
+        const auto views=m_viewHost->openViews();
         int activeCount=0;
-        bool identityWasCurrent=false;
-        for(const auto &item:items) {
-            if(!item.active)continue;
+        QPointer<QObject> document;
+        for(const auto &view:views) {
+            if(!view.active)continue;
             ++activeCount;
-            identityWasCurrent=item.nativeView==identity;
+            if(view.nativeView==identity)document=view.document;
         }
-        if(activeCount!=1 || !identityWasCurrent)return false;
-        const auto sub=MobileMdiViewIdentity::resolve(m_documents,identity);
-        auto *view=sub?qobject_cast<KisView*>(sub->widget()):nullptr;
-        KisDocument *document=view?view->document():nullptr;
-        if(!document || document!=m_manager->document())return false;
-        return m_host->save(document,saveAs);
+        if(activeCount!=1 || !document ||
+           document!=m_manager->document())return false;
+        return m_host->save(m_manager->document(),saveAs);
     }
     QString activeDocumentTitle() const
     {
@@ -303,16 +211,13 @@ public:
         return m_manager && m_manager->document() &&
                m_manager->document()->isModified();
     }
-    bool hasDocument() const {
-        // A stale active-document pointer can survive briefly after closing
-        // the last MDI subwindow. The live native views are authoritative for
-        // the mobile empty-workspace state and availability of commands.
-        if(m_documents) {
-            for(QMdiSubWindow *sub:m_documents->subWindowList(
-                    QMdiArea::CreationOrder)) {
-                if(sub && qobject_cast<KisView*>(sub->widget()) &&
-                   qobject_cast<KisView*>(sub->widget())->document())
-                    return true;
+    bool hasDocument() const
+    {
+        // A stale manager pointer can survive the closing of the last
+        // view. Live view-host state is authoritative.
+        if(m_viewHost) {
+            for(const auto &view:m_viewHost->openViews()) {
+                if(view.nativeView && view.document)return true;
             }
             return false;
         }
@@ -321,7 +226,7 @@ public:
 
 private:
     QSharedPointer<MobileDocumentHostPort> m_host;
-    KisViewManager *m_manager=nullptr;  // Owned by native Krita backend
-    QPointer<QMdiArea> m_documents;
+    QSharedPointer<MobileViewHostPort> m_viewHost;
+    KisViewManager *m_manager=nullptr; // Owned by native Krita backend
 };
 #endif // Q_OS_ANDROID
