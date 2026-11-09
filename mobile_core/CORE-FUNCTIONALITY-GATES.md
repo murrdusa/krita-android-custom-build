@@ -110,6 +110,16 @@ serialization or brushes.
   now follows Krita's document signals. **This is source-staged only**:
   neither a standalone Android launch nor real file round trips have
   been verified.
+- The user-observed blank desktop-style startup is now recoverable
+  through **Settings → Mobile Studio (experimental)**, independent of
+  whether a saved Krita workspace hides the toolbar. The native Settings
+  menu includes the pilot QAction and the XMLGUI version/checksum are
+  updated. Automatic Mobile Studio entry waits for a visible canvas and
+  retries boundedly, immediately clearing the incomplete-boot marker
+  after success. A genuinely failed or interrupted start continues to
+  fall back safely to Krita; existing installs may need to manually
+  reenable the startup preference. Full Android device verification
+  is still pending.
 - The opt-in stationary canvas header was found consuming hundreds of
   pixels of height on a real device. The top dock is now capped at 76
   logical pixels and its title/header widget is height-fixed; a Qt

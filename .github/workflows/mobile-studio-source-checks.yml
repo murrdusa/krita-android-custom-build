@@ -66,6 +66,17 @@ jobs:
           assert 'm_backend->setProperty("_mobileStudioPresentationActive",false)' in transfer
           assert 'm_backend->setProperty("_mobileStudioCanvasTransferred",true)' in transfer
           assert 'property("_mobileStudioPresentationActive").toBool()' in Path("apply_mobile_shell.py").read_text()
+          # The desktop fallback must always offer a manual way back
+          # into the app, even if Krita remembered a hidden toolbar.
+          assert "Settings menu mobile recovery launcher" in Path("apply_mobile_shell.py").read_text()
+          assert "'set(KRITA5_XMLGUI_VERSION 550)'" in Path("apply_mobile_shell.py").read_text()
+          startup = Path("mobile_core/canvas_session.h").read_text()
+          assert "void attemptAutomaticStartup(int remaining)" in startup
+          assert "attemptAutomaticStartup(12)" in startup
+          assert "m_backend->isVisible() && m_backend->centralWidget()" in startup
+          assert "QStringLiteral(\"MobileStudio/bootPending\"),false" in startup
+          assert "QTimer::singleShot(4500" not in startup
+          assert "manual recovery available in Settings" in startup
           document_service = Path("mobile_core/document_service.h").read_text()
           command_service = Path("mobile_core/command_service.h").read_text()
           desktop_adapters = Path("mobile_core/desktop_host_adapters.h").read_text()
