@@ -492,3 +492,17 @@ it lazily in KisMainWindow::openCommandBar() if the user explicitly
 opens Krita's old desktop command palette. Fallback/desktop startup
 remains eager as before. This does not change the native action
 registry, painting, the layer undo stack, or document persistence.
+
+
+## Android desktop-widget audit after native canvas activation
+
+The independent pilot now persists a short Qt-only inventory of
+legacy UI objects actually allocated after the first native canvas
+becomes usable: direct desktop QDockWidgets, remaining QMdiAreas,
+Kate command palettes, native host activation and visible desktop
+status chrome. Settings > Last Standalone Engine Test Status shows
+this audit to diagnose hidden desktop components vs ones no longer
+constructed. This audit does not remove any canvas, object, or
+command; it runs only after the independent document successfully
+attaches. Desktop commands (Kate) are also lazily constructed only
+on-demand in the normal Krita fallback.

@@ -38,6 +38,7 @@ def main(root:Path):
     standalone_engine_pilot=own/"mobile_core/krita_standalone_pilot.h"
     native_startup_policy=own/"mobile_core/native_startup_policy.h"
     native_boot_coordinator=own/"mobile_core/native_boot_coordinator.h"
+    native_bootstrap_audit=own/"mobile_core/native_bootstrap_audit.h"
     native_workspace=own/"mobile_core/krita_native_workspace.h"
     native_reorder_policy=own/"mobile_core/native_layer_reorder_policy.h"
     native_command_layout=own/"mobile_core/native_command_layout.h"
@@ -69,7 +70,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,startup_policy,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,canvas_resume_observer,standalone_krita_runtime,standalone_krita_documents,native_engine_probe,standalone_engine_pilot,native_startup_policy,native_boot_coordinator,native_workspace,native_command_layout,native_reorder_policy,deferred_view_command,document_navigation,surface,switcher,bridge,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+               (shell,session,startup_policy,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,canvas_resume_observer,standalone_krita_runtime,standalone_krita_documents,native_engine_probe,standalone_engine_pilot,native_startup_policy,native_boot_coordinator,native_bootstrap_audit,native_workspace,native_command_layout,native_reorder_policy,deferred_view_command,document_navigation,surface,switcher,bridge,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
                 reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
@@ -79,7 +80,7 @@ def main(root:Path):
     # so a future lightweight application host can replace it in one place.
     desktop_dependent=(desktop_adapters,mdi_view_adapter)
     qt_host_components=(session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,surface)
-    mobile_frontend=(native_boot_coordinator,native_command_layout,native_workspace,native_reorder_policy,native_startup_policy,canvas_resume_observer,deferred_view_command,document_navigation,shell,bridge,host_services,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,
+    mobile_frontend=(native_bootstrap_audit,native_boot_coordinator,native_command_layout,native_workspace,native_reorder_policy,native_startup_policy,canvas_resume_observer,deferred_view_command,document_navigation,shell,bridge,host_services,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,
                      command_service,command_port,switcher,brush,color,layers,
                      commands,quick,mdi_identity,pressure_calibration,pressure_settings,
                      reorder,tools,documents,*qt_host_components)
@@ -659,13 +660,17 @@ KisMainWindow * KisView::mainWindow() const''',
         const QString lastPanel=settings.value(
             QStringLiteral("MobileStudio/nativeWorkspaceLastAction"),
             QStringLiteral("None")).toString();
+        const QString nativeAudit=settings.value(
+            QStringLiteral("MobileStudio/nativeDesktopWidgetAudit"),
+            QStringLiteral("No native desktop audit recorded")).toString();
         QMessageBox::information(
             this,i18n("Standalone engine diagnostics"),
             i18n("Last startup checkpoint: %1\\n"
                  "Startup unfinished: %2\\n"
                  "Last native control: %3\\n"
+                 "Native desktop widgets: %4\\n"
                  "If the app closed, report this text.",
-                 phase,pending?i18n("Yes"):i18n("No"),lastPanel));
+                 phase,pending?i18n("Yes"):i18n("No"),lastPanel,nativeAudit));
     });
 #endif
     TabletCompactSkin *compactSkin = nullptr;
@@ -886,6 +891,8 @@ KisMainWindow * KisView::mainWindow() const''',
         native_startup_policy.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/native_boot_coordinator.h").write_text(
         native_boot_coordinator.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/native_bootstrap_audit.h").write_text(
+        native_bootstrap_audit.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/krita_native_workspace.h").write_text(
         native_workspace.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/native_layer_reorder_policy.h").write_text(

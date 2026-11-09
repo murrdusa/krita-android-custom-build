@@ -31,6 +31,7 @@
 #include "krita_standalone_runtime.h"
 #include "krita_native_workspace.h"
 #include "native_command_layout.h"
+#include "native_bootstrap_audit.h"
 
 class MobileKritaStandalonePilot final
 {
@@ -103,6 +104,7 @@ public:
         auto documents=QSharedPointer<MobileDocumentService>::create(
             services.documents,services.views);
         QPointer<MobileLightweightCanvasHost> alive=window;
+        QPointer<QWidget> desktopNative=nativeWindow;
         const MobileEngineBridge nativeBridge(services,runtime->viewManager());
         // Native controls now use the independent manager and host ports,
         // not the old desktop MDI window or its docker instances.
@@ -269,7 +271,9 @@ public:
         window->show();
         window->raise();
         window->suppressNativeStatusChrome();
-        QTimer::singleShot(0,window,[alive,documents,stage,firstCanvasReady]() {
+        QTimer::singleShot(0,window,
+                           [alive,documents,stage,firstCanvasReady,
+                            desktopNative]() {
             if(!alive)return;
             stage("Creating first native Krita document and view");
             if(!documents->createCanvas(
@@ -286,6 +290,8 @@ public:
             // the first native canvas is active; keep footer hidden.
             alive->suppressNativeStatusChrome();
             stage("First native Krita canvas ready",false);
+            if(auto *desktop=qobject_cast<QMainWindow*>(desktopNative.data()))
+                MobileNativeBootstrapAudit::record(desktop);
             if(firstCanvasReady)firstCanvasReady(true);
         });
         return true;

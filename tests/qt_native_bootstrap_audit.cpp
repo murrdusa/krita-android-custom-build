@@ -1,0 +1,67 @@
+/*
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+#include <QApplication>
+#include <QDebug>
+#include <QDockWidget>
+#include <QMainWindow>
+#include <QMdiArea>
+#include <QScrollArea>
+#include <QStatusBar>
+#include <QWidget>
+#include "mobile_core/native_bootstrap_audit.h"
+
+static void check(bool value,const char *message)
+{
+    if(!value)qFatal("Native bootstrap widget audit: %s",message);
+}
+
+int main(int argc,char **argv)
+{
+    QApplication app(argc,argv);
+    QMainWindow desktop;
+    auto *mdi=new QMdiArea(&desktop);
+    desktop.setCentralWidget(mdi);
+    desktop.setProperty("_mobileNativeDesktopDeferred",true);
+    desktop.setProperty("_mobileNativeHostActive",true);
+    auto *status=desktop.statusBar();
+    status->hide();
+    desktop.show();
+    QApplication::processEvents();
+    status->hide();
+
+    const auto bare=MobileNativeBootstrapAudit::inspect(&desktop);
+    check(bare.nativeSelected && bare.nativeHostActive,
+          "missing reduced-shell startup mode");
+    check(bare.mdiAreas==1 && bare.desktopDockers==0,
+          "retained MDI or dockers counted incorrectly");
+    check(bare.commandPalettes==0,
+          "command palette falsely reported before lazy creation");
+    check(!bare.desktopStatusVisible,
+          "hidden footer falsely reported visible");
+    auto *docker=new QDockWidget(QStringLiteral("Legacy desktop docker"),
+                                  &desktop);
+    desktop.addDockWidget(Qt::LeftDockWidgetArea,docker);
+    check(MobileNativeBootstrapAudit::inspect(&desktop).desktopDockers==1,
+          "desktop docker change not detected");
+
+    // A dock inside the independent host must not be mistaken for
+    // one created directly by the old desktop bootstrap.
+    auto *native=new QMainWindow(mdi);
+    auto *nativeDocker=new QDockWidget(QStringLiteral("Brushes"),native);
+    native->addDockWidget(Qt::BottomDockWidgetArea,nativeDocker);
+    check(MobileNativeBootstrapAudit::inspect(&desktop).desktopDockers==1,
+          "independent drawing controls counted as desktop dockers");
+
+    desktop.setProperty("_mobileNativeHostActive",false);
+    desktop.setProperty("_mobileNativeDesktopDeferred",false);
+    const auto normal=MobileNativeBootstrapAudit::inspect(&desktop);
+    check(!normal.nativeHostActive && !normal.nativeSelected,
+          "native-shell flags stayed enabled after fallback");
+    check(normal.display().contains(QStringLiteral("MDI 1")) &&
+          normal.display().contains(QStringLiteral("dockers 1")),
+          "human-readable startup report omitted important widgets");
+    qInfo()<<"PASS: desktop widget inventory distinguishes native host,"
+              "retained MDI and actual legacy dockers";
+    return 0;
+}

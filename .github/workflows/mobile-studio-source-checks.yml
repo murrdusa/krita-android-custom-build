@@ -288,6 +288,14 @@ jobs:
           assert 'Legacy mobile controller skipped on native startup' in shell_patch
           assert 'skip compact skin connection without a receiver' in shell_patch
           assert 'MobileNativeBootCoordinator::schedule(' in shell_patch
+          assert 'native_bootstrap_audit=own/"mobile_core/native_bootstrap_audit.h"' in shell_patch
+          assert '(root/"libs/ui/native_bootstrap_audit.h").write_text(' in shell_patch
+          assert 'MobileNativeBootstrapAudit::record(desktop)' in native_pilot
+          assert 'MobileStudio/nativeDesktopWidgetAudit' in shell_patch
+          audit=Path("mobile_core/native_bootstrap_audit.h").read_text()
+          assert 'FindDirectChildrenOnly' in audit
+          assert 'desktopDockers' in audit
+          assert 'commandPalettes' in audit
           assert 'std::move(finished)' in shell_patch
           assert 'native_boot_coordinator=own/"mobile_core/native_boot_coordinator.h"' in shell_patch
           assert '(root/"libs/ui/native_boot_coordinator.h").write_text(' in shell_patch
@@ -573,6 +581,16 @@ jobs:
             $(pkg-config --cflags --libs Qt5Core)
       - name: Verify safe layer moves and invalid-selection no-ops
         run: /tmp/krita-native-layer-reorder-test
+      - name: Build Qt native bootstrap widget inventory
+        run: |
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+            tests/qt_native_bootstrap_audit.cpp \
+            -o /tmp/krita-native-boot-audit-test \
+            $(pkg-config --cflags --libs Qt5Widgets)
+      - name: Verify desktop widget isolation from native controls
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /tmp/krita-native-boot-audit-test
       - name: Build native engine Qt boot coordinator regression
         run: |
           c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
