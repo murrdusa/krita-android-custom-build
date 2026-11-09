@@ -275,6 +275,15 @@ KisMainWindow * KisView::mainWindow() const''',
 #endif
 }''',
            "Krita native view count")
+    mc=one(mc,
+           '    bool toggled = actionCollection()->action("view_show_canvas_only")->isChecked();',
+           '''    // In the standalone QMainWindow, the desktop canvas-only
+    // toggle action may not exist. Never crash while activating
+    // the very first real KisView.
+    QAction *canvasOnlyAction=actionCollection()?
+        actionCollection()->action("view_show_canvas_only"):nullptr;
+    bool toggled=canvasOnlyAction && canvasOnlyAction->isChecked();''',
+           "Native KisViewManager missing desktop canvas-only action")
     managercpp.write_text(mc,encoding="utf-8")
 
     # Krita 6.0.4 canvas uses a desktop window for color-management

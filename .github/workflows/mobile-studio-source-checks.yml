@@ -244,6 +244,8 @@ jobs:
               assert fragment in native_docs
           assert '(root/"libs/ui/krita_standalone_runtime.h").write_text(' in shell_patch
           assert 'Krita native view count' in shell_patch
+          assert 'Native KisViewManager missing desktop canvas-only action' in shell_patch
+          assert 'canvasOnlyAction && canvasOnlyAction->isChecked()' in shell_patch
           assert 'candidate->viewManager()==this' in shell_patch
           assert 'native canvas color-managed surface parent' in shell_patch
           assert 'native canvas config parent' in shell_patch

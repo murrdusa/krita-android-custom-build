@@ -202,6 +202,13 @@ serialization or brushes.
   `KisCanvas2::bootstrapFinished` call is single-shot per view,
   mirroring Krita's desktop GUI-load event rather than running
   again on tab switching. Tool state is refreshed on selection.
+- Corrected a first-canvas crash in upstream
+  `KisViewManager::showHideScrollbars()`: `setCurrentView()`
+  unconditionally read the desktop-only
+  `view_show_canvas_only` action, which does not exist in the
+  standalone action collection. Android now defaults that flag to
+  false when the action is absent; the existing desktop action's
+  behavior remains unchanged.
 - The opt-in stationary canvas header was found consuming hundreds of
   pixels of height on a real device. The top dock is now capped at 76
   logical pixels and its title/header widget is height-fixed; a Qt
