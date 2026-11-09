@@ -229,6 +229,24 @@ public:
     void setExitCallback(std::function<void()> handler) {
         m_exit=std::move(handler);
     }
+
+    // Mobile phone system Back dismisses panels first, without trying
+    // to close or detach the painting widget. The top Back button still
+    // explicitly switches directly to Krita's original interface.
+    bool dismissTransientControls()
+    {
+        if(m_layers && m_layers->isVisible()) {
+            m_layers->hide();
+            updateLayerPresentation();
+            return true;
+        }
+        if(m_colorWorkspace && m_colorWorkspace->expanded()) {
+            m_colorWorkspace->setExpanded(false);
+            return true;
+        }
+        return false;
+    }
+
     void attachEngineCanvas(QWidget *nativeCanvas)
     {
         if(!nativeCanvas || m_nativeCanvas) return;
