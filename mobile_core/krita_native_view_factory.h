@@ -16,6 +16,7 @@
 #include <KisView.h>
 #include <KisViewManager.h>
 #include <KoToolManager.h>
+#include <KoCanvasSupervisor.h>
 #include "kis_canvas2.h"
 #include "kis_paintop_box.h"
 #include "input/kis_input_manager.h"
@@ -32,7 +33,9 @@ public:
         if(!document || !document->image() || !manager || !stack ||
            !saver || !KisPart::instance() || !manager->qtMainWindow() ||
            stack->window()!=manager->qtMainWindow() ||
-           manager->mainWindow())return nullptr;
+           manager->mainWindow() ||
+           !dynamic_cast<KoCanvasSupervisor*>(manager->qtMainWindow()))
+            return nullptr;
 
         // Create and register the REAL KisView in Krita's KisPart.
         // Its QWidget must be new, unattached and never borrowed from MDI.

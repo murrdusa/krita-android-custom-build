@@ -127,6 +127,19 @@ serialization or brushes.
   painting-widget handoff is attempted only once. A new Qt regression
   validates settings persistence, failure recovery and readiness.
   Existing APKs require rebuilding; saved opt-outs remain authoritative.
+- The upstream 6.0.4 `KisView::Private` constructor requires
+  `KoCanvasSupervisor` for its real `KisCanvasController`, not
+  a plain `QMainWindow`. The lightweight host now implements the
+  real observer interface and the Android-only Krita patch routes
+  canvas initialization through it. Until we implement native docker
+  observers, it correctly returns an empty observer list. The Android
+  canvas constructor no longer attempts connecting a missing desktop
+  `guiLoadingFinished` signal; native view activation supplies its
+  own bootstrap callback. Other desktop-only native view handlers
+  (dropping files, window state, closing without QMdiSubWindow)
+  now fail safely or use Qt-native document close events.
+  These are real-engine source boundaries, still awaiting full Android
+  compilation and actual stroke validation.
 - The opt-in stationary canvas header was found consuming hundreds of
   pixels of height on a real device. The top dock is now capped at 76
   logical pixels and its title/header widget is height-fixed; a Qt

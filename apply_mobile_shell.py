@@ -108,8 +108,17 @@ def main(root:Path):
     viewcpp=root/"libs/ui/KisView.cpp"
     vc=viewcpp.read_text(encoding="utf-8")
     vc=one(vc,'#include "KisViewManager.h"',
-           '#include "KisViewManager.h"\n#ifdef Q_OS_ANDROID\n#include "native_krita_save_host.h"\n#endif',
+           '#include "KisViewManager.h"\n#ifdef Q_OS_ANDROID\n#include <KoCanvasSupervisor.h>\n#include "native_krita_save_host.h"\n#endif',
            "KisView native save host include")
+    vc=one(vc,'''        , canvasController(_q, viewManager->mainWindow(), viewManager->actionCollection())''',
+           '''#ifdef Q_OS_ANDROID
+        , canvasController(_q,
+              dynamic_cast<KoCanvasSupervisor*>(viewManager->qtMainWindow()),
+              viewManager->actionCollection())
+#else
+        , canvasController(_q, viewManager->mainWindow(), viewManager->actionCollection())
+#endif''',
+           "KisView Qt-native canvas supervisor")
     vc=one(vc,'    KisViewManager *viewManager {nullptr};',
            '    KisViewManager *viewManager {nullptr};\n#ifdef Q_OS_ANDROID\n    QPointer<MobileKritaNativeSaveHost> mobileNativeSaveHost;\n#endif',
            "KisView guarded native save port")
@@ -159,6 +168,47 @@ KisMainWindow * KisView::mainWindow() const''',
             if (!viewManager()->mainWindow()->saveDocument(document(), !isNative, false))
                 return false;''',
            "KisView native close Save")
+    vc=one(vc,'''void KisView::dropEvent(QDropEvent *event)
+{
+    dbgUI << Q_FUNC_INFO;''',
+           '''void KisView::dropEvent(QDropEvent *event)
+{
+#ifdef Q_OS_ANDROID
+    if (!mainWindow()) {
+        // Desktop drop operations directly manipulate KisMainWindow.
+        // Refuse those operations in the independent host until they
+        // route through its document/service ports.
+        event->ignore();
+        return;
+    }
+#endif
+    dbgUI << Q_FUNC_INFO;''',
+           "KisView guarded native drop")
+    vc=one(vc,'''void KisView::closeView()
+{
+    d->subWindow->close();
+}''',
+           '''void KisView::closeView()
+{
+#ifdef Q_OS_ANDROID
+    if (!d->subWindow) {
+        // Native stack does not create desktop QMdiSubWindow wrappers.
+        // The view still runs its own Save/Discard/Cancel closeEvent.
+        if (close()) deleteLater();
+        return;
+    }
+#endif
+    d->subWindow->close();
+}''',
+           "KisView native close action")
+    vc=one(vc,'''    config.setProperty("window", mainWindow()->windowStateConfig().name());''',
+           '''#ifdef Q_OS_ANDROID
+    if (KisMainWindow *desktop=mainWindow())
+        config.setProperty("window", desktop->windowStateConfig().name());
+#else
+    config.setProperty("window", mainWindow()->windowStateConfig().name());
+#endif''',
+           "KisView standalone view state")
     viewcpp.write_text(vc,encoding="utf-8")
 
     partcpp=root/"libs/ui/KisPart.cpp"
@@ -227,6 +277,11 @@ KisMainWindow * KisView::mainWindow() const''',
     # operations, although its manager already stores QMainWindow.
     canvasfile=root/"libs/ui/canvas/kis_canvas2.cpp"
     canvas=canvasfile.read_text(encoding="utf-8")
+    canvas=one(canvas,
+               '    connect(mainWindow, SIGNAL(guiLoadingFinished()), SLOT(bootstrapFinished()));',
+               '''    if (mainWindow)
+        connect(mainWindow, SIGNAL(guiLoadingFinished()), SLOT(bootstrapFinished()));''',
+               "KisCanvas2 independent host deferred bootstrap")
     canvas=one(canvas,
                'QWindow *mainWindowNativeWindow = m_d->view->mainWindow()->windowHandle();',
                '''QWidget *nativeHost=m_d->view->viewManager()->

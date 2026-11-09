@@ -232,6 +232,17 @@ jobs:
           assert "removeTrackedCanvas(&d->canvas)" in shell_patch
           assert "d->viewManager->setCurrentView(nullptr)" in shell_patch
           native_factory = Path("mobile_core/krita_native_view_factory.h").read_text()
+          native_host = Path("mobile_core/lightweight_canvas_host.h").read_text()
+          assert "public KoCanvasSupervisor" in native_host
+          assert "QList<KoCanvasObserverBase*> canvasObservers() const override" in native_host
+          assert "dynamic_cast<KoCanvasSupervisor*>" in native_factory
+          for patched_boundary in (
+                  "KisView Qt-native canvas supervisor",
+                  "KisCanvas2 independent host deferred bootstrap",
+                  "KisView guarded native drop",
+                  "KisView native close action",
+                  "KisView standalone view state"):
+              assert patched_boundary in shell_patch
           for fragment in ("KisPart::instance()->createView(",
                            "view->setMobileNativeSaveHost(saver)",
                            "manager->inputManager()->addTrackedCanvas(",
