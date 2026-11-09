@@ -32,7 +32,7 @@ public:
     ~MobileLightweightCanvasHost() override
     {
 #ifdef Q_OS_ANDROID
-        // Native KisView destructors call into their KisViewManager.
+        // Native drawing views require their engine manager to outlive them.
         // Destroy the Krita runtime first, while its native view stack
         // and this Qt window still exist.
         if(QObject *runtime=findChild<QObject*>(
