@@ -471,17 +471,13 @@ KisMainWindow * KisView::mainWindow() const''',
     appheader=root/"libs/ui/KisApplication.h"
     ah=appheader.read_text(encoding="utf-8")
     ah=one(ah,"class KisApplicationArguments;",
-           "class KisApplicationArguments;\\nclass KisConfig;",
+           "class KisApplicationArguments;\nclass KisConfig;",
            "Android scaling config forward declaration")
     ah=one(ah,
         "    KisAndroidScaling *androidScaling();",
-        "    KisAndroidScaling *androidScaling();\\n    void initializeAndroidScaling(KisConfig &cfg);",
+        "    KisAndroidScaling *androidScaling();\n    void initializeAndroidScaling(KisConfig &cfg);",
         "Android scaling bootstrap API")
     appheader.write_text(ah,encoding="utf-8")
-    app=one(app,
-        '''#include "krita_application_entry.h"''',
-        '''#include "krita_application_entry.h"''',
-        "Android runtime header already includes bootstrap")
     scaling_anchor='''    d->androidScaling = new KisAndroidScaling(cfg, this);'''
     app=one(app,scaling_anchor,
         "    initializeAndroidScaling(cfg);",

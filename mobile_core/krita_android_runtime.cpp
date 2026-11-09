@@ -15,7 +15,7 @@
 #include "KisApplicationArguments.h"
 #include "KisAndroidDonations.h"
 #include "KisPart.h"
-#include "KisConfigNotifier.h"
+#include "kis_config_notifier.h"
 #include "kis_config.h"
 #include "kis_document_aware_spin_box_unit_manager.h"
 #include "kis_spin_box_unit_manager.h"
