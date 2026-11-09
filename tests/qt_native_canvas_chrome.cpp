@@ -128,21 +128,34 @@ int main(int argc,char **argv)
                 "Back changed synthetic drawing state");
     }
 
-    // Simulate an unexpected new native document stack. Never replace it
-    // or tear it down trying to reenter an obsolete chrome controller.
+    // Simulate an unexpected replacement while already in mobile mode.
+    // Restore the desktop controls even though the original native canvas
+    // is no longer in the central slot; never delete an unrelated canvas.
+    require(mobile.activate(),"could not prepare replacement safety test");
     QWidget *displaced=backend.takeCentralWidget();
     require(displaced==canvas,"unexpected central canvas identity");
     QWidget *replacement=new QWidget;
     backend.setCentralWidget(replacement);
-    require(!mobile.activate(),
-            "native-host adapter accepted a replaced Krita canvas");
+    require(!mobile.deactivate(),
+            "native host incorrectly reported a valid canvas after replacement");
+    QApplication::processEvents();
     require(backend.centralWidget()==replacement,
             "native-host adapter overwrote an unrelated central widget");
+    require(!top->isVisible() && !bottom->isVisible(),
+            "mobile docks remained visible after unexpected native replacement");
+    require(backend.menuBar()->isVisible()==initiallyMenu &&
+            backend.statusBar()->isVisible()==initiallyStatus &&
+            originalToolbar->isVisible()==initiallyToolbar &&
+            originalDock->isVisible()==initiallyDock,
+            "desktop controls were not restored after native canvas replacement");
+    require(!mobile.activate(),
+            "native-host adapter accepted a replaced Krita canvas");
     require(observer.changes>=parentChangesAtInstall,
             "parent observer failed unexpectedly");
 
     qInfo() << "PASS: 25 chrome-only switches, identical canvas identity,"
             << "no reparenting during switches, tab and desktop restoration,"
-            << "synthetic document retention and safe refusal on replacement";
+            << "synthetic document retention and desktop recovery when"
+            << "Krita unexpectedly replaces its canvas";
     return 0;
 }
