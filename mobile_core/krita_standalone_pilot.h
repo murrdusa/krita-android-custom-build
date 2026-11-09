@@ -140,6 +140,7 @@ public:
         auto *exitAction=makeAction("Exit test");
         auto *engineOnlyAction=makeAction(
             "Engine-only on next launch (experimental)");
+        auto *architectureAction=makeAction("Engine separation status");
         QObject::connect(brushesAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleBrushes();});
         QObject::connect(layersAction,&QAction::triggered,window,
@@ -184,9 +185,29 @@ public:
             {brushesAction,layersAction,colorAction,toolsAction},
             {newAction,openAction,previousAction,nextAction,
              saveAsAction,closeAction,nativeStartup,
-             engineOnlyAction,exitAction})) {
+             engineOnlyAction,architectureAction,exitAction})) {
             qWarning() << "Independent Krita command layout unavailable";
         }
+
+        QObject::connect(architectureAction,&QAction::triggered,window,
+                         [alive,desktopNative]() {
+            if(!alive || !desktopNative)return;
+            QSettings settings;
+            const int legacyWindows=KisPart::instance() ?
+                KisPart::instance()->mainwindowCount() : -1;
+            const bool engineOnly=desktopNative->property(
+                "_mobileNativeEngineOnlyRoot").toBool();
+            QMessageBox::information(
+                alive.data(),QObject::tr("Engine architecture"),
+                QObject::tr("Engine-only startup: %1\\n"
+                            "KisMainWindow instances: %2\\n"
+                            "Desktop widget audit: %3")
+                    .arg(engineOnly?QObject::tr("Yes"):QObject::tr("No"))
+                    .arg(legacyWindows)
+                    .arg(settings.value(
+                        QStringLiteral("MobileStudio/nativeDesktopWidgetAudit"),
+                        QStringLiteral("Not recorded")).toString()));
+        });
 
         QObject::connect(newAction,&QAction::triggered,window,
                          [alive,nativeBridge]() {
