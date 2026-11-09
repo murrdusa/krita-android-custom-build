@@ -175,6 +175,13 @@ serialization or brushes.
   interface remains unchanged. This new launch path must pass a fresh
   Android compile and device painting/file round-trip tests before
   being considered functional.
+- The separate standalone engine pilot exposes **Undo** and **Redo**
+  through each active `KisDocument::undoStack()` directly, in
+  addition to create/open/save/close. This provides the smallest
+  useful end-to-end drawing proof without implementing new mobile
+  history or brush engines. The initial observed Android compile error
+  was a Qt `QPointer<KisView>` to `QPointer<QObject>` conversion;
+  that native-view identity conversion has been made explicit.
 - The opt-in stationary canvas header was found consuming hundreds of
   pixels of height on a real device. The top dock is now capped at 76
   logical pixels and its title/header widget is height-fixed; a Qt

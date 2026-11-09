@@ -75,6 +75,8 @@ public:
         bar->setMovable(false);
         auto *newAction=bar->addAction(QObject::tr("New"));
         auto *openAction=bar->addAction(QObject::tr("Open"));
+        auto *undoAction=bar->addAction(QObject::tr("Undo"));
+        auto *redoAction=bar->addAction(QObject::tr("Redo"));
         auto *saveAction=bar->addAction(QObject::tr("Save"));
         auto *saveAsAction=bar->addAction(QObject::tr("Save As"));
         auto *closeAction=bar->addAction(QObject::tr("Close view"));
@@ -91,6 +93,21 @@ public:
                          [alive,documents]() {
             if(alive)documents->openFiles(alive);
         });
+        // Exercise Krita's genuine image undo stack; this is not a
+        // reconstructed history of mobile gestures. Read the currently
+        // selected native document on every click to avoid stale views.
+        auto history=[views=services.views](bool redo) {
+            if(!views)return;
+            const auto current=views->currentDocument();
+            auto *doc=qobject_cast<KisDocument*>(current.data());
+            if(!doc || !doc->undoStack())return;
+            if(redo)doc->undoStack()->redo();
+            else doc->undoStack()->undo();
+        };
+        QObject::connect(undoAction,&QAction::triggered,window,
+                         [history](){history(false);});
+        QObject::connect(redoAction,&QAction::triggered,window,
+                         [history](){history(true);});
         QObject::connect(saveAction,&QAction::triggered,window,
                          [alive,documents]() {
             if(alive && !documents->saveCurrentDocument())
