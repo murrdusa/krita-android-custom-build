@@ -86,6 +86,10 @@ int main(int argc,char **argv)
     require(mobile.install(top,bottom,side),"could not install mobile chrome");
     require(mobile.ownsUnmovedCanvas(),"installation changed native central widget");
     const int parentChangesAtInstall=observer.changes;
+    QPointer<QToolBar> lateToolbar;
+    QPointer<QTabBar> lateTab;
+    int lateTabOriginalMin=0;
+    int lateTabOriginalMax=0;
 
     for(int cycle=0;cycle<25;++cycle) {
         require(mobile.activate(),"failed to enter native-host mode");
@@ -119,7 +123,29 @@ int main(int argc,char **argv)
                 !mobile.sidePanelVisible(),
                 "mobile layer dock did not close");
 
+        if(cycle==4) {
+            // Opening another Krita document while mobile chrome is up
+            // may dynamically create tabs and native toolbar actions.
+            auto *newToolbar=new QToolBar(QStringLiteral("Late native tools"));
+            backend.addToolBar(newToolbar);
+            newToolbar->show();
+            lateToolbar=newToolbar;
+            auto *newTab=new QTabBar(canvas);
+            newTab->addTab(QStringLiteral("Newly opened drawing"));
+            nativeLayout->insertWidget(1,newTab);
+            newTab->show();
+            lateTab=newTab;
+            QApplication::processEvents();
+            lateTabOriginalMin=newTab->minimumHeight();
+            lateTabOriginalMax=newTab->maximumHeight();
+        }
         mobile.enforceMobileChrome();
+        if(lateToolbar)
+            require(!lateToolbar->isVisible(),
+                    "new Krita toolbar remained visible in mobile mode");
+        if(lateTab)
+            require(!lateTab->isVisible() && lateTab->maximumHeight()==0,
+                    "new Krita tabbar remained visible in mobile mode");
         require(mobile.deactivate(),"could not return to desktop");
         QApplication::processEvents();
         require(!mobile.active(),"mode remained active after Back");
@@ -136,6 +162,14 @@ int main(int argc,char **argv)
                 nativeTabs->minimumHeight()==initiallyTabMin &&
                 nativeTabs->maximumHeight()==initiallyTabMax,
                 "Back did not restore original native tab geometry");
+        if(lateToolbar)
+            require(lateToolbar->isVisible(),
+                    "Back did not restore toolbar created during mobile mode");
+        if(lateTab)
+            require(lateTab->isVisible() &&
+                    lateTab->minimumHeight()==lateTabOriginalMin &&
+                    lateTab->maximumHeight()==lateTabOriginalMax,
+                    "Back did not restore dynamically added Krita tab");
         require(!top->isVisible() && !bottom->isVisible() &&
                 !side->isVisible(),
                 "Back left mobile controls above Krita canvas");
@@ -171,7 +205,8 @@ int main(int argc,char **argv)
 
     qInfo() << "PASS: 25 chrome-only switches, identical canvas identity,"
             << "no reparenting during switches, tab and desktop restoration,"
-            << "synthetic document retention and desktop recovery when"
+            << "late toolbar/tab restoration, synthetic document retention,"
+            << "and desktop recovery when"
             << "Krita unexpectedly replaces its canvas";
     return 0;
 }
