@@ -17,6 +17,7 @@
 #include <QVector>
 #include <QWidget>
 #include <algorithm>
+#include <utility>
 #include <brushengine/kis_paintop_preset.h>
 #include <KoToolManager.h>
 
