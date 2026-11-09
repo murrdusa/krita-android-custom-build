@@ -207,6 +207,12 @@ serialization or brushes.
   Save / Save As / Close now defer against the exact captured view and
   document. The deferred command refuses a changed selection or an
   invalidated window instead of acting on another drawing.
+- Android canvas activation now retries on the independent window or
+  canvas root becoming visible and when the window is activated. A
+  deferred activation that ran while the host was hidden remains safe
+  for OpenGL and can recover on foregrounding instead of leaving the
+  active Krita view uninitialized. Qt regression exercises hide/show
+  and deleted-root safety; device GL validation remains pending.
 - Native view activation now uses one deferred event for the first
   canvas and one per later document switch. The
   `KisCanvas2::bootstrapFinished` call is single-shot per view,

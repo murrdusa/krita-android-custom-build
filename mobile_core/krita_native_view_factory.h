@@ -23,6 +23,7 @@
 #include "input/kis_input_manager.h"
 #include "native_view_stack.h"
 #include "native_krita_save_host.h"
+#include "canvas_resume_observer.h"
 
 class MobileKritaNativeViewFactory final
 {
@@ -97,6 +98,17 @@ public:
             QPointer<KisViewManager> vm=manager;
             QObject::connect(stack,&QStackedWidget::currentChanged,manager,
                 [root,vm](int) {
+                    if(!root || !vm)return;
+                    scheduleActivation(vm,root,
+                        qobject_cast<KisView*>(root->currentWidget()));
+                });
+            // A Qt timer may fire while Android has hidden this
+            // window. An early visibility guard is correct for GL,
+            // but without a Show/Activate hook the canvas would never
+            // be bootstrapped after the user returns to the app.
+            MobileCanvasResumeObserver::attach(
+                manager->qtMainWindow(),stack,manager,
+                [root,vm]() {
                     if(!root || !vm)return;
                     scheduleActivation(vm,root,
                         qobject_cast<KisView*>(root->currentWidget()));
