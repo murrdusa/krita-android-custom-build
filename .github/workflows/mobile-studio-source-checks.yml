@@ -269,7 +269,7 @@ jobs:
           assert '(root/"libs/ui/deferred_view_command.h").write_text(' in shell_patch
           assert 'doc->undoStack()->undo()' in native_pilot
           assert 'doc->undoStack()->redo()' in native_pilot
-          assert 'documents->openFiles(alive)' in native_pilot
+          assert 'documents->openFiles(alive.data())' in native_pilot
           assert 'window->setAttribute(Qt::WA_DeleteOnClose,true)' in native_pilot
           assert 'MobileKritaStandalonePilot::launch' not in Path("mobile_core/canvas_session.h").read_text()
           assert '#include "krita_standalone_documents.h"' in native_probe
