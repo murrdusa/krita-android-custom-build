@@ -47,6 +47,10 @@ public:
         bool modified=false;
         bool active=false;
         int nativeIndex=-1;
+        // Opaque guarded identity: delayed actions must never resolve an
+        // old index against a different MDI ordering. Do not expose
+        // Krita's document or MDI implementation to mobile UI widgets.
+        QPointer<QObject> nativeView;
     };
 
     QVector<OpenDocument> openDocuments() const
@@ -71,7 +75,7 @@ public:
             const KisDocument *current=m_manager?m_manager->document():nullptr;
             const bool isActive=current?doc==current:
                                         sub==m_documents->activeSubWindow();
-            items.append({title,doc->isModified(),isActive,i});
+            items.append({title,doc->isModified(),isActive,i,sub});
         }
         // If the view manager temporarily has no matching active document,
         // retain the MDI selection (or the lone open canvas) as the visual
@@ -93,32 +97,51 @@ public:
         }
         return items;
     }
+    // Resolves against the live MDI list, never the index captured when
+    // a popup opened. A destroyed view automatically invalidates QPointer.
+    bool activateDocumentView(const QPointer<QObject> &identity) const
+    {
+        if(!m_documents || !identity)return false;
+        auto *target=qobject_cast<QMdiSubWindow*>(identity.data());
+        if(!target ||
+           !m_documents->subWindowList(QMdiArea::CreationOrder)
+                .contains(target) ||
+           !qobject_cast<KisView*>(target->widget()))return false;
+        m_documents->setActiveSubWindow(target);
+        return true;
+    }
     bool activateDocument(int nativeIndex) const
     {
         if(!m_documents || nativeIndex<0)return false;
         const auto windows=m_documents->subWindowList(QMdiArea::CreationOrder);
         if(nativeIndex>=windows.size())return false;
-        QMdiSubWindow *target=windows.at(nativeIndex);
-        if(!target || !qobject_cast<KisView*>(target->widget()))return false;
-        m_documents->setActiveSubWindow(target);
-        return true;
+        return activateDocumentView(windows.at(nativeIndex));
     }
 
     // Close through Krita's existing QMdiSubWindow/KisView path.
     // KisView::closeEvent calls queryClose() on the last view, waits for
     // active saves and offers Save / Discard / Cancel for modified files.
     // The mobile UI must not destroy KisDocument or mutate its dirty flag.
+    bool closeDocumentView(const QPointer<QObject> &identity) const
+    {
+        if(!m_documents || !identity)return false;
+        QPointer<QMdiSubWindow> target=
+            qobject_cast<QMdiSubWindow*>(identity.data());
+        if(!target ||
+           !m_documents->subWindowList(QMdiArea::CreationOrder)
+                .contains(target) ||
+           !qobject_cast<KisView*>(target->widget()))return false;
+        // Native Krita still owns Save/Discard/Cancel and the document.
+        m_documents->setActiveSubWindow(target);
+        // Signal handlers may remove a view during the selection change.
+        return target && target->close();
+    }
     bool closeDocument(int nativeIndex) const
     {
         if(!m_documents || nativeIndex<0)return false;
         const auto windows=m_documents->subWindowList(QMdiArea::CreationOrder);
         if(nativeIndex>=windows.size())return false;
-        QPointer<QMdiSubWindow> target=windows.at(nativeIndex);
-        if(!target || !qobject_cast<KisView*>(target->widget()))return false;
-        // The native Save prompt belongs to this document view. Make it
-        // active before querying, so Krita's save handlers target it.
-        m_documents->setActiveSubWindow(target);
-        return target->close();
+        return closeDocumentView(windows.at(nativeIndex));
     }
     bool closeActiveDocument() const
     {
