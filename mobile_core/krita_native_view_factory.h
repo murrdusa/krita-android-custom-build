@@ -74,7 +74,11 @@ public:
             const QString path=trackedDocument->path();
             const QString title=path.isEmpty()?
                 QStringLiteral("Untitled"):QFileInfo(path).fileName();
-            trackedStack->updateViewState(guarded,title,
+            // QPointer is not covariant in the Android Qt version:
+            // explicitly convert the live KisView pointer to the
+            // QObject identity expected by MobileNativeViewStack.
+            const QPointer<QObject> identity(guarded.data());
+            trackedStack->updateViewState(identity,title,
                                           trackedDocument->isModified());
         };
         QObject::connect(document,&KisDocument::sigPathChanged,stack,
