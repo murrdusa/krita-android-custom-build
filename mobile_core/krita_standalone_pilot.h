@@ -30,6 +30,7 @@
 #include "krita_standalone_documents.h"
 #include "krita_standalone_runtime.h"
 #include "krita_native_workspace.h"
+#include "native_command_layout.h"
 
 class MobileKritaStandalonePilot final
 {
@@ -104,25 +105,27 @@ public:
         auto *workspace=new MobileKritaNativeWorkspace(
             window,services,runtime->viewManager());
 
-        // Diagnostics, not a new permanent mobile toolbar.
-        auto *bar=window->addToolBar(
-            QObject::tr("Engine test controls"));
-        bar->setMovable(false);
-        auto *newAction=bar->addAction(QObject::tr("New"));
-        auto *openAction=bar->addAction(QObject::tr("Open"));
-        auto *canvasesAction=bar->addAction(QObject::tr("Canvases"));
-        auto *previousAction=bar->addAction(QObject::tr("Previous canvas"));
-        auto *nextAction=bar->addAction(QObject::tr("Next canvas"));
-        auto *undoAction=bar->addAction(QObject::tr("Undo"));
-        auto *redoAction=bar->addAction(QObject::tr("Redo"));
-        auto *saveAction=bar->addAction(QObject::tr("Save"));
-        auto *saveAsAction=bar->addAction(QObject::tr("Save As"));
-        auto *closeAction=bar->addAction(QObject::tr("Close view"));
-        auto *brushesAction=bar->addAction(QObject::tr("Brushes"));
-        auto *layersAction=bar->addAction(QObject::tr("Layers"));
-        auto *colorAction=bar->addAction(QObject::tr("Color"));
-        auto *toolsAction=bar->addAction(QObject::tr("Tools"));
-        auto *exitAction=bar->addAction(QObject::tr("Exit test"));
+        // Reuse every real QAction callback from the validated engine,
+        // but present the controls in short native rows, not one
+        // overflowing desktop-style toolbar.
+        auto makeAction=[window](const char *label) {
+            return new QAction(QObject::tr(label),window);
+        };
+        auto *newAction=makeAction("New");
+        auto *openAction=makeAction("Open");
+        auto *canvasesAction=makeAction("Canvases");
+        auto *previousAction=makeAction("Previous canvas");
+        auto *nextAction=makeAction("Next canvas");
+        auto *undoAction=makeAction("Undo");
+        auto *redoAction=makeAction("Redo");
+        auto *saveAction=makeAction("Save");
+        auto *saveAsAction=makeAction("Save As");
+        auto *closeAction=makeAction("Close view");
+        auto *brushesAction=makeAction("Brushes");
+        auto *layersAction=makeAction("Layers");
+        auto *colorAction=makeAction("Color");
+        auto *toolsAction=makeAction("Tools");
+        auto *exitAction=makeAction("Exit test");
         QObject::connect(brushesAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleBrushes();});
         QObject::connect(layersAction,&QAction::triggered,window,
@@ -131,8 +134,7 @@ public:
                          [workspace]() {workspace->toggleColor();});
         QObject::connect(toolsAction,&QAction::triggered,window,
                          [workspace]() {workspace->chooseTool();});
-        auto *nativeStartup=bar->addAction(
-            QObject::tr("Start here next launch"));
+        auto *nativeStartup=makeAction("Start here next launch");
         nativeStartup->setCheckable(true);
         {
             QSettings settings;
@@ -142,6 +144,16 @@ public:
             QSettings settings;
             MobileNativeStartupPolicy::setEnabled(settings,on);
         });
+        // Avoid an overflow chevron hiding the primary drawing tools.
+        // Less-common operations stay in an explicit, labeled menu.
+        if(!MobileNativeCommandLayout::install(
+            window,
+            {canvasesAction,undoAction,redoAction,saveAction},
+            {brushesAction,layersAction,colorAction,toolsAction},
+            {newAction,openAction,previousAction,nextAction,
+             saveAsAction,closeAction,nativeStartup,exitAction})) {
+            qWarning() << "Independent Krita command layout unavailable";
+        }
 
         QObject::connect(newAction,&QAction::triggered,window,
                          [alive,nativeBridge]() {

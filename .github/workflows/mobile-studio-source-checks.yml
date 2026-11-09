@@ -272,6 +272,14 @@ jobs:
           assert 'workspace->toggleLayers()' in native_pilot
           assert 'workspace->toggleColor()' in native_pilot
           assert 'workspace->chooseTool()' in native_pilot
+          assert 'MobileNativeCommandLayout::install(' in native_pilot
+          assert 'bar->addAction(' not in native_pilot
+          assert 'native_command_layout.h' in native_pilot
+          native_chrome=Path("mobile_core/native_command_layout.h").read_text()
+          assert 'Qt::BottomToolBarArea' in native_chrome
+          assert 'Qt::TopToolBarArea' in native_chrome
+          assert 'QToolButton::InstantPopup' in native_chrome
+          assert 'QStringLiteral("_mobileNativeWorkspaceBar")' in native_chrome
           assert 'MobileDocumentWorkflow::create(' in native_pilot
           assert 'MobileStudio/nativeWorkspaceLastAction' in shell_patch
           assert 'MobileStudio/nativeWorkspaceLastAction' in Path("mobile_core/krita_native_workspace.h").read_text()
@@ -491,6 +499,16 @@ jobs:
             $(pkg-config --cflags --libs Qt5Core)
       - name: Check destroyed and registered document rollback
         run: /tmp/krita-native-document-rollback-test
+      - name: Build independent engine visible controls Qt regression
+        run: |
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+            tests/qt_native_command_layout.cpp \
+            -o /tmp/krita-native-command-layout-test \
+            $(pkg-config --cflags --libs Qt5Widgets)
+      - name: Verify visible workspace controls keep original canvas
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /tmp/krita-native-command-layout-test
       - name: Build independent Krita startup recovery Qt test
         run: |
           c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \

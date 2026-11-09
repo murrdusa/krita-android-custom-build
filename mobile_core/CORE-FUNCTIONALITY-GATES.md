@@ -344,3 +344,19 @@ mobile document switcher directly with the new engine host's live
 view identities for activation and guarded Close Current. File Open,
 Save, Save As and KRA writing continue to use Krita's existing
 import/export stack.
+
+
+## Confirmed native controls and UI exposure (2026-11-09)
+
+On-device, the user confirmed independent startup and native
+Brushes, Layers, Color and Tools controls are functional when
+opened through the Qt toolbar overflow. The next iteration
+keeps the *same* QAction callbacks and Krita services but
+reorganizes them into a compact document row at the top
+(Canvases, Undo, Redo, Save, More) and a dedicated bottom
+workspace row (Brushes, Layers, Color, Tools). New/Open,
+previous/next, Save As, Close, startup preference and Exit
+remain available through the explicit More menu rather than
+an undiscoverable chevron. Qt tests guard action routing,
+canvas ownership and dual-toolbar visibility; actual compact
+device interaction still requires verification.
