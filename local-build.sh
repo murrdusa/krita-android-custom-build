@@ -119,6 +119,7 @@ python3 "$REPO/apply_home_mobile.py" "$SOURCE"
 python3 "$REPO/apply_mobile_recovery.py" "$SOURCE"
 python3 "$REPO/apply_mobile_touch_scroll.py" "$SOURCE"
 python3 "$REPO/apply_mobile_shell.py" "$SOURCE"
+python3 "$REPO/apply_finger_contact_pressure.py" "$SOURCE"
 python3 - "$SOURCE" <<'PY'
 import hashlib, pathlib, sys
 root=pathlib.Path(sys.argv[1])
