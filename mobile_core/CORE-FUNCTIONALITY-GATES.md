@@ -33,9 +33,13 @@ serialization or brushes.
   activation, and native close without requiring `QMdiArea`.
   `mdi_view_host_adapter.h` alone handles Krita's desktop MDI views.
 - `document_service.h` and `engine_bridge.h` no longer take a
-  `QMdiArea` or include `KisView`. The UI keeps the same document
-  commands, but a future mobile-first host can supply both its own
-  view model and document/action implementations.
+  `QMdiArea` or include `KisView`. The document service also no longer
+  requires `KisViewManager`: the view-host port supplies a guarded
+  current-document identity, allowing Open/Save/Close state to be
+  calculated independently of Krita's desktop MDI and selection manager.
+  The painting bridge still uses Krita's real resources, brushes and
+  node manager. A mobile-first host can supply a new view model and
+  document/action implementations without altering the UI.
 - `view_identity_guard.h` rejects ambiguous active views, changed
   document identities, reused native indices and destroyed view
   pointers. This avoids saving/closing another canvas after deferred
