@@ -438,6 +438,24 @@ private:
                 QStringLiteral("MobileStudio/bootPending"),false);
             settings.sync();
         });
+        auto *fingerPressure=menu.addAction(
+            i18n("Experimental finger pressure (contact area)"));
+        fingerPressure->setCheckable(true);
+        fingerPressure->setChecked(QSettings().value(
+            QStringLiteral("MobileStudio/fingerContactPressureV1"),false)
+            .toBool());
+        fingerPressure->setToolTip(i18n(
+            "Off by default. When painting with one finger, use the "
+            "contact area reported by Android as a smoothed pressure "
+            "estimate. Stylus and multi-finger gestures stay unchanged. "
+            "Changes apply on the next finger stroke."));
+        connect(fingerPressure,&QAction::toggled,this,[](bool enabled) {
+            QSettings settings;
+            settings.setValue(
+                QStringLiteral("MobileStudio/fingerContactPressureV1"),
+                enabled);
+            settings.sync();
+        });
         menu.addSeparator();
         auto *closeCanvas=menu.addAction(i18n("Close current canvas"));
         closeCanvas->setEnabled(m_engine.hasDocument());
