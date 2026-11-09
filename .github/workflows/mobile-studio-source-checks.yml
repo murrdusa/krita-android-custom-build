@@ -69,7 +69,7 @@ jobs:
           # The desktop fallback must always offer a manual way back
           # into the app, even if Krita remembered a hidden toolbar.
           assert "Settings menu mobile recovery launcher" in Path("apply_mobile_shell.py").read_text()
-          assert "'set(KRITA5_XMLGUI_VERSION 550)'" in Path("apply_mobile_shell.py").read_text()
+          assert "'set(KRITA5_XMLGUI_VERSION 551)'" in Path("apply_mobile_shell.py").read_text()
           startup = Path("mobile_core/canvas_session.h").read_text()
           assert "void attemptAutomaticStartup(int remaining)" in startup
           assert "attemptAutomaticStartup(12)" in startup
@@ -237,8 +237,21 @@ jobs:
           assert 'native canvas color-managed surface parent' in shell_patch
           assert 'native canvas config parent' in shell_patch
           native_probe = Path("mobile_core/krita_native_engine_compile_probe.cpp").read_text()
+          native_pilot = Path("mobile_core/krita_standalone_pilot.h").read_text()
+          assert 'standalone_engine_pilot=own/"mobile_core/krita_standalone_pilot.h"' in shell_patch
+          assert '(root/"libs/ui/krita_standalone_pilot.h").write_text(' in shell_patch
+          assert 'tablet_standalone_engine_test' in shell_patch
+          assert 'MobileKritaStandalonePilot::launch()' in shell_patch
+          assert 'MobileKritaStandaloneRuntime::create(window)' in native_pilot
+          assert 'MobileKritaStandaloneDocumentsBootstrap::create(runtime)' in native_pilot
+          assert 'documents->createCanvas(' in native_pilot
+          assert 'documents->saveCurrentDocument(' in native_pilot
+          assert 'documents->openFiles(alive)' in native_pilot
+          assert 'window->setAttribute(Qt::WA_DeleteOnClose,true)' in native_pilot
+          assert 'MobileKritaStandalonePilot::launch' not in Path("mobile_core/canvas_session.h").read_text()
           assert '#include "krita_standalone_documents.h"' in native_probe
           assert '#include "krita_standalone_runtime.h"' in native_probe
+          assert '#include "krita_standalone_pilot.h"' in native_probe
           assert 'MobileLightweightCanvasHost' in native_probe
           assert 'native_engine_probe=own/"mobile_core/krita_native_engine_compile_probe.cpp"' in shell_patch
           assert '(root/"libs/ui/mobile_native_engine_compile_probe.cpp").write_text(' in shell_patch

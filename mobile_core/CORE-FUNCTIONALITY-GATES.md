@@ -164,6 +164,17 @@ serialization or brushes.
   before removing an orphan and never double-removes a freed document.
   A new Qt test covers destroyed identities, orphan cleanup, repeated
   rollback, and unregistered documents.
+- The standalone engine has now passed a **real Android `kritaui` library
+  compile**, including the native view, manager and document backend
+  headers. A separate **Standalone Engine Test (experimental)** action
+  in Krita Settings now launches a new `MobileLightweightCanvasHost`
+  and `KisViewManager` with its own 512×512 white canvas using the
+  original Krita painting engine. Its temporary debugging toolbar
+  exposes New, Open, Save, Save As and Close view. It never reparents
+  existing desktop canvases or auto-launches, and the current app
+  interface remains unchanged. This new launch path must pass a fresh
+  Android compile and device painting/file round-trip tests before
+  being considered functional.
 - The opt-in stationary canvas header was found consuming hundreds of
   pixels of height on a real device. The top dock is now capped at 76
   logical pixels and its title/header widget is height-fixed; a Qt

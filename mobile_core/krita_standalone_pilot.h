@@ -11,6 +11,7 @@
 #ifdef Q_OS_ANDROID
 #include <QAction>
 #include <QApplication>
+#include <QDebug>
 #include <QMessageBox>
 #include <QPointer>
 #include <QSharedPointer>

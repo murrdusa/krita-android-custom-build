@@ -13,6 +13,7 @@
 #include "krita_standalone_documents.h"
 #include "krita_standalone_runtime.h"
 #include "krita_native_view_factory.h"
+#include "krita_standalone_pilot.h"
 
 static_assert(std::is_base_of<KoCanvasSupervisor,
               MobileLightweightCanvasHost>::value,
