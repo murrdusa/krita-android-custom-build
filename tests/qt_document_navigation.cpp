@@ -60,10 +60,15 @@ int main(int argc,char **argv)
           "next navigation did not select B");
     check(!MobileDocumentNavigation::cycle(host,0),
           "invalid navigation direction accepted");
+    // Mark both A and B active; the fake host's previous selection
+    // is B, so reset it to A to actually create two active rows.
+    host->active=&host->a;
+    host->current=&host->da;
     host->ambiguous=true;
     check(!MobileDocumentNavigation::cycle(host,1),
           "multiple active views were accepted");
     host->ambiguous=false;
+    host->active=&host->b;
     host->current=&host->da; // A changed without active tab.
     check(!MobileDocumentNavigation::cycle(host,1),
           "out-of-sync selected Krita document was accepted");
