@@ -315,7 +315,7 @@ KisMainWindow * KisView::mainWindow() const''',
     mainfile=root/"libs/ui/KisMainWindow.cpp"
     s=mainfile.read_text(encoding="utf-8")
     s=one(s,'#include "tablet_compact_skin.h"',
-          '#include "tablet_compact_skin.h"\n#include "canvas_session.h"\n#include "krita_standalone_pilot.h"\n#include "lightweight_canvas_host.h"\n#include "desktop_host_adapters.h"\n#include "mdi_view_host_adapter.h"\n#include <QSharedPointer>',
+          '#include "tablet_compact_skin.h"\n#include "canvas_session.h"\n#include "krita_standalone_pilot.h"\n#include "lightweight_canvas_host.h"\n#include "desktop_host_adapters.h"\n#include "mdi_view_host_adapter.h"\n#include <QSettings>\n#include <QSharedPointer>',
           "main window include")
 
     native='''    auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);'''
@@ -349,6 +349,26 @@ KisMainWindow * KisView::mainWindow() const''',
                     i18n("Could not initialize the standalone Krita engine. "
                          "Your existing drawing is unchanged."));
         });
+    });
+    QAction *standaloneStatusAction=new QAction(
+        i18n("Last Standalone Engine Test Status"),this);
+    actionCollection()->addAction(
+        QStringLiteral("tablet_standalone_engine_status"),
+        standaloneStatusAction);
+    connect(standaloneStatusAction,&QAction::triggered,this,[this]() {
+        QSettings settings;
+        const QString phase=settings.value(
+            QStringLiteral("MobileStudio/standaloneLastPhase"),
+            QStringLiteral("No previous test")).toString();
+        const bool pending=settings.value(
+            QStringLiteral("MobileStudio/standaloneLaunchPending"),
+            false).toBool();
+        QMessageBox::information(
+            this,i18n("Standalone engine diagnostics"),
+            i18n("Last startup checkpoint: %1\\n"
+                 "Startup unfinished: %2\\n"
+                 "If the app closed on launch, report this text.",
+                 phase,pending?i18n("Yes"):i18n("No")));
     });
 #endif
     auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);
@@ -580,6 +600,7 @@ KisMainWindow * KisView::mainWindow() const''',
       <text>Setti&amp;ngs</text>
       <Action name="tablet_mobile_engine_pilot"/>
       <Action name="tablet_standalone_engine_test"/>
+      <Action name="tablet_standalone_engine_status"/>
       <Separator/>''',
         "Settings menu mobile recovery launcher")
     xmlfile.write_text(xml,encoding="utf-8")
@@ -587,7 +608,7 @@ KisMainWindow * KisView::mainWindow() const''',
     cmake=cmakefile.read_text(encoding="utf-8")
     cmake=one(cmake,
         'set(KRITA5_XMLGUI_VERSION 548)',
-        'set(KRITA5_XMLGUI_VERSION 551)',
+        'set(KRITA5_XMLGUI_VERSION 552)',
         "XMLGUI version")
     oldhash=re.findall(r'set\(krita5_xmlgui_hash_expected "[0-9a-f]+"\)',cmake)
     if len(oldhash)!=1:

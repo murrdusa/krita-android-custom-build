@@ -15,6 +15,7 @@
 #include <QMessageBox>
 #include <QPointer>
 #include <QSharedPointer>
+#include <QSettings>
 #include <QTimer>
 #include <QToolBar>
 #include <QWidget>
@@ -45,6 +46,19 @@ public:
             return true;
         }
 
+        // Persist the latest phase so a crash can be diagnosed after
+        // Krita's desktop fallback restarts the Android process.
+        auto stage=[](const char *name,bool pending=true) {
+            QSettings settings;
+            settings.setValue(
+                QStringLiteral("MobileStudio/standaloneLastPhase"),
+                QString::fromLatin1(name));
+            settings.setValue(
+                QStringLiteral("MobileStudio/standaloneLaunchPending"),pending);
+            settings.sync();
+            qWarning() << "Standalone engine checkpoint:" << name;
+        };
+        stage("Creating embedded Qt host");
         auto *window=new MobileLightweightCanvasHost;
         if(!window->embedInExistingWindow(nativeWindow)) {
             delete window;
@@ -59,12 +73,14 @@ public:
             delete window;
             return false;
         }
+        stage("Creating independent Krita view manager");
         MobileKritaStandaloneRuntime *runtime=
             MobileKritaStandaloneRuntime::create(window);
         if(!runtime) {
             delete window;
             return false;
         }
+        stage("Connecting native Krita services");
         const MobileHostServices services=
             MobileKritaStandaloneDocumentsBootstrap::create(runtime);
         if(!services.ready()) {
@@ -190,15 +206,22 @@ public:
         // The real KisCanvas2 must become visible before Qt initializes
         // brush resources and its OpenGL context. Both the initial canvas
         // and later documents use the same native KisPart engine path.
+        stage("Showing embedded engine test canvas");
         window->show();
-        QTimer::singleShot(0,window,[alive,documents]() {
-            if(alive && !documents->createCanvas(
+        window->raise();
+        QTimer::singleShot(0,window,[alive,documents,stage]() {
+            if(!alive)return;
+            stage("Creating first native Krita document and view");
+            if(!documents->createCanvas(
                        QStringLiteral("Engine test"),512,512,72,true)) {
+                stage("Krita refused first native document creation");
                 QMessageBox::warning(
-                    alive,QObject::tr("Engine test"),
+                    alive.data(),QObject::tr("Engine test"),
                     QObject::tr("Native view initialization failed. "
                                 "The existing Krita interface is unchanged."));
+                return;
             }
+            stage("First native Krita canvas ready",false);
         });
         return true;
     }
