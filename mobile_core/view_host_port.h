@@ -27,6 +27,9 @@ public:
 
     virtual ~MobileViewHostPort() = default;
     virtual QVector<ViewSnapshot> openViews() const = 0;
+    // Krita's engine-selected document. A guarded QObject identity keeps
+    // this interface independent of both KisViewManager and KisDocument.
+    virtual QPointer<QObject> currentDocument() const = 0;
     virtual bool activateView(const QPointer<QObject> &identity) const = 0;
     // Must preserve the underlying Krita Save / Discard / Cancel prompt.
     virtual bool closeView(const QPointer<QObject> &identity) const = 0;
