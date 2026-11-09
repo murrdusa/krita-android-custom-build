@@ -231,20 +231,7 @@ public:
                 [addHold,held]() {*held=false;addHold->start();});
         connect(addType,&QPushButton::released,addType,
                 [addHold]() {addHold->stop();});
-        connect(addHold,&QTimer::timeout,addType,[this,held,addType]() {
-            *held=true;
-            // A synthetic click may follow the Android long hold.
-            addType->click();
-        });
-        connect(addType,&QPushButton::clicked,this,[this,addType,held]() {
-            if(!*held) {
-                if(auto *m=manager()) {
-                    m->createNode(QStringLiteral("KisPaintLayer"));
-                    QTimer::singleShot(120,this,[this]() {reload();});
-                }
-                return;
-            }
-            *held=false;
+        const auto openAddTypes=[this,addType]() {
             auto *view=m_engine.manager();
             auto *nodes=manager();
             if(!nodes || !view)return;
@@ -290,6 +277,21 @@ public:
                 if(nodes->createNode(QString::fromLatin1(candidate.type)))
                     reload();
                 break;
+            }
+        };
+        connect(addHold,&QTimer::timeout,addType,
+                [held,openAddTypes]() {
+            *held=true;
+            openAddTypes();
+        });
+        connect(addType,&QPushButton::clicked,this,[this,held]() {
+            if(*held) {
+                *held=false; // Consume the click after a long hold.
+                return;
+            }
+            if(auto *m=manager()) {
+                m->createNode(QStringLiteral("KisPaintLayer"));
+                QTimer::singleShot(120,this,[this]() {reload();});
             }
         });
 
