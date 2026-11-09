@@ -19,6 +19,8 @@ int main(int argc,char **argv)
     require(dir.isValid(),"temporary settings directory unavailable");
     QSettings s(dir.filePath(QStringLiteral("native.ini")),QSettings::IniFormat);
     using Decision=MobileNativeStartupPolicy::Decision;
+    require(!MobileNativeStartupPolicy::mayDeferDesktopUi(s),
+            "desktop UI deferred on a fresh default installation");
     require(MobileNativeStartupPolicy::begin(s)==Decision::Skip,
             "independent mode must be off on initial installation");
     require(!s.value(MobileNativeStartupPolicy::pendingKey()).toBool(),
@@ -28,12 +30,16 @@ int main(int argc,char **argv)
     MobileNativeStartupPolicy::setEnabled(s,true);
     require(MobileNativeStartupPolicy::enabled(s),
             "explicit independent-host opt-in not persisted");
+    require(MobileNativeStartupPolicy::mayDeferDesktopUi(s),
+            "explicit opt-in did not enable reduced desktop setup");
     require(!s.value(QStringLiteral("MobileStudio/startDirectly")).toBool(),
             "old mobile overlay would race independent startup");
     require(MobileNativeStartupPolicy::begin(s)==Decision::Launch,
             "opt-in did not request a real engine launch");
     require(s.value(MobileNativeStartupPolicy::pendingKey()).toBool(),
             "failure recovery marker was not flushed");
+    require(!MobileNativeStartupPolicy::mayDeferDesktopUi(s),
+            "interrupted launch would omit desktop recovery UI");
 
     // Simulate Android terminating halfway through the new engine's
     // initialization, followed by the next app process.
@@ -42,7 +48,8 @@ int main(int argc,char **argv)
     require(MobileNativeStartupPolicy::begin(reboot)==Decision::RecoverDesktop,
             "interrupted native launch did not enter desktop recovery");
     require(!MobileNativeStartupPolicy::enabled(reboot) &&
-            !reboot.value(MobileNativeStartupPolicy::pendingKey()).toBool(),
+            !reboot.value(MobileNativeStartupPolicy::pendingKey()).toBool() &&
+            !MobileNativeStartupPolicy::mayDeferDesktopUi(reboot),
             "crash recovery left a relaunch loop enabled");
     require(MobileNativeStartupPolicy::begin(reboot)==Decision::Skip,
             "recovery reattempted native startup");
@@ -52,7 +59,8 @@ int main(int argc,char **argv)
             "reenabling native startup was rejected");
     MobileNativeStartupPolicy::complete(s,true);
     require(MobileNativeStartupPolicy::enabled(s) &&
-            !s.value(MobileNativeStartupPolicy::pendingKey()).toBool(),
+            !s.value(MobileNativeStartupPolicy::pendingKey()).toBool() &&
+            MobileNativeStartupPolicy::mayDeferDesktopUi(s),
             "successful canvas did not retain user opt-in");
 
     require(MobileNativeStartupPolicy::begin(s)==Decision::Launch,
@@ -64,6 +72,8 @@ int main(int argc,char **argv)
 
     MobileNativeStartupPolicy::setEnabled(s,true);
     MobileNativeStartupPolicy::setEnabled(s,false);
+    require(!MobileNativeStartupPolicy::mayDeferDesktopUi(s),
+            "desktop UI was deferred after the user disabled native startup");
     require(MobileNativeStartupPolicy::begin(s)==Decision::Skip,
             "user opt-out ignored");
     qInfo() << "PASS: independent Android boot, opt-in, recovery, undo opt-in";

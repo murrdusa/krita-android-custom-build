@@ -31,6 +31,16 @@ public:
         return settings.value(preferenceKey(),false).toBool();
     }
 
+    // The full legacy UI is required on recovery boots, before begin()
+    // clears a stale interrupted-startup marker. The independent engine
+    // can safely defer legacy dockers and duplicate mobile controllers
+    // ONLY on a fresh, explicitly enabled native-startup attempt.
+    static bool mayDeferDesktopUi(const QSettings &settings)
+    {
+        return enabled(settings) &&
+               !settings.value(pendingKey(),false).toBool();
+    }
+
     static void setEnabled(QSettings &settings,bool enabled)
     {
         settings.setValue(preferenceKey(),enabled);
