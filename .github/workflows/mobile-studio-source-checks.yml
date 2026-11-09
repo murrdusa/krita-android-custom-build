@@ -63,6 +63,25 @@ jobs:
           assert 'm_backend->setProperty("_mobileStudioCanvasTransferred",true)' in transfer
           assert 'property("_mobileStudioPresentationActive").toBool()' in Path("apply_mobile_shell.py").read_text()
           document_service = Path("mobile_core/document_service.h").read_text()
+          command_service = Path("mobile_core/command_service.h").read_text()
+          desktop_adapters = Path("mobile_core/desktop_host_adapters.h").read_text()
+          mobile_bridge = Path("mobile_core/engine_bridge.h").read_text()
+          shell_patch = Path("apply_mobile_shell.py").read_text()
+          # There must be exactly one isolated desktop-Krita integration
+          # adapter, not KisMainWindow calls scattered through the app.
+          for name, source in (("document",document_service),
+                               ("command",command_service),
+                               ("facade",mobile_bridge)):
+              assert "KisMainWindow" not in source, f"{name} still uses desktop host"
+          assert '#include "KisMainWindow.h"' in desktop_adapters
+          assert "MobileDesktopDocumentHost" in desktop_adapters
+          assert "MobileDesktopCommandRegistry" in desktop_adapters
+          assert "MobileDocumentHostPort" in document_service
+          assert "MobileCommandRegistryPort" in command_service
+          assert "MobileEngineBridge(" in mobile_bridge
+          assert "new MobileDesktopDocumentHost(this)" in shell_patch
+          assert "new MobileDesktopCommandRegistry(this)" in shell_patch
+          assert "mobile_frontend=(shell,bridge,document_service,document_port" in shell_patch
           switcher = Path("mobile_core/document_switcher.h").read_text()
           assert "MobileMdiViewIdentity::resolve" in document_service
           assert "closeDocumentView(activeView)" in switcher
@@ -188,6 +207,16 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: /tmp/krita-android-back-policy-test
+      - name: Build engine-host-independent document and action port test
+        run: |
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+            tests/qt_mobile_backend_ports.cpp \
+            -o /tmp/krita-mobile-backend-ports-test \
+            $(pkg-config --cflags --libs Qt5Widgets)
+      - name: Verify new host can provide native document and action behavior
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /tmp/krita-mobile-backend-ports-test
       - name: Build guarded MDI view identity test
         run: |
           c++ -std=c++17 -fPIC -I. \
