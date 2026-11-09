@@ -157,6 +157,15 @@ jobs:
           assert "setCentralWidget(" not in native_chrome
           assert "m_nativeCanvas->setParent(" not in native_chrome
           assert "Qt::RightDockWidgetArea" in native_chrome
+          assert "m_topDock->setMaximumHeight(76)" in native_chrome
+          assert "header->setMaximumHeight(68)" in Path("mobile_core/native_canvas_pilot.h").read_text()
+          lightweight = Path("mobile_core/lightweight_canvas_host.h").read_text()
+          for prohibited in ("KisMainWindow", "QMdiArea", "KisViewManager", "KisDocument"):
+              assert prohibited not in lightweight.replace("KisMainWindow, QMdiArea, or Krita UI types.", ""), prohibited
+          assert "bool installNativeCanvas(QWidget *canvas)" in lightweight
+          assert "bool attachServices(const MobileHostServices &services)" in lightweight
+          assert "bool setMobileVisible(bool enabled)" in lightweight
+          assert "retainsOriginalCanvas()" in lightweight
           assert "captureAdditionalDesktopChrome()" in native_chrome
           assert "captureAdditionalTabs()" in native_chrome
           assert "setBottomPanelVisible(bool visible)" in native_chrome
@@ -232,6 +241,16 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: /tmp/krita-widget-document-root-test
+      - name: Build independent lightweight Qt painting canvas host
+        run: |
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+            tests/qt_lightweight_canvas_host.cpp \
+            -o /tmp/krita-lightweight-canvas-host-test \
+            $(pkg-config --cflags --libs Qt5Widgets)
+      - name: Test independent host lifecycle without desktop Krita
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /tmp/krita-lightweight-canvas-host-test
       - name: Build no-reparent mobile chrome smoke test
         run: |
           c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
