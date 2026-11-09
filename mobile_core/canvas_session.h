@@ -76,6 +76,14 @@ public:
     }
     ~MobileAppController() override
     {
+        if(m_transfer.persistentHostInstalled()) {
+            // The persistent central widget and native Krita canvas are
+            // children of the backend QMainWindow. Leave teardown to
+            // Krita's normal window lifecycle and save prompts.
+            if(m_transfer.active())m_transfer.leave();
+            m_host=nullptr;
+            return;
+        }
         // Do not destroy the mobile top-level (and its child canvas) if
         // the desktop handoff refused to replace an occupied widget.
         // During shutdown it is safer to let the OS reclaim this window
@@ -157,10 +165,14 @@ private:
         }
         const QScopedValueRollback<bool> transition(m_transitioning,true);
         if(m_transfer.leave()) {
-            // Recreate the UI host on the next entry. A former independent
-            // Android window must not remain behind the Krita surface and
-            // expose an old toolbar after Back. defer deletion because Back
-            // may have been invoked from a child QToolButton's click slot.
+            if(m_transfer.persistentHostInstalled()) {
+                // Its paint canvas remains parented to this central host.
+                // Never hide or delete it on Back; only mobile chrome was
+                // disabled by MobileCanvasTransfer::leave().
+                return;
+            }
+            // Default transfer mode still discards its empty mobile UI host
+            // after native Krita has recovered its original canvas.
             if(m_host) {
                 m_host->hide();
                 m_host->deleteLater();
