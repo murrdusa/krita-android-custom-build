@@ -1,5 +1,45 @@
 # Mobile Studio — Android painting and mode-switch smoke test
 
+## v1.23 finger-pressure sensitivity, adaptive smoothing, raw measurements
+
+- Default experimental finger pressure remains **off**. Enable it in
+  Mobile Studio More, then open **Finger pressure calibration + live
+  diagnostics**. Verify the dialog has 0.30–3.00 response curve slider,
+  0–100% Stability slider, and the Android raw contact preference.
+- Capture minimum and maximum contacts, then capture a comfortable
+  medium contact. The curve should fit approximately 50% pressure to
+  the medium contact. Save, reopen and confirm all settings persisted;
+  Cancel must not persist changes.
+- With a pressure-sensitive Krita preset, compare response curves 0.5,
+  1.0 and 2.0 using the same contact diameter. Lower gamma should give
+  higher simulated pressure for the same smaller contact; both endpoints
+  must remain exactly 0% and 100%.
+- Draw slowly with tiny pressure changes, then flatten quickly. Higher
+  Stability should suppress jitter; lower Stability should respond
+  faster. A real gradual change must not disappear behind a fixed
+  dead zone. S Pen and two-finger pan/zoom must be unchanged.
+- Vary contact on the diagnostic pad for multiple seconds. The plotted
+  contact-size graph should update and show distinct 0.25px levels.
+  Compare raw Android and Qt sources using the preference toggle.
+  If one source reports zero or negative dimensions, painting must
+  fall back to the other source or Krita native pressure.
+- Inspect **Copy Mobile Studio diagnostics** for gamma, Stability,
+  raw preference, last brush contact source and distinct levels.
+  No touch coordinates or artwork contents may be recorded.
+- The Android Java bridge observes only single-finger MotionEvents,
+  including up to eight historical samples per dispatch. It must call
+  `super.dispatchTouchEvent(event)` unchanged; test finger drawing,
+  S Pen, mouse, dialogs, multitouch and palm rejection with the feature
+  on and off. Raw samples must match pointer ID and timestamp; stale
+  samples may not be applied to a different brush stroke.
+- Run the Qt synthetic tests `qt_finger_contact_pressure.cpp`,
+  `qt_finger_pressure_calibration.cpp`, and
+  `qt_finger_raw_bridge.cpp`, as well as Android compilation. A
+  successful compile alone is **not** a device pressure verification.
+- Preserve automatic APK-upload pause.
+
+
+
 ## v1.22 portrait layers dock with a stationary Krita canvas
 
 - Opt into the stationary canvas UI (not the older persistent-host path).
