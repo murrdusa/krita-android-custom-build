@@ -1,23 +1,18 @@
 /*
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Explicit opt-in, minimal real-engine Android smoke window.
- * This does not alter the existing Mobile Studio launcher or migrate
- * any live Krita document. The temporary toolbar is diagnostic only.
- *
- * Launch from Settings > Standalone Engine Test (experimental).
+ * Production Android drawing session. Uses Krita's real engine and
+ * native document services; the desktop launch-mode selector is gone.
  */
 #pragma once
 #ifdef Q_OS_ANDROID
 #include <QAction>
 #include <QApplication>
 #include <QDebug>
-#include <QMessageBox>
 #include <QPointer>
 #include <QSharedPointer>
 #include <QSettings>
 #include <functional>
-#include "native_startup_policy.h"
 #include <QTimer>
 #include <QToolBar>
 #include <QWidget>
@@ -33,7 +28,6 @@
 #include "native_command_layout.h"
 #include "native_bootstrap_audit.h"
 #include "engine_only_root.h"
-#include "engine_only_startup_policy.h"
 
 class MobileKritaStandalonePilot final
 {
@@ -140,10 +134,7 @@ public:
         auto *layersAction=makeAction("Layers");
         auto *colorAction=makeAction("Color");
         auto *toolsAction=makeAction("Tools");
-        auto *exitAction=makeAction("Exit test");
-        auto *engineOnlyAction=makeAction(
-            "Engine-only on next launch (experimental)");
-        auto *architectureAction=makeAction("Engine separation status");
+        auto *exitAction=makeAction("Close app");
         QObject::connect(brushesAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleBrushes();});
         QObject::connect(layersAction,&QAction::triggered,window,
@@ -152,32 +143,6 @@ public:
                          [workspace]() {workspace->toggleColor();});
         QObject::connect(toolsAction,&QAction::triggered,window,
                          [workspace]() {workspace->chooseTool();});
-        auto *nativeStartup=makeAction("Start here next launch");
-        nativeStartup->setCheckable(true);
-        {
-            QSettings settings;
-            nativeStartup->setChecked(MobileNativeStartupPolicy::enabled(settings));
-        }
-        QObject::connect(nativeStartup,&QAction::toggled,window,
-                         [engineOnlyAction](bool on) {
-            QSettings settings;
-            MobileNativeStartupPolicy::setEnabled(settings,on);
-            if(on)engineOnlyAction->setChecked(false);
-        });
-        engineOnlyAction->setCheckable(true);
-        {
-            QSettings settings;
-            engineOnlyAction->setChecked(
-                MobileEngineOnlyStartupPolicy::enabled(settings));
-        }
-        engineOnlyAction->setToolTip(QObject::tr(
-            "Launch directly into the independent native drawing window."));
-        QObject::connect(engineOnlyAction,&QAction::toggled,window,
-                         [nativeStartup](bool on) {
-            QSettings settings;
-            MobileEngineOnlyStartupPolicy::setEnabled(settings,on);
-            if(on)nativeStartup->setChecked(false);
-        });
         // Avoid an overflow chevron hiding the primary drawing tools.
         // Less-common operations stay in an explicit, labeled menu.
         if(!MobileNativeCommandLayout::install(
@@ -185,34 +150,9 @@ public:
             {canvasesAction,undoAction,redoAction,saveAction},
             {brushesAction,layersAction,colorAction,toolsAction},
             {newAction,openAction,previousAction,nextAction,
-             saveAsAction,closeAction,nativeStartup,
-             engineOnlyAction,architectureAction,exitAction})) {
+             saveAsAction,closeAction,exitAction})) {
             qWarning() << "Independent Krita command layout unavailable";
         }
-
-        QObject::connect(architectureAction,&QAction::triggered,window,
-                         [alive,desktopNative]() {
-            if(!alive || !desktopNative)return;
-            QSettings settings;
-            const int legacyWindows=KisPart::instance() ?
-                KisPart::instance()->mainwindowCount() : -1;
-            const bool engineOnly=desktopNative->property(
-                "_mobileNativeEngineOnlyRoot").toBool();
-            QMessageBox::information(
-                alive.data(),QObject::tr("Engine architecture"),
-                QObject::tr("Engine-only startup: %1\n"
-                            "KisMainWindow instances: %2\n"
-                            "Desktop widget audit: %3\n"
-                            "Direct engine root: %4")
-                    .arg(engineOnly?QObject::tr("Yes"):QObject::tr("No"))
-                    .arg(legacyWindows)
-                    .arg(settings.value(
-                        QStringLiteral("MobileStudio/nativeDesktopWidgetAudit"),
-                        QStringLiteral("Not recorded")).toString())
-                    .arg(dynamic_cast<MobileLightweightCanvasHost*>(
-                        desktopNative.data())?
-                        QObject::tr("Yes"):QObject::tr("No")));
-        });
 
         QObject::connect(newAction,&QAction::triggered,window,
                          [alive,nativeBridge]() {
@@ -308,9 +248,7 @@ public:
             });
         });
 
-        // Exit returns to the original canvas without closing it.
-        // The child host's closeEvent still enforces Krita's
-        // Save/Discard/Cancel for any experimental drawings.
+        // Close uses the existing Krita Save/Discard/Cancel transaction.
         QPointer<QWidget> topLevel=nativeWindow;
         QObject::connect(exitAction,&QAction::triggered,window,
                          [alive,topLevel]() {
