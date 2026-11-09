@@ -56,7 +56,13 @@ def main(root: Path) -> None:
     (flake / "finger_contact_pressure.h").write_text(
         source.read_text(encoding="utf-8"), encoding="utf-8",
     )
-    print("Installed optional finger contact pressure proxy in KoPointerEvent")
+    settings_header = own / "mobile_core/finger_pressure_settings.h"
+    if not settings_header.is_file():
+        raise RuntimeError("Missing shared finger pressure calibration settings")
+    (flake / "finger_pressure_settings.h").write_text(
+        settings_header.read_text(encoding="utf-8"), encoding="utf-8",
+    )
+    print("Installed optional calibrated finger pressure in KoPointerEvent")
 
 
 if __name__ == "__main__":
