@@ -40,6 +40,10 @@
 #include <KoPattern.h>
 #include <kis_workspace_resource.h>
 #include <KisSessionResource.h>
+#include <resources/KoGamutMask.h>
+#if defined(HAVE_SEEXPR)
+#include <resources/KisSeExprScript.h>
+#endif
 #include <resources/KoSvgSymbolCollectionResource.h>
 #include <resources/KoFontFamily.h>
 #include <resources/KoCssStylePreset.h>
