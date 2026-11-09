@@ -48,6 +48,9 @@ int main(int argc,char **argv)
             "lightweight application could not create a native view root");
     require(!host.createNativeDocumentRoot(),
             "host replaced existing native canvas root");
+    int selectionChanges=0;
+    QObject::connect(root,&QStackedWidget::currentChanged,&host,
+                     [&selectionChanges](int){++selectionChanges;});
     auto *doc1=new QObject(&host),*doc2=new QObject(&host);
     auto *a=new QWidget,*b=new QWidget;
     a->setProperty("drawingRevision",17);
@@ -66,6 +69,18 @@ int main(int argc,char **argv)
     require(!root->adoptView(a,doc1,QStringLiteral("duplicate"),
                               [](){return true;}),
             "adopted one native painting view twice");
+    require(selectionChanges==1 && root->currentWidget()==a,
+            "first QWidget adopt did not emit exactly one selection event");
+    // Later view adoption must leave the original current until the
+    // caller explicitly switches. Redundant selection must not trigger
+    // another brush bootstrap.
+    require(root->activateView(QPointer<QObject>(b)) &&
+            selectionChanges==2 &&
+            root->activateView(QPointer<QObject>(b)) &&
+            selectionChanges==2 &&
+            root->activateView(QPointer<QObject>(a)) &&
+            selectionChanges==3,
+            "native document selection sent duplicate activation events");
     QPointer<QObject> aid=a,bid=b;
     MobileHostServices services;
     services.documents=QSharedPointer<DummyDocuments>::create();
