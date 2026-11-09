@@ -79,6 +79,10 @@ int main(int argc,char **argv)
     auto *top=new QWidget;
     auto *topLayout=new QHBoxLayout(top);
     topLayout->addWidget(new QLabel(QStringLiteral("Mobile Back / Canvases")));
+    // Simulate the oversized expanding title button in the original
+    // device screenshot: the dock itself must cap top bar height.
+    top->setMinimumHeight(58);
+    top->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Preferred);
     auto *bottom=new QWidget;
     auto *bottomLayout=new QVBoxLayout(bottom);
     bottomLayout->addWidget(new QLabel(QStringLiteral("Mobile brushes and quick actions")));
@@ -110,6 +114,11 @@ int main(int argc,char **argv)
                 "desktop MDI tabs leaked into mobile mode");
         require(top->isVisible() && bottom->isVisible(),
                 "mobile docks hidden after activation");
+        auto *topDock=backend.findChild<QDockWidget*>(
+            QStringLiteral("MobileStudioNativeTopDock"));
+        require(topDock && topDock->height()<=76 &&
+                topDock->maximumHeight()==76,
+                "stationary canvas navigation header expanded over canvas");
         if(cycle==2) {
             // Zero-document welcome screen: hide the empty brush strip
             // without moving or replacing Krita's native central widget.
