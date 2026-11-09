@@ -340,11 +340,15 @@ KisMainWindow * KisView::mainWindow() const''',
     actionCollection()->addAction(
         QStringLiteral("tablet_standalone_engine_test"),standaloneTestAction);
     connect(standaloneTestAction,&QAction::triggered,this,[this]() {
-        if(!MobileKritaStandalonePilot::launch())
-            QMessageBox::warning(
-                this,i18n("Standalone engine"),
-                i18n("Could not initialize the standalone Krita engine. "
-                     "Your existing drawing is unchanged."));
+        // Avoid reentering a modal mobile menu. This launches a child
+        // engine overlay inside our EXISTING Android native window.
+        QTimer::singleShot(0,this,[this]() {
+            if(!MobileKritaStandalonePilot::launch(this))
+                QMessageBox::warning(
+                    this,i18n("Standalone engine"),
+                    i18n("Could not initialize the standalone Krita engine. "
+                         "Your existing drawing is unchanged."));
+        });
     });
 #endif
     auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);

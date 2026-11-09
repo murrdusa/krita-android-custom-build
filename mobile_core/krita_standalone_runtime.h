@@ -54,7 +54,9 @@ public:
         if(!host || !KisPart::instance() || !host->nativeViewPort())
             return nullptr;
         auto *root=dynamic_cast<MobileNativeViewStack*>(host->nativeCanvas());
-        if(!root || root->window()!=host || !root->openViews().isEmpty() ||
+        if(!root || root->parentWidget()!=host ||
+           root->window()!=host->window() ||
+           !root->openViews().isEmpty() ||
            host->findChild<QObject*>(
                QStringLiteral("_mobileKritaRuntime"),Qt::FindDirectChildrenOnly))
             return nullptr;

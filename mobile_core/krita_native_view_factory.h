@@ -34,7 +34,8 @@ public:
     {
         if(!document || !document->image() || !manager || !stack ||
            !saver || !KisPart::instance() || !manager->qtMainWindow() ||
-           stack->window()!=manager->qtMainWindow() ||
+           stack->parentWidget()!=manager->qtMainWindow() ||
+           stack->window()!=manager->qtMainWindow()->window() ||
            manager->mainWindow() ||
            !dynamic_cast<KoCanvasSupervisor*>(manager->qtMainWindow()))
             return nullptr;
@@ -139,6 +140,10 @@ private:
                             !selected->isVisible()))
                 return; // Switch was superseded before the GL show.
             if(!selected && root->currentWidget())return;
+            // The canvas resource provider and active brush must first
+            // refer to the CURRENT view, not the previously selected tab.
+            if(manager->canvasBase()!=(selected?selected->canvasBase():nullptr))
+                manager->setCurrentView(selected);
             if(selected) {
                 // Native guiLoadingFinished() only fires once on
                 // desktop Krita. Never re-bootstrap on each tab switch.
@@ -156,8 +161,6 @@ private:
                 }
                 KoToolManager::instance()->initializeCurrentToolForCanvas();
             }
-            if(manager->canvasBase()!=(selected?selected->canvasBase():nullptr))
-                manager->setCurrentView(selected);
         });
     }
 };

@@ -9,6 +9,7 @@
 #pragma once
 #if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
 #include <QCloseEvent>
+#include <QEvent>
 #include <QMainWindow>
 #include <QPointer>
 #include <QWidget>
@@ -27,6 +28,34 @@ class MobileLightweightCanvasHost final : public QMainWindow
 public:
     explicit MobileLightweightCanvasHost(QWidget *parent=nullptr)
         : QMainWindow(parent),m_mobileChrome(this) {}
+
+    ~MobileLightweightCanvasHost() override
+    {
+#ifdef Q_OS_ANDROID
+        // Native KisView destructors call into their KisViewManager.
+        // Destroy the Krita runtime first, while its native view stack
+        // and this Qt window still exist.
+        if(QObject *runtime=findChild<QObject*>(
+               QStringLiteral("_mobileKritaRuntime"),
+               Qt::FindDirectChildrenOnly))
+            delete runtime;
+#endif
+    }
+
+    // Android must keep a SINGLE native top-level window. Embed the
+    // independent engine as an ordinary child of Krita's existing
+    // visible window; never create a second QWindow or move its canvas.
+    bool embedInExistingWindow(QWidget *desktop)
+    {
+        if(!desktop || desktop==this || desktop->window()!=desktop ||
+           parentWidget() || m_canvas || centralWidget())return false;
+        setParent(desktop,Qt::Widget);
+        m_embeddedParent=desktop;
+        setGeometry(desktop->rect());
+        desktop->installEventFilter(this);
+        return parentWidget()==desktop && !isWindow() &&
+               window()==desktop;
+    }
 
 #ifdef Q_OS_ANDROID
     // Krita 6.0.4's KisCanvasController needs a KoCanvasSupervisor
@@ -104,13 +133,25 @@ public:
     bool retainsOriginalCanvas() const
     {
         return m_canvas && centralWidget()==m_canvas &&
-               m_canvas->window()==this;
+               m_canvas->parentWidget()==this &&
+               m_canvas->window()==window();
     }
     QWidget *nativeCanvas() const {return m_canvas.data();}
     MobileHostServices services() const {return m_services;}
     bool mobileVisible() const {return m_mobileChrome.active();}
 
 protected:
+    bool eventFilter(QObject *watched,QEvent *event) override
+    {
+        if(watched==m_embeddedParent.data() && event &&
+           (event->type()==QEvent::Resize ||
+            event->type()==QEvent::Show)) {
+            setGeometry(m_embeddedParent->rect());
+            if(isVisible())raise();
+        }
+        return QMainWindow::eventFilter(watched,event);
+    }
+
     void closeEvent(QCloseEvent *event) override
     {
         // Native documents must receive their own Save/Discard/Cancel
@@ -130,6 +171,7 @@ protected:
     }
 
 private:
+    QPointer<QWidget> m_embeddedParent;
     QPointer<QWidget> m_canvas;
     QSharedPointer<MobileViewHostPort> m_nativeViewPort;
     MobileHostServices m_services;

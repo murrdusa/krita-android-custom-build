@@ -254,7 +254,14 @@ jobs:
           assert 'standalone_engine_pilot=own/"mobile_core/krita_standalone_pilot.h"' in shell_patch
           assert '(root/"libs/ui/krita_standalone_pilot.h").write_text(' in shell_patch
           assert 'tablet_standalone_engine_test' in shell_patch
-          assert 'MobileKritaStandalonePilot::launch()' in shell_patch
+          assert 'MobileKritaStandalonePilot::launch(this)' in shell_patch
+          assert 'QTimer::singleShot(0,this,[this]()' in shell_patch
+          assert 'embedInExistingWindow(nativeWindow)' in native_pilot
+          assert 'existing->raise()' in native_pilot
+          assert 'QObject::tr("Exit test")' in native_pilot
+          assert 'm_canvas->parentWidget()==this' in lightweight
+          assert 'root->parentWidget()!=host' in Path("mobile_core/krita_standalone_runtime.h").read_text()
+          assert 'stack->parentWidget()!=manager->qtMainWindow()' in Path("mobile_core/krita_native_view_factory.h").read_text()
           native_factory = Path("mobile_core/krita_native_view_factory.h").read_text()
           assert 'const bool selectionAlreadyWired=' in native_factory
           assert 'if(!selectionAlreadyWired)' in native_factory
@@ -456,6 +463,16 @@ jobs:
             $(pkg-config --cflags --libs Qt5Core)
       - name: Verify mobile-first launch, opt-out and crash recovery
         run: /tmp/krita-mobile-startup-test
+      - name: Build embedded single-native-window host regression
+        run: |
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+            tests/qt_embedded_native_host.cpp \
+            -o /tmp/krita-embedded-host-test \
+            $(pkg-config --cflags --libs Qt5Widgets)
+      - name: Verify Android test shares original top-level without moving canvas
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /tmp/krita-embedded-host-test
       - name: Build MDI-free native multi-document view host
         run: |
           c++ -std=c++17 -fPIC -g -fsanitize=address -fno-omit-frame-pointer -DKRITA_MOBILE_QT_TEST -I. \

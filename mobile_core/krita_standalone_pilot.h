@@ -28,29 +28,33 @@
 class MobileKritaStandalonePilot final
 {
 public:
-    static bool launch()
+    static bool launch(QWidget *nativeWindow)
     {
-        // A second standalone input manager can interfere with the
-        // first. Focus the existing diagnostic window instead.
-        for(QWidget *widget:QApplication::topLevelWidgets()) {
-            if(widget->objectName()==
-                    QStringLiteral("_mobileStandaloneEnginePilot")) {
-                widget->show();
-                widget->raise();
-                widget->activateWindow();
-                return true;
-            }
+        if(!nativeWindow || nativeWindow->window()!=nativeWindow ||
+           !nativeWindow->isVisible())return false;
+        // Android forbids the desktop-style second native window used
+        // by the first test. A second instance instead focuses the
+        // existing CHILD overlay; the engine and document views are
+        // still independent of Krita's MDI.
+        if(auto *existing=nativeWindow->findChild<MobileLightweightCanvasHost*>(
+               QStringLiteral("_mobileStandaloneEnginePilot"),
+               Qt::FindDirectChildrenOnly)) {
+            existing->show();
+            existing->raise();
+            existing->setFocus(Qt::OtherFocusReason);
+            return true;
         }
 
-        // This is a new window and new view stack, not an MDI canvas
-        // transfer. An existing Krita drawing is never touched.
         auto *window=new MobileLightweightCanvasHost;
+        if(!window->embedInExistingWindow(nativeWindow)) {
+            delete window;
+            return false;
+        }
         window->setObjectName(
             QStringLiteral("_mobileStandaloneEnginePilot"));
         window->setWindowTitle(
             QObject::tr("Krita native engine test"));
         window->setAttribute(Qt::WA_DeleteOnClose,true);
-        window->resize(860,650);
         if(!window->createNativeDocumentRoot()) {
             delete window;
             return false;
@@ -84,6 +88,7 @@ public:
         auto *saveAction=bar->addAction(QObject::tr("Save"));
         auto *saveAsAction=bar->addAction(QObject::tr("Save As"));
         auto *closeAction=bar->addAction(QObject::tr("Close view"));
+        auto *exitAction=bar->addAction(QObject::tr("Exit test"));
 
         QObject::connect(newAction,&QAction::triggered,window,
                          [alive,documents]() {
@@ -170,6 +175,15 @@ public:
                     const QPointer<QObject> &selected) {
                 if(alive && !documents->closeDocumentView(selected))
                     qWarning() << "Independent Krita close canceled or rejected";
+            });
+        });
+
+        // Exit returns to the original canvas without closing it.
+        // The child host's closeEvent still enforces Krita's
+        // Save/Discard/Cancel for any experimental drawings.
+        QObject::connect(exitAction,&QAction::triggered,window,[alive]() {
+            if(alive)QTimer::singleShot(0,alive.data(),[alive]() {
+                if(alive)alive->close();
             });
         });
 

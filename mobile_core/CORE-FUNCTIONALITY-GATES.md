@@ -275,3 +275,19 @@ painting and document engines.
 
 APK publishing stays paused via `APK-UPLOAD-REQUEST.md` unless the user
 explicitly requests a test artifact.
+
+
+## First Android device result — 2026-11-09
+
+The first live launch of **Standalone Engine Test (experimental)**
+terminated the Android app before the test canvas appeared. Relaunch
+returned to desktop Krita. This is **not** a passing painting gate and
+does not establish a particular native crash location.
+
+The next attempt embeds the distinct Krita engine host as a **child
+widget of the existing Android top-level window**. The older pilot had
+created a second Qt top-level window, which Android Krita does not
+normally support. The original Krita canvas is left in place. The
+test host has an explicit Exit test action and follows host resize.
+Automated Qt tests cover top-level identity and canvas preservation;
+device rendering remains unverified.
