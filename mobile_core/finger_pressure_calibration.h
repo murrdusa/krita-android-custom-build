@@ -159,6 +159,8 @@ public:
         auto *capture=new QHBoxLayout;
         auto *captureMin=new QPushButton(tr("Capture minimum"),this);
         auto *captureMax=new QPushButton(tr("Capture maximum"),this);
+        captureMin->setObjectName(QStringLiteral("fingerCaptureMinimum"));
+        captureMax->setObjectName(QStringLiteral("fingerCaptureMaximum"));
         captureMin->setMinimumHeight(45);
         captureMax->setMinimumHeight(45);
         capture->addWidget(captureMin);
@@ -175,6 +177,9 @@ public:
         m_pad->setObjectName(QStringLiteral("fingerPressureContactPad"));
         auto *padLayout=new QVBoxLayout(m_pad);
         auto *padText=new QLabel(tr("TOUCH HERE"),m_pad);
+        // Leave the entire pad as the touch event target. QLabel should
+        // never grab the calibration gesture from its parent.
+        padText->setAttribute(Qt::WA_TransparentForMouseEvents,true);
         padText->setAlignment(Qt::AlignCenter);
         padLayout->addWidget(padText);
         layout->addWidget(m_pad);
