@@ -14,6 +14,7 @@
 #include <QPointer>
 #include <QTimer>
 #include <QWidget>
+#include <QWindow>
 #include <functional>
 #include <utility>
 
@@ -29,6 +30,14 @@ public:
             window,canvasRoot,owner,std::move(activate));
         window->installEventFilter(observer);
         if(canvasRoot!=window)canvasRoot->installEventFilter(observer);
+        // On Android the first QWidget::Show can precede exposure of
+        // the native surface. That first exposure must activate and
+        // repaint the real OpenGL canvas just like a resume does.
+        if(QWindow *surface=window->windowHandle()) {
+            observer->m_surface=surface;
+            surface->installEventFilter(observer);
+        }
+        observer->request();
         return observer;
     }
 
@@ -49,10 +58,22 @@ public:
 protected:
     bool eventFilter(QObject *watched,QEvent *event) override
     {
-        if((watched==m_window.data() || watched==m_root.data()) &&
-           (event->type()==QEvent::Show ||
-            event->type()==QEvent::WindowActivate))
+        if(watched==m_surface.data() &&
+           event->type()==QEvent::Expose) {
             request();
+        } else if((watched==m_window.data() ||
+                   watched==m_root.data()) &&
+                  (event->type()==QEvent::Show ||
+                   event->type()==QEvent::WindowActivate)) {
+            request();
+        }
+        if(watched==m_window.data() &&
+           event->type()==QEvent::WinIdChange && !m_surface) {
+            if(QWindow *surface=m_window->windowHandle()) {
+                m_surface=surface;
+                surface->installEventFilter(this);
+            }
+        }
         return QObject::eventFilter(watched,event);
     }
 
@@ -65,6 +86,7 @@ private:
 
     QPointer<QWidget> m_window;
     QPointer<QWidget> m_root;
+    QPointer<QWindow> m_surface;
     std::function<void()> m_activate;
     bool m_queued=false;
 };

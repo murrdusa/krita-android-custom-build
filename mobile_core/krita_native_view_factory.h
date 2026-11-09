@@ -160,6 +160,15 @@ private:
                                    << "method unavailable";
                 }
                 KoToolManager::instance()->initializeCurrentToolForCanvas();
+                // Android can show the native QWidget before its
+                // QWindow/GL surface receives the first Expose event.
+                // Force a real engine projection/GL paint when activated,
+                // including on first exposure. No background polling.
+                if(auto *canvas=selected->canvasBase()) {
+                    canvas->updateCanvas();
+                    if(QWidget *surface=canvas->canvasWidget())
+                        surface->update();
+                }
             }
         });
     }
