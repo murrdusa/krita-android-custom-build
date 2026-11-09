@@ -24,8 +24,10 @@ public:
     }
     static constexpr qreal defaultMin() {return 8.0;}
     static constexpr qreal defaultMax() {return 24.0;}
-    static constexpr qreal minPressure() {return 0.16;}
-    static constexpr qreal maxPressure() {return 0.96;}
+    // Give brushes the full Krita pressure domain. Brush presets can
+    // still apply their own pressure floor, opacity and size curves.
+    static constexpr qreal minPressure() {return 0.0;}
+    static constexpr qreal maxPressure() {return 1.0;}
 
     struct Range {qreal minimum; qreal maximum;};
 
