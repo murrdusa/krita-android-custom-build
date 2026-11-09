@@ -19,6 +19,7 @@ The target is a **phone, especially a Galaxy Z Fold**, not a mouse/keyboard desk
 
 ## Project state and next work
 
+- [PRODUCT-ROADMAP.md](PRODUCT-ROADMAP.md) records **user-approved feature priorities** and the automatic version-history semantics. Read it before adding painting functionality; do not implement deferred extras merely because they are documented.
 - [DEVELOPMENT_STATE.md](DEVELOPMENT_STATE.md) is the **concise persistent handoff**: current working architecture, latest locally compiled revision, known limitations, next actionable milestone, and how to read the watcher. Update it when meaningful development progress changes these facts; do not continually append a historical essay.
 - `apply_mobile_shell.py` installs the current native engine/Android bootstrap patch into the KDE Krita `v6.0.4` source used by the local builder. `mobile_core/` contains the app's independent host, engine session and UI components. Keep license notices.
 - On each new session, first inspect current code and latest local result; **continue implementation**, not just produce a plan or ask the user to rerun already-running tools. Avoid spawning cloud test jobs.

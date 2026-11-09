@@ -16,6 +16,10 @@
 - **Latest locally compiled/packaged Android revision: `2123da4258137d757dea660a2a6afd450fc80f84`, SUCCESS**, reported by the WSL watcher in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1) on 2026-11-09 at 21:57 UTC. Contains Android entrypoint with no desktop fallback (commit `789b694`) and removal of obsolete startup/debug menu choices (commit `2123da4`). This revision is **PC-compiled, not separately device-tested**; no painting engine code changed.
 - Doc-only commits may not trigger another APK build. The compiled SHA above is the meaningful source baseline; always read the latest Issue #1 for newer work.
 
+## Agreed product roadmap
+
+Read [PRODUCT-ROADMAP.md](PRODUCT-ROADMAP.md) for approved preservation goals and feature priorities. **Most important future feature is project version history with automatic checkpoints on background/exit/crash recovery**, except an explicit Close → Don't Save. Next are interactive fill tolerance and convenient perspective modes. These are **not for immediate implementation**. Complete current selections/transforms, layers, and other Krita tool adaptations first; version history comes next, interface redesign follows, and additional Infinite Painter-style features come after the interface. Animation and timelapse are lower priority.
+
 ## Next work — prioritize functional development, not more architecture churn
 
 1. The decoupling milestone is sufficient to begin building functionality back up. Identify concrete missing painting operations through existing Krita engine action/tool APIs, implement them using native service ports, and validate with the local PC watcher. Keep pen/touch parity. Useful priorities include selection/transform operations, layer management, document operations, and gesture behavior; choose implementation by current code gaps, not speculative UI polish.
