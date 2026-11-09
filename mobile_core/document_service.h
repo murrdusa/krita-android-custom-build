@@ -60,43 +60,60 @@ public:
         if(!m_documents)return items;
         const auto windows=m_documents->subWindowList(QMdiArea::CreationOrder);
         items.reserve(windows.size());
+        const KisDocument *current=m_manager?m_manager->document():nullptr;
         for(int i=0;i<windows.size();++i) {
             QMdiSubWindow *sub=windows.at(i);
-            if(!sub || !sub->widget())continue;
-            auto *view=qobject_cast<KisView*>(sub->widget());
+            auto *view=sub?qobject_cast<KisView*>(sub->widget()):nullptr;
             KisDocument *doc=view?view->document():nullptr;
             if(!doc)continue;
             const QString path=doc->path();
             QString title=path.isEmpty()?QStringLiteral("Untitled"):
                           QFileInfo(path).fileName();
             if(title.isEmpty())title=QStringLiteral("Untitled");
-            // A transferred canvas can have no active Qt MDI subwindow
-            // even while Krita's view manager still has a current document.
-            // Use the engine's actual active document as a fallback.
-            const KisDocument *current=m_manager?m_manager->document():nullptr;
-            const bool isActive=current?doc==current:
-                                        sub==m_documents->activeSubWindow();
-            items.append({title,doc->isModified(),isActive,i,
+            items.append({title,doc->isModified(),false,i,
                           MobileMdiViewIdentity::capture(sub)});
         }
-        // If the view manager temporarily has no matching active document,
-        // retain the MDI selection (or the lone open canvas) as the visual
-        // current item instead of leaving every row without an active mark.
-        bool hasActive=false;
-        for(const OpenDocument &item:items)
-            if(item.active){hasActive=true;break;}
-        if(!hasActive) {
-            const int mdiIndex=windows.indexOf(m_documents->activeSubWindow());
-            for(OpenDocument &item:items) {
-                if(item.nativeIndex==mdiIndex) {
-                    item.active=true;
-                    hasActive=true;
+
+        // A document can have multiple KisView windows. Comparing each
+        // view's document to the manager's current document would label
+        // several rows active and Close Current could target the wrong
+        // view. Select exactly one valid view, or none if ambiguous.
+        int selected=-1;
+        QMdiSubWindow *mdiActive=m_documents->activeSubWindow();
+        const auto *mdiView=mdiActive?
+            qobject_cast<KisView*>(mdiActive->widget()):nullptr;
+        if(mdiView && (!current || mdiView->document()==current)) {
+            for(int i=0;i<items.size();++i) {
+                if(items[i].nativeView==mdiActive) {
+                    selected=i;
                     break;
                 }
             }
-            if(!hasActive && items.size()==1)
-                items[0].active=true;
         }
+
+        if(selected<0 && current) {
+            int candidate=-1;
+            for(int i=0;i<items.size();++i) {
+                const auto *sub=windows.at(items.at(i).nativeIndex);
+                const auto *view=sub?
+                    qobject_cast<KisView*>(sub->widget()):nullptr;
+                if(view && view->document()==current) {
+                    if(candidate>=0) {
+                        // Multiple views of the same document but no
+                        // reliable active MDI selection: refuse to guess.
+                        candidate=-1;
+                        break;
+                    }
+                    candidate=i;
+                }
+            }
+            selected=candidate;
+        }
+
+        // The lone view is unambiguous even when the view manager has
+        // briefly cleared its active document during a Qt reparent.
+        if(selected<0 && items.size()==1)selected=0;
+        if(selected>=0)items[selected].active=true;
         return items;
     }
     // Resolves against the live MDI list, never the index captured when
