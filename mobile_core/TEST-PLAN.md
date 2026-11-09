@@ -1,5 +1,39 @@
 # Mobile Studio — Android painting and mode-switch smoke test
 
+## v1.15 opt-in persistent canvas host (no repeated canvas moves)
+
+- Keep the experimental finger contact-pressure setting unchanged. The
+  persistent canvas experiment is independently disabled by default:
+  `MobileStudio/persistentCanvasHostV1=false`.
+- With disposable KRA artwork saved to disk, enable **More → Experimental
+  persistent canvas host (next restart)**. Restart Krita, enter Mobile
+  Studio, paint, press Back and reenter Mobile Studio repeatedly.
+- After the first Mobile Studio attachment, every subsequent Back/enter
+  must retain one identical native canvas widget. No
+  `takeCentralWidget()`, `setCentralWidget()` or `setParent()` is
+  permitted during those later mode switches. Only mobile header/quick
+  actions/brush controls and native Krita menus/status/dockers change.
+- Back must show the native Krita menu, toolbars, status bar and original
+  canvas. It must **not** leave the mobile Quick Actions or brush controls
+  over the desktop. Reentry must restore the mobile controls, including
+  the experimental finger-pressure toggle state.
+- Open, create, save and close drawings using both interfaces. Check
+  native Save / Discard / Cancel; test multi-document selection, undo,
+  eraser, layers and pen pressure. Confirm that mobile/desktop switching
+  does not clear document modified state or lose painted pixels.
+- Rotate the device and switch 10+ times. Compare before/after canvas
+  snapshots, Qt input logs and whether the screen flashes or turns blank.
+- The first entry still performs **one** native-parent transfer, so this
+  does not yet remove every graphics-context risk. This milestone is
+  gated on Android testing before becoming the default.
+- To disable after using the persistent host, uncheck the toggle and
+  **restart Krita**. Switching off a setting mid-session must not
+  destroy its currently attached native canvas.
+- The source-only Qt smoke test performs ten toggles in both the default
+  and persistent paths, checking original canvas identity, retained
+  properties, chrome restoration and zero parent changes after the
+  persistent host is installed.
+
 ## v1.13 transition-safety diagnostics and Qt-only smoke tests
 
 - The non-Android C++ smoke test uses the real
