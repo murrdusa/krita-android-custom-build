@@ -266,6 +266,10 @@ jobs:
           assert 'early native host startup decision' in shell_patch
           assert 'defer welcome scroll and MDI tab setup' in shell_patch
           assert 'defer legacy desktop command palette on native bootstrap' in shell_patch
+          assert 'skip unused detached desktop canvas window on native startup' in shell_patch
+          assert 'lazily recreate detached canvas companion when requested' in shell_patch
+          assert 'preserve legacy desktop close semantics through lazy accessor' in shell_patch
+          assert 'self->actionCollection()->addAssociatedWidget(d->canvasWindow);' in shell_patch
           assert 'restore desktop command palette only when opened' in shell_patch
           assert 'if (!d->commandBar)' in shell_patch
           assert 'if (!nativeUiPreferred)' in shell_patch

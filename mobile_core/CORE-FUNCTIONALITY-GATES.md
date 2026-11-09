@@ -506,3 +506,17 @@ constructed. This audit does not remove any canvas, object, or
 command; it runs only after the independent document successfully
 attaches. Desktop commands (Kate) are also lazily constructed only
 on-demand in the normal Krita fallback.
+
+
+## Deferred detached-canvas companion in independent mode
+
+Krita Android itself rejects detached canvases in
+`KisMainWindow::setCanvasDetached()`, but its desktop constructor
+still allocated a separate `KisCanvasWindow` with associated
+actions at every startup. On native boot this auxiliary desktop
+window is now skipped. The legacy `canvasWindow()` accessor lazily
+constructs and registers the companion when a desktop caller
+explicitly requires it, including Krita's original close-event
+cleanup. On ordinary full-desktop startup, initialization is
+unchanged. This removes another unused desktop QWidget from normal
+independent startup without replacing the independent KisCanvas2.

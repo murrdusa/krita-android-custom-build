@@ -508,6 +508,44 @@ KisMainWindow * KisView::mainWindow() const''',
     QList<KisKActionCollection *> actionCollections;''',
           "restore desktop command palette only when opened")
 
+    # Krita's detachable-canvas companion is disabled on Android,
+    # but the desktop KisMainWindow constructor still allocates a
+    # KisCanvasWindow and associates it with the full action registry.
+    # The native Krita host has its OWN canvas and never needs this
+    # extra window. Construct it only when a legacy caller requests
+    # canvasWindow(), including during the original desktop close path.
+    s=one(s,
+          '''    d->canvasWindow = new KisCanvasWindow(this);
+    actionCollection()->addAssociatedWidget(d->canvasWindow);''',
+          '''    if (!mobileNativePreferred) {
+        d->canvasWindow = new KisCanvasWindow(this);
+        actionCollection()->addAssociatedWidget(d->canvasWindow);
+    }''',
+          "skip unused detached desktop canvas window on native startup")
+    s=one(s,
+          '''QWidget * KisMainWindow::canvasWindow() const
+{
+    return d->canvasWindow;
+}''',
+          '''QWidget * KisMainWindow::canvasWindow() const
+{
+#ifdef Q_OS_ANDROID
+    if (!d->canvasWindow) {
+        // Restore the legacy companion on demand. This is not used
+        // for painting or KRA documents in the independent host.
+        auto *self=const_cast<KisMainWindow*>(this);
+        d->canvasWindow = new KisCanvasWindow(self);
+        self->actionCollection()->addAssociatedWidget(d->canvasWindow);
+    }
+#endif
+    return d->canvasWindow;
+}''',
+          "lazily recreate detached canvas companion when requested")
+    s=one(s,
+          '''        d->canvasWindow->close();''',
+          '''        canvasWindow()->close();''',
+          "preserve legacy desktop close semantics through lazy accessor")
+
     # Resource and plugin registries are loaded by Krita's application
     # startup and by the independent view manager. Desktop workspace
     # menu tracking is not needed when that window is just the Android
