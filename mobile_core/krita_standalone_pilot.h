@@ -25,6 +25,8 @@
 #include "document_service.h"
 #include "deferred_view_command.h"
 #include "document_navigation.h"
+#include "document_workflow.h"
+#include "document_switcher.h"
 #include "krita_standalone_documents.h"
 #include "krita_standalone_runtime.h"
 #include "krita_native_workspace.h"
@@ -96,6 +98,7 @@ public:
         auto documents=QSharedPointer<MobileDocumentService>::create(
             services.documents,services.views);
         QPointer<MobileLightweightCanvasHost> alive=window;
+        const MobileEngineBridge nativeBridge(services,runtime->viewManager());
         // Native controls now use the independent manager and host ports,
         // not the old desktop MDI window or its docker instances.
         auto *workspace=new MobileKritaNativeWorkspace(
@@ -107,6 +110,7 @@ public:
         bar->setMovable(false);
         auto *newAction=bar->addAction(QObject::tr("New"));
         auto *openAction=bar->addAction(QObject::tr("Open"));
+        auto *canvasesAction=bar->addAction(QObject::tr("Canvases"));
         auto *previousAction=bar->addAction(QObject::tr("Previous canvas"));
         auto *nextAction=bar->addAction(QObject::tr("Next canvas"));
         auto *undoAction=bar->addAction(QObject::tr("Undo"));
@@ -140,16 +144,22 @@ public:
         });
 
         QObject::connect(newAction,&QAction::triggered,window,
-                         [alive,documents]() {
-            // Native KisView and GL initialization must not reenter
-            // the toolbar event that initiated document creation.
+                         [alive,nativeBridge]() {
+            // New canvas now uses the same configurable native document
+            // workflow as the earlier mobile UI: actual Krita documents,
+            // configurable dimensions, no second serializer.
             if(!alive)return;
-            QTimer::singleShot(0,alive.data(),[alive,documents]() {
-                if(alive && !documents->createCanvas(
-                           QStringLiteral("Engine test"),512,512,72,true))
-                    QMessageBox::warning(
-                        alive.data(),QObject::tr("Engine test"),
-                        QObject::tr("Could not create an independent Krita canvas."));
+            QTimer::singleShot(0,alive.data(),[alive,nativeBridge]() {
+                if(alive)MobileDocumentWorkflow::create(
+                    nativeBridge,alive.data());
+            });
+        });
+        QObject::connect(canvasesAction,&QAction::triggered,window,
+                         [alive,nativeBridge]() {
+            if(!alive)return;
+            QTimer::singleShot(0,alive.data(),[alive,nativeBridge]() {
+                if(alive)MobileDocumentSwitcher::open(
+                    nativeBridge,alive.data());
             });
         });
         QObject::connect(openAction,&QAction::triggered,window,

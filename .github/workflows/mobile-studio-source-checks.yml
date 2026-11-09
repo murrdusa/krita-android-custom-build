@@ -272,6 +272,9 @@ jobs:
           assert 'workspace->toggleLayers()' in native_pilot
           assert 'workspace->toggleColor()' in native_pilot
           assert 'workspace->chooseTool()' in native_pilot
+          assert 'MobileDocumentWorkflow::create(' in native_pilot
+          assert 'MobileDocumentSwitcher::open(' in native_pilot
+          assert 'const MobileEngineBridge nativeBridge(' in native_pilot
           assert 'native_workspace=own/"mobile_core/krita_native_workspace.h"' in shell_patch
           assert '(root/"libs/ui/krita_native_workspace.h").write_text(' in shell_patch
           workspace=Path("mobile_core/krita_native_workspace.h").read_text()

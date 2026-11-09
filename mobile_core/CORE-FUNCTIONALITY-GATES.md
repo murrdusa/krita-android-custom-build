@@ -335,3 +335,12 @@ desktop docker borrowing, or shadow brush implementation.
 The engine-test toolbar exposes Brushes / Layers / Color / Tools.
 The controls must pass device interaction and portrait/landscape
 tests before they replace the previous Mobile Studio UI.
+
+
+The independent host's New button now invokes the existing native
+configurable canvas dialog (size, DPI, background) instead of always
+creating a fixed 512x512 test document. A Canvases button reuses the
+mobile document switcher directly with the new engine host's live
+view identities for activation and guarded Close Current. File Open,
+Save, Save As and KRA writing continue to use Krita's existing
+import/export stack.
