@@ -515,10 +515,23 @@ private:
         });
         menu.addSeparator();
         auto *closeCanvas=menu.addAction(i18n("Close current canvas"));
-        closeCanvas->setEnabled(m_engine.hasDocument());
-        connect(closeCanvas,&QAction::triggered,this,[this]() {
-            QTimer::singleShot(0,this,[this]() {
-                m_engine.closeActiveDocument();
+        // Capture the exact native view while this menu is open. The
+        // following event-loop turn may close/reorder MDI subwindows;
+        // indices or a fresh active-window lookup could hit another file.
+        QPointer<QObject> closeTarget;
+        const auto openViews=m_engine.openDocuments();
+        for(const auto &document:openViews)
+            if(document.active && document.nativeView) {
+                closeTarget=document.nativeView;
+                break;
+            }
+        if(!closeTarget && openViews.size()==1)
+            closeTarget=openViews.first().nativeView;
+        closeCanvas->setEnabled(!closeTarget.isNull());
+        connect(closeCanvas,&QAction::triggered,this,
+                [this,closeTarget]() {
+            QTimer::singleShot(0,this,[this,closeTarget]() {
+                if(closeTarget)m_engine.closeDocumentView(closeTarget);
                 refresh();
             });
         });
