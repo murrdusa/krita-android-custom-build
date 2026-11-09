@@ -269,7 +269,15 @@ jobs:
           assert 'if (!mobileNativePreferred)' in shell_patch
           assert 'Legacy mobile controller skipped on native startup' in shell_patch
           assert 'skip compact skin connection without a receiver' in shell_patch
-          assert 'MobileNativeStartupPolicy::complete(settings,success)' in shell_patch
+          assert 'MobileNativeBootCoordinator::schedule(' in shell_patch
+          assert 'std::move(finished)' in shell_patch
+          assert 'native_boot_coordinator=own/"mobile_core/native_boot_coordinator.h"' in shell_patch
+          assert '(root/"libs/ui/native_boot_coordinator.h").write_text(' in shell_patch
+          coordinator=Path("mobile_core/native_boot_coordinator.h").read_text()
+          assert 'MobileNativeStartupPolicy::complete(settings,success)' in coordinator
+          assert 'QPointer<QMainWindow> m_window' in coordinator
+          assert '#include "KisMainWindow.h"' not in coordinator
+          assert 'QMdiArea' not in coordinator
           assert 'native_startup_policy=own/"mobile_core/native_startup_policy.h"' in shell_patch
           assert '(root/"libs/ui/native_startup_policy.h").write_text(' in shell_patch
           assert 'MobileStudio/nativeStartupV1' in Path("mobile_core/canvas_session.h").read_text()
@@ -518,6 +526,16 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: /tmp/krita-native-command-layout-test
+      - name: Build native engine Qt boot coordinator regression
+        run: |
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+            tests/qt_native_boot_coordinator.cpp \
+            -o /tmp/krita-native-boot-coordinator-test \
+            $(pkg-config --cflags --libs Qt5Widgets)
+      - name: Verify MDI-independent startup scheduling and fallback
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /tmp/krita-native-boot-coordinator-test
       - name: Build independent Krita startup recovery Qt test
         run: |
           c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \

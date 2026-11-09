@@ -360,3 +360,20 @@ remain available through the explicit More menu rather than
 an undiscoverable chevron. Qt tests guard action routing,
 canvas ownership and dual-toolbar visibility; actual compact
 device interaction still requires verification.
+
+
+## Qt-only native startup coordinator extracted
+
+The delayed independent-engine launch previously lived directly inside
+KisMainWindow and captured a KisMainWindow pointer, while checking its
+desktop central view and starting a retry timer. That scheduling has
+been moved into `native_boot_coordinator.h`, a Qt-only QMainWindow
+component with no Krita desktop/MDI dependencies. It consumes the
+precomputed crash-safe startup decision and invokes the existing native
+engine pilot through an injected callback; it handles readiness,
+bounded retries, host deletion and failure recovery. Qt regression
+verifies successful launch and unavailable/hidden host fallbacks.
+
+Krita still builds one KisMainWindow as an Android native window,
+resource/bootstrap provider and desktop recovery route. The native
+painting host itself does not adopt a desktop MDI canvas.
