@@ -34,6 +34,8 @@
 #include <functional>
 
 #include "engine_bridge.h"
+#include "native_layer_reorder_policy.h"
+#include <QSettings>
 #include "kis_node_manager.h"
 #include "kis_node.h"
 #include "kis_image.h"
@@ -184,10 +186,12 @@ public:
 
         auto *operations=new QHBoxLayout;
         addButton(operations,i18n("Up"),[this]() {
-            if(auto *m=manager()){m->raiseNode();reload();}
+            const KisNodeList selected=selectedTargets();
+            if(selected.size()==1)reorderNode(selected.first(),true);
         });
         addButton(operations,i18n("Down"),[this]() {
-            if(auto *m=manager()){m->lowerNode();reload();}
+            const KisNodeList selected=selectedTargets();
+            if(selected.size()==1)reorderNode(selected.first(),false);
         });
         addButton(operations,i18n("Show / Hide"),[this]() {
             if(auto *m=manager()){m->toggleVisibility();reload();}
@@ -268,12 +272,48 @@ public:
     std::function<void()> onRequestClose;
     void refreshFromEngine()
     {
-        if(!isVisible())return;
+        if(!isVisible() || m_reorderPending)return;
         if(engineSignature()!=m_signature)reload();
     }
-    void refreshNow() {reload();}
+    void refreshNow() {if(!m_reorderPending)reload();}
 
 private:
+    // Native single-layer reorder goes through Krita's undoable indexed
+    // move command. Do not invoke the compressed multi-layer juggler
+    // and immediately traverse its asynchronously changing node tree.
+    void reorderNode(KisNodeSP node,bool towardTop)
+    {
+        if(m_reorderPending || !node)return;
+        auto *view=m_engine.manager();
+        auto *nodes=manager();
+        if(!view || !nodes)return;
+        auto image=view->image().toStrongRef();
+        KisNodeSP parent=node->parent();
+        if(!image || !image->root() || !image->undoAdapter() ||
+           !parent || !parent->isEditable(false) ||
+           !parent->allowAsChild(node))return;
+        const int next=MobileNativeLayerReorderPolicy::targetIndex(
+            parent->index(node),int(parent->childCount()),towardTop);
+        if(next<0)return;
+
+        m_reorderPending=true;
+        QSettings settings;
+        settings.setValue(QStringLiteral("MobileStudio/nativeLayerMoveStage"),
+                          QStringLiteral("Krita indexed node move dispatched"));
+        settings.sync();
+        // The active view must own the selected layer. Never dispatch a
+        // stale or cross-document node identity to the undo adapter.
+        if(!m_engine.selectLayer(node)) {
+            m_reorderPending=false;
+            return;
+        }
+        nodes->moveNodeAt(node,parent,next);
+        QTimer::singleShot(150,this,[this]() {
+            m_reorderPending=false;
+            reload();
+        });
+    }
+
     void showLayerActions(KisNodeSP node,QTreeWidgetItem *item)
     {
         auto *m=manager();
@@ -326,11 +366,12 @@ private:
                 m_engine.selectLayer(node);
                 m->removeNode();
             }
+        } else if(chosen==moveUp || chosen==moveDown) {
+            reorderNode(node,chosen==moveUp);
+            return; // Rebuild after the undoable move, not during it.
         } else {
             m_engine.selectLayer(node);
             if(chosen==duplicate)m->duplicateActiveNode();
-            else if(chosen==moveUp)m->raiseNode();
-            else if(chosen==moveDown)m->lowerNode();
         }
         reload();
     }
@@ -429,6 +470,7 @@ private:
     }
     void reload()
     {
+        if(m_reorderPending)return;
         auto *m=manager();
         auto *view=m_engine.manager();
         if(!m || !view)return;
@@ -500,5 +542,6 @@ private:
     KisNodeList m_selected;
     KisNodeSP m_active;
     QString m_signature;
+    bool m_reorderPending=false;
 };
 #endif // Q_OS_ANDROID

@@ -39,7 +39,10 @@ public:
                                  host->nativeCanvas()) : nullptr) {
             QObject::connect(root,&QStackedWidget::currentChanged,this,
                              [this](int) {
-                QTimer::singleShot(0,this,[this]() { refresh(); });
+                QTimer::singleShot(0,this,[this]() {
+                    refresh();
+                    if(m_color && m_color->isVisible())m_color->raise();
+                });
             });
         }
         auto *poll=new QTimer(this);
@@ -100,18 +103,32 @@ public:
 
     void toggleColor()
     {
-        if(!m_host || !m_engine.hasDocument())return;
+        if(!m_host || !m_engine.hasDocument()) {
+            checkpoint("Color wheel: no active native document");
+            return;
+        }
+        // A floating child of QMainWindow can sit BEHIND its central
+        // canvas/dock layout on Android. Parent it to the real native
+        // document root, so raise() places it above painting views.
+        QWidget *canvas=m_host->nativeCanvas();
+        if(!canvas) {
+            checkpoint("Color wheel: no native canvas root");
+            return;
+        }
         if(!m_color) {
-            checkpoint("Color wheel: creating");
-            m_color=new MobileColorWorkspace(m_engine,m_host);
-            checkpoint("Color wheel: ready");
+            checkpoint("Color wheel: creating on native canvas root");
+            m_color=new MobileColorWorkspace(m_engine,canvas);
+            checkpoint("Color wheel: constructed");
             m_color->show();
         } else {
             m_color->setVisible(!m_color->isVisible());
         }
-        if(m_color && m_color->isVisible()) {
+        if(m_color && m_color->isVisibleTo(canvas)) {
             m_color->refresh();
             m_color->raise();
+            checkpoint("Color wheel: visible on native canvas root");
+        } else {
+            checkpoint("Color wheel: visible state not reached");
         }
     }
 
@@ -133,7 +150,10 @@ public:
         if(!m_host)return;
         if(m_brush && m_brush->isVisible())m_brush->refresh();
         if(m_layers && m_layers->isVisible())m_layers->refreshNow();
-        if(m_color && m_color->isVisible())m_color->refresh();
+        if(m_color && m_color->isVisible()) {
+            m_color->refresh();
+            m_color->raise();
+        }
     }
 
 private:

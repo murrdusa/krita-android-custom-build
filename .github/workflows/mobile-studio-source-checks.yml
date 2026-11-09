@@ -324,7 +324,15 @@ jobs:
           assert 'MobileEngineBridge m_engine' in workspace
           assert 'new KritaMobileBrushWorkspace(m_engine,dock)' in workspace
           assert 'new KritaMobileLayersPanel(m_engine,dock)' in workspace
-          assert 'new MobileColorWorkspace(m_engine,m_host)' in workspace
+          assert 'new MobileColorWorkspace(m_engine,canvas)' in workspace
+          assert 'QWidget *canvas=m_host->nativeCanvas();' in workspace
+          assert 'm_color->isVisibleTo(canvas)' in workspace
+          layer_source=Path("mobile_core/layer_workspace.h").read_text()
+          assert 'MobileNativeLayerReorderPolicy::targetIndex(' in layer_source
+          assert 'nodes->moveNodeAt(node,parent,next);' in layer_source
+          assert 'm_reorderPending' in layer_source
+          assert 'm->raiseNode();reload();' not in layer_source
+          assert 'm->lowerNode();reload();' not in layer_source
           assert 'MobileToolBrowser::open(m_engine,host)' in workspace
           assert 'MobileNativeStartupPolicy::setEnabled(' in Path("mobile_core/standalone_host.h").read_text()
           assert 'MobileStudio/standaloneLastPhase' in native_pilot
@@ -540,6 +548,14 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: /tmp/krita-native-command-layout-test
+      - name: Build native layer reorder bounds regression
+        run: |
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+            tests/qt_native_layer_reorder_policy.cpp \
+            -o /tmp/krita-native-layer-reorder-test \
+            $(pkg-config --cflags --libs Qt5Core)
+      - name: Verify safe layer moves and invalid-selection no-ops
+        run: /tmp/krita-native-layer-reorder-test
       - name: Build native engine Qt boot coordinator regression
         run: |
           c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \

@@ -426,3 +426,26 @@ The independent child host also disables the underlying desktop
 hide/show refresh workaround while painting, then clears that guard
 when exiting. Full desktop setup remains available on the next
 opt-out or failed-startup recovery launch. Device verification pending.
+
+
+## Device regressions after f12a6ff (reported 2026-11-09)
+
+The user confirmed the native status footer is gone and painting still
+works, but reordering layers crashes Android and tapping Color no
+longer displays its wheel. This repair routes single-layer Up/Down and
+context-menu moves through Krita's indexed undoable
+`KisNodeManager::moveNodeAt`, after verifying the current image,
+node parent, editable parent, and destination index. The compressed
+asynchronous multi-node reorder followed by an immediate tree reload
+has been removed from these controls; a short pending guard prevents
+the panel's polling from traversing the tree during a move.
+Multi-selected reorders are temporarily rejected rather than risking
+an unsafe operation.
+
+The color wheel is now a raised child of the live
+`MobileNativeViewStack` canvas root, rather than a floating child of
+the outer QMainWindow that can be covered by its central layout.
+Persisted diagnostic checkpoints distinguish missing document/canvas
+from a color widget that fails to become visible. These are
+suspected causes, not a device-proven fix. Native compilation and
+device testing are required.
