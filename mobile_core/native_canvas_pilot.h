@@ -53,19 +53,19 @@ public:
             "border:1px solid #6c8daa;border-radius:7px;"
             "padding:5px;min-height:43px;font-size:13px;}");
         auto *back=makeButton(i18n("Back"),header);
-        connect(back,&QToolButton::clicked,back,[this]() {
+        QObject::connect(back,&QToolButton::clicked,back,[this]() {
             if(m_exit)m_exit();
         });
         headerRow->addWidget(back);
         m_document=makeButton(i18n("Canvases"),header);
         m_document->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Preferred);
-        connect(m_document,&QToolButton::clicked,m_document,[this]() {
+        QObject::connect(m_document,&QToolButton::clicked,m_document,[this]() {
             if(m_backend)MobileDocumentSwitcher::open(m_engine,m_backend);
             refresh();
         });
         headerRow->addWidget(m_document,1);
         auto *layers=makeButton(i18n("Layers"),header);
-        connect(layers,&QToolButton::clicked,layers,[this]() {
+        QObject::connect(layers,&QToolButton::clicked,layers,[this]() {
             if(m_engine.hasDocument() &&
                m_chrome.setSidePanelVisible(!m_chrome.sidePanelVisible()) &&
                m_chrome.sidePanelVisible() && m_layers)
@@ -73,7 +73,7 @@ public:
         });
         headerRow->addWidget(layers);
         auto *color=makeButton(i18n("Color"),header);
-        connect(color,&QToolButton::clicked,color,[this]() {
+        QObject::connect(color,&QToolButton::clicked,color,[this]() {
             if(m_color && m_engine.hasDocument()) {
                 m_color->setVisible(!m_color->isVisible());
                 if(m_color->isVisible()) {
@@ -84,7 +84,7 @@ public:
         });
         headerRow->addWidget(color);
         auto *more=makeButton(i18n("More"),header);
-        connect(more,&QToolButton::clicked,more,[this,more]() {
+        QObject::connect(more,&QToolButton::clicked,more,[this,more]() {
             showMore(more);
         });
         headerRow->addWidget(more);
