@@ -287,6 +287,61 @@ KisMainWindow * KisView::mainWindow() const''',
         actionCollection()->action("view_show_canvas_only"):nullptr;
     bool toggled=canvasOnlyAction && canvasOnlyAction->isChecked();''',
            "Native KisViewManager missing desktop canvas-only action")
+    # Keep diagnostic checkpoints inside KisViewManager as well as the
+    # launcher. A crash in any of these initialization stages should not
+    # require Android logcat to distinguish from the earlier null statusbar.
+    mc=one(mc,'#include <QPrinter>',
+           '#include <QPrinter>\n#ifdef Q_OS_ANDROID\\n#include <QSettings>\n#endif',
+           "KisViewManager Android diagnostic include")
+    mc=one(mc,
+           '''    createActions();
+    setupManagers();''',
+           '''#ifdef Q_OS_ANDROID
+    auto mobileInitStage=[this](const char *name) {
+        if (mainWindow()) return; // Desktop engine is unchanged.
+        QSettings settings;
+        settings.setValue(QStringLiteral("MobileStudio/standaloneLastPhase"),
+                          QString::fromLatin1(name));
+        settings.sync();
+    };
+    mobileInitStage("KisViewManager: creating actions");
+#endif
+    createActions();
+#ifdef Q_OS_ANDROID
+    mobileInitStage("KisViewManager: setting up managers");
+#endif
+    setupManagers();''',
+           "KisViewManager isolated creation checkpoints")
+    mc=one(mc,'    d->statusBar.setup();',
+           '''#ifdef Q_OS_ANDROID
+    mobileInitStage("KisViewManager: setting up status bar");
+#endif
+    d->statusBar.setup();''',
+           "KisViewManager statusbar checkpoint")
+    mc=one(mc,'    d->controlFrame.setup(parent);',
+           '''#ifdef Q_OS_ANDROID
+    mobileInitStage("KisViewManager: setting up brush controls");
+#endif
+    d->controlFrame.setup(parent);''',
+           "KisViewManager brush control checkpoint")
+    mc=one(mc,'    KoToolManager::instance()->initializeToolActions();',
+           '''#ifdef Q_OS_ANDROID
+    mobileInitStage("KisViewManager: initializing tool actions");
+#endif
+    KoToolManager::instance()->initializeToolActions();''',
+           "KisViewManager tool action checkpoint")
+    mc=one(mc,'    KisInputProfileManager::instance()->loadProfiles();',
+           '''#ifdef Q_OS_ANDROID
+    mobileInitStage("KisViewManager: loading input profiles");
+#endif
+    KisInputProfileManager::instance()->loadProfiles();''',
+           "KisViewManager input profile checkpoint")
+    mc=one(mc,'    new ImageSize(this);',
+           '''    new ImageSize(this);
+#ifdef Q_OS_ANDROID
+    mobileInitStage("KisViewManager: constructor complete");
+#endif''',
+           "KisViewManager finished checkpoint")
     managercpp.write_text(mc,encoding="utf-8")
 
     # KisStatusBar::setup() runs inside KisViewManager's constructor.
