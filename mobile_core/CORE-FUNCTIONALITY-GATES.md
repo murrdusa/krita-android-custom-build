@@ -47,6 +47,12 @@ serialization or brushes.
 - The mobile frontend can later substitute new document, command and
   view hosts **without rewriting brushes, layers, Quick Actions or
   document dialogs**.
+- `canvas_transfer.h` now takes a generic `QWidget` document root
+  rather than `QMdiArea`, and `canvas_session.h` no longer needs the
+  MDI type. On desktop Krita it still refreshes the native scroll-area
+  viewport; a lightweight Qt canvas stack can use the same lifecycle
+  code without implementing MDI. A Qt-only generic-document-root smoke
+  test checks repeated entry/Back and painting-widget identity.
 - Deferred Save/Save As from the stationary-canvas path revalidates
   the exact native MDI view captured at tap time before delegating to
   Krita. This rejects ambiguous or changed document selection instead
@@ -59,7 +65,7 @@ serialization or brushes.
 | Krita engine | Native brush presets, pen pressure, zoom, canvas transforms, blending, eraser, color space, undo/redo | Engine reused; on-device comprehensive regression pending |
 | Documents | Create; open KRA and supported formats; save/save as; correct dirty state; unsaved changes prompt; multiple canvases | Native Krita backend; end-to-end device tests pending |
 | Layers | Paint, group, move, clip, visibility, masks, rename and undo/redo native operations | Existing integrations; device regression pending |
-| Navigation | Back/reentry without deleting/reparenting a document; portrait/landscape, suspend/resume | Stationary Qt docks are opt-in; Qt synthetic tests added; Android device regression pending |
+| Navigation | Back/reentry without deleting/reparenting a document; portrait/landscape, suspend/resume | Generic Qt document-root lifecycle implemented; stationary Qt docks opt-in; device regression pending |
 | Input | Stylus and S Pen, multi-finger gestures, opt-in calibrated finger pressure without interfering with pen/multitouch | Implemented prototype; real touch-size hardware validation pending |
 | Persistence | Save/reopen KRA preserving paint, groups, masks, brush resources and canvas coordinates | Uses Krita serializer; round-trip validation pending |
 | Host independence | Mobile document, command and view services build without a desktop-window/MDI dependency | **Three backend ports integrated; Android build validation and Qt regression checks ongoing** |
@@ -74,9 +80,10 @@ an APK compiled, and no test should use irreplaceable artwork.
 1. Keep the new document/action host contracts stable. Run the Qt fake
    host-port test and monitor local Android compilation after every
    backend change.
-2. Extend the completed view-host separation to canvas-session
-   ownership, including interruption, invalidated views, and mode
-   switching. Run fake-port Qt tests and check Android build results.
+2. Complete canvas-session ownership isolation beyond the now
+   MDI-independent document-root interface. Keep verifying repeated
+   Back/reentry, invalidated views and interruption with Qt tests and
+   the Android build watcher.
 3. Introduce a **separate opt-in lightweight Krita host bootstrap**
    that wires the same host ports and existing KisDocument, KisPart,
    KisView and brush resources. Keep the old launcher as rollback.
