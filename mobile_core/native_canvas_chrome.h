@@ -148,6 +148,21 @@ public:
         return originalCanvasStillPresent;
     }
 
+    bool setBottomPanelVisible(bool visible)
+    {
+        if(!m_active || !ownsUnmovedCanvas() || !m_bottomDock)return false;
+        if(m_bottomDock->isVisible()!=visible) {
+            m_bottomDock->setVisible(visible);
+            scheduleCanvasUpdate();
+        }
+        return true;
+    }
+
+    bool bottomPanelVisible() const
+    {
+        return m_active && m_bottomDock && m_bottomDock->isVisible();
+    }
+
     bool setSidePanelVisible(bool visible)
     {
         if(!m_active || !ownsUnmovedCanvas() || !m_sideDock)return false;
