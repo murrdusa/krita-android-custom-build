@@ -1,5 +1,25 @@
 # Mobile Studio — Android painting and mode-switch smoke test
 
+## v1.18 full 0–100% finger pressure and pad sampling
+
+- Keep user-calibrated contact diameter minimum and maximum exactly as
+  saved. Only the mapped *pressure output range* changes from 16–96% to
+  the full 0–100% supported by the brush engine.
+- At or below calibrated minimum, a synthetic finger touch must produce
+  precisely 0.0 pressure; at/above maximum it must produce 1.0; a
+  halfway contact must produce 0.5. The first dab uses the correct
+  absolute-size target, not a relative per-stroke baseline.
+- Smoothing continues to limit abrupt *changes* during a stroke but
+  does not clamp initial or final output to the former 16–96% limits.
+  An actual brush may leave no visible mark when pressure is 0.
+- In the calibration dialog check **0% and 100%** labels, verify that
+  Capture minimum/maximum use the median of valid contact samples,
+  and that zero/unsupported contact ellipses do not overwrite values.
+- Confirm device pen pressure, multitouch gestures, persisted
+  calibration, and the disabled-by-default finger-pressure switch
+  remain unchanged. Verify offscreen Qt tests and Android build
+  separately; Android contact-area support remains device-dependent.
+
 ## v1.17 calibrated absolute finger pressure
 
 - Confirm the existing finger-pressure toggle remains **off by default**
