@@ -18,6 +18,10 @@ static void require(bool value,const char *reason)
 struct FakeMobileViewHost final : MobileViewHostPort
 {
     QVector<ViewSnapshot> snapshots;
+    QPointer<QObject> engineCurrent;
+    QPointer<QObject> currentDocument() const override {
+        return engineCurrent;
+    }
     QPointer<QObject> lastActivated;
     QPointer<QObject> lastClosed;
     int closeCalls=0;
@@ -52,6 +56,9 @@ int main(int argc,char **argv)
     QCoreApplication app(argc,argv);
     QObject doc1,doc2,viewA,viewB,viewC;
     FakeMobileViewHost host;
+    host.engineCurrent=&doc1;
+    require(host.currentDocument()==&doc1,
+            "injected host did not expose engine-selected document");
     using Guard=MobileViewIdentityGuard;
     host.snapshots={
         {QStringLiteral("A.kra"),true,true,0,&viewA,&doc1},
@@ -69,6 +76,9 @@ int main(int argc,char **argv)
     // Qt closes a tab while a confirmation dialog is open. The old
     // index now points at another view; only the captured pointer is safe.
     host.snapshots.removeFirst();
+    host.engineCurrent=&doc2;
+    require(host.currentDocument()==&doc2,
+            "new engine document was not selected after view switch");
     host.snapshots[0].nativeIndex=0;
     host.snapshots[0].active=true;
     require(!Guard::maySave(host.openViews(),selected,&doc1),
