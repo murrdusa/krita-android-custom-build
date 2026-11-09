@@ -1,5 +1,33 @@
 # Mobile Studio — Android painting and mode-switch smoke test
 
+## v1.19 guarded native canvas selection and closing
+
+- Create two or more disposable, unsaved Krita documents. Open
+  **Canvases**, activate the intended document, then choose Close
+  Current. Verify Krita's native Save / Discard / Cancel dialog refers
+  to that drawing and does not close another one.
+- Repeat using **More → Close current canvas** and Quick Actions'
+  optional **Close Canvas** shortcut. All three paths must target the
+  same current native view. Cancel must preserve the document, edits,
+  modified state and other open views.
+- With multiple views of the same Krita document, verify that only
+  one MDI view is considered active. If Qt cannot identify one view,
+  Close Current must be disabled, not silently redirected to a
+  different file; the Canvases dialog explains how to select one.
+- Switch and close documents rapidly, including while the Canvases
+  popup is dismissing. Deferred actions must hold a guarded identity,
+  not an integer MDI index. Destroyed/detached views must be rejected.
+- Repeat after Back/reenter and in the opt-in persistent canvas host.
+  No canvas is constructed or destroyed by the mobile selection logic;
+  the native Krita close/save lifecycle remains authoritative.
+- The **Qt-only MDI view identity smoke test** constructs synthetic
+  subwindows, deletes one ahead of the target, removes another and
+  destroys the saved target. Resolve must return only the original
+  live view or no view. This does not simulate Krita's dialogs and
+  must be paired with the Android manual tests above.
+- The user-controlled 0–100% finger-pressure calibration and stylus
+  input must remain unaffected by canvas navigation.
+
 ## v1.18 full 0–100% finger pressure and pad sampling
 
 - Keep user-calibrated contact diameter minimum and maximum exactly as
