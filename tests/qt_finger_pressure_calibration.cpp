@@ -60,11 +60,13 @@ int main(int argc,char **argv)
         12.0,calibrated);
     const qreal large=MobileFingerPressureSettings::mapDiameter(
         35.0,calibrated);
-    require(qAbs(small-0.16)<0.0001 && qAbs(large-0.96)<0.0001,
-            "calibration does not map endpoints to pressure bounds");
-    require(MobileFingerPressureSettings::mapDiameter(2.0,calibrated)>=0.16 &&
-            MobileFingerPressureSettings::mapDiameter(100.0,calibrated)<=0.96,
-            "out-of-range contacts were not clamped");
+    require(qAbs(small-0.0)<0.0001 && qAbs(large-1.0)<0.0001,
+            "calibration does not map endpoints to full 0–100% pressure");
+    require(qAbs(MobileFingerPressureSettings::mapDiameter(2.0,calibrated))<0.0001 &&
+            qAbs(MobileFingerPressureSettings::mapDiameter(100.0,calibrated)-1.0)<0.0001,
+            "out-of-range contacts were not clamped at full pressure endpoints");
+    require(qAbs(MobileFingerPressureSettings::mapDiameter(23.5,calibrated)-0.5)<0.0001,
+            "halfway contact should produce 50% pressure");
 
     MobileFingerPressureCalibrationDialog reopened;
     auto *remin=reopened.findChild<QDoubleSpinBox*>(
