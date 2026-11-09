@@ -51,6 +51,10 @@ jobs:
                             "MobileStandaloneWindow", "KisMainWindow", "KisDocument"):
               assert forbidden not in transfer, f"Canvas transfer leaked {forbidden}"
               assert forbidden not in surface, f"Canvas surface leaked {forbidden}"
+          assert '#include <QMdiArea>' not in transfer
+          assert "QPointer<QWidget> m_documents" in transfer
+          assert "refreshDocumentRoot(" in transfer
+          assert '#include <QMdiArea>' not in Path("mobile_core/canvas_session.h").read_text()
           assert "m_backend->centralWidget()!=m_mobileWindow" in transfer
           assert "m_backend->setCentralWidget(mobile)" in transfer
           assert "mobile->setParent(m_backend,Qt::Widget)" in transfer
@@ -210,6 +214,16 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: /tmp/krita-canvas-transfer-smoke
+      - name: Compile canvas handoffs without a desktop MDI document stack
+        run: |
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+            tests/qt_widget_document_root.cpp \
+            -o /tmp/krita-widget-document-root-test \
+            $(pkg-config --cflags --libs Qt5Widgets)
+      - name: Verify native canvas identity with generic QWidget document root
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /tmp/krita-widget-document-root-test
       - name: Build no-reparent mobile chrome smoke test
         run: |
           c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
