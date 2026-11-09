@@ -9,6 +9,7 @@
 #ifdef Q_OS_ANDROID
 #include <QObject>
 #include <QEvent>
+#include <QKeyEvent>
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QMdiArea>
@@ -39,7 +40,10 @@ public:
               QStringLiteral("MobileStudio/nativeDockCanvasV1"),
               false).toBool())
     {
-        if(m_backend)m_backend->installEventFilter(this);
+        // QApplication receives key events sent to focused children of
+        // Krita's main window. Filtering only QMainWindow misses Android
+        // Back when focus is inside a mobile toolbar, layer or canvas.
+        if(qApp)qApp->installEventFilter(this);
         connect(entry,&QAction::toggled,this,[this](bool value) {
             if(value)enter();else leave();
         });
@@ -82,6 +86,7 @@ public:
     }
     ~MobileAppController() override
     {
+        if(qApp)qApp->removeEventFilter(this);
         // Native dock mode owns only its mobile chrome, not the canvas.
         // Destruction of the pilot never destroys Krita's central widget.
         if(m_nativePilot) {
@@ -116,6 +121,41 @@ public:
 protected:
     bool eventFilter(QObject *watched,QEvent *event) override
     {
+        // Android system Back (Qt::Key_Back) can arrive at any focused
+        // child, not necessarily Krita's main window. Preserve native
+        // Save/Discard/Cancel dialogs and menus: they handle their own
+        // Back events. Never intercept Escape (used by Krita tools).
+        if(event && (event->type()==QEvent::KeyPress ||
+                     event->type()==QEvent::KeyRelease)) {
+            auto *key=static_cast<QKeyEvent*>(event);
+            if(key->key()==Qt::Key_Back) {
+                if(m_consumeBackRelease &&
+                   event->type()==QEvent::KeyRelease) {
+                    m_consumeBackRelease=false;
+                    key->accept();
+                    return true;
+                }
+                QWidget *focused=qobject_cast<QWidget*>(watched);
+                const bool onKritaWindow=m_backend && focused &&
+                    focused->window()==m_backend;
+                if(event->type()==QEvent::KeyPress &&
+                   !key->isAutoRepeat() && onKritaWindow &&
+                   sessionActive() && !m_transitioning &&
+                   qApp && !qApp->activeModalWidget() &&
+                   !qApp->activePopupWidget()) {
+                    bool dismissed=false;
+                    if(m_nativePilot && m_nativePilot->active())
+                        dismissed=m_nativePilot->dismissTransientControls();
+                    else if(m_host)
+                        dismissed=m_host->dismissTransientControls();
+                    if(!dismissed && m_entry)
+                        m_entry->setChecked(false);
+                    m_consumeBackRelease=true;
+                    key->accept();
+                    return true;
+                }
+            }
+        }
         // Mobile Studio is now a child presentation inside Krita's only
         // Android native window. Do NOT hide the backend here: doing so
         // would hide the canvas and mobile controls together. Reassert
@@ -265,6 +305,7 @@ private:
     std::unique_ptr<MobileNativeCanvasPilot> m_nativePilot;
     const bool m_nativeCanvasMode;
     bool m_transitioning=false;
+    bool m_consumeBackRelease=false;
 };
 
 #endif // Q_OS_ANDROID
