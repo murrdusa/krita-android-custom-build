@@ -169,6 +169,20 @@ jobs:
           assert "createNativeDocumentRoot()" in lightweight
           assert "nativeViewPort()" in lightweight
           assert 'native_krita_save_host=own/"mobile_core/native_krita_save_host.h"' in shell_patch
+          assert 'native_krita_factory=own/"mobile_core/krita_native_view_factory.h"' in shell_patch
+          assert '(root/"libs/ui/krita_native_view_factory.h").write_text(' in shell_patch
+          assert "removeTrackedCanvas(&d->canvas)" in shell_patch
+          assert "d->viewManager->setCurrentView(nullptr)" in shell_patch
+          native_factory = Path("mobile_core/krita_native_view_factory.h").read_text()
+          for fragment in ("KisPart::instance()->createView(",
+                           "view->setMobileNativeSaveHost(saver)",
+                           "manager->inputManager()->addTrackedCanvas(",
+                           "view->setViewManager(manager)",
+                           "view->slotLoadingFinished()",
+                           "guarded->deleteLater()",
+                           "QPointer<KisView>",
+                           "manager->setCurrentView(view)"):
+              assert fragment in native_factory
           assert '(root/"libs/ui/native_krita_save_host.h").write_text(' in shell_patch
           assert 'viewcpp=root/"libs/ui/KisView.cpp"' in shell_patch
           assert 'partcpp=root/"libs/ui/KisPart.cpp"' in shell_patch

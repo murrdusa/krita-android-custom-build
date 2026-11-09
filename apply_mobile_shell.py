@@ -29,6 +29,7 @@ def main(root:Path):
     lightweight=own/"mobile_core/lightweight_canvas_host.h"
     native_view_stack=own/"mobile_core/native_view_stack.h"
     native_krita_save_host=own/"mobile_core/native_krita_save_host.h"
+    native_krita_factory=own/"mobile_core/krita_native_view_factory.h"
     surface=own/"mobile_core/canvas_surface.h"
     switcher=own/"mobile_core/document_switcher.h"
     bridge=own/"mobile_core/engine_bridge.h"
@@ -53,7 +54,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,surface,switcher,bridge,document_service,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+               (shell,session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,surface,switcher,bridge,document_service,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
                 reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
@@ -112,6 +113,21 @@ def main(root:Path):
     vc=one(vc,'        d->viewManager->mainWindow()->notifyChildViewDestroyed(this);',
            '        // An independent QMainWindow has no KisMainWindow hooks.\n        if (KisMainWindow *desktop=d->viewManager->mainWindow())\n            desktop->notifyChildViewDestroyed(this);',
            "KisView destructor desktop notification")
+    vc=one(vc,
+           '        if (KisMainWindow *desktop=d->viewManager->mainWindow())\\n            desktop->notifyChildViewDestroyed(this);',
+           '''        if (KisMainWindow *desktop=d->viewManager->mainWindow()) {
+            desktop->notifyChildViewDestroyed(this);
+        }
+#ifdef Q_OS_ANDROID
+        else {
+            // Match native Krita's tracked canvas removal when a
+            // lightweight QWidget owns a KisView instead of MDI.
+            d->viewManager->inputManager()->removeTrackedCanvas(&d->canvas);
+            if (d->viewManager->canvasBase()==&d->canvas)
+                d->viewManager->setCurrentView(nullptr);
+        }
+#endif''',
+           "KisView native input teardown")
     vc=one(vc,'KisMainWindow * KisView::mainWindow() const',
            '''#ifdef Q_OS_ANDROID
 void KisView::setMobileNativeSaveHost(MobileKritaNativeSaveHost *host)
@@ -319,6 +335,8 @@ KisMainWindow * KisView::mainWindow() const''',
         native_view_stack.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/native_krita_save_host.h").write_text(
         native_krita_save_host.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/krita_native_view_factory.h").write_text(
+        native_krita_factory.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/canvas_surface.h").write_text(
         surface.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_switcher.h").write_text(

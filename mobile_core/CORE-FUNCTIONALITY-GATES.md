@@ -79,6 +79,14 @@ serialization or brushes.
   Missing save callbacks fail closed; the working desktop fallback
   continues to use Krita's original native methods. This is a source
   compatibility seam, **not live Android `KisView` initialization**.
+- `krita_native_view_factory.h` now contains an unlaunched real-engine
+  attachment path using `KisPart::createView`, `KisViewManager`,
+  input/tool tracking, and native close-time deletion. The Android
+  `KisView` destructor's non-desktop path now also unregisters tracked
+  canvases and clears active view state. The new factory is copied
+  into Krita's source tree but is **not instantiated, compiled as an
+  Android APK or verified on a device**. It remains isolated until
+  standalone manager construction and GL lifetime are validated.
 - The opt-in stationary canvas header was found consuming hundreds of
   pixels of height on a real device. The top dock is now capped at 76
   logical pixels and its title/header widget is height-fixed; a Qt
