@@ -53,6 +53,8 @@ When `KoPointerEvent` asks for a finger's pressure, the converter selects raw da
 
 **Source consistency:** Qt and raw Android may report different units on some screens. Each stroke locks to the first valid source. If Android raw data was selected and temporarily disappears, a ratio learned from simultaneous raw/Qt readings converts the Qt fallback into the same contact-size scale. If no reliable ratio exists, the brush retains its last valid smoothed pressure rather than jumping between incompatible measurement scales. A stroke that started on Qt stays on Qt; a later-arriving raw sample only becomes eligible for the next stroke.
 
+The **Copy Mobile Studio diagnostics** report now also includes counts of raw Android, Qt and scale-corrected Qt-fallback samples from the most recently completed finger stroke. A persistent 0 raw count indicates that the raw JNI path was not selected; it does not prove the touchscreen is incapable of returning contact-size data. The calibration pad separately reports live raw/Qt measurements.
+
 Raw Android size is normalized by Android display density, which may not exactly match Qt's logical-pixel scale on every device. This is why the live diagnostics name the measurement source and the raw preference can be disabled. The Android Java-to-C++ path has compiled, but real size values still need phone testing.
 
 ## On-device tests
