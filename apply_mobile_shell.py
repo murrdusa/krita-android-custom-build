@@ -291,7 +291,7 @@ KisMainWindow * KisView::mainWindow() const''',
     # launcher. A crash in any of these initialization stages should not
     # require Android logcat to distinguish from the earlier null statusbar.
     mc=one(mc,'#include <QPrinter>',
-           '#include <QPrinter>\n#ifdef Q_OS_ANDROID\\n#include <QSettings>\n#endif',
+           '#include <QPrinter>\n#ifdef Q_OS_ANDROID\n#include <QSettings>\n#endif',
            "KisViewManager Android diagnostic include")
     mc=one(mc,
            '''    createActions();
