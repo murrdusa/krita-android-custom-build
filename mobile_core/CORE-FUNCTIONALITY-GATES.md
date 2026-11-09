@@ -61,6 +61,13 @@ serialization or brushes.
   The prototype is compiled with Android but **not launched**: it does
   not yet initialize Krita's `KisPart`, painting resources or a live
   `KisView`. That is the next engine-bootstrap task.
+- `native_view_stack.h` now implements a real multi-document Qt widget
+  stack and `MobileViewHostPort` without MDI. Its lifecycle enforces
+  exact view and document identities, supports selection and modified
+  metadata, honors canceled native close callbacks, and invalidates
+  views when their document is destroyed. A Qt-only test verifies twelve
+  canvas-preserving UI transitions. This is a functional host boundary,
+  **not yet live KisView construction or Android painting parity**.
 - The opt-in stationary canvas header was found consuming hundreds of
   pixels of height on a real device. The top dock is now capped at 76
   logical pixels and its title/header widget is height-fixed; a Qt

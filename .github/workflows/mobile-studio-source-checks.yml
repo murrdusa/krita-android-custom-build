@@ -166,6 +166,16 @@ jobs:
           assert "bool attachServices(const MobileHostServices &services)" in lightweight
           assert "bool setMobileVisible(bool enabled)" in lightweight
           assert "retainsOriginalCanvas()" in lightweight
+          native_stack = Path("mobile_core/native_view_stack.h").read_text()
+          assert "class MobileNativeViewStack final" in native_stack
+          assert "MobileViewHostPort" in native_stack
+          assert "QStackedWidget" in native_stack
+          assert '#include <QMdiArea>' not in native_stack
+          assert "bool adoptView(" in native_stack
+          assert "bool closeView(" in native_stack
+          assert "QScopedValueRollback<bool>" in native_stack
+          assert 'native_view_stack=own/"mobile_core/native_view_stack.h"' in shell_patch
+          assert '(root/"libs/ui/native_view_stack.h").write_text(' in shell_patch
           assert "captureAdditionalDesktopChrome()" in native_chrome
           assert "captureAdditionalTabs()" in native_chrome
           assert "setBottomPanelVisible(bool visible)" in native_chrome
@@ -251,6 +261,16 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: /tmp/krita-lightweight-canvas-host-test
+      - name: Build MDI-free native multi-document view host
+        run: |
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+            tests/qt_native_view_stack.cpp \
+            -o /tmp/krita-native-view-stack-test \
+            $(pkg-config --cflags --libs Qt5Widgets)
+      - name: Verify view lifecycle and twelve canvas-preserving UI switches
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /tmp/krita-native-view-stack-test
       - name: Build no-reparent mobile chrome smoke test
         run: |
           c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
