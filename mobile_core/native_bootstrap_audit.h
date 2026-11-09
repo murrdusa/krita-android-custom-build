@@ -22,6 +22,7 @@ class MobileNativeBootstrapAudit final
 public:
     struct Snapshot {
         bool nativeSelected=false;
+        bool engineOnlyRoot=false;
         bool nativeHostActive=false;
         int mdiAreas=0;
         int desktopDockers=0;
@@ -33,10 +34,12 @@ public:
         QString display() const
         {
             return QStringLiteral(
-                "Native %1, host %2; MDI %3, dockers %4, "
-                "welcome scroll %5, command palette %6, "
-                "detached canvas %7; desktop status %8")
+                "Native %1, engine-only %2, host %3; "
+                "MDI %4, dockers %5, welcome scroll %6, "
+                "command palette %7, detached canvas %8; "
+                "desktop status %9")
                 .arg(nativeSelected?QStringLiteral("yes"):QStringLiteral("no"))
+                .arg(engineOnlyRoot?QStringLiteral("yes"):QStringLiteral("no"))
                 .arg(nativeHostActive?QStringLiteral("active"):
                                       QStringLiteral("inactive"))
                 .arg(mdiAreas).arg(desktopDockers).arg(welcomeScrollAreas)
@@ -50,7 +53,9 @@ public:
     {
         Snapshot result;
         if(!desktop)return result;
-        result.nativeSelected=desktop->property(
+        result.engineOnlyRoot=desktop->property(
+            "_mobileNativeEngineOnlyRoot").toBool();
+        result.nativeSelected=result.engineOnlyRoot || desktop->property(
             "_mobileNativeDesktopDeferred").toBool();
         result.nativeHostActive=desktop->property(
             "_mobileNativeHostActive").toBool();

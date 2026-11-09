@@ -74,7 +74,20 @@ int main(int argc,char **argv)
     check(normal.display().contains(QStringLiteral("MDI 1")) &&
           normal.display().contains(QStringLiteral("dockers 1")),
           "human-readable startup report omitted important widgets");
+    QMainWindow noDesktop;
+    noDesktop.setObjectName(QStringLiteral("_mobileEngineOnlyRoot"));
+    noDesktop.setProperty("_mobileNativeEngineOnlyRoot",true);
+    noDesktop.setProperty("_mobileNativeHostActive",true);
+    noDesktop.setCentralWidget(new QWidget);
+    const auto independent=MobileNativeBootstrapAudit::inspect(&noDesktop);
+    check(independent.engineOnlyRoot && independent.nativeSelected &&
+          independent.nativeHostActive && independent.mdiAreas==0 &&
+          independent.desktopDockers==0 &&
+          independent.detachedCanvasWindows==0,
+          "plain engine-only Qt root must have ZERO desktop window UI");
+    check(independent.display().contains(QStringLiteral("engine-only yes")),
+          "independent bootstrap audit does not distinguish engine-only");
     qInfo()<<"PASS: desktop widget inventory distinguishes native host,"
-              "retained MDI and actual legacy dockers";
+              "retained MDI and zero-desktop engine-only Qt root";
     return 0;
 }

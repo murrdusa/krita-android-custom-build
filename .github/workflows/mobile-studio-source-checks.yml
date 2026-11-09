@@ -319,6 +319,8 @@ jobs:
           assert 'desktopDockers' in audit
           assert 'commandPalettes' in audit
           assert 'detachedCanvasWindows' in audit
+          assert 'engineOnlyRoot' in audit
+          assert '_mobileNativeEngineOnlyRoot' in audit
           assert 'std::move(finished)' in shell_patch
           assert 'native_boot_coordinator=own/"mobile_core/native_boot_coordinator.h"' in shell_patch
           assert '(root/"libs/ui/native_boot_coordinator.h").write_text(' in shell_patch
