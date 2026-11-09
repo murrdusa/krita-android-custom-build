@@ -53,6 +53,19 @@ serialization or brushes.
   viewport; a lightweight Qt canvas stack can use the same lifecycle
   code without implementing MDI. A Qt-only generic-document-root smoke
   test checks repeated entry/Back and painting-widget identity.
+- `lightweight_canvas_host.h` now provides a **separate, Qt-only
+  application-window prototype**, with immutable native canvas ownership
+  and the same injected document/view/command host services. Its mobile
+  chrome changes without moving the canvas, and its 12-cycle fake-engine
+  test exercises entry/Back, exact widget identity and offline services.
+  The prototype is compiled with Android but **not launched**: it does
+  not yet initialize Krita's `KisPart`, painting resources or a live
+  `KisView`. That is the next engine-bootstrap task.
+- The opt-in stationary canvas header was found consuming hundreds of
+  pixels of height on a real device. The top dock is now capped at 76
+  logical pixels and its title/header widget is height-fixed; a Qt
+  regression check prevents recurrence. This is a defect fix, not a UI
+  redesign.
 - Deferred Save/Save As from the stationary-canvas path revalidates
   the exact native MDI view captured at tap time before delegating to
   Krita. This rejects ambiguous or changed document selection instead
