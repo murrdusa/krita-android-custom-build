@@ -32,6 +32,7 @@
 #include "KisView.h"
 #include "KisViewManager.h"
 #include "kis_config.h"
+#include "mdi_view_identity.h"
 
 class MobileDocumentService final
 {
@@ -75,7 +76,8 @@ public:
             const KisDocument *current=m_manager?m_manager->document():nullptr;
             const bool isActive=current?doc==current:
                                         sub==m_documents->activeSubWindow();
-            items.append({title,doc->isModified(),isActive,i,sub});
+            items.append({title,doc->isModified(),isActive,i,
+                          MobileMdiViewIdentity::capture(sub)});
         }
         // If the view manager temporarily has no matching active document,
         // retain the MDI selection (or the lone open canvas) as the visual
@@ -102,11 +104,9 @@ public:
     bool activateDocumentView(const QPointer<QObject> &identity) const
     {
         if(!m_documents || !identity)return false;
-        auto *target=qobject_cast<QMdiSubWindow*>(identity.data());
-        if(!target ||
-           !m_documents->subWindowList(QMdiArea::CreationOrder)
-                .contains(target) ||
-           !qobject_cast<KisView*>(target->widget()))return false;
+        QPointer<QMdiSubWindow> target=
+            MobileMdiViewIdentity::resolve(m_documents,identity);
+        if(!target || !qobject_cast<KisView*>(target->widget()))return false;
         m_documents->setActiveSubWindow(target);
         return true;
     }
@@ -126,11 +126,8 @@ public:
     {
         if(!m_documents || !identity)return false;
         QPointer<QMdiSubWindow> target=
-            qobject_cast<QMdiSubWindow*>(identity.data());
-        if(!target ||
-           !m_documents->subWindowList(QMdiArea::CreationOrder)
-                .contains(target) ||
-           !qobject_cast<KisView*>(target->widget()))return false;
+            MobileMdiViewIdentity::resolve(m_documents,identity);
+        if(!target || !qobject_cast<KisView*>(target->widget()))return false;
         // Native Krita still owns Save/Discard/Cancel and the document.
         m_documents->setActiveSubWindow(target);
         // Signal handlers may remove a view during the selection change.
