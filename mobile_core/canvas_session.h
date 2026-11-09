@@ -47,10 +47,9 @@ public:
         connect(entry,&QAction::toggled,this,[this](bool value) {
             if(value)enter();else leave();
         });
-        // Opt-in mobile-first startup: Krita still initializes services
-        // before this session takes ownership of its canvas widget.
-        // A pending marker prevents repeated launch crashes from trapping
-        // users in Mobile Studio; the next launch falls back to Krita.
+        // Wait until Krita has a visible canvas before requesting
+        // Mobile Studio. A previous interrupted startup still falls
+        // back safely to desktop Krita, with a manual Settings entry.
         QTimer::singleShot(0,this,[this]() {
             if(!m_entry || !qApp ||
                qApp->property("_mobileStudioBootHandled").toBool())return;
@@ -67,20 +66,15 @@ public:
                 settings.setValue(
                     QStringLiteral("MobileStudio/bootPending"),false);
                 settings.sync();
+                qWarning() << "Mobile Studio: incomplete previous boot;"
+                           << "manual recovery available in Settings";
                 return;
             }
             settings.setValue(
                 QStringLiteral("MobileStudio/bootPending"),true);
             settings.sync();
-            m_entry->setChecked(true);
-            QTimer::singleShot(4500,this,[this]() {
-                QSettings verified;
-                verified.setValue(
-                    QStringLiteral("MobileStudio/bootPending"),false);
-                if(!sessionActive())
-                    verified.setValue(
-                        QStringLiteral("MobileStudio/startDirectly"),false);
-                verified.sync();
+            QTimer::singleShot(250,this,[this]() {
+                attemptAutomaticStartup(12);
             });
         });
     }
@@ -173,6 +167,54 @@ protected:
     }
 
 private:
+    void attemptAutomaticStartup(int remaining)
+    {
+        if(sessionActive()) {
+            // A verified successful launch must clear the crash marker
+            // immediately, not 4.5 seconds later: a quick app restart
+            // should not permanently disable the user's preference.
+            QSettings settings;
+            settings.setValue(
+                QStringLiteral("MobileStudio/bootPending"),false);
+            settings.sync();
+            return;
+        }
+        if(m_entry && m_backend && qApp &&
+           m_backend->isVisible() && m_backend->centralWidget() &&
+           !m_transitioning && !qApp->activeModalWidget()) {
+            if(m_entry->isChecked()) {
+                const QSignalBlocker blocked(m_entry);
+                m_entry->setChecked(false);
+            }
+            // Signals synchronously invoke enter(). Recheck whether it
+            // actually succeeded before persisting a successful boot.
+            m_entry->setChecked(true);
+            if(sessionActive()) {
+                QSettings settings;
+                settings.setValue(
+                    QStringLiteral("MobileStudio/bootPending"),false);
+                settings.sync();
+                return;
+            }
+        }
+        if(remaining>0) {
+            QTimer::singleShot(300,this,[this,remaining]() {
+                attemptAutomaticStartup(remaining-1);
+            });
+            return;
+        }
+        // Bounded fallback: preserve Krita's original canvas and
+        // expose Settings > Mobile Studio for a manual retry.
+        QSettings settings;
+        settings.setValue(
+            QStringLiteral("MobileStudio/startDirectly"),false);
+        settings.setValue(
+            QStringLiteral("MobileStudio/bootPending"),false);
+        settings.sync();
+        qWarning() << "Mobile Studio: automatic entry unavailable;"
+                   << "open Settings > Mobile Studio (experimental)";
+    }
+
     bool sessionActive() const
     {
         return (m_nativePilot && m_nativePilot->active()) ||
