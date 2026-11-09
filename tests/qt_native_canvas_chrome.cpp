@@ -87,6 +87,7 @@ int main(int argc,char **argv)
     require(mobile.ownsUnmovedCanvas(),"installation changed native central widget");
     const int parentChangesAtInstall=observer.changes;
     QPointer<QToolBar> lateToolbar;
+    QPointer<QDockWidget> lateDocker;
     QPointer<QTabBar> lateTab;
     int lateTabOriginalMin=0;
     int lateTabOriginalMax=0;
@@ -148,6 +149,13 @@ int main(int argc,char **argv)
             backend.addToolBar(newToolbar);
             newToolbar->show();
             lateToolbar=newToolbar;
+            auto *newDocker=new QDockWidget(
+                QStringLiteral("New native docker"),&backend);
+            newDocker->setWidget(new QLabel(
+                QStringLiteral("New native panel"),newDocker));
+            backend.addDockWidget(Qt::RightDockWidgetArea,newDocker);
+            newDocker->show();
+            lateDocker=newDocker;
             auto *newTab=new QTabBar(canvas);
             newTab->addTab(QStringLiteral("Newly opened drawing"));
             nativeLayout->insertWidget(1,newTab);
@@ -161,6 +169,9 @@ int main(int argc,char **argv)
         if(lateToolbar)
             require(!lateToolbar->isVisible(),
                     "new Krita toolbar remained visible in mobile mode");
+        if(lateDocker)
+            require(!lateDocker->isVisible(),
+                    "new Krita docker remained visible in mobile mode");
         if(lateTab)
             require(!lateTab->isVisible() && lateTab->maximumHeight()==0,
                     "new Krita tabbar remained visible in mobile mode");
@@ -183,6 +194,9 @@ int main(int argc,char **argv)
         if(lateToolbar)
             require(lateToolbar->isVisible(),
                     "Back did not restore toolbar created during mobile mode");
+        if(lateDocker)
+            require(lateDocker->isVisible(),
+                    "Back did not restore docker created during mobile mode");
         if(lateTab)
             require(lateTab->isVisible() &&
                     lateTab->minimumHeight()==lateTabOriginalMin &&
@@ -223,7 +237,7 @@ int main(int argc,char **argv)
 
     qInfo() << "PASS: 25 chrome-only switches, identical canvas identity,"
             << "no reparenting during switches, tab and desktop restoration,"
-            << "empty-document dock recovery, late toolbar/tab restoration,"
+            << "empty-document dock recovery, late toolbar/tab/docker restoration,"
             << "synthetic document retention,"
             << "and desktop recovery when"
             << "Krita unexpectedly replaces its canvas";
