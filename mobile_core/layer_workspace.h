@@ -53,6 +53,7 @@
 #include "kis_node_manager.h"
 #include "kis_node.h"
 #include "kis_layer.h"
+#include "kis_group_layer.h"
 #include "kis_paint_layer.h"
 #include "kis_layer_properties_icons.h"
 #include "kis_image.h"
@@ -451,7 +452,7 @@ private:
         alphaLock->setCheckable(true);
         alphaLock->setChecked(paint && paint->alphaLocked());
         alphaLock->setEnabled(paint!=nullptr);
-        QAction *inheritAlpha=menu.addAction(i18n("Inherit alpha (clipping)"));
+        QAction *inheritAlpha=menu.addAction(i18n("Clip to layer below"));
         inheritAlpha->setCheckable(true);
         inheritAlpha->setChecked(layer && layer->alphaChannelDisabled());
         inheritAlpha->setEnabled(layer!=nullptr);
@@ -467,7 +468,9 @@ private:
         flatten->setEnabled(m_engine.canRun("flatten_layer"));
         menu.addSeparator();
         QAction *group=menu.addAction(i18n("Group selection"));
-        QAction *clipping=menu.addAction(i18n("Krita clipping group"));
+        QAction *clipping=menu.addAction(
+            inheritsAlpha(node)?i18n("Remove clipping"):
+                                i18n("Clip to layer below"));
         QAction *ungroup=nullptr;
         if(node->inherits("KisGroupLayer"))
             ungroup=menu.addAction(i18n("Ungroup"));
@@ -591,9 +594,9 @@ private:
                 if(auto *paint=qobject_cast<KisPaintLayer*>(node.data()))
                     setLayerProperty(node,KisLayerPropertiesIcons::alphaLocked,
                                      !paint->alphaLocked());
-            } else if(auto *layer=qobject_cast<KisLayer*>(node.data())) {
-                setLayerProperty(node,KisLayerPropertiesIcons::inheritAlpha,
-                                 !layer->alphaChannelDisabled());
+            } else if(qobject_cast<KisLayer*>(node.data())) {
+                setCompactClip(node,!inheritsAlpha(node));
+                return; // regroup asynchronously before rebuilding the UI
             }
         } else if(chosen==merge || chosen==flatten) {
             // Invoke the native Krita layer manager so group/mask
@@ -614,7 +617,8 @@ private:
         } else if(chosen==group) {
             m->createQuickGroup();
         } else if(chosen==clipping) {
-            m->createQuickClippingGroup();
+            setCompactClip(node,!inheritsAlpha(node));
+            return;
         } else if(chosen==ungroup) {
             m_engine.selectLayer(node);
             m->quickUngroup();
@@ -716,6 +720,201 @@ private:
         return node && node->inherits("KisLayer") &&
             KisLayerPropertiesIcons::nodeProperty(
                 node,KisLayerPropertiesIcons::inheritAlpha,false).toBool();
+    }
+
+    static KisNodeSP logicalParent(KisNodeSP node)
+    {
+        if(!node)return KisNodeSP();
+        KisNodeSP parent=node->parent();
+        return isCompactClipWrapper(parent)?parent->parent():parent;
+    }
+
+    static void logicalChildren(KisNodeSP parent,KisNodeList &out)
+    {
+        if(!parent)return;
+        for(KisNodeSP node=parent->firstChild();node;
+            node=node->nextSibling()) {
+            if(isCompactClipWrapper(node))logicalChildren(node,out);
+            else out.append(node);
+        }
+    }
+
+    // Clipping is UI-relative: a clipped layer attaches to the FIRST
+    // unclipped layer beneath it, even if layers have been moved. Krita
+    // requires an actual group to make inheritAlpha mean that. Preserve
+    // those native groups/undo commands and hide only our generated
+    // "[Compact Clip]" wrappers in the tile display.
+    void setCompactClip(KisNodeSP node,bool on)
+    {
+        if(m_clipBusy || !node || !node->inherits("KisLayer") ||
+           node->inherits("KisGroupLayer") || inheritsAlpha(node)==on)
+            return;
+        KisNodeSP parent=logicalParent(node);
+        if(!parent || !manager())return;
+        if(on) {
+            KisNodeList ordered;
+            logicalChildren(parent,ordered);
+            const int i=ordered.indexOf(node);
+            bool baseFound=false;
+            for(int j=i-1;j>=0;--j) {
+                KisNodeSP candidate=ordered.at(j);
+                if(candidate->inherits("KisLayer") &&
+                   !inheritsAlpha(candidate)) {
+                    baseFound=true;
+                    break;
+                }
+            }
+            if(!baseFound) {
+                QMessageBox::information(this,i18n("Clip layer"),
+                    i18n("Place an unclipped layer below this one first."));
+                return;
+            }
+        }
+        if(!setLayerProperty(node,KisLayerPropertiesIcons::inheritAlpha,on))
+            return;
+        beginCompactClipRebuild(parent,node);
+    }
+
+    void finishCompactClipRebuild()
+    {
+        auto *m=manager();
+        auto *vm=m_engine.manager();
+        if(m && vm && vm->image().toStrongRef()==m_clipImage &&
+           m_clipRestoreActive && m_clipRestoreActive->parent()) {
+            m->slotUiActivatedNode(m_clipRestoreActive);
+            m->slotSetSelectedNodes(KisNodeList{m_clipRestoreActive});
+        }
+        m_clipBusy=false;
+        m_clipImage.clear();
+        m_clipRestoreActive.clear();
+        m_clipParent.clear();
+        m_clipPendingWrappers.clear();
+        QTimer::singleShot(120,this,[this]() {reload();});
+    }
+
+    void waitCompactClipGroup(KisNodeSP base,
+                              KisNodeSP originalParent,KisNodeList cluster,
+                              int attempt)
+    {
+        if(!m_clipBusy || !m_engine.manager() ||
+           m_engine.manager()->image().toStrongRef()!=m_clipImage) {
+            finishCompactClipRebuild();
+            return;
+        }
+        KisNodeSP group=base?base->parent():KisNodeSP();
+        bool ready=group && group!=originalParent &&
+            group->parent()==originalParent &&
+            group->inherits("KisGroupLayer");
+        for(const KisNodeSP &node:cluster)
+            if(!node || node->parent()!=group)ready=false;
+        if(ready) {
+            manager()->setNodeName(
+                group,QStringLiteral("[Compact Clip] ")+base->name());
+            group->setCollapsed(false);
+            QTimer::singleShot(110,this,[this]() {
+                continueCompactClipRebuild();
+            });
+        } else if(attempt<35) {
+            QTimer::singleShot(100,this,[this,base,originalParent,cluster,attempt]() {
+                waitCompactClipGroup(base,originalParent,cluster,attempt+1);
+            });
+        } else {
+            qWarning() << "Mobile Studio: compact clip group creation timed out";
+            finishCompactClipRebuild();
+        }
+    }
+
+    void continueCompactClipRebuild()
+    {
+        auto *vm=m_engine.manager();
+        auto *m=manager();
+        if(!m_clipBusy || !m || !vm ||
+           vm->image().toStrongRef()!=m_clipImage) {
+            finishCompactClipRebuild();
+            return;
+        }
+        KisNodeSP parent=m_clipParent;
+        if(!parent) {
+            finishCompactClipRebuild();
+            return;
+        }
+        KisNodeList ordered;
+        for(KisNodeSP node=parent->firstChild();node;
+            node=node->nextSibling())ordered.append(node);
+        for(int i=0;i<ordered.size();) {
+            KisNodeSP base=ordered.at(i);
+            if(isCompactClipWrapper(base) || inheritsAlpha(base) ||
+               !base->inherits("KisLayer")){++i;continue;}
+            KisNodeList cluster{base};
+            int j=i+1;
+            while(j<ordered.size() && inheritsAlpha(ordered.at(j))) {
+                cluster.append(ordered.at(j));++j;
+            }
+            if(cluster.size()>1 &&
+               m->canMoveLayers(cluster,false)) {
+                m->slotUiActivatedNode(base);
+                m->slotSetSelectedNodes(cluster);
+                m->createQuickGroup();
+                QTimer::singleShot(100,this,[this,base,parent,cluster]() {
+                    waitCompactClipGroup(base,parent,cluster,0);
+                });
+                return;
+            }
+            i=j;
+        }
+        finishCompactClipRebuild();
+    }
+
+    void waitCompactClipUngroup(int attempt)
+    {
+        if(!m_clipBusy || !m_engine.manager() ||
+           m_engine.manager()->image().toStrongRef()!=m_clipImage) {
+            finishCompactClipRebuild();return;
+        }
+        bool pending=false;
+        for(const KisNodeSP &node:m_clipPendingWrappers)
+            if(node && node->parent())pending=true;
+        if(pending && attempt<35) {
+            QTimer::singleShot(100,this,[this,attempt]() {
+                waitCompactClipUngroup(attempt+1);
+            });
+        } else if(pending) {
+            qWarning() << "Mobile Studio: compact clip ungroup timed out";
+            finishCompactClipRebuild();
+        } else {
+            // Krita's layer juggler has finished its asynchronous work.
+            // Now regroup the current bottom-to-top alpha runs.
+            continueCompactClipRebuild();
+        }
+    }
+
+    void beginCompactClipRebuild(KisNodeSP parent,KisNodeSP restore)
+    {
+        auto *m=manager();
+        auto *vm=m_engine.manager();
+        if(m_clipBusy || !m || !vm || !parent)return;
+        m_clipImage=vm->image().toStrongRef();
+        if(!m_clipImage)return;
+        m_clipBusy=true;
+        m_clipParent=parent;
+        m_clipRestoreActive=restore;
+        m_clipPendingWrappers.clear();
+        std::function<void(KisNodeSP)> ungroup=[&](KisNodeSP container) {
+            for(KisNodeSP child=container->firstChild();child;
+                child=child->nextSibling()) {
+                if(isCompactClipWrapper(child)) {
+                    ungroup(child);
+                    m_clipPendingWrappers.append(child);
+                }
+            }
+        };
+        ungroup(parent);
+        for(const KisNodeSP &wrapper:m_clipPendingWrappers) {
+            m->slotUiActivatedNode(wrapper);
+            m->slotSetSelectedNodes(KisNodeList{wrapper});
+            m->quickUngroup();
+        }
+        QTimer::singleShot(100,this,[this]() {waitCompactClipUngroup(0);});
     }
 
     void tapLayer(KisNodeSP node,QTreeWidgetItem *item)
@@ -926,7 +1125,7 @@ private:
 
     void reload()
     {
-        if(m_reorderPending)return;
+        if(m_reorderPending || m_clipBusy)return;
         auto *m=manager();
         auto *view=m_engine.manager();
         if(!m || !view)return;
@@ -1016,6 +1215,11 @@ private:
     QVector<bool> m_thumbnailReady;
     KisNodeList m_selected;
     KisNodeSP m_active;
+    bool m_clipBusy=false;
+    KisImageSP m_clipImage;
+    KisNodeSP m_clipParent;
+    KisNodeSP m_clipRestoreActive;
+    KisNodeList m_clipPendingWrappers;
     QString m_signature;
     bool m_reorderPending=false;
 };
