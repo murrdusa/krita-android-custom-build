@@ -6,7 +6,7 @@
  * Mobile command services no longer need a KisMainWindow instance.
  */
 #pragma once
-#ifdef Q_OS_ANDROID
+#if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
 #include <QAction>
 #include <QList>
 #include <QString>
