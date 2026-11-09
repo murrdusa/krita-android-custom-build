@@ -24,10 +24,15 @@ Switch only the mobile chrome around it.
   wheel, menu browser, and finger-pressure calibration. It uses
   `MobileEngineBridge` and the same Krita native actions rather than
   reproducing any painting or document model.
-- The stationary pilot is **source-compiled but NOT yet connected to the
-  normal Mobile Studio launch action**. The existing mobile presentation
-  and persistent-host option remain unchanged, as does the full-range
-  finger contact-area pressure calibration.
+- The stationary pilot is now a **separate opt-in preview**:
+  `MobileStudio/nativeDockCanvasV1=false` by default. Enable it under
+  Mobile Studio **More → Experimental stationary canvas UI (next
+  restart)**, then restart Krita. The launcher selects the native
+  dock path only after restart. The older persistent-host option and
+  finger contact-area pressure calibration remain independent.
+- This is still **not the default** and requires device validation.
+  The native canvas is never moved even on the first entry; all
+  painting, layers and documents continue to use Krita's engine.
 - `tests/qt_native_canvas_chrome.cpp` exercises **25 enter/Back cycles**
   without reparenting, including toggling a layers dock, tab restoration,
   mobile dock cleanup and an unexpected native central widget replacement.
@@ -36,20 +41,20 @@ Switch only the mobile chrome around it.
 
 ## Remaining integration milestones
 
-1. Confirm Qt5 Android build compiles the pilot headers and verify
-   offscreen Qt tests. Correct any compile/runtime issues before making
-   a user-facing toggle.
-2. Refine native-host quick/brush/side-dock sizing in portrait/folded
+1. Confirm Qt5 Android build compiles the launcher integration and verify
+   offscreen Qt tests. Correct any compile/runtime issues before claiming
+   the optional path is usable on a phone.
+2. Test the separate opt-in mode with **disposable artwork** only. Enable
+   the new checkbox in Mobile Studio's More menu, restart Krita, enter
+   the new mode from the existing launcher, make a stroke, switch Back
+   and reenter. Confirm the document is not recreated and the canvas
+   remains a child of the same QMainWindow.
+3. Refine native-host quick/brush/side-dock sizing in portrait/folded
    layouts, accessibility, and modal menu behavior. Keep native Krita
    document Save / Discard / Cancel as the only close implementation.
-3. Add a separate **opt-in no-reparent mode** to the MobileAppController
-   with safe startup fallback. Do not change the existing default until
-   on-device evidence shows native EGL and touch/stylus painting survive
-   repeated mode switches.
 4. Test real brush strokes, pen pressure, finger-pressure proxy, canvas
    transformations, undo/redo, layers/groups, document switching, save,
-   open, close, orientation changes, and interruption/resume. Check that
-   no canvas object is constructed or deleted in a mode transition.
+   open, close, orientation changes, and interruption/resume.
 5. Promote the no-reparent mode once it reaches functional parity, then
    remove the older transfer paths only after a tested migration.
 
@@ -60,6 +65,8 @@ on initial entry. The new dock architecture avoids even that first move.
 
 A successful C++/Android compile alone does not prove mobile OpenGL
 rendering, correct screen geometry, touch routing, or reliable device
-behavior. This pilot remains disabled until there is on-device coverage.
+behavior. The new mode is opt-in and disabled by default. If an Android
+test exposes broken dock sizing or gestures, switch it off in the pilot's
+More menu and restart Krita. Never test it first on an unsaved drawing.
 
 APK publishing remains paused via `APK-UPLOAD-REQUEST.md`.
