@@ -22,6 +22,7 @@ def main(root:Path):
     own=Path(__file__).resolve().parent
     shell=own/"mobile_core/standalone_host.h"
     session=own/"mobile_core/canvas_session.h"
+    back_policy=own/"mobile_core/android_back_policy.h"
     transfer=own/"mobile_core/canvas_transfer.h"
     native_chrome=own/"mobile_core/native_canvas_chrome.h"
     native_pilot=own/"mobile_core/native_canvas_pilot.h"
@@ -42,7 +43,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,transfer,native_chrome,native_pilot,surface,switcher,bridge,document_service,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+               (shell,session,back_policy,transfer,native_chrome,native_pilot,surface,switcher,bridge,document_service,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
                 reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
@@ -51,7 +52,7 @@ def main(root:Path):
     # Keep the mobile widgets/engine facade unaware of this legacy class,
     # so a future lightweight application host can replace it in one place.
     desktop_dependent=(document_service,command_service)
-    qt_host_components=(session,transfer,native_chrome,native_pilot,surface)
+    qt_host_components=(session,back_policy,transfer,native_chrome,native_pilot,surface)
     mobile_frontend=(shell,bridge,switcher,brush,color,layers,
                      commands,quick,mdi_identity,pressure_calibration,pressure_settings,
                      reorder,tools,documents,*qt_host_components)
@@ -196,6 +197,8 @@ def main(root:Path):
         shell.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/canvas_session.h").write_text(
         session.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/android_back_policy.h").write_text(
+        back_policy.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/canvas_transfer.h").write_text(
         transfer.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/native_canvas_chrome.h").write_text(
