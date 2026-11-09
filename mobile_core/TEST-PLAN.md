@@ -1,5 +1,33 @@
 # Mobile Studio — Android painting and mode-switch smoke test
 
+## v1.16 persistent canvas ownership vs visible mobile UI
+
+- Open a saved disposable KRA and enter the persistent-host experiment.
+  On Back, the native canvas should still be in Mobile Studio's central
+  wrapper even though its controls are hidden. Krita's Android window
+  flash workaround must remain suppressed for that embedded widget.
+- If Compact UI was active before Mobile Studio, it should reactivate
+  after Back. The distinct `_mobileStudioPresentationActive` flag is
+  false when mobile chrome is hidden; it is not the same as the native
+  canvas transfer/ownership state.
+- Immediately reenter and repeat ten times while checking the same
+  document, layers, paint data and undo history. Repaint requests after
+  the Qt layout pass must not recreate a document or canvas widget.
+- While the default mode is active, switch the persistent-host preference
+  ON through More, then Back and reenter *without restarting*. It must
+  remain on the original default strategy during that process.
+- After a real app restart, the persistent-host preference may take
+  effect. Switch it OFF while the persistent host is already in use:
+  it must continue that strategy until another real restart, without
+  detaching or deleting the canvas mid-session.
+- Check that the independent finger contact-pressure option persists
+  across all these UI changes and that S Pen pressure is unchanged.
+  Neither setting should reset the other.
+- Test Krita's document-open and document-close dialogs from both
+  visible UI modes, including Save / Discard / Cancel and zero-document
+  welcome screens. No fabricated file operations or modal changes
+  are part of the canvas-host code.
+
 ## v1.15 opt-in persistent canvas host (no repeated canvas moves)
 
 - Keep the experimental finger contact-pressure setting unchanged. The
