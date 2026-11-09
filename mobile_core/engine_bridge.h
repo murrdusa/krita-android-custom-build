@@ -36,7 +36,7 @@ public:
         KisViewManager *manager)
         : m_manager(manager),
           m_documentsService(std::move(documentHost),
-                             std::move(viewHost),manager),
+                             std::move(viewHost)),
           m_commands(std::move(commands),manager) {}
 
     using OpenDocument=MobileDocumentService::OpenDocument;
