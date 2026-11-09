@@ -4,9 +4,10 @@
 
 - Compile the new Qt-only `MobileNativeCanvasChrome` and Android
   `MobileNativeCanvasPilot` modules with the normal Krita source patches.
-  Neither is connected to the user-facing launcher yet, so existing
-  painting, default Mobile Studio and the persistent-host experiment
-  must remain unchanged.
+  The new launcher path is **independently opt-in**, default off:
+  `MobileStudio/nativeDockCanvasV1` takes effect on the next restart.
+  With the setting off, existing painting, default Mobile Studio and
+  persistent-host behavior must remain unchanged.
 - Run `qt_native_canvas_chrome.cpp` offscreen with Qt5 Widgets. It
   executes 25 Back/reentry cycles, toggles the side layer dock, and
   asserts that the original `QMainWindow::centralWidget()` pointer
@@ -20,11 +21,18 @@
   menu browser must compile with the existing `MobileEngineBridge`.
   No duplicate painting engine, document or pressure implementation is
   permitted.
-- **Later on-device gate (before enabling any launcher toggle):**
-  verify Android native EGL drawing, S Pen and finger pressure,
+- **On-device gate (before changing the default):** use a saved
+  disposable KRA; enable the no-reparent preview through More, restart
+  Krita and verify that Back/reentry does not move the native canvas.
+  Then verify Android native EGL drawing, S Pen and finger pressure,
   multimodal document dialogs, portrait/folded dock sizing, rotation,
   repeated Back gestures, undo/redo, and save/close prompts. Track
   central canvas identity and any QWidget parent changes.
+- The pilot's More menu includes a restart-scoped opt-out. Test
+  that disabling the checkbox while painting does not change the active
+  host mid-stroke; after restart the existing transfer host should
+  return. Krita's flash-window workaround must not hide/reopen the
+  main QMainWindow during stationary-dock painting.
 - Keep automatic APK uploads off and do not promote the stationary
   implementation until behavior and feature parity are verified.
 
