@@ -102,6 +102,8 @@ jobs:
           assert "KisView.h" not in document_service
           assert '#include <QMdiArea>' not in mobile_bridge
           assert "new MobileMdiViewHostAdapter(d->mdiArea,d->viewManager)" in shell_patch
+          assert 'view_guard=own/"mobile_core/view_identity_guard.h"' in shell_patch
+          assert '(root/"libs/ui/view_identity_guard.h").write_text(' in shell_patch
           assert "closeDocumentView(activeView)" in switcher
           assert "activateDocumentView(desiredView)" in switcher
           mobile_shell = Path("mobile_core/standalone_host.h").read_text()
