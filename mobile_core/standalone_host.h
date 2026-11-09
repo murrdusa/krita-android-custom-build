@@ -481,6 +481,24 @@ private:
                 enabled);
             settings.sync();
         });
+        auto *stableHost=menu.addAction(
+            i18n("Experimental persistent canvas host (next restart)"));
+        stableHost->setCheckable(true);
+        stableHost->setChecked(QSettings().value(
+            QStringLiteral("MobileStudio/persistentCanvasHostV1"),false)
+            .toBool());
+        stableHost->setToolTip(i18n(
+            "Off by default. Keeps Krita's canvas attached when switching "
+            "between Mobile Studio and desktop controls after the first "
+            "handoff. Requires an app restart to change modes. "
+            "Experimental: save drawings before testing."));
+        connect(stableHost,&QAction::toggled,this,[](bool enabled) {
+            QSettings settings;
+            settings.setValue(
+                QStringLiteral("MobileStudio/persistentCanvasHostV1"),
+                enabled);
+            settings.sync();
+        });
         menu.addSeparator();
         auto *closeCanvas=menu.addAction(i18n("Close current canvas"));
         closeCanvas->setEnabled(m_engine.hasDocument());
