@@ -60,6 +60,7 @@
 #include "command_browser.h"
 #include "tool_browser.h"
 #include "quick_actions.h"
+#include "finger_pressure_calibration.h"
 #include "brush_workspace.h"
 #include "layer_workspace.h"
 #include "color_workspace.h"
@@ -481,6 +482,19 @@ private:
                 enabled);
             settings.sync();
         });
+        auto *fingerCalibration=menu.addAction(
+            i18n("Calibrate finger pressure (minimum / maximum)"));
+        fingerCalibration->setToolTip(i18n(
+            "Calibrate absolute finger contact sizes by touching a pad "
+            "or entering values manually. Takes effect next stroke."));
+        connect(fingerCalibration,&QAction::triggered,this,[this]() {
+            QTimer::singleShot(0,this,[this]() {
+                MobileFingerPressureCalibrationDialog calibration(this);
+                calibration.resize(qMax(320,qMin(530,width()-20)),
+                                   qMax(490,qMin(730,height()-40)));
+                calibration.exec();
+            });
+        });
         auto *stableHost=menu.addAction(
             i18n("Experimental persistent canvas host (next restart)"));
         stableHost->setCheckable(true);
@@ -562,6 +576,8 @@ private:
                         .arg(minDiameter.toDouble(),0,'f',1)
                         .arg(maxDiameter.toDouble(),0,'f',1):
                     QStringLiteral("unknown");
+                const auto calibration=MobileFingerPressureSettings::read(
+                    QSettings());
                 const QString report=QStringList({
                     QStringLiteral("Krita Mobile Studio diagnostics v1"),
                     QStringLiteral("Host: embedded Qt widget"),
@@ -590,6 +606,9 @@ private:
                         .arg(QSettings().value(
                             QStringLiteral("MobileStudio/fingerContactPressureV1"),
                             false).toBool()),
+                    QStringLiteral("Calibrated finger diameter: %1 to %2 logical px")
+                        .arg(calibration.minimum,0,'f',1)
+                        .arg(calibration.maximum,0,'f',1),
                     QStringLiteral("Last finger area data: %1")
                         .arg(fingerSignal),
                     QStringLiteral("Last finger contact diameter range: %1")
