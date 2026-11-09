@@ -82,7 +82,8 @@ int main(int argc,char **argv)
     auto *bottom=new QWidget;
     auto *bottomLayout=new QVBoxLayout(bottom);
     bottomLayout->addWidget(new QLabel(QStringLiteral("Mobile brushes and quick actions")));
-    require(mobile.install(top,bottom),"could not install mobile chrome");
+    auto *side=new QLabel(QStringLiteral("Mobile native layers"));
+    require(mobile.install(top,bottom,side),"could not install mobile chrome");
     require(mobile.ownsUnmovedCanvas(),"installation changed native central widget");
     const int parentChangesAtInstall=observer.changes;
 
@@ -104,6 +105,19 @@ int main(int argc,char **argv)
                 "desktop MDI tabs leaked into mobile mode");
         require(top->isVisible() && bottom->isVisible(),
                 "mobile docks hidden after activation");
+        require(!mobile.sidePanelVisible(),
+                "mobile layers dock should start closed");
+        require(mobile.setSidePanelVisible(true),
+                "cannot open native-host mobile layers dock");
+        QApplication::processEvents();
+        require(mobile.sidePanelVisible() && side->isVisible(),
+                "side dock failed to expose mobile layer controls");
+        require(backend.centralWidget()==originalCanvas &&
+                observer.changes==parentChangesAtInstall,
+                "opening native-host layers moved original canvas");
+        require(mobile.setSidePanelVisible(false) &&
+                !mobile.sidePanelVisible(),
+                "mobile layer dock did not close");
 
         mobile.enforceMobileChrome();
         require(mobile.deactivate(),"could not return to desktop");
@@ -122,7 +136,8 @@ int main(int argc,char **argv)
                 nativeTabs->minimumHeight()==initiallyTabMin &&
                 nativeTabs->maximumHeight()==initiallyTabMax,
                 "Back did not restore original native tab geometry");
-        require(!top->isVisible() && !bottom->isVisible(),
+        require(!top->isVisible() && !bottom->isVisible() &&
+                !side->isVisible(),
                 "Back left mobile controls above Krita canvas");
         require(canvas->property("syntheticDocumentRevision").toInt()==12345,
                 "Back changed synthetic drawing state");
@@ -141,7 +156,8 @@ int main(int argc,char **argv)
     QApplication::processEvents();
     require(backend.centralWidget()==replacement,
             "native-host adapter overwrote an unrelated central widget");
-    require(!top->isVisible() && !bottom->isVisible(),
+    require(!top->isVisible() && !bottom->isVisible() &&
+            !side->isVisible(),
             "mobile docks remained visible after unexpected native replacement");
     require(backend.menuBar()->isVisible()==initiallyMenu &&
             backend.statusBar()->isVisible()==initiallyStatus &&
