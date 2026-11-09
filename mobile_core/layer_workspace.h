@@ -451,6 +451,24 @@ private:
             ancestor=ancestor->parent();
         if(ancestor!=image->root())return;
 
+        // The old Compact overlay treated clipping groups as invisible.
+        // Up/Down must move in the same flat *visual* order as finger/pen
+        // dragging; moving only inside Krita's hidden clip wrapper would
+        // change a different layer relationship than the user sees.
+        KisNodeSP logical=logicalParent(node);
+        KisNodeList visual;
+        logicalChildren(logical,visual);
+        bool hasClips=inheritsAlpha(node);
+        for(const KisNodeSP &candidate:visual)
+            if(inheritsAlpha(candidate))hasClips=true;
+        if(logical!=parent || hasClips) {
+            const int index=visual.indexOf(node);
+            const int destination=index+(towardTop?1:-1);
+            if(index>=0 && destination>=0 && destination<visual.size())
+                moveCompactLayer(node,visual.at(destination),towardTop);
+            return;
+        }
+
         const auto plan=MobileNativeLayerReorderPolicy::plan(
             parent->index(node),int(parent->childCount()),towardTop);
         if(!plan.valid)return;
