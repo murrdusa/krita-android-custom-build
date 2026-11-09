@@ -222,8 +222,47 @@ public:
         layout->addLayout(maxRow);
 
         const auto initial=MobileFingerPressureSettings::read(QSettings());
+        const auto response=MobileFingerPressureSettings::readResponse(
+            QSettings());
         m_min->setValue(initial.minimum);
         m_max->setValue(initial.maximum);
+
+        auto *curveRow=new QHBoxLayout;
+        curveRow->addWidget(new QLabel(tr("Response curve"),this));
+        m_curve=new QSlider(Qt::Horizontal,this);
+        m_curve->setObjectName(QStringLiteral("fingerPressureCurveGamma"));
+        m_curve->setRange(30,300);
+        m_curve->setValue(qRound(response.gamma*100.0));
+        curveRow->addWidget(m_curve,1);
+        m_curveValue=new QLabel(this);
+        curveRow->addWidget(m_curveValue);
+        layout->addLayout(curveRow);
+        auto *stabilityRow=new QHBoxLayout;
+        stabilityRow->addWidget(new QLabel(tr("Stability"),this));
+        m_stability=new QSlider(Qt::Horizontal,this);
+        m_stability->setObjectName(QStringLiteral("fingerPressureStability"));
+        m_stability->setRange(0,100);
+        m_stability->setValue(qRound(response.stability*100.0));
+        stabilityRow->addWidget(m_stability,1);
+        m_stabilityValue=new QLabel(this);
+        stabilityRow->addWidget(m_stabilityValue);
+        layout->addLayout(stabilityRow);
+        m_useRaw=new QCheckBox(
+            tr("Prefer Android raw touch size when available"),this);
+        m_useRaw->setObjectName(QStringLiteral("fingerPressureRawAndroid"));
+        m_useRaw->setChecked(response.useRawAndroid);
+        layout->addWidget(m_useRaw);
+        auto updateControls=[this]() {
+            m_curveValue->setText(QString::number(
+                m_curve->value()/100.0,'f',2));
+            m_stabilityValue->setText(
+                QStringLiteral("%1%").arg(m_stability->value()));
+        };
+        connect(m_curve,&QSlider::valueChanged,this,
+                [updateControls](int){updateControls();});
+        connect(m_stability,&QSlider::valueChanged,this,
+                [updateControls](int){updateControls();});
+        updateControls();
 
         auto *capture=new QHBoxLayout;
         auto *captureMin=new QPushButton(tr("Capture minimum"),this);
@@ -235,6 +274,12 @@ public:
         capture->addWidget(captureMin);
         capture->addWidget(captureMax);
         layout->addLayout(capture);
+        auto *captureMedium=new QPushButton(
+            tr("Capture medium contact — fit 50% pressure"),this);
+        captureMedium->setObjectName(
+            QStringLiteral("fingerCaptureMedium"));
+        captureMedium->setMinimumHeight(42);
+        layout->addWidget(captureMedium);
 
         m_instruction=new QLabel(tr(
             "Select a calibration button, then touch the pad below. "
@@ -256,6 +301,12 @@ public:
         m_observed=new QLabel(tr("Contact reading: none yet"),this);
         m_observed->setWordWrap(true);
         layout->addWidget(m_observed);
+        m_levels=new QLabel(tr(
+            "Sensor levels: no readings yet. Touch and vary your "
+            "finger contact on the pad."),this);
+        m_levels->setObjectName(QStringLiteral("fingerPressureLevels"));
+        m_levels->setWordWrap(true);
+        layout->addWidget(m_levels);
         m_validation=new QLabel(this);
         m_validation->setWordWrap(true);
         layout->addWidget(m_validation);
@@ -274,6 +325,15 @@ public:
             settings.setValue(
                 QString::fromLatin1(MobileFingerPressureSettings::maxKey()),
                 m_max->value());
+            settings.setValue(
+                QString::fromLatin1(MobileFingerPressureSettings::curveKey()),
+                m_curve->value()/100.0);
+            settings.setValue(
+                QString::fromLatin1(MobileFingerPressureSettings::smoothingKey()),
+                m_stability->value()/100.0);
+            settings.setValue(
+                QString::fromLatin1(MobileFingerPressureSettings::rawEnabledKey()),
+                m_useRaw->isChecked());
             settings.sync();
             accept();
         });
@@ -288,6 +348,13 @@ public:
                 "Touch the pad with a small/light finger contact, then lift "
                 "your finger. The measured median becomes the minimum."));
         });
+        connect(captureMedium,&QPushButton::clicked,this,[this]() {
+            m_mode=Mode::Medium;
+            m_instruction->setText(tr(
+                "Make a medium-sized contact and lift. The measured "
+                "median will adjust the response curve so this contact "
+                "maps to about 50% pressure. Capture min/max first."));
+        });
         connect(captureMax,&QPushButton::clicked,this,[this]() {
             m_mode=Mode::Maximum;
             m_instruction->setText(tr(
@@ -296,11 +363,19 @@ public:
         });
 
         m_pad->onMeasured=[this](qreal diameter) {
-            m_observed->setText(tr("Live contact: %1 logical pixels; "
-                "estimated pressure: %2%")
+            m_observed->setText(tr(
+                "Live contact: %1 logical px (%2); mapped pressure: %3%")
                 .arg(diameter,0,'f',1)
+                .arg(m_pad->observedSource())
                 .arg(MobileFingerPressureSettings::mapDiameter(diameter,
-                    {m_min->value(),m_max->value()})*100.0,0,'f',0));
+                    {m_min->value(),m_max->value()},
+                    m_curve->value()/100.0)*100.0,0,'f',0));
+            m_levels->setText(tr(
+                "%1 observed samples, %2 distinct 0.25px contact levels; "
+                "overall spread %3px. More levels permit finer control.")
+                .arg(m_pad->observedSamples())
+                .arg(m_pad->distinctLevels())
+                .arg(m_pad->observedNoise(),0,'f',2));
         };
         m_pad->onCompleted=[this](qreal diameter) {
             if(diameter<1.0) {
@@ -313,16 +388,32 @@ public:
                 m_min->setValue(diameter);
             else if(m_mode==Mode::Maximum)
                 m_max->setValue(diameter);
-            else {
+            else if(m_mode==Mode::Medium) {
+                const qreal position=(diameter-m_min->value())/
+                    (m_max->value()-m_min->value());
+                if(position<=0.02 || position>=0.98) {
+                    m_observed->setText(tr(
+                        "Medium contact must fall between your captured "
+                        "minimum and maximum. Try again."));
+                    m_mode=Mode::None;
+                    return;
+                }
+                const qreal fitted=std::log(0.5)/std::log(position);
+                if(std::isfinite(fitted))
+                    m_curve->setValue(qRound(qBound(qreal(0.3),
+                        fitted,qreal(3.0))*100.0));
+            } else {
                 m_observed->setText(tr(
                     "Measured %1 px. Select Capture minimum or "
                     "Capture maximum to use it.")
                     .arg(diameter,0,'f',1));
                 return;
             }
+            const QString label=m_mode==Mode::Minimum?tr("minimum"):
+                m_mode==Mode::Maximum?tr("maximum"):
+                tr("medium / response curve");
             m_observed->setText(tr("Captured %1: %2 logical pixels.")
-                .arg(m_mode==Mode::Minimum?tr("minimum"):tr("maximum"))
-                .arg(diameter,0,'f',1));
+                .arg(label).arg(diameter,0,'f',1));
             m_mode=Mode::None;
             m_instruction->setText(tr(
                 "Capture the other end of the range, adjust the numbers "
@@ -332,7 +423,7 @@ public:
     }
 
 private:
-    enum class Mode {None,Minimum,Maximum};
+    enum class Mode {None,Minimum,Medium,Maximum};
     bool validCalibration() const {
         return MobileFingerPressureSettings::validRange(
             m_min->value(),m_max->value());
@@ -350,6 +441,12 @@ private:
     Mode m_mode=Mode::None;
     QDoubleSpinBox *m_min=nullptr;
     QDoubleSpinBox *m_max=nullptr;
+    QSlider *m_curve=nullptr;
+    QSlider *m_stability=nullptr;
+    QCheckBox *m_useRaw=nullptr;
+    QLabel *m_curveValue=nullptr;
+    QLabel *m_stabilityValue=nullptr;
+    QLabel *m_levels=nullptr;
     MobileFingerCalibrationPad *m_pad=nullptr;
     QLabel *m_instruction=nullptr;
     QLabel *m_observed=nullptr;
