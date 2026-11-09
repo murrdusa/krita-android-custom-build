@@ -13,6 +13,8 @@
 #include <QWidget>
 #include <QList>
 #include <QMdiArea>
+#include <QSharedPointer>
+#include <utility>
 #include <brushengine/kis_paintop_preset.h>
 #include "document_service.h"
 #include "command_service.h"
@@ -23,11 +25,18 @@
 
 class MobileEngineBridge final {
 public:
-    MobileEngineBridge(KisMainWindow *mainWindow,KisViewManager *manager,
-                       QMdiArea *documents=nullptr)
+    // The mobile app receives only reusable Krita services and host
+    // ports. No KisMainWindow type or desktop constructor is required.
+    // Both ports are shared because document dialogs copy this facade
+    // into deferred Qt callbacks; destroyed hosts are QPointer-guarded
+    // by the concrete adapter instead of leaving dangling pointers.
+    MobileEngineBridge(
+        QSharedPointer<MobileDocumentHostPort> documentHost,
+        QSharedPointer<MobileCommandRegistryPort> commands,
+        KisViewManager *manager,QMdiArea *documents=nullptr)
         : m_manager(manager),
-          m_documentsService(mainWindow,manager,documents),
-          m_commands(mainWindow,manager) {}
+          m_documentsService(std::move(documentHost),manager,documents),
+          m_commands(std::move(commands),manager) {}
 
     using OpenDocument=MobileDocumentService::OpenDocument;
     QVector<OpenDocument> openDocuments() const {
