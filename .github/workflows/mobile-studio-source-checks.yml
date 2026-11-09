@@ -96,8 +96,13 @@ jobs:
           assert "selected>=0" in mdi_adapter
           assert "if(candidate>=0)" in mdi_adapter
           assert "QPointer<QMdiArea> m_area" in mdi_adapter
+          assert "currentDocument() const override" in mdi_adapter
+          assert "currentDocument() const = 0;" in view_port
           assert '#include <QMdiArea>' not in document_service
           assert "m_documents" not in document_service
+          assert "m_manager" not in document_service
+          assert '#include "KisViewManager.h"' not in document_service
+          assert "m_viewHost->currentDocument()" in document_service
           assert "subWindowList(" not in document_service
           assert "KisView.h" not in document_service
           assert '#include <QMdiArea>' not in mobile_bridge
