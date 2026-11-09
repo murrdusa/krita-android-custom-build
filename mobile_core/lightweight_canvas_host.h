@@ -12,6 +12,7 @@
 #include <QEvent>
 #include <QMainWindow>
 #include <QPointer>
+#include <QStatusBar>
 #include <QWidget>
 #include "host_services.h"
 #include "native_canvas_chrome.h"
@@ -40,6 +41,9 @@ public:
                Qt::FindDirectChildrenOnly))
             delete runtime;
 #endif
+        // Restore exactly the original desktop fallback visibility.
+        if(m_desktopStatusBar)
+            m_desktopStatusBar->setVisible(m_desktopStatusWasVisible);
     }
 
     // Android must keep a SINGLE native top-level window. Embed the
@@ -51,6 +55,14 @@ public:
            parentWidget() || m_canvas || centralWidget())return false;
         setParent(desktop,Qt::Widget);
         m_embeddedParent=desktop;
+        // Do not expose the original Krita footer behind our child host.
+        // Do not create a new status bar merely to hide it.
+        if(auto *desktopStatus=desktop->findChild<QStatusBar*>(
+               QString(),Qt::FindDirectChildrenOnly)) {
+            m_desktopStatusBar=desktopStatus;
+            m_desktopStatusWasVisible=desktopStatus->isVisible();
+            desktopStatus->hide();
+        }
         setGeometry(desktop->rect());
         desktop->installEventFilter(this);
         return parentWidget()==desktop && !isWindow() &&
@@ -86,6 +98,19 @@ public:
     QSharedPointer<MobileViewHostPort> nativeViewPort() const
     {
         return m_nativeViewPort;
+    }
+
+    // The independent Krita manager attaches its rotation and zoom
+    // widgets to a QStatusBar in this very QMainWindow. Preserve
+    // those engine-owned widgets, but hide their desktop presentation.
+    // Never call statusBar() here: it would allocate a new footer.
+    bool suppressNativeStatusChrome()
+    {
+        QStatusBar *nativeStatus=findChild<QStatusBar*>(
+            QString(),Qt::FindDirectChildrenOnly);
+        if(!nativeStatus)return false;
+        nativeStatus->hide();
+        return nativeStatus->isHidden();
     }
 
     // Adopt a *newly created* painting widget once, before a mobile UI
@@ -172,6 +197,8 @@ protected:
 
 private:
     QPointer<QWidget> m_embeddedParent;
+    QPointer<QStatusBar> m_desktopStatusBar;
+    bool m_desktopStatusWasVisible=false;
     QPointer<QWidget> m_canvas;
     QSharedPointer<MobileViewHostPort> m_nativeViewPort;
     MobileHostServices m_services;

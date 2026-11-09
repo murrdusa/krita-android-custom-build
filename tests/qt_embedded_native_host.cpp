@@ -8,6 +8,7 @@
 #include <QDebug>
 #include <QMainWindow>
 #include <QPointer>
+#include <QStatusBar>
 #include <QWidget>
 #include "mobile_core/lightweight_canvas_host.h"
 
@@ -24,7 +25,11 @@ int main(int argc,char **argv)
     QWidget *original=new QWidget;
     krita.setCentralWidget(original);
     krita.show();
+    QStatusBar *desktopStatus=krita.statusBar();
+    desktopStatus->show();
     QApplication::processEvents();
+    check(desktopStatus->isVisible(),
+          "desktop status bar must start visible for this test");
 
     auto *host=new MobileLightweightCanvasHost;
     check(host->embedInExistingWindow(&krita),
@@ -32,6 +37,8 @@ int main(int argc,char **argv)
     check(!host->isWindow() && host->window()==&krita &&
           host->parentWidget()==&krita,
           "engine created a second native top-level window");
+    check(desktopStatus->isHidden(),
+          "old desktop status bar leaked behind native host");
     auto *root=host->createNativeDocumentRoot();
     check(root && root->parentWidget()==host &&
           root->window()==&krita && host->retainsOriginalCanvas(),
@@ -42,6 +49,15 @@ int main(int argc,char **argv)
     host->show();
     host->raise();
     QApplication::processEvents();
+    QStatusBar *nativeStatus=host->statusBar();
+    nativeStatus->show();
+    auto *rotation=new QWidget;
+    rotation->setObjectName(QStringLiteral("KritaRotationIndicator"));
+    nativeStatus->addWidget(rotation);
+    check(host->suppressNativeStatusChrome() && nativeStatus->isHidden(),
+          "native status footer did not disappear");
+    check(!rotation->isHidden(),
+          "hiding Qt footer destroyed its retained engine widgets");
     check(host->isVisible() && host->geometry()==krita.rect(),
           "embedded engine did not cover the existing window");
 
@@ -70,7 +86,9 @@ int main(int argc,char **argv)
     QApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
     check(guardHost.isNull() && krita.centralWidget()==original,
           "test host teardown altered the desktop canvas");
-    qInfo() << "PASS: embedded independent canvas uses one Qt native window,"
-            << "tracks rotation, preserves original Krita canvas and exits";
+    check(desktopStatus->isVisible(),
+          "original desktop status bar did not return after Exit");
+    qInfo() << "PASS: native footer hidden, rotation widgets retained,"
+            << "original desktop status restored on exit";
     return 0;
 }

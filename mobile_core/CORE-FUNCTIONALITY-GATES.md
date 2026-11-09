@@ -397,3 +397,17 @@ Mobile Studio controller. Krita's painting engine, resource/plugin
 registration, main Android top-level widget, native view manager,
 and document services remain intact. On the next launch after a
 crash or explicit opt-out, the full desktop shell is restored.
+
+
+## Native Qt status footer suppression (2026-11-09)
+
+Device tests of f6323df passed drawing, documents, lifecycle and fallback,
+but the independent UI still showed a Krita-style rotation/zoom/status
+footer. Source tracing confirmed KisStatusBar::setup() attaches native
+Qt QStatusBar widgets to the independent QMainWindow. The new host now
+hides this native footer after engine initialization and first view
+attachment, preserving those engine-owned controls in memory. It hides
+the underlying original desktop status bar during embedding and restores
+its previous visibility on Exit. Automated Qt tests cover the footer,
+widget ownership, canvas preservation, and fallback restoration.
+Device testing is still required to confirm the footer stays hidden.

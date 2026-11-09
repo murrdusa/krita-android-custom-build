@@ -89,6 +89,10 @@ public:
             delete window;
             return false;
         }
+        // KisStatusBar::setup() still creates the Qt footer for the
+        // independent manager. Keep it alive for engine bookkeeping.
+        if(!window->suppressNativeStatusChrome())
+            qWarning() << "Independent status footer was not found";
         stage("Connecting native Krita services");
         const MobileHostServices services=
             MobileKritaStandaloneDocumentsBootstrap::create(runtime);
@@ -264,6 +268,7 @@ public:
         stage("Showing embedded engine test canvas");
         window->show();
         window->raise();
+        window->suppressNativeStatusChrome();
         QTimer::singleShot(0,window,[alive,documents,stage,firstCanvasReady]() {
             if(!alive)return;
             stage("Creating first native Krita document and view");
@@ -277,6 +282,9 @@ public:
                                 "The existing Krita interface is unchanged."));
                 return;
             }
+            // KisStatusBar::setView() attaches the zoom control once
+            // the first native canvas is active; keep footer hidden.
+            alive->suppressNativeStatusChrome();
             stage("First native Krita canvas ready",false);
             if(firstCanvasReady)firstCanvasReady(true);
         });
