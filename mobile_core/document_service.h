@@ -103,9 +103,14 @@ public:
             return false;
         }
         KisPart::instance()->addDocument(document);
-        // Only the host port may attach a Krita native document view.
-        // Never substitute a detached mobile-owned KisView here.
-        return m_host->attachNewDocument(document);
+        // A failed host attach must not leave an orphaned, registered
+        // Krita document with no view. The host port's false result
+        // explicitly guarantees that it did not retain a native view.
+        if(!m_host->attachNewDocument(document)) {
+            KisPart::instance()->removeDocument(document);
+            return false;
+        }
+        return true;
     }
     int openFiles(QWidget *parent) const
     {
@@ -134,10 +139,18 @@ public:
     }
     bool saveCurrentDocument(bool saveAs=false) const
     {
-        const QPointer<QObject> current=m_viewHost?
-            m_viewHost->currentDocument():QPointer<QObject>();
+        if(!m_host || !m_host->available() || !m_viewHost)return false;
+        const QPointer<QObject> current=m_viewHost->currentDocument();
+        const auto views=m_viewHost->openViews();
+        const QPointer<QObject> selected=
+            MobileViewIdentityGuard::uniqueActive(views);
+        // A focus/selection change while the save dialog is opening
+        // must never redirect Save to a different document. Require one
+        // unambiguous live view for Krita's currently selected document.
+        if(!MobileViewIdentityGuard::maySave(views,selected,current))
+            return false;
         auto *document=qobject_cast<KisDocument*>(current.data());
-        if(!m_host || !m_host->available() || !document)return false;
+        if(!document)return false;
         // Native Krita save path retains its format handling,
         // render-completion checks, backups and Android file provider.
         return m_host->save(document,saveAs);

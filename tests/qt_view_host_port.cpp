@@ -70,6 +70,10 @@ int main(int argc,char **argv)
             "selected document was not retained for native save");
     require(!Guard::maySave(before,selected,&doc2),
             "deferred Save could write the wrong current document");
+    require(Guard::maySave(before,Guard::uniqueActive(before),&doc1),
+            "current Save rejected the one active matching document");
+    require(!Guard::maySave(before,Guard::uniqueActive(before),&doc2),
+            "current Save ignored an engine document switch");
     require(Guard::byIndex(before,1)==&viewB,
             "live creation-order lookup incorrect");
 
@@ -112,7 +116,9 @@ int main(int argc,char **argv)
     host.snapshots[1].active=true;
     require(!Guard::uniqueActive(host.openViews()) &&
             !Guard::safeCloseTarget(host.openViews(),&doc1) &&
-            !Guard::maySave(host.openViews(),&viewB,&doc1),
+            !Guard::maySave(host.openViews(),&viewB,&doc1) &&
+            !Guard::maySave(host.openViews(),
+                            Guard::uniqueActive(host.openViews()),&doc1),
             "ambiguous active views enabled save/close");
     host.snapshots[1].active=false;
     require(host.activateView(&viewB) && host.closeView(&viewB) &&

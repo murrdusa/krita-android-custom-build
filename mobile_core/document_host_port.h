@@ -17,6 +17,9 @@ class MobileDocumentHostPort
 public:
     virtual ~MobileDocumentHostPort() = default;
     virtual bool available() const = 0;
+    // Return true only when Krita has accepted the document and its
+    // native view. A false return must leave no retained view/ownership:
+    // the document service then removes the registered KisDocument.
     virtual bool attachNewDocument(KisDocument *document) const = 0;
     virtual bool openFile(const QString &path) const = 0;
     virtual bool save(KisDocument *document,bool saveAs) const = 0;
