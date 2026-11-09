@@ -120,6 +120,42 @@ int main(int argc,char **argv)
             "changing calibration mid-stroke changed pressure unexpectedly");
     touch(device,QEvent::TouchEnd,15,820,Qt::TouchPointReleased);
 
+    // A curved response changes real intermediate pressures while
+    // keeping calibrated 0% and 100% endpoints exact.
+    const QString curveKey=QString::fromLatin1(
+        MobileFingerPressureSettings::curveKey());
+    const QString stabilityKey=QString::fromLatin1(
+        MobileFingerPressureSettings::smoothingKey());
+    setting.setValue(curveKey,0.5);
+    setting.setValue(stabilityKey,0.75);
+    setting.setValue(minKey,8.0);
+    setting.setValue(maxKey,24.0);
+    const qreal lightCurve=touch(device,QEvent::TouchBegin,16,900,
+                                  Qt::TouchPointPressed);
+    require(qAbs(lightCurve-std::sqrt(0.5))<0.0001,
+            "sensitive gamma 0.5 did not emphasize smaller contacts");
+    setting.setValue(curveKey,2.0);
+    const qreal lockedCurve=touch(device,QEvent::TouchUpdate,16,910);
+    require(qAbs(lockedCurve-lightCurve)<0.001,
+            "mid-stroke response curve change was not isolated");
+    touch(device,QEvent::TouchEnd,16,920,Qt::TouchPointReleased);
+    const qreal firmCurve=touch(device,QEvent::TouchBegin,16,940,
+                                 Qt::TouchPointPressed);
+    require(qAbs(firmCurve-0.25)<0.0001,
+            "firm gamma 2.0 did not emphasize large contacts");
+    touch(device,QEvent::TouchEnd,16,960,Qt::TouchPointReleased);
+    const qreal fast=MobileFingerPressureSettings::adaptiveAlpha(
+        0.05,0.004,0.0,16);
+    const qreal stable=MobileFingerPressureSettings::adaptiveAlpha(
+        0.05,0.004,1.0,16);
+    require(fast>stable && stable>0,
+            "stability slider does not reduce jitter response");
+    require(MobileFingerPressureSettings::adaptiveAlpha(
+        0.9,0.004,1.0,16)>stable,
+            "adaptive smoothing did not react to large contact changes");
+    setting.setValue(curveKey,1.0);
+    setting.setValue(stabilityKey,0.5);
+
     // Restore the normal test range.
     setting.setValue(minKey,8.0);
     setting.setValue(maxKey,24.0);
@@ -129,11 +165,11 @@ int main(int argc,char **argv)
     qreal last=start;
     for(int i=0;i<12;++i) {
         qreal current=touch(device,QEvent::TouchUpdate,23,1010+10*i);
-        require(current>=last && current<=last+0.048,
-                "expansion did not increase pressure smoothly");
+        require(current>=last && current<=last+0.50,
+                "adaptive response jumped outside the permitted range");
         last=current;
     }
-    require(last>start+0.14,"finger expansion had too little response");
+    require(last>start+0.25,"adaptive response ignored real expansion");
     // Identical event samples may be queried more than once by the brush.
     const qreal repeated=touch(device,QEvent::TouchUpdate,23,1120);
     require(qAbs(repeated-last)<0.00001,
@@ -144,6 +180,8 @@ int main(int argc,char **argv)
     touch(device,QEvent::TouchEnd,10,1280,Qt::TouchPointReleased);
     require(app.property("_mobileFingerAreaLastSampleCount").toInt()>=10,
             "completed stroke did not record valid contact samples");
+    require(app.property("_mobileFingerAreaLastUniqueSteps").toInt()>=3,
+            "diagnostics did not count distinct touch contact levels");
     require(app.property("_mobileFingerAreaLastMinDiameter").toDouble()<=10,
             "contact diagnostic did not track smallest size");
     require(app.property("_mobileFingerAreaLastMaxDiameter").toDouble()>=23,
@@ -191,8 +229,8 @@ int main(int argc,char **argv)
                        Qt::TouchPointMoved,1,2,native)-native)<0.00001,
             "multitouch gesture pressure was overridden");
 
-    qInfo() << "PASS: exact full-range 0–100% thumb/pinky endpoints,"
-            << "sustained smoothed endpoint convergence, custom min/max,"
+    qInfo() << "PASS: absolute contact response gamma, adaptive smoothing,"
+            << "session-frozen settings, full-range endpoints, custom min/max,"
             << "mid-stroke calibration stability, disabled fallback,"
             << "area growth/shrink, smoothing, duplicate idempotence,"
             << "missing size, pen and multitouch safety";
