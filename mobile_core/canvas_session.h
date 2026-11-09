@@ -22,6 +22,7 @@
 #include "engine_bridge.h"
 #include "canvas_transfer.h"
 #include "native_canvas_chrome.h" // Qt-only stationary canvas UI architecture
+#include "native_canvas_pilot.h"  // Compiled prototype; not yet active
 #include "standalone_host.h"
 
 class MobileAppController final : public QObject
