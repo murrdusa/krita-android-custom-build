@@ -1,5 +1,7 @@
 # Krita Android tablet customization (experimental)
 
+> **Continuing development or starting a new chat?** First read [AGENTS.md](AGENTS.md) (working rules), [DEVELOPMENT_STATE.md](DEVELOPMENT_STATE.md) (current handoff), and [local PC build status](https://github.com/murrdusa/krita-android-custom-build/issues/1). Source commits are automatically compiled by the existing WSL watcher. Prefer the PC; do not run GitHub-hosted builds/tests for normal iterations.
+
 Custom Krita 5.3.4 ARM64 for Android, patched from KDE tag `v6.0.4`. Rebuild locally using WSL2 and Docker with `git pull --ff-only && bash local-build.sh build`.
 
 ## Current release status

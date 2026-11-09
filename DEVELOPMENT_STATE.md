@@ -1,0 +1,23 @@
+# Current development handoff — 2026-11-09
+
+Read [AGENTS.md](AGENTS.md) first. This file is updated as implementation progresses; it is **not** an instruction to repeat old work. Read GitHub `main` and the local build status for live state.
+
+## Current implementation
+
+- **Native drawing host:** `MobileLightweightCanvasHost` now launches directly as the Android top-level. Normal startup no longer creates Krita's desktop `KisMainWindow` or a second V2 wrapper window; diagnostic-only failure handling replaces the V2/V3 recovery-mode sequence. Code: `mobile_core/engine_only_bootstrap.cpp`, `engine_only_startup_policy.h`.
+- **Krita engine session:** `mobile_core/krita_engine_session.h` creates the native view manager and document/view/command ports. It uses Krita's actual brush, canvas, layers, undo, and KRA file engine; it does not recreate those engines.
+- **Independent Android install identity:** debug APK package is `org.krita.mobilestudio.debug`, launcher label **Krita Mobile Studio**. Configured by `apply_mobile_shell.py`, packaged by `build-in-krita-container.sh`. It is separate from the original Krita installation.
+- **Still not fully independent:** startup/resource/plugin/tool initialization continues to depend on Krita's `KisApplication`, and documents depend on `KisPart`. APK packaging is independent, but a new application bootstrap and tighter separation from the original desktop code remain to be implemented. External Android file intents / explicit sessions still use the legacy compatibility route.
+- **Latest verified local compile at time of this note:** revision `d0d614b8f4e3165ab862d504d165c2683404a9d0`; **SUCCESS**, ~105 seconds, reported 2026-11-09 19:55 UTC on [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1). This proves PC compilation/package creation, **not** on-device startup, installation, pressure or functionality. Check Issue #1 for a newer SHA before concluding anything.
+- **Last device-confirmed baseline:** earlier engine-only V2 worked with zero Krita desktop windows/MDI objects. New direct-host packaging/startup has not yet been confirmed by the user on Fold 6. No APK was automatically uploaded.
+
+## Immediate next milestone
+
+1. Continue isolating startup from `KisApplication` while retaining Krita's native painting/resource initialization; make cohesive code changes, not a new fallback or complex UI.
+2. Let the already-running local watcher compile automatically after code commits. Fix local failures by reading the exact revision in Issue #1 or `local/android-wsl-build` status. Work on independent tasks during the build.
+3. Request **one short Fold 6 test checklist only when it is useful** to confirm the new direct-host/package behavior: opens; stylus pressure/draw; layers/color; undo/redo; KRA save/reopen; close. Don't ask for repetitive smoke tests on every small change.
+4. After architecture is standalone enough, implement missing core features; postpone layout/polish. Design eventual UI explicitly for **finger touch on a compact phone**, not mouse/keyboard.
+
+## Existing communication with the PC
+
+The local WSL watcher is already polling GitHub and compiling commits; the companion reporter updates [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1) and commit status `local/android-wsl-build`. See [BUILD-REPORTING.md](BUILD-REPORTING.md) for details. The GitHub code repository is the **command channel** for new app revisions, not the build server. Never assume a watcher report describes HEAD without comparing commit SHAs. `APK-UPLOAD-REQUEST.md` is an opt-in upload mechanism, currently paused. No need to ask the user to run builds unless the watcher has stopped or needs a one-time reconfiguration.

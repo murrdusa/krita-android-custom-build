@@ -1,28 +1,9 @@
 name: Mobile Studio source safety checks
 
 # Source-only validation: never builds or publishes Android APKs.
+# PC WSL build watcher is the normal compiler/test runner.
+# GitHub-hosted validation is opt-in only when the PC is unavailable.
 on:
-  push:
-    paths:
-      - "apk_size_report.py"
-      - "krita_build_reporter.py"
-      - "krita_build_cache.py"
-      - "apply_mobile_shell.py"
-      - "apply_finger_contact_pressure.py"
-      - "apply_finger_raw_motion.py"
-      - "mobile_core/**"
-      - "tests/**"
-      - ".github/workflows/mobile-studio-source-checks.yml"
-  pull_request:
-    paths:
-      - "apk_size_report.py"
-      - "krita_build_reporter.py"
-      - "krita_build_cache.py"
-      - "apply_mobile_shell.py"
-      - "apply_finger_contact_pressure.py"
-      - "apply_finger_raw_motion.py"
-      - "mobile_core/**"
-      - "tests/**"
   workflow_dispatch:
 
 permissions:
