@@ -1,5 +1,36 @@
 # Mobile Studio — Android painting and mode-switch smoke test
 
+## v1.24 Android Back safety and opt-in raw touch gating
+
+- In both normal Mobile Studio and the opt-in stationary-canvas mode,
+  open the Layers panel and press **Android system Back** (hardware or
+  gesture). It should close the panel without changing the canvas or
+  document. A second Back should collapse the color wheel if expanded,
+  and another Back should switch to Krita's native interface. The
+  explicit top Back button still switches directly.
+- From a document Save/Discard/Cancel modal dialog, Android system Back
+  must stay with the **dialog**, not leave Mobile Studio or discard
+  unsaved artwork. Qt popup menus must likewise receive their own Back.
+  Krita's Escape key must continue cancelling normal painting tools.
+- Press and hold Android Back: auto-repeat and KeyRelease must never
+  trigger repeated Mobile Studio transitions.
+- Focus a brush, layer, color, or Quick Actions button before pressing
+  Back: navigation must work with a focused child, not only with the
+  main window itself. Verify with both a Qt child-widget event and the
+  Android native window key target.
+- With experimental finger pressure off, repeatedly draw with a finger
+  and navigate menus. Android raw contact capture must remain gated
+  **off**. Enabling the option must permit raw measurements within
+  the short (200ms) cached-settings interval.
+- Draw a finger stroke, then start another stroke quickly with the
+  same Android pointer ID: its raw sizes must never be reused. Two-finger
+  pan/zoom and a cancelled touch must reset the raw-size ring buffer.
+- Verify the `qt_android_back_policy.cpp` and
+  `qt_finger_raw_bridge.cpp` tests compile and pass in Qt CI.
+  Android compilation alone does not verify actual system Back delivery.
+- Leave stationary canvas mode opt-in; do not change Krita's painting
+  engine, S Pen pressure or the APK upload pause.
+
 ## v1.23 finger-pressure sensitivity, adaptive smoothing, raw measurements
 
 - Default experimental finger pressure remains **off**. Enable it in
