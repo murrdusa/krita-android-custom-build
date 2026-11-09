@@ -185,7 +185,7 @@ jobs:
                            "KisPart::instance()->removeDocument(document)",
                            "m_runtime->attachDocument(document,m_saver)",
                            "KisDelayedSaveDialog idle(",
-                           "document->saveAs(target,targetMime,true)",
+                           "guardedDocument->saveAs(target,targetMime,true)",
                            "guardedDocument->waitForSavingToComplete()",
                            "KoFileDialog::SaveFile",
                            "dialog.filename()",
