@@ -118,6 +118,28 @@ public:
         if(!m_toolOptions) {
             auto *dock=new KoToolDocker(m_host);
             dock->setObjectName(QStringLiteral("_mobileNativeToolOptions"));
+            // Native tool widgets inherit Qt's Android palette, which
+            // may put white text into white editable fields. Limit the
+            // contrast correction to this dock, not the drawing canvas
+            // or Krita's own tool behavior.
+            dock->setStyleSheet(QStringLiteral(
+                "QDockWidget#_mobileNativeToolOptions{"
+                "background:#29323b;color:#f3f7fc;}"
+                "QDockWidget#_mobileNativeToolOptions QLineEdit,"
+                "QDockWidget#_mobileNativeToolOptions QComboBox,"
+                "QDockWidget#_mobileNativeToolOptions QSpinBox,"
+                "QDockWidget#_mobileNativeToolOptions QDoubleSpinBox{"
+                "background:#eef3f7;color:#172530;"
+                "selection-background-color:#3878a4;"
+                "selection-color:#ffffff;}"
+                "QDockWidget#_mobileNativeToolOptions QComboBox QAbstractItemView{"
+                "background:#eef3f7;color:#172530;"
+                "selection-background-color:#3878a4;"
+                "selection-color:#ffffff;}"
+                "QDockWidget#_mobileNativeToolOptions QLabel,"
+                "QDockWidget#_mobileNativeToolOptions QRadioButton,"
+                "QDockWidget#_mobileNativeToolOptions QCheckBox{"
+                "color:#f3f7fc;}"));
             dock->setAllowedAreas(Qt::LeftDockWidgetArea |
                                   Qt::RightDockWidgetArea);
             dock->setFeatures(QDockWidget::DockWidgetClosable);

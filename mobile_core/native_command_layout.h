@@ -58,8 +58,25 @@ public:
         moreButton->setPopupMode(QToolButton::InstantPopup);
         moreButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
         auto *menu=new QMenu(moreButton);
-        for(QAction *action:moreActions)
-            if(action)menu->addAction(action);
+        // Android's system palette can paint popup menu labels white
+        // against a white background. Explicitly style both regular
+        // items and submenus; no hover should be needed to read text.
+        const QString popupStyle=QStringLiteral(
+            "QMenu{background-color:#283746;color:#f3f7fc;"
+            "border:1px solid #6f90a8;padding:3px;}"
+            "QMenu::item{background:transparent;color:#f3f7fc;"
+            "padding:11px 17px;min-height:37px;}"
+            "QMenu::item:selected{background:#356c8e;color:#ffffff;}"
+            "QMenu::item:disabled{color:#a6b3c1;}"
+            "QMenu::separator{height:1px;background:#526a80;"
+            "margin:5px 8px;}");
+        menu->setStyleSheet(popupStyle);
+        for(QAction *action:moreActions) {
+            if(!action)continue;
+            if(QMenu *submenu=action->menu())
+                submenu->setStyleSheet(popupStyle);
+            menu->addAction(action);
+        }
         moreButton->setMenu(menu);
         documents->addWidget(moreButton);
 
