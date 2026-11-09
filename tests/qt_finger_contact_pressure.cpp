@@ -69,6 +69,42 @@ int main(int argc,char **argv)
             "disabled proxy changed release pressure");
 
     setting.setValue(key,true);
+    const QString minKey=QString::fromLatin1(
+        MobileFingerPressureSettings::minKey());
+    const QString maxKey=QString::fromLatin1(
+        MobileFingerPressureSettings::maxKey());
+    setting.setValue(minKey,8.0);
+    setting.setValue(maxKey,24.0);
+    const qreal pinky=touch(device,QEvent::TouchBegin,8,600,
+                            Qt::TouchPointPressed);
+    require(qAbs(pinky-0.16)<0.0001,
+            "calibrated minimum did not set initial small-finger pressure");
+    touch(device,QEvent::TouchEnd,8,620,Qt::TouchPointReleased);
+    const qreal thumb=touch(device,QEvent::TouchBegin,24,700,
+                            Qt::TouchPointPressed);
+    require(qAbs(thumb-0.96)<0.0001,
+            "calibrated maximum did not set initial large-finger pressure");
+    require(thumb>pinky+0.75,
+            "thumb and pinky incorrectly share the same initial pressure");
+    touch(device,QEvent::TouchEnd,24,720,Qt::TouchPointReleased);
+
+    // A new calibration changes the mapping for the next stroke.
+    setting.setValue(minKey,10.0);
+    setting.setValue(maxKey,30.0);
+    require(qAbs(touch(device,QEvent::TouchBegin,15,800,
+                       Qt::TouchPointPressed)-0.36)<0.0001,
+            "saved custom range not applied to initial dab");
+    setting.setValue(minKey,1.0);
+    setting.setValue(maxKey,2.0);
+    const qreal sameStroke=touch(
+        device,QEvent::TouchUpdate,15,810,Qt::TouchPointMoved);
+    require(qAbs(sameStroke-0.36)<0.001,
+            "changing calibration mid-stroke changed pressure unexpectedly");
+    touch(device,QEvent::TouchEnd,15,820,Qt::TouchPointReleased);
+
+    // Restore the normal test range.
+    setting.setValue(minKey,8.0);
+    setting.setValue(maxKey,24.0);
     const qreal start=touch(device,QEvent::TouchBegin,15,1000,
                             Qt::TouchPointPressed);
     require(start>=0.16 && start<=0.96,"initial pressure outside bounds");
@@ -94,6 +130,19 @@ int main(int argc,char **argv)
             "contact diagnostic did not track smallest size");
     require(app.property("_mobileFingerAreaLastMaxDiameter").toDouble()>=23,
             "contact diagnostic did not track largest size");
+
+    // Invalid user settings safely revert to bounded calibration.
+    setting.setValue(minKey,25.0);
+    setting.setValue(maxKey,15.0);
+    const auto fallback=MobileFingerPressureSettings::read(setting);
+    require(MobileFingerPressureSettings::validRange(
+                fallback.minimum,fallback.maximum),
+            "invalid calibration was accepted");
+    require(qAbs(fallback.minimum-8.0)<0.001 &&
+            qAbs(fallback.maximum-24.0)<0.001,
+            "invalid calibration did not use safe defaults");
+    setting.setValue(minKey,8.0);
+    setting.setValue(maxKey,24.0);
 
     // Disabling after a stroke must restore the exact native input.
     setting.setValue(key,false);
@@ -124,7 +173,9 @@ int main(int argc,char **argv)
                        Qt::TouchPointMoved,1,2,native)-native)<0.00001,
             "multitouch gesture pressure was overridden");
 
-    qInfo() << "PASS: disabled fallback, area growth/shrink, smoothing,"
-            << "duplicate idempotence, missing size, pen and multitouch safety";
+    qInfo() << "PASS: absolute thumb/pinky pressures, custom min/max,"
+            << "mid-stroke calibration stability, disabled fallback,"
+            << "area growth/shrink, smoothing, duplicate idempotence,"
+            << "missing size, pen and multitouch safety";
     return 0;
 }
