@@ -143,11 +143,20 @@ public:
         stroke.maxDiameter=qMax(stroke.maxDiameter,diameter);
         ++stroke.samples;
         const qreal error=target-stroke.smoothed;
-        if(qAbs(error)>0.015)
+        if(qAbs(error)>0.015) {
             stroke.smoothed=qBound(
                 MobileFingerPressureSettings::minPressure(),
                 stroke.smoothed+qBound(qreal(-0.18),error,qreal(0.18))*0.26,
                 MobileFingerPressureSettings::maxPressure());
+        } else if(target==MobileFingerPressureSettings::minPressure() ||
+                  target==MobileFingerPressureSettings::maxPressure()) {
+            // An EMA approaches its limit asymptotically. Once a stable
+            // finger has reached an exact calibrated endpoint, snap the
+            // remaining sub-deadband difference so 0% and 100% are both
+            // attainable within a single continuous stroke. Interior
+            // fluctuations still obey the original jitter deadband.
+            stroke.smoothed=target;
+        }
         return stroke.smoothed;
     }
 
