@@ -114,7 +114,7 @@ def main(root:Path):
            '        // An independent QMainWindow has no KisMainWindow hooks.\n        if (KisMainWindow *desktop=d->viewManager->mainWindow())\n            desktop->notifyChildViewDestroyed(this);',
            "KisView destructor desktop notification")
     vc=one(vc,
-           '        if (KisMainWindow *desktop=d->viewManager->mainWindow())\\n            desktop->notifyChildViewDestroyed(this);',
+           '        if (KisMainWindow *desktop=d->viewManager->mainWindow())\n            desktop->notifyChildViewDestroyed(this);',
            '''        if (KisMainWindow *desktop=d->viewManager->mainWindow()) {
             desktop->notifyChildViewDestroyed(this);
         }
