@@ -10,10 +10,16 @@
 - **Android document flows:** Cold and warm Android Open with / Share file intents reach the independent document service, including content URIs. Native `KisPart` / `KisDocument` provides painting, undo, saving, and KRA import/export. Normal Brushes/Layers/Color/Tools controls function with touch.
 - **Cold-start grey screen fixed on device:** the initial GL surface sometimes stayed grey until background/foreground. `267c3aa` added a *one-shot* native window re-exposure after first real canvas attachment. User confirmed it resolved the problem. Preserve that behavior.
 
+## Selection/transform functionality (new, PC compiled; device test pending)
+
+- Mobile Studio's **Tools** chooser already exposes native Krita registered tools. Added **More → Tool Options** using Krita's real `KoToolDocker` and `KoToolManager::toolOptionWidgetsChanged` signal. The panel displays native tool-specific controls for selections, transforms, fill, brush and other tools, and follows changes to the active Krita tool/canvas without restarting it. Source: `mobile_core/krita_native_workspace.h`, commit `5a6b478`. **Local PC APK build PASS.**
+- Added **More → Selection** with real Krita selection manager actions (Select All, Deselect, Reselect, Invert, Edit Selection, convert to raster/vector when registered). No new selection engine and no custom undo model. Source: `mobile_core/krita_standalone_pilot.h`, commit `8024fb8`. **Local PC APK build PASS, reported 2026-11-09 22:30 UTC.**
+- **Device gate:** on Fold 6, choose a selection tool using Tools, open More → Tool Options, verify options show and follow tool switches; draw a selection and test Selection → Deselect/Invert with undo. Check that painting/pressure still works. Only needed once for this substantive feature; compile success does not imply device behavior.
+
 ## Test status
 
 - **Last Fold 6 test: PASS** for separate native APK target at `7cf81bffcf5b84f483d0d92112c13a1e80a9f352`: app launched without grey screen, stylus drawing and pressure worked, KRA save/reopen worked, Android file opening/sharing worked.
-- **Latest locally compiled/packaged Android revision: `2123da4258137d757dea660a2a6afd450fc80f84`, SUCCESS**, reported by the WSL watcher in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1) on 2026-11-09 at 21:57 UTC. Contains Android entrypoint with no desktop fallback (commit `789b694`) and removal of obsolete startup/debug menu choices (commit `2123da4`). This revision is **PC-compiled, not separately device-tested**; no painting engine code changed.
+- **Latest locally compiled/packaged Android revision: `8024fb874d4755684d1ec12526437e64adcdfc20`, SUCCESS**, reported by WSL watcher in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1) on 2026-11-09 at 22:30 UTC. This includes real Krita Tool Options and native selection actions. **No device test yet for these new controls.**
 - Doc-only commits may not trigger another APK build. The compiled SHA above is the meaningful source baseline; always read the latest Issue #1 for newer work.
 
 ## Agreed product roadmap
@@ -22,7 +28,7 @@ Read [PRODUCT-ROADMAP.md](PRODUCT-ROADMAP.md) for approved preservation goals an
 
 ## Next work — prioritize functional development, not more architecture churn
 
-1. The decoupling milestone is sufficient to begin building functionality back up. Identify concrete missing painting operations through existing Krita engine action/tool APIs, implement them using native service ports, and validate with the local PC watcher. Keep pen/touch parity. Useful priorities include selection/transform operations, layer management, document operations, and gesture behavior; choose implementation by current code gaps, not speculative UI polish.
+1. Native selection/transform tool options and selection commands are now implemented and PC-compiled. **Next:** validate those controls on the phone when practical. Then complete selection/transform tool usability (check native tool handling and option widgets), progress to layer functionality, and keep version history for the roadmap milestone. Prefer native Krita services to implementing new drawing engines; do not redesign the UI.
 2. **Do not** spend more time on desktop startup fallback infrastructure, rebuilding Krita's paint engine, redoing the main interface, or unused desktop dependency trimming unless it blocks functionality or meaningfully improves build/runtime speed. The shipped Android target may still link Krita desktop-oriented classes in `kritaui`; that does **not** mean the original desktop application is running.
 3. PC watcher automatically compiles commits to `main`, publishes exact revision result in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1) and `local/android-wsl-build`. Never use GitHub Actions to compile when PC is available. Work on independent tasks while it runs; inspect failure issues for exact errors. APK publishing is opt-in only, currently paused.
 4. Ask for a short Fold 6 test checklist only when there is a meaningful device-only risk, new capability, or user-observable change. Keep controls finger- and pen-friendly with large targets and touch scrolling, but defer significant UI redesign until functionality is near complete.
