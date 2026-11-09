@@ -1,5 +1,35 @@
 # Mobile Studio — Android painting and mode-switch smoke test
 
+## v1.17 calibrated absolute finger pressure
+
+- Confirm the existing finger-pressure toggle remains **off by default**
+  and the separate persistent-host toggle is unaffected.
+- In Mobile Studio → More, choose **Calibrate finger pressure
+  (minimum / maximum)**. Check the 8px / 24px initial approximate
+  defaults, capture a light small contact as the minimum and a wider
+  contact as the maximum, and inspect the live diameter/pressure preview.
+- Cancel the dialog: previously saved minimum/maximum must remain
+  unchanged. Reopen, enter valid manual values and Save; reopen again to
+  confirm both persist.
+- Attempt an invalid range (minimum >= maximum): Save must be disabled.
+  With unavailable/zero contact ellipses, the capture pad must explain
+  that the user can edit values manually, not silently save 0px.
+- Enable finger pressure, paint separate thumb and pinky strokes with
+  a pressure-sensitive brush. Different **initial contact diameters**
+  must yield different first-dab pressure; changing contact during
+  a stroke should remain smoothed.
+- Recalibrate between strokes. The next stroke must use the new range;
+  an ongoing stroke must not change pressure due to a settings change.
+- Check S Pen, mouse/pen buttons, touch gestures, and two-finger pan/zoom
+  are unchanged in both UI modes. Disable the pressure toggle and confirm
+  exact Krita native input behavior returns.
+- Copy diagnostics: saved min/max must be present alongside observed
+  contact range. If Qt does not report contact dimensions, the pressure
+  proxy must fall back to native pressure without jitter.
+- Qt CI must compile and run the headless pure-input mapping test and
+  the Qt Widgets calibration-dialog persistence test. These do not
+  replace Android device testing.
+
 ## v1.16 persistent canvas ownership vs visible mobile UI
 
 - Open a saved disposable KRA and enter the persistent-host experiment.
