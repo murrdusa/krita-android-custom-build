@@ -13,6 +13,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
+#include <QPointer>
 #include <QPushButton>
 #include <QScroller>
 #include <QSize>
@@ -55,7 +56,7 @@ public:
                                QScroller::LeftMouseButtonGesture);
         layout->addWidget(items,1);
         const auto documents=engine.openDocuments();
-        int activeIndex=-1;
+        QPointer<QObject> activeView;
         for(const auto &document:documents) {
             QString text=(document.active?QStringLiteral("●  "):
                                            QStringLiteral("    "))+
@@ -66,13 +67,13 @@ public:
             item->setToolTip(document.title+
                 (document.modified?i18n(" (unsaved changes)"):QString()));
             if(document.active) {
-                if(activeIndex<0)activeIndex=document.nativeIndex;
+                if(!activeView)activeView=document.nativeView;
                 item->setBackground(QColor(49,106,140));
                 items->setCurrentItem(item);
             }
         }
-        if(activeIndex<0 && documents.size()==1)
-            activeIndex=documents.first().nativeIndex;
+        if(!activeView && documents.size()==1)
+            activeView=documents.first().nativeView;
         if(documents.isEmpty()) {
             auto *item=new QListWidgetItem(i18n("No open canvases"),items);
             item->setFlags(Qt::NoItemFlags);
@@ -91,18 +92,29 @@ public:
         auto *actions=new QHBoxLayout;
         auto *closeCurrent=new QPushButton(i18n("Close current canvas"),&dialog);
         auto *dismiss=new QPushButton(i18n("Done"),&dialog);
-        closeCurrent->setEnabled(engine.openDocuments().size()>0);
+        // Never fall back to an arbitrary native view if Qt has no
+        // unambiguous current document in a multi-document session.
+        closeCurrent->setEnabled(!activeView.isNull());
+        if(!activeView)
+            closeCurrent->setToolTip(i18n(
+                "Select a canvas first so Krita knows which to close"));
         actions->addWidget(closeCurrent,2);
         actions->addWidget(dismiss,1);
         layout->addLayout(actions);
-        int desiredIndex=-1;
+        QPointer<QObject> desiredView;
         enum Choice {None,Create,Open,CloseCurrent};
         Choice choice=None;
         QObject::connect(items,&QListWidget::itemClicked,&dialog,
                          [&](QListWidgetItem *item) {
             if(!item || !item->flags().testFlag(Qt::ItemIsEnabled))return;
-            desiredIndex=item->data(Qt::UserRole).toInt();
-            dialog.accept();
+            const int index=item->data(Qt::UserRole).toInt();
+            for(const auto &document:documents) {
+                if(document.nativeIndex==index) {
+                    desiredView=document.nativeView;
+                    break;
+                }
+            }
+            if(desiredView)dialog.accept();
         });
         QObject::connect(create,&QPushButton::clicked,&dialog,[&]() {
             choice=Create;dialog.accept();
@@ -129,15 +141,13 @@ public:
             // Save/Discard/Cancel dialog is shown above the live canvas,
             // rather than behind the document switcher.
             const MobileEngineBridge native=engine;
-            QTimer::singleShot(0,parent,[native,activeIndex]() {
-                // Use the exact view selected when this chooser opened.
-                // A hidden desktop QMainWindow may not have any current
-                // QMdiSubWindow even though Krita has a live document.
-                if(activeIndex>=0)native.closeDocument(activeIndex);
-                else native.closeActiveDocument();
+            QTimer::singleShot(0,parent,[native,activeView]() {
+                // Guarded identity: a changed MDI ordering or closed view
+                // must never redirect Close Current to a different file.
+                if(activeView)native.closeDocumentView(activeView);
             });
         }
-        else if(desiredIndex>=0)engine.activateDocument(desiredIndex);
+        else if(desiredView)engine.activateDocumentView(desiredView);
     }
 };
 #endif // Q_OS_ANDROID
