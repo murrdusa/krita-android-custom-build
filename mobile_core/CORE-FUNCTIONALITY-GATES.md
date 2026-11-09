@@ -149,6 +149,14 @@ serialization or brushes.
   type-check these engine APIs, exposing compilation problems that
   static source tests cannot find. This is not a claim that a real
   compile already passed.
+- Android compiler-only CI now reads CMake's actual
+  `compile_commands.json` and first runs a `-fsyntax-only` check
+  against `mobile_native_engine_compile_probe.cpp`, reusing the
+  genuine Android Clang flags and Krita include directories.
+  A standalone API mismatch therefore fails before the much slower
+  full `kritaui` compilation. If that preflight passes, the complete
+  native UI target is still compiled. APK packaging and upload stay
+  disabled in compile mode.
 - The opt-in stationary canvas header was found consuming hundreds of
   pixels of height on a real device. The top dock is now capped at 76
   logical pixels and its title/header widget is height-fixed; a Qt

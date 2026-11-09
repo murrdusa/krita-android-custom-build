@@ -56,6 +56,7 @@ if [[ ! -f CMakeCache.txt || "${KRITA_RECONFIGURE:-0}" == 1 ]]; then
 
 cmake \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
   -DBUILD_TESTING=OFF \
   -DBUILD_WITH_QT6=OFF \
   -DCMAKE_INSTALL_PREFIX="$KDECI_SHARED_INSTALL_PATH" \
@@ -68,8 +69,47 @@ fi
 # Shorter feedback loop for independent Krita-engine development.
 # Real Android kritaui compiler only: no Gradle package or APK artifact.
 if [[ "${KRITA_COMPILE_ONLY:-0}" == "1" ]]; then
-  echo "## Compiling real Android kritaui target (no APK packaging)"
-  cmake --build . --target kritaui --parallel "${KRITA_BUILD_JOBS:-2}"
+  echo "## Syntax-checking independent Krita engine before the full native build"
+  python3 - "$BUILDDIR/compile_commands.json" <<'PY'
+import json
+import pathlib
+import shlex
+import subprocess
+import sys
+
+database = pathlib.Path(sys.argv[1])
+if not database.is_file():
+    sys.exit(f"Missing CMake compile_commands.json: {database}")
+entries = json.loads(database.read_text())
+candidates = [
+    entry for entry in entries
+    if pathlib.Path(entry["file"]).name == "mobile_native_engine_compile_probe.cpp"
+]
+if len(candidates) != 1:
+    sys.exit(f"Expected one native engine compile probe, found {len(candidates)}")
+
+entry = candidates[0]
+argv = entry.get("arguments") or shlex.split(entry["command"])
+clean = []
+skip_next = False
+for token in argv:
+    if skip_next:
+        skip_next = False
+        continue
+    if token in ("-c", "-MD", "-MMD"):
+        continue
+    if token in ("-o", "-MF", "-MT", "-MQ"):
+        skip_next = True
+        continue
+    clean.append(token)
+clean.append("-fsyntax-only")
+print("## Compiler:", clean[0], flush=True)
+print("## Target: mobile_native_engine_compile_probe.cpp", flush=True)
+subprocess.run(clean, cwd=entry["directory"], check=True)
+print("## PASS: standalone Krita API headers type-checked", flush=True)
+PY
+  echo "## Building real Android kritaui target (no APK packaging)"
+  cmake --build . --target kritaui --parallel "${KRITA_BUILD_JOBS:-3}"
   echo "## PASS: Native Krita engine sources compiled into kritaui"
   exit 0
 fi

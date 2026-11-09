@@ -194,6 +194,10 @@ jobs:
           assert 'KRITA_COMPILE_ONLY="$COMPILE_ONLY"' in compile_workflow
           assert 'if [[ "${KRITA_COMPILE_ONLY:-0}" == "1" ]]' in compile_script
           assert "cmake --build . --target kritaui" in compile_script
+          assert "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON" in compile_script
+          assert 'mobile_native_engine_compile_probe.cpp' in compile_script
+          assert '"-fsyntax-only"' in compile_script
+          assert "Expected one native engine compile probe" in compile_script
           assert compile_script.index("cmake --build . --target kritaui") < compile_script.index("cmake --build . --target install")
           assert "Upload APK artifact when available" in compile_workflow
           assert "createNativeDocumentRoot()" in lightweight
