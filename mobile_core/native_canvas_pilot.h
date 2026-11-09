@@ -266,12 +266,14 @@ private:
             id==QStringLiteral("mobile:more");
         if(opensDialog) {
             QPointer<QObject> selectedView;
-            if(id==QStringLiteral("mobile:close")) {
+            if(id==QStringLiteral("mobile:close") ||
+               id==QStringLiteral("mobile:save") ||
+               id==QStringLiteral("mobile:save_as")) {
                 const auto documents=m_engine.openDocuments();
                 for(const auto &document:documents) {
                     if(!document.active)continue;
                     // Ambiguous current view: refuse rather than risk
-                    // closing a different modified drawing.
+                    // saving or closing a different modified drawing.
                     if(selectedView || !document.nativeView)return;
                     selectedView=document.nativeView;
                 }
@@ -283,10 +285,10 @@ private:
                     MobileDocumentWorkflow::create(m_engine,m_backend);
                 else if(id==QStringLiteral("mobile:open"))
                     MobileDocumentWorkflow::open(m_engine,m_backend);
-                else if(id==QStringLiteral("mobile:save"))
-                    MobileDocumentWorkflow::save(m_engine,m_backend);
-                else if(id==QStringLiteral("mobile:save_as"))
-                    MobileDocumentWorkflow::save(m_engine,m_backend,true);
+                else if(id==QStringLiteral("mobile:save") && selectedView)
+                    m_engine.saveDocumentView(selectedView);
+                else if(id==QStringLiteral("mobile:save_as") && selectedView)
+                    m_engine.saveDocumentView(selectedView,true);
                 else if(id==QStringLiteral("mobile:canvases"))
                     MobileDocumentSwitcher::open(m_engine,m_backend);
                 else if(id==QStringLiteral("mobile:tools"))
