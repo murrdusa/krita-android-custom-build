@@ -33,11 +33,14 @@ def main(root:Path):
     layers=own/"mobile_core/layer_workspace.h"
     commands=own/"mobile_core/command_browser.h"
     quick=own/"mobile_core/quick_actions.h"
+    pressure_calibration=own/"mobile_core/finger_pressure_calibration.h"
+    pressure_settings=own/"mobile_core/finger_pressure_settings.h"
     reorder=own/"mobile_core/touch_reorder_list.h"
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,transfer,surface,switcher,bridge,document_service,command_service,brush,color,layers,commands,quick,reorder,tools,documents)):
+               (shell,session,transfer,surface,switcher,bridge,document_service,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+                reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
     # Dependency boundary: only the backend services and temporary canvas
@@ -47,7 +50,8 @@ def main(root:Path):
     desktop_dependent=(document_service,command_service)
     qt_host_components=(session,transfer,surface)
     mobile_frontend=(shell,bridge,switcher,brush,color,layers,
-                     commands,quick,reorder,tools,documents,*qt_host_components)
+                     commands,quick,pressure_calibration,pressure_settings,
+                     reorder,tools,documents,*qt_host_components)
     for module in mobile_frontend:
         contents=module.read_text(encoding="utf-8")
         if ('#include "KisMainWindow.h"' in contents or
@@ -208,6 +212,10 @@ def main(root:Path):
         commands.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/quick_actions.h").write_text(
         quick.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/finger_pressure_calibration.h").write_text(
+        pressure_calibration.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/finger_pressure_settings.h").write_text(
+        pressure_settings.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/touch_reorder_list.h").write_text(
         reorder.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/tool_browser.h").write_text(
