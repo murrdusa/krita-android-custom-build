@@ -194,12 +194,20 @@ int main(int argc,char **argv)
             "failed attachment altered document state");
 
     for(int cycle=0;cycle<10;++cycle) {
+        if(cycle==1) {
+            // The user may change the preference in More, but it must
+            // not change ownership strategy until a fresh controller
+            // starts in the next app process.
+            QSettings().setValue("MobileStudio/persistentCanvasHostV1",true);
+        }
         TestSurface *mobile=(cycle==3)?
             static_cast<TestSurface*>(new FaultyDetachSurface):
             new TestSurface;
         require(transfer.enter(mobile),"failed to embed mobile presentation");
         QApplication::processEvents();
         require(transfer.active(),"transfer not active after entering");
+        require(!transfer.persistentHostInstalled(),
+                "host preference took effect before controller restart");
         require(backend.property("_mobileStudioCanvasTransferred").toBool() &&
                 backend.property("_mobileStudioPresentationActive").toBool(),
                 "default transfer did not set canvas/presentation flags");
@@ -273,7 +281,8 @@ int main(int argc,char **argv)
 
     // Explicit opt-in stable host: the first entry may still reparent
     // once, but every subsequent Back/enter must change only the controls.
-    // This test must not force experimental mode into the Android default.
+    // Construct a fresh controller to simulate an app restart after the
+    // user changed the preference in the prior session.
     QSettings().setValue("MobileStudio/persistentCanvasHostV1",true);
     // The independent finger-pressure prototype must never be reset when
     // switching interface implementations or destroying a UI overlay.
