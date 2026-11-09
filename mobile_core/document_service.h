@@ -17,6 +17,7 @@
 #include <QMdiArea>
 #include <QMdiSubWindow>
 #include <QPointer>
+#include <QSharedPointer>
 #include <QStandardPaths>
 #include <QString>
 #include <QVector>
@@ -27,20 +28,20 @@
 
 #include "KisDocument.h"
 #include "KisImportExportManager.h"
-#include "KisMainWindow.h"
 #include "KisPart.h"
 #include "KisView.h"
 #include "KisViewManager.h"
 #include "kis_config.h"
 #include "mdi_view_identity.h"
+#include "document_host_port.h"
 
 class MobileDocumentService final
 {
 public:
-    MobileDocumentService(KisMainWindow *mainWindow,
+    MobileDocumentService(QSharedPointer<MobileDocumentHostPort> host,
                           KisViewManager *manager,
                           QMdiArea *documents)
-        : m_mainWindow(mainWindow),m_manager(manager),
+        : m_host(std::move(host)),m_manager(manager),
           m_documents(documents) {}
 
     struct OpenDocument {
@@ -207,7 +208,8 @@ public:
     bool createCanvas(const QString &name,int width,int height,
                       int resolutionDpi,bool whiteBackground) const
     {
-        if(!m_mainWindow || width<1 || height<1 || resolutionDpi<1 ||
+        if(!m_host || !m_host->available() ||
+           width<1 || height<1 || resolutionDpi<1 ||
            qint64(width)*height>40000000LL)return false;
         const KoColorSpace *space=KoColorSpaceRegistry::instance()->rgb8();
         if(!space)return false;
@@ -225,12 +227,13 @@ public:
             return false;
         }
         KisPart::instance()->addDocument(document);
-        m_mainWindow->addViewAndNotifyLoadingCompleted(document);
-        return true;
+        // Only the host port may attach a Krita native document view.
+        // Never substitute a detached mobile-owned KisView here.
+        return m_host->attachNewDocument(document);
     }
     int openFiles(QWidget *parent) const
     {
-        if(!m_mainWindow || !parent)return 0;
+        if(!m_host || !m_host->available() || !parent)return 0;
         KoFileDialog dialog(parent,KoFileDialog::ImportFiles,
                             QStringLiteral("MobileOpenDocument"));
         dialog.setDefaultDir(QStandardPaths::writableLocation(
@@ -244,7 +247,7 @@ public:
         int successful=0;
         for(const QString &path:paths) {
             if(path.isEmpty())continue;
-            if(m_mainWindow->openDocument(path,KisMainWindow::None))
+            if(m_host->openFile(path))
                 ++successful;
             else
                 QMessageBox::warning(parent,QObject::tr("Open failed"),
@@ -255,11 +258,11 @@ public:
     }
     bool saveCurrentDocument(bool saveAs=false) const
     {
-        if(!m_mainWindow || !m_manager || !m_manager->document())return false;
+        if(!m_host || !m_host->available() ||
+           !m_manager || !m_manager->document())return false;
         // Native Krita save path retains its format handling,
         // render-completion checks, backups and Android file provider.
-        return m_mainWindow->saveDocument(m_manager->document(),
-                                    saveAs,false,false);
+        return m_host->save(m_manager->document(),saveAs);
     }
     QString activeDocumentTitle() const
     {
@@ -291,7 +294,7 @@ public:
     }
 
 private:
-    QPointer<KisMainWindow> m_mainWindow;
+    QSharedPointer<MobileDocumentHostPort> m_host;
     KisViewManager *m_manager=nullptr;  // Owned by native Krita backend
     QPointer<QMdiArea> m_documents;
 };
