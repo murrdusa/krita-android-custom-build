@@ -98,8 +98,12 @@ jobs:
           assert "m_nativeCanvas->setParent(" not in pilot
           session = Path("mobile_core/canvas_session.h").read_text()
           assert '#include "native_canvas_pilot.h"' in session
-          assert "new MobileNativeCanvasPilot" not in session
-          print("Canvas ownership, disabled stationary pilot and finger pressure invariants intact")
+          assert "new MobileNativeCanvasPilot" in session
+          assert "MobileStudio/nativeDockCanvasV1" in session
+          assert "if(m_nativeCanvasMode)" in session
+          assert "MobileStudio/nativeDockCanvasV1" in Path("mobile_core/standalone_host.h").read_text()
+          assert "_mobileStudioPresentationActive" in Path("apply_mobile_shell.py").read_text()
+          print("Canvas ownership, opt-in stationary pilot and finger pressure invariants intact")
           PY
 
   qt-canvas-host-test:
