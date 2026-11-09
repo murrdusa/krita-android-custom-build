@@ -81,7 +81,13 @@ jobs:
           assert "MobileFingerPressureSettings::mapDiameter(" in pressure_input
           assert "stroke.smoothed=target;" in pressure_input
           assert "finger_pressure_settings.h" in pressure_input
-          print("Canvas ownership and full-range optional finger pressure invariants intact")
+          native_chrome = Path("mobile_core/native_canvas_chrome.h").read_text()
+          assert "class MobileNativeCanvasChrome" in native_chrome
+          assert "m_backend->centralWidget()==m_nativeCanvas" in native_chrome
+          assert "takeCentralWidget(" not in native_chrome
+          assert "setCentralWidget(" not in native_chrome
+          assert "m_nativeCanvas->setParent(" not in native_chrome
+          print("Canvas ownership, stationary-chrome and finger pressure invariants intact")
           PY
 
   qt-canvas-host-test:
@@ -105,6 +111,16 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: /tmp/krita-canvas-transfer-smoke
+      - name: Build no-reparent mobile chrome smoke test
+        run: |
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+            tests/qt_native_canvas_chrome.cpp \
+            -o /tmp/krita-native-canvas-chrome-test \
+            $(pkg-config --cflags --libs Qt5Widgets)
+      - name: Verify 25 chrome-only mode switches without canvas movement
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /tmp/krita-native-canvas-chrome-test
       - name: Build guarded MDI view identity test
         run: |
           c++ -std=c++17 -fPIC -I. \
