@@ -88,6 +88,9 @@ jobs:
           assert "setCentralWidget(" not in native_chrome
           assert "m_nativeCanvas->setParent(" not in native_chrome
           assert "Qt::RightDockWidgetArea" in native_chrome
+          assert "captureAdditionalDesktopChrome()" in native_chrome
+          assert "captureAdditionalTabs()" in native_chrome
+          assert "setBottomPanelVisible(bool visible)" in native_chrome
           pilot = Path("mobile_core/native_canvas_pilot.h").read_text()
           for component in ("MobileNativeCanvasChrome", "MobileQuickActions",
                             "KritaMobileBrushWorkspace", "KritaMobileLayersPanel",
@@ -96,11 +99,17 @@ jobs:
           assert "setCentralWidget(" not in pilot
           assert "takeCentralWidget(" not in pilot
           assert "m_nativeCanvas->setParent(" not in pilot
+          assert "QPointer<QObject> selectedView;" in pilot
+          assert "m_engine.closeDocumentView(selectedView)" in pilot
+          assert "m_chrome.setBottomPanelVisible(has)" in pilot
+          assert 'id==QStringLiteral("mobile:commands")' in pilot
+          assert "return activeCount==1;" in quick_actions
           session = Path("mobile_core/canvas_session.h").read_text()
           assert '#include "native_canvas_pilot.h"' in session
           assert "new MobileNativeCanvasPilot" in session
           assert "MobileStudio/nativeDockCanvasV1" in session
           assert "if(m_nativeCanvasMode)" in session
+          assert "m_nativePilot && !m_nativePilot->ready()" in session
           assert "MobileStudio/nativeDockCanvasV1" in Path("mobile_core/standalone_host.h").read_text()
           assert "_mobileStudioPresentationActive" in Path("apply_mobile_shell.py").read_text()
           print("Canvas ownership, opt-in stationary pilot and finger pressure invariants intact")
