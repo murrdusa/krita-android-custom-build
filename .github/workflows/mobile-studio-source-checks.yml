@@ -56,8 +56,13 @@ jobs:
           assert "showFullScreen()" not in transfer
           assert "detachNativeCanvas(m_backend)" in transfer
           assert "bool leave()" in transfer
+          assert "m_persistentRequestedAtStartup" in transfer
+          assert 'm_backend->setProperty("_mobileStudioPresentationActive",false)' in transfer
+          assert 'm_backend->setProperty("_mobileStudioCanvasTransferred",true)' in transfer
+          assert 'property("_mobileStudioPresentationActive").toBool()' in Path("apply_mobile_shell.py").read_text()
           assert "m_transfer.leave()" in Path("mobile_core/canvas_session.h").read_text()
-          print("Canvas ownership invariants intact")
+          assert "MobileStudio/fingerContactPressureV1" in Path("mobile_core/standalone_host.h").read_text()
+          print("Canvas ownership and optional finger pressure invariants intact")
           PY
 
   qt-canvas-host-test:
