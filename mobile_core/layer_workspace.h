@@ -396,6 +396,9 @@ private:
             "QMenu::item{min-height:45px;padding:9px 14px;}"
             "QMenu::item:selected{background:#3b7394;}");
         QAction *rename=menu.addAction(i18n("Rename layer"));
+        QAction *opacityAction=menu.addAction(
+            i18n("Opacity… (%1%)").arg(
+                (int(node->opacity())*100+127)/255));
         QAction *properties=menu.addAction(i18n("Layer properties"));
         menu.addSeparator();
         QAction *duplicate=menu.addAction(i18n("Duplicate"));
@@ -433,6 +436,37 @@ private:
                     return; // Refresh only after stroke finishes.
                 }
             }
+        } else if(chosen==opacityAction) {
+            // Use Krita's native undoable node-opacity command, not
+            // direct setOpacity() or a mobile-only layer history.
+            // Guard the document identity across the Android dialog:
+            // a view switch must not modify another canvas.
+            const KisImageSP originalImage=m_engine.manager() ?
+                m_engine.manager()->image().toStrongRef() : KisImageSP();
+            if(!originalImage)return;
+            QInputDialog dialog(this);
+            dialog.setWindowTitle(i18n("Layer opacity"));
+            dialog.setLabelText(i18n("Opacity (0–100%)"));
+            dialog.setInputMode(QInputDialog::IntInput);
+            dialog.setIntRange(0,100);
+            dialog.setIntStep(1);
+            dialog.setIntValue((int(node->opacity())*100+127)/255);
+            dialog.setStyleSheet(
+                "QInputDialog{background:#283746;color:#f4f9fe;}"
+                "QLabel{color:#f4f9fe;}"
+                "QSpinBox{background:#eef3f7;color:#172530;"
+                "min-height:42px;}"
+                "QPushButton{background:#446781;color:#f4f9fe;"
+                "min-height:42px;}");
+            if(dialog.exec()!=QDialog::Accepted ||
+               m_reorderPending || !m_engine.manager() ||
+               m_engine.manager()->image().toStrongRef()!=originalImage)
+                return;
+            KisNodeSP ancestor=node;
+            while(ancestor && ancestor!=originalImage->root())
+                ancestor=ancestor->parent();
+            if(ancestor!=originalImage->root())return;
+            m->setNodeOpacity(node,(dialog.intValue()*255+50)/100);
         } else if(chosen==properties) {
             m->nodeProperties(node);
         } else if(chosen==group) {
