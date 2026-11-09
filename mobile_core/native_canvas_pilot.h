@@ -63,8 +63,14 @@ public:
         m_document=makeButton(i18n("Canvases"),header);
         m_document->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Preferred);
         QObject::connect(m_document,&QToolButton::clicked,m_document,[this]() {
-            if(m_backend)MobileDocumentSwitcher::open(m_engine,m_backend);
-            refresh();
+            // Return from the Qt button click before opening a new modal
+            // QDialog; Android otherwise can stack a native file picker
+            // below a still-dispatching toolbar event.
+            QTimer::singleShot(0,&m_refresh,[this]() {
+                if(!m_backend || !m_chrome.active())return;
+                MobileDocumentSwitcher::open(m_engine,m_backend);
+                refresh();
+            });
         });
         headerRow->addWidget(m_document,1);
         auto *layers=makeButton(i18n("Layers"),header);
@@ -210,20 +216,68 @@ private:
 
     void runQuickAction(const QString &id)
     {
-        if(!m_backend)return;
+        if(!m_backend || !m_chrome.active())return;
+
+        // Native Android dialogs must be opened after the Quick Action's
+        // QToolButton click has returned. A Close action captures the exact
+        // native QMdiSubWindow identity NOW; the view may disappear while
+        // the dialog is being created or while Qt processes a reentrant
+        // event loop. No shifting numeric MDI index fallback is allowed.
+        const bool opensDialog=
+            id==QStringLiteral("mobile:new") ||
+            id==QStringLiteral("mobile:open") ||
+            id==QStringLiteral("mobile:save") ||
+            id==QStringLiteral("mobile:save_as") ||
+            id==QStringLiteral("mobile:canvases") ||
+            id==QStringLiteral("mobile:tools") ||
+            id==QStringLiteral("mobile:commands") ||
+            id==QStringLiteral("mobile:menus") ||
+            id==QStringLiteral("mobile:close") ||
+            id==QStringLiteral("mobile:more");
+        if(opensDialog) {
+            QPointer<QObject> selectedView;
+            if(id==QStringLiteral("mobile:close")) {
+                const auto documents=m_engine.openDocuments();
+                for(const auto &document:documents) {
+                    if(!document.active)continue;
+                    // Ambiguous current view: refuse rather than risk
+                    // closing a different modified drawing.
+                    if(selectedView || !document.nativeView)return;
+                    selectedView=document.nativeView;
+                }
+                if(!selectedView)return;
+            }
+            QTimer::singleShot(0,&m_refresh,[this,id,selectedView]() {
+                if(!m_backend || !m_chrome.active())return;
+                if(id==QStringLiteral("mobile:new"))
+                    MobileDocumentWorkflow::create(m_engine,m_backend);
+                else if(id==QStringLiteral("mobile:open"))
+                    MobileDocumentWorkflow::open(m_engine,m_backend);
+                else if(id==QStringLiteral("mobile:save"))
+                    MobileDocumentWorkflow::save(m_engine,m_backend);
+                else if(id==QStringLiteral("mobile:save_as"))
+                    MobileDocumentWorkflow::save(m_engine,m_backend,true);
+                else if(id==QStringLiteral("mobile:canvases"))
+                    MobileDocumentSwitcher::open(m_engine,m_backend);
+                else if(id==QStringLiteral("mobile:tools"))
+                    MobileToolBrowser::open(m_engine,m_backend);
+                else if(id==QStringLiteral("mobile:commands") ||
+                        id==QStringLiteral("mobile:menus"))
+                    MobileCommandBrowser::open(m_engine,m_backend);
+                else if(id==QStringLiteral("mobile:more"))
+                    showMore(m_document);
+                else if(id==QStringLiteral("mobile:close") && selectedView)
+                    m_engine.closeDocumentView(selectedView);
+                refresh();
+            });
+            return;
+        }
+
         if(id.startsWith(QStringLiteral("native:"))) {
             QAction *action=m_engine.action(id.mid(7));
             if(action && action->isEnabled())action->trigger();
         } else if(id.startsWith(QStringLiteral("tool:"))) {
             m_engine.selectTool(id.mid(5));
-        } else if(id==QStringLiteral("mobile:new")) {
-            MobileDocumentWorkflow::create(m_engine,m_backend);
-        } else if(id==QStringLiteral("mobile:open")) {
-            MobileDocumentWorkflow::open(m_engine,m_backend);
-        } else if(id==QStringLiteral("mobile:save")) {
-            MobileDocumentWorkflow::save(m_engine,m_backend);
-        } else if(id==QStringLiteral("mobile:save_as")) {
-            MobileDocumentWorkflow::save(m_engine,m_backend,true);
         } else if(id==QStringLiteral("mobile:undo")) {
             m_engine.run("edit_undo");
         } else if(id==QStringLiteral("mobile:redo")) {
@@ -234,24 +288,6 @@ private:
         } else if(id==QStringLiteral("mobile:color")) {
             if(m_color && m_engine.hasDocument())
                 m_color->setVisible(!m_color->isVisible());
-        } else if(id==QStringLiteral("mobile:canvases")) {
-            MobileDocumentSwitcher::open(m_engine,m_backend);
-        } else if(id==QStringLiteral("mobile:tools")) {
-            MobileToolBrowser::open(m_engine,m_backend);
-        } else if(id==QStringLiteral("mobile:more")) {
-            showMore(m_document);
-        } else if(id==QStringLiteral("mobile:menus")) {
-            MobileCommandBrowser::open(m_engine,m_backend);
-        } else if(id==QStringLiteral("mobile:close")) {
-            // No index fallback: refuse to close unless the current
-            // native Krita view is unambiguous.
-            QPointer<QObject> selected;
-            for(const auto &document:m_engine.openDocuments()) {
-                if(!document.active)continue;
-                if(selected)return;
-                selected=document.nativeView;
-            }
-            if(selected)m_engine.closeDocumentView(selected);
         }
         refresh();
     }
