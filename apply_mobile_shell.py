@@ -1272,8 +1272,10 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
     cmake=cmake.replace(oldhash[0],
         f'set(krita5_xmlgui_hash_expected "{digest}")',1)
     # Android gets its own real native application target and entry file.
-    # The output library name stays "krita" because upstream Android's
-    # Java JNI bindings and its manifest load libkrita.so.
+    # KDE's Android deploy tool names the entry JNI shared library using
+    # the native CMake target. Keep target, library, manifest and APK
+    # packaging folder all aligned to mobile_studio. The Java package
+    # namespace stays org.krita for the existing JNI bridge.
     cmake=one(cmake,
         'set(krita_SRCS main.cc)',
         '''if(ANDROID AND QT_MAJOR_VERSION STREQUAL "5")
@@ -1296,7 +1298,6 @@ endif()''',
 elseif (WIN32)''',
         '''if (ANDROID AND QT_MAJOR_VERSION STREQUAL "5")
     kis_add_library(mobile_studio SHARED ${krita_SRCS})
-    set_target_properties(mobile_studio PROPERTIES OUTPUT_NAME "krita")
     target_link_libraries(mobile_studio PRIVATE Qt5::AndroidExtras)
 elseif (WIN32)''',
         "Native Mobile Studio Android build target")
@@ -1350,6 +1351,17 @@ install(FILES org.kde.krita.desktop''',
     # library compiles an independent app-specific translation unit.
     (root/"krita/mobile_studio_main.cc").write_text(entry,encoding="utf-8")
 
+    # The original KDE packaging script hardcodes the default CMake
+    # export directory "krita_build_apk". Our actual native app target
+    # creates "mobile_studio_build_apk" instead.
+    packagefile=root/"build-tools/ci-scripts/build-android-package.py"
+    package=packagefile.read_text(encoding="utf-8")
+    package=one(package,
+        "repackagePath = os.path.join(buildPath, 'krita_build_apk')",
+        "repackagePath = os.path.join(buildPath, 'mobile_studio_build_apk')",
+        "Use independent Android deploy/Gradle directory")
+    packagefile.write_text(package,encoding="utf-8")
+
     # Package Mobile Studio as an independently installable Android app.
     # Keep Krita's Qt/Java namespace; changing only applicationId avoids
     # rewriting the JNI bindings and Java activity class paths.
@@ -1368,6 +1380,10 @@ install(FILES org.kde.krita.desktop''',
         'android:label="Krita"\n                 android:icon=',
         'android:label="Krita Mobile Studio"\n                 android:icon=',
         "Mobile Studio application label")
+    manifest=one(manifest,
+        'android:value="krita"/>',
+        'android:value="mobile_studio"/>',
+        "Qt Android loads independent entrypoint shared library")
     manifest=one(manifest,
         'android:label="Krita"\n                  android:screenOrientation=',
         'android:label="Krita Mobile Studio"\n                  android:screenOrientation=',
