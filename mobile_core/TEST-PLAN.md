@@ -1,5 +1,34 @@
 # Mobile Studio — Android painting and mode-switch smoke test
 
+## v1.20 native retained-canvas UI architecture (disabled prototype)
+
+- Compile the new Qt-only `MobileNativeCanvasChrome` and Android
+  `MobileNativeCanvasPilot` modules with the normal Krita source patches.
+  Neither is connected to the user-facing launcher yet, so existing
+  painting, default Mobile Studio and the persistent-host experiment
+  must remain unchanged.
+- Run `qt_native_canvas_chrome.cpp` offscreen with Qt5 Widgets. It
+  executes 25 Back/reentry cycles, toggles the side layer dock, and
+  asserts that the original `QMainWindow::centralWidget()` pointer
+  and `ParentChange` count never change.
+- All native Krita toolbar, menu, status, docker and MDI tab visibility
+  must be restored on Back. In the case of an unexpected replacement
+  central widget, the adapter must hide its own docks, restore native
+  controls, refuse reentry, and **never overwrite the new widget**.
+- The pilot's top controls, existing Krita brush/eraser/blend workspace,
+  Quick Actions, layer tree, color wheel, document switcher, and native
+  menu browser must compile with the existing `MobileEngineBridge`.
+  No duplicate painting engine, document or pressure implementation is
+  permitted.
+- **Later on-device gate (before enabling any launcher toggle):**
+  verify Android native EGL drawing, S Pen and finger pressure,
+  multimodal document dialogs, portrait/folded dock sizing, rotation,
+  repeated Back gestures, undo/redo, and save/close prompts. Track
+  central canvas identity and any QWidget parent changes.
+- Keep automatic APK uploads off and do not promote the stationary
+  implementation until behavior and feature parity are verified.
+
+
 ## v1.19 guarded native canvas selection and closing
 
 - Create two or more disposable, unsaved Krita documents. Open
