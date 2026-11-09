@@ -3,8 +3,9 @@
  *
  * Lightweight Qt window host for an existing native Krita painting
  * widget. This module has no KisMainWindow, QMdiArea, or Krita UI types.
- * It is deliberately not the Android default until real Krita engine
- * view creation, Open/Save and lifecycle behavior are validated.
+ * V2 embeds this host in a plain Qt wrapper; opt-in V3 runs the same
+ * host as the sole Android top-level, without Krita desktop MDI.
+ * Painting, document persistence and lifecycle remain Krita-owned.
  */
 #pragma once
 #if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)

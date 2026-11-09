@@ -43,6 +43,16 @@ public:
     {
         if(!nativeWindow || nativeWindow->window()!=nativeWindow ||
            !nativeWindow->isVisible())return false;
+        // Opt-in V3 uses this painting host as the actual Android root.
+        // Do not reparent it into itself or create a second QMainWindow.
+        auto *directRoot=dynamic_cast<MobileLightweightCanvasHost*>(
+            nativeWindow);
+        if(directRoot && directRoot->nativeViewPort()) {
+            const bool ready=!directRoot->nativeViewPort()->
+                openViews().isEmpty();
+            if(firstCanvasReady)firstCanvasReady(ready);
+            return ready;
+        }
         // Android forbids the desktop-style second native window used
         // by the first test. A second instance instead focuses the
         // existing CHILD overlay; the engine and document views are
@@ -71,15 +81,18 @@ public:
             qWarning() << "Standalone engine checkpoint:" << name;
         };
         stage("Creating embedded Qt host");
-        auto *window=new MobileLightweightCanvasHost;
-        if(!window->embedInExistingWindow(nativeWindow)) {
+        auto *window=directRoot ? directRoot :
+            new MobileLightweightCanvasHost;
+        if(!directRoot && !window->embedInExistingWindow(nativeWindow)) {
             delete window;
             return false;
         }
-        window->setObjectName(
-            QStringLiteral("_mobileStandaloneEnginePilot"));
-        window->setWindowTitle(
-            QObject::tr("Krita native engine test"));
+        if(!directRoot) {
+            window->setObjectName(
+                QStringLiteral("_mobileStandaloneEnginePilot"));
+            window->setWindowTitle(
+                QObject::tr("Krita native engine test"));
+        }
         window->setAttribute(Qt::WA_DeleteOnClose,true);
         // In V2 the parent is a plain QMainWindow, not KisMainWindow.
         // Android keeps a single native top-level in both boot modes.
@@ -141,6 +154,14 @@ public:
         auto *engineOnlyAction=makeAction(
             "Engine-only on next launch (experimental)");
         auto *architectureAction=makeAction("Engine separation status");
+        auto *directRootAction=makeAction(
+            "Direct engine window next launch (experimental)");
+        directRootAction->setCheckable(true);
+        {
+            QSettings settings;
+            directRootAction->setChecked(
+                MobileEngineOnlyStartupPolicy::directHostEnabled(settings));
+        }
         QObject::connect(brushesAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleBrushes();});
         QObject::connect(layersAction,&QAction::triggered,window,
@@ -172,10 +193,17 @@ public:
             "without constructing KisMainWindow, desktop MDI, or dockers. "
             "An interrupted launch restores original Krita on restart."));
         QObject::connect(engineOnlyAction,&QAction::toggled,window,
-                         [nativeStartup](bool on) {
+                         [nativeStartup,directRootAction](bool on) {
             QSettings settings;
             MobileEngineOnlyStartupPolicy::setEnabled(settings,on);
             if(on)nativeStartup->setChecked(false);
+            else directRootAction->setChecked(false);
+        });
+        QObject::connect(directRootAction,&QAction::toggled,window,
+                         [engineOnlyAction](bool on) {
+            QSettings settings;
+            MobileEngineOnlyStartupPolicy::setDirectHostEnabled(settings,on);
+            if(on)engineOnlyAction->setChecked(true);
         });
         // Avoid an overflow chevron hiding the primary drawing tools.
         // Less-common operations stay in an explicit, labeled menu.
@@ -185,7 +213,8 @@ public:
             {brushesAction,layersAction,colorAction,toolsAction},
             {newAction,openAction,previousAction,nextAction,
              saveAsAction,closeAction,nativeStartup,
-             engineOnlyAction,architectureAction,exitAction})) {
+             engineOnlyAction,directRootAction,
+             architectureAction,exitAction})) {
             qWarning() << "Independent Krita command layout unavailable";
         }
 
@@ -201,12 +230,16 @@ public:
                 alive.data(),QObject::tr("Engine architecture"),
                 QObject::tr("Engine-only startup: %1\n"
                             "KisMainWindow instances: %2\n"
-                            "Desktop widget audit: %3")
+                            "Desktop widget audit: %3\n"
+                            "Direct engine root: %4")
                     .arg(engineOnly?QObject::tr("Yes"):QObject::tr("No"))
                     .arg(legacyWindows)
                     .arg(settings.value(
                         QStringLiteral("MobileStudio/nativeDesktopWidgetAudit"),
-                        QStringLiteral("Not recorded")).toString()));
+                        QStringLiteral("Not recorded")).toString())
+                    .arg(dynamic_cast<MobileLightweightCanvasHost*>(
+                        desktopNative.data())?
+                        QObject::tr("Yes"):QObject::tr("No")));
         });
 
         QObject::connect(newAction,&QAction::triggered,window,

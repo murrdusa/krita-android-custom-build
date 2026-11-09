@@ -12,21 +12,37 @@
 #include <QTimer>
 #include <QWidget>
 #include "engine_only_root.h"
+#include "lightweight_canvas_host.h"
 #include "engine_only_startup_policy.h"
 #include "krita_standalone_pilot.h"
 
 bool MobileEngineOnlyBootstrap::launch()
 {
-    auto *root=new MobileEngineOnlyRoot;
+    QSettings startupSettings;
+    const bool directHost=
+        MobileEngineOnlyStartupPolicy::directHostEnabled(startupSettings);
+    // V2 retains the tested Qt wrapper; V3 uses the painting host itself
+    // as the Android application root, eliminating the second QMainWindow.
+    QWidget *root=directHost ?
+        static_cast<QWidget*>(new MobileLightweightCanvasHost) :
+        static_cast<QWidget*>(new MobileEngineOnlyRoot);
     root->setAttribute(Qt::WA_DeleteOnClose,true);
-    root->setWindowTitle(QObject::tr("Krita Mobile Engine (experimental)"));
-    root->setCentralWidget(new QWidget(root));
+    if(directHost) {
+        root->setObjectName(QStringLiteral("_mobileEngineOnlyDirectRoot"));
+        root->setProperty("_mobileNativeEngineOnlyRoot",true);
+        root->setWindowTitle(QObject::tr("Krita Mobile Studio"));
+    } else {
+        auto *wrapper=static_cast<MobileEngineOnlyRoot*>(root);
+        wrapper->setWindowTitle(
+            QObject::tr("Krita Mobile Engine (experimental)"));
+        wrapper->setCentralWidget(new QWidget(wrapper));
+    }
     root->show();
     if(!root->isVisible()) {
         delete root;
         return false;
     }
-    QPointer<MobileEngineOnlyRoot> guardedRoot=root;
+    QPointer<QWidget> guardedRoot=root;
     QTimer::singleShot(0,root,[guardedRoot]() {
         if(!guardedRoot)return;
         const bool started=MobileKritaStandalonePilot::launch(
@@ -34,8 +50,8 @@ bool MobileEngineOnlyBootstrap::launch()
                 QSettings settings;
                 MobileEngineOnlyStartupPolicy::complete(settings,success);
                 if(!success)
-                    qWarning() << "Experimental engine-only boot failed;"
-                               << "next launch restores original Krita";
+                    qWarning() << "Independent engine boot failed;"
+                               << "next launch restores verified V2 or desktop";
             });
         if(!started) {
             QSettings settings;

@@ -584,3 +584,31 @@ desktop on the next launch, with no automatic crash loop; the user
 can manually re-enable V2 in the native menu later.
 Batch, explicit sessions and external file-intent launches are still
 routed to Krita's original startup by the existing compatibility gate.
+
+ 
+## Opt-in V3: mobile host as the Android application root
+
+The device-verified V2 mode remains the default. V2 creates a
+`MobileEngineOnlyRoot` and embeds a `MobileLightweightCanvasHost` in it,
+so two Qt `QMainWindow` instances participate despite zero Krita
+desktop windows. In V3 (`MobileStudio/directEngineHostV3`), the exact
+same native Krita engine, document ports, view manager, canvas stack
+and controls run in a single `MobileLightweightCanvasHost` root.
+
+Enable **Direct engine window next launch (experimental)** in More,
+restart, then verify **Engine separation status** reports
+`KisMainWindow instances: 0` and `Direct engine root: Yes`.
+Test drawing/pressure, undo/redo, layers, brush/color, new/open/KRA
+save/reopen, and Save/Discard/Cancel before enabling V3 by default.
+
+An interrupted V3 launch (or a reported failure) turns off the direct
+host setting and retries the verified V2 wrapper. If V2 also fails,
+the existing policy restores original desktop Krita. Explicit desktop
+opt-out disables both independent modes. External file intents,
+sessions and batch jobs retain Krita's compatibility entrypoint.
+
+This is **window-host separation**, not yet a separate APK or process
+entrypoint. Startup still depends on Krita's `KisApplication` for
+resource, brush, tool and plugin initialization and `KisPart` for
+documents. The next stage is separating that initialization path into
+an application-owned engine bootstrap after device validation.

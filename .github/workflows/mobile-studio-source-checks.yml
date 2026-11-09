@@ -311,6 +311,10 @@ jobs:
           assert 'MobileEngineOnlyStartupPolicy::complete(settings,success)' in composition
           assert 'MobileKritaStandalonePilot::launch(' in composition
           assert 'new MobileEngineOnlyRoot' in composition
+          assert 'new MobileLightweightCanvasHost' in composition
+          assert 'directHostEnabled(startupSettings)' in composition
+          assert 'root->setProperty("_mobileNativeEngineOnlyRoot",true)' in composition
+          assert 'QPointer<QWidget> guardedRoot=root' in composition
           assert '#include "KisMainWindow.h"' not in composition
           tiny=Path("mobile_core/engine_only_bootstrap.h").read_text()
           assert 'class MobileEngineOnlyBootstrap final' in tiny
@@ -319,10 +323,15 @@ jobs:
           assert '#include "KisMainWindow.h"' not in tiny
           assert 'MobileEngineOnlyStartupPolicy::setEnabled(settings,on)' in native_pilot
           assert 'dynamic_cast<MobileEngineOnlyRoot*>(nativeWindow)' in native_pilot
+          assert 'dynamic_cast<MobileLightweightCanvasHost*>' in native_pilot
+          assert '!directRoot && !window->embedInExistingWindow(nativeWindow)' in native_pilot
+          assert 'MobileEngineOnlyStartupPolicy::setDirectHostEnabled(settings,on)' in native_pilot
           assert '_mobileNativeEngineOnlyRoot' in native_pilot
           onlyPolicy=Path("mobile_core/engine_only_startup_policy.h").read_text()
           assert 'settings.value(key(),true).toBool()' in onlyPolicy
-          assert 'settings.setValue(key(),success);' in onlyPolicy
+          assert 'settings.setValue(key(),success || recoverDirectHost);' in onlyPolicy
+          assert 'settings.setValue(directHostKey(),false);' in onlyPolicy
+          assert 'settings.value(directHostKey(),false).toBool()' in onlyPolicy
           assert 'settings.setValue(QStringLiteral("MobileStudio/nativeStartupV1"),false);' in onlyPolicy
           onlyRoot=Path("mobile_core/engine_only_root.h").read_text()
           assert '#include "KisMainWindow.h"' not in onlyPolicy + onlyRoot

@@ -28,6 +28,16 @@ public:
     {
         return QStringLiteral("MobileStudio/engineOnlyBootPendingV2");
     }
+    // V3 tests this native painting host as the Android top-level.
+    // V2 remains the device-verified default until V3 passes tests.
+    static QString directHostKey()
+    {
+        return QStringLiteral("MobileStudio/directEngineHostV3");
+    }
+    static bool directHostEnabled(const QSettings &settings)
+    {
+        return settings.value(directHostKey(),false).toBool();
+    }
     static bool enabled(const QSettings &settings)
     {
         // New installations and existing V1 installations migrate to
@@ -40,6 +50,7 @@ public:
     {
         settings.setValue(key(),enabled);
         settings.setValue(pendingKey(),false);
+        if(!enabled)settings.setValue(directHostKey(),false);
         if(enabled) {
             // Only one boot mode may own the Android top-level.
             settings.setValue(QStringLiteral("MobileStudio/nativeStartupV1"),false);
@@ -47,6 +58,12 @@ public:
             settings.setValue(QStringLiteral("MobileStudio/startDirectly"),false);
             settings.setValue(QStringLiteral("MobileStudio/bootPending"),false);
         }
+        settings.sync();
+    }
+    static void setDirectHostEnabled(QSettings &settings,bool enabled)
+    {
+        if(enabled)setEnabled(settings,true);
+        settings.setValue(directHostKey(),enabled);
         settings.sync();
     }
     // Some Android share/Open intents require desktop integration until
@@ -57,8 +74,16 @@ public:
         if(!enabled(settings) || !compatibleInvocation)
             return Decision::Desktop;
         if(settings.value(pendingKey(),false).toBool()) {
-            complete(settings,false);
-            return Decision::RecoverDesktop;
+            if(directHostEnabled(settings)) {
+                // Interrupted V3 launch: retry the verified V2 wrapper,
+                // not another copy of the potentially broken direct host.
+                settings.setValue(directHostKey(),false);
+                settings.setValue(pendingKey(),false);
+                settings.sync();
+            } else {
+                complete(settings,false);
+                return Decision::RecoverDesktop;
+            }
         }
         // The old native host and compact launcher cannot race V2:
         // neither should create its own window while we boot the
@@ -73,10 +98,12 @@ public:
     }
     static void complete(QSettings &settings,bool success)
     {
+        const bool recoverDirectHost=!success && directHostEnabled(settings);
         settings.setValue(pendingKey(),false);
-        // Persist the result explicitly. After a failed launch this
-        // false overrides our new default and prevents a boot loop.
-        settings.setValue(key(),success);
+        // A V3 failure falls back to verified V2. A V2 failure still
+        // disables engine-only to restore original desktop Krita.
+        settings.setValue(key(),success || recoverDirectHost);
+        if(recoverDirectHost)settings.setValue(directHostKey(),false);
         if(!success) {
             // On failure, use Krita's complete original desktop shell.
             settings.setValue(QStringLiteral("MobileStudio/nativeStartupV1"),false);

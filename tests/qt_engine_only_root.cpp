@@ -101,6 +101,34 @@ int main(int argc,char **argv)
     Policy::complete(s,false);
     check(!Policy::enabled(s),"failed launch still enabled native boot");
 
+    // V3 is opt-in; if it crashes it must revert to known-good V2.
+    Policy::setEnabled(s,true);
+    check(!Policy::directHostEnabled(s),
+          "direct window must be opt-in");
+    Policy::setDirectHostEnabled(s,true);
+    check(Policy::enabled(s) && Policy::directHostEnabled(s),
+          "direct window preference must enable the engine");
+    check(Policy::begin(s,true)==Decision::Launch,
+          "direct host refused first launch");
+    QSettings crashedDirect(ini,QSettings::IniFormat);
+    check(Policy::begin(crashedDirect,true)==Decision::Launch &&
+          !Policy::directHostEnabled(crashedDirect) &&
+          Policy::enabled(crashedDirect) &&
+          crashedDirect.value(Policy::pendingKey()).toBool(),
+          "V3 interrupted boot must retry verified V2");
+    Policy::complete(crashedDirect,true);
+    Policy::setDirectHostEnabled(s,true);
+    check(Policy::begin(s,true)==Decision::Launch,
+          "direct host refused second launch");
+    Policy::complete(s,false);
+    check(Policy::enabled(s) && !Policy::directHostEnabled(s) &&
+          !s.value(Policy::pendingKey()).toBool(),
+          "failed direct host should preserve verified V2");
+    Policy::setDirectHostEnabled(s,true);
+    Policy::setEnabled(s,false);
+    check(!Policy::directHostEnabled(s) && !Policy::enabled(s),
+          "desktop opt-out must disable direct host");
+
     MobileEngineOnlyRoot root;
     root.setCentralWidget(new QWidget);
     root.resize(420,780);
