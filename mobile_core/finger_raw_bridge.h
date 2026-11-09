@@ -31,6 +31,17 @@ public:
         bool historical=false;
     };
 
+    // Every new Android gesture, multitouch transition or cancellation
+    // invalidates the previous single-finger contact history. Android
+    // pointer IDs can be reused immediately for the next stroke.
+    static void reset()
+    {
+        Cache &state=cache();
+        QMutexLocker locked(&state.mutex);
+        state.samples.clear();
+        state.lastPublished=0;
+    }
+
     static void record(int pointerId,quint64 uptimeMs,
                        qreal majorPixels,qreal minorPixels,qreal density,
                        bool historical)
