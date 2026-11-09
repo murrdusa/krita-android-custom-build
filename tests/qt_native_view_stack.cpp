@@ -38,6 +38,9 @@ struct ParentCounter final : QObject {
 int main(int argc,char **argv)
 {
     QApplication app(argc,argv);
+    QSharedPointer<MobileViewHostPort> retainedPort;
+    QPointer<QObject> expiredView;
+    {
     MobileLightweightCanvasHost host;
     host.resize(440,750);
     auto *root=new MobileNativeViewStack;
@@ -64,10 +67,9 @@ int main(int argc,char **argv)
     MobileHostServices services;
     services.documents=QSharedPointer<DummyDocuments>::create();
     services.commands=QSharedPointer<DummyActions>::create();
-    // Only QMainWindow owns the root QWidget. The port handle is
-    // non-owning, preventing double-deletion of the canvas.
-    services.views=QSharedPointer<MobileViewHostPort>(
-        static_cast<MobileViewHostPort*>(root),[](MobileViewHostPort*){});
+    // The port owns only a QPointer back to the QMainWindow-owned
+    // native root and safely rejects callbacks after that root dies.
+    services.views=QSharedPointer<MobileNativeViewPortAdapter>::create(root);
     services.documentRoot=root;
     require(host.attachServices(services),"could not attach view port");
     auto *top=new QWidget,*bottom=new QWidget;
@@ -115,8 +117,15 @@ int main(int argc,char **argv)
             !root->activateView(bid) && !root->closeView(bid) &&
             host.retainsOriginalCanvas(),
             "destroyed engine document left dangerous view operations");
-    qInfo() << "PASS: MDI-free multi-document stack, selected view identity,"
-            << "save guard, close cancellation, document loss,"
-            << "and twelve chrome-only canvas switches";
+    retainedPort=services.views;
+    expiredView=bid;
+    } // Destroy the real Qt host, its document root and child views.
+    require(retainedPort && retainedPort->openViews().isEmpty() &&
+            !retainedPort->currentDocument() &&
+            !retainedPort->activateView(expiredView) &&
+            !retainedPort->closeView(expiredView),
+            "view port accessed freed native host after destruction");
+    qInfo() << "PASS: MDI-free view stack, native close cancellation,"
+            << "12 no-reparent transitions, destroyed host safety";
     return 0;
 }

@@ -23,6 +23,18 @@ public:
     explicit MobileNativeViewStack(QWidget *parent=nullptr)
         : QStackedWidget(parent) {}
 
+    ~MobileNativeViewStack() override
+    {
+        // QWidget deletes child views *after* derived members are gone.
+        // Disconnect destruction observers before the Row vector dies,
+        // otherwise their destroyed() callbacks would read freed memory.
+        for(const Row &row:m_rows) {
+            QObject::disconnect(row.viewDestroyed);
+            QObject::disconnect(row.documentDestroyed);
+        }
+        m_rows.clear();
+    }
+
     // Adopt a newly constructed unparented view once. Never transfer an
     // already-active view out of an MDI or another host.
     bool adoptView(QWidget *view,QObject *document,const QString &title,
@@ -32,12 +44,19 @@ public:
            view->window()!=view || indexOf(view)>=0)return false;
         const quint64 token=++m_nextToken;
         if(addWidget(view)<0)return false;
-        m_rows.append({token,view,document,title,false,
-                       std::move(closeRequest)});
-        QObject::connect(view,&QObject::destroyed,this,
-                         [this,token]() {forgetToken(token);});
-        QObject::connect(document,&QObject::destroyed,this,
-                         [this,token]() {forgetToken(token);});
+        Row row;
+        row.token=token;
+        row.view=view;
+        row.document=document;
+        row.title=title;
+        row.closeRequest=std::move(closeRequest);
+        row.viewDestroyed=QObject::connect(
+            view,&QObject::destroyed,this,
+            [this,token]() {forgetToken(token);});
+        row.documentDestroyed=QObject::connect(
+            document,&QObject::destroyed,this,
+            [this,token]() {forgetToken(token);});
+        m_rows.append(std::move(row));
         return true;
     }
 
@@ -105,6 +124,8 @@ private:
         QString title;
         bool modified=false;
         CloseRequest closeRequest;
+        QMetaObject::Connection viewDestroyed;
+        QMetaObject::Connection documentDestroyed;
     };
 
     Row *uniqueRow(const QPointer<QObject> &identity)
@@ -134,8 +155,11 @@ private:
     {
         for(int i=0;i<m_rows.size();++i) {
             if(m_rows[i].token!=token)continue;
-            QPointer<QWidget> view=m_rows[i].view;
+            const Row removed=m_rows.at(i);
+            QPointer<QWidget> view=removed.view;
             m_rows.removeAt(i);
+            QObject::disconnect(removed.viewDestroyed);
+            QObject::disconnect(removed.documentDestroyed);
             if(view && indexOf(view.data())>=0) {
                 // Qt retains ownership until the native engine's
                 // close callback has disposed of the view.
@@ -167,5 +191,33 @@ private:
     QVector<Row> m_rows;
     quint64 m_nextToken=0;
     bool m_closing=false;
+};
+
+// A shared backend port may outlive the QMainWindow's central widget,
+// especially when Qt menus invoke deferred document commands. Never
+// hand out a no-op shared_ptr directly to the engine-owned QWidget.
+class MobileNativeViewPortAdapter final : public MobileViewHostPort
+{
+public:
+    explicit MobileNativeViewPortAdapter(MobileNativeViewStack *stack)
+        : m_stack(stack) {}
+    QVector<ViewSnapshot> openViews() const override
+    {
+        return m_stack?m_stack->openViews():QVector<ViewSnapshot>{};
+    }
+    QPointer<QObject> currentDocument() const override
+    {
+        return m_stack?m_stack->currentDocument():QPointer<QObject>{};
+    }
+    bool activateView(const QPointer<QObject> &view) const override
+    {
+        return m_stack && m_stack->activateView(view);
+    }
+    bool closeView(const QPointer<QObject> &view) const override
+    {
+        return m_stack && m_stack->closeView(view);
+    }
+private:
+    QPointer<MobileNativeViewStack> m_stack;
 };
 #endif
