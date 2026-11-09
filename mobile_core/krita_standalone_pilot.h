@@ -20,6 +20,7 @@
 #include <QWidget>
 
 #include "document_service.h"
+#include "deferred_view_command.h"
 #include "krita_standalone_documents.h"
 #include "krita_standalone_runtime.h"
 
@@ -91,7 +92,12 @@ public:
         });
         QObject::connect(openAction,&QAction::triggered,window,
                          [alive,documents]() {
-            if(alive)documents->openFiles(alive);
+            // Android native file pickers should not appear while Qt
+            // is still dispatching the initiating toolbar action.
+            if(!alive)return;
+            QTimer::singleShot(0,alive.data(),[alive,documents]() {
+                if(alive)documents->openFiles(alive.data());
+            });
         });
         // Exercise Krita's genuine image undo stack; this is not a
         // reconstructed history of mobile gestures. Read the currently
@@ -108,20 +114,37 @@ public:
                          [history](){history(false);});
         QObject::connect(redoAction,&QAction::triggered,window,
                          [history](){history(true);});
+        // Qt timer dispatch prevents native Android dialog stacking.
+        // Capture both view and document before deferring, and recheck
+        // identity before Save / Save As / Close can touch artwork.
+        auto deferViewCommand=[alive,views=services.views](
+            MobileDeferredViewCommand::Command command) {
+            return alive && MobileDeferredViewCommand::schedule(
+                alive.data(),views,std::move(command));
+        };
         QObject::connect(saveAction,&QAction::triggered,window,
-                         [alive,documents]() {
-            if(alive && !documents->saveCurrentDocument())
-                qWarning() << "Independent Krita Save canceled or rejected";
+                         [alive,documents,deferViewCommand]() {
+            deferViewCommand([alive,documents](
+                    const QPointer<QObject> &selected) {
+                if(alive && !documents->saveDocumentView(selected))
+                    qWarning() << "Independent Krita Save canceled or rejected";
+            });
         });
         QObject::connect(saveAsAction,&QAction::triggered,window,
-                         [alive,documents]() {
-            if(alive && !documents->saveCurrentDocument(true))
-                qWarning() << "Independent Krita Save As canceled or rejected";
+                         [alive,documents,deferViewCommand]() {
+            deferViewCommand([alive,documents](
+                    const QPointer<QObject> &selected) {
+                if(alive && !documents->saveDocumentView(selected,true))
+                    qWarning() << "Independent Krita Save As canceled or rejected";
+            });
         });
         QObject::connect(closeAction,&QAction::triggered,window,
-                         [alive,documents]() {
-            if(alive && !documents->closeActiveDocument())
-                qWarning() << "Independent Krita close canceled or rejected";
+                         [alive,documents,deferViewCommand]() {
+            deferViewCommand([alive,documents](
+                    const QPointer<QObject> &selected) {
+                if(alive && !documents->closeDocumentView(selected))
+                    qWarning() << "Independent Krita close canceled or rejected";
+            });
         });
 
         // The real KisCanvas2 must become visible before Qt initializes
