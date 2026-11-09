@@ -202,6 +202,54 @@ private:
     bool m_tracking=false;
 };
 
+// Visual preview of the calibration curve, not a second brush engine.
+class MobileFingerResponsePreview final : public QFrame
+{
+public:
+    explicit MobileFingerResponsePreview(QWidget *parent=nullptr)
+        : QFrame(parent)
+    {
+        setObjectName(QStringLiteral("fingerPressureResponsePreview"));
+        setMinimumHeight(92);
+        setFrameShape(QFrame::StyledPanel);
+    }
+    void setGamma(qreal gamma) {
+        m_gamma=qBound(qreal(0.3),gamma,qreal(3.0));
+        update();
+    }
+    qreal gamma() const {return m_gamma;}
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        QFrame::paintEvent(event);
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing,true);
+        const QRectF graph=rect().adjusted(22,9,-12,-17);
+        if(graph.width()<40 || graph.height()<40)return;
+        painter.setPen(QPen(QColor(130,144,157),1));
+        painter.drawLine(graph.bottomLeft(),graph.topLeft());
+        painter.drawLine(graph.bottomLeft(),graph.bottomRight());
+        painter.setPen(QPen(QColor(120,135,150,110),1,
+                            Qt::DashLine));
+        painter.drawLine(graph.bottomLeft(),graph.topRight());
+        QPolygonF line;
+        for(int i=0;i<=64;++i) {
+            const qreal x=qreal(i)/64.0;
+            const qreal p=std::pow(x,m_gamma);
+            line.append(QPointF(graph.left()+x*graph.width(),
+                graph.bottom()-p*graph.height()));
+        }
+        painter.setPen(QPen(QColor(81,192,237),2.5));
+        painter.drawPolyline(line);
+        painter.setPen(QColor(200,210,221));
+        painter.drawText(QRectF(0,0,width(),height()),
+            Qt::AlignBottom|Qt::AlignHCenter,
+            QStringLiteral("Contact size → simulated pressure"));
+    }
+private:
+    qreal m_gamma=1.0;
+};
+
 class MobileFingerPressureCalibrationDialog final : public QDialog
 {
 public:
@@ -269,6 +317,9 @@ public:
         m_curveValue=new QLabel(this);
         curveRow->addWidget(m_curveValue);
         layout->addLayout(curveRow);
+        m_preview=new MobileFingerResponsePreview(this);
+        m_preview->setGamma(m_curve->value()/100.0);
+        layout->addWidget(m_preview);
         auto *stabilityRow=new QHBoxLayout;
         stabilityRow->addWidget(new QLabel(tr("Stability"),this));
         m_stability=new QSlider(Qt::Horizontal,this);
@@ -291,7 +342,10 @@ public:
                 QStringLiteral("%1%").arg(m_stability->value()));
         };
         connect(m_curve,&QSlider::valueChanged,this,
-                [updateControls](int){updateControls();});
+                [this,updateControls](int value){
+                    updateControls();
+                    if(m_preview)m_preview->setGamma(value/100.0);
+                });
         connect(m_stability,&QSlider::valueChanged,this,
                 [updateControls](int){updateControls();});
         updateControls();
@@ -492,6 +546,7 @@ private:
     QLabel *m_curveValue=nullptr;
     QLabel *m_stabilityValue=nullptr;
     QLabel *m_levels=nullptr;
+    MobileFingerResponsePreview *m_preview=nullptr;
     MobileFingerCalibrationPad *m_pad=nullptr;
     QLabel *m_instruction=nullptr;
     QLabel *m_observed=nullptr;
