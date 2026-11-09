@@ -53,7 +53,9 @@ int main(int argc,char **argv)
 
     // A dock inside the independent host must not be mistaken for
     // one created directly by the old desktop bootstrap.
-    auto *native=new QMainWindow(mdi);
+    // The Android independent host is a child of the outer Qt window,
+    // not a child of the original desktop MDI area.
+    auto *native=new QMainWindow(&desktop);
     auto *nativeDocker=new QDockWidget(QStringLiteral("Brushes"),native);
     native->addDockWidget(Qt::BottomDockWidgetArea,nativeDocker);
     auto *nativeScroller=new QScrollArea(native);
