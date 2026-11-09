@@ -70,6 +70,23 @@ int main(int argc,char **argv)
             !s.value(MobileNativeStartupPolicy::pendingKey()).toBool(),
             "failed host launch did not revert to desktop");
 
+    // A second main window in the SAME Android process is not an
+    // interrupted process and must not clear the native opt-in.
+    MobileNativeStartupPolicy::setEnabled(s,true);
+    const Decision first=MobileNativeStartupPolicy::beginOncePerProcess(s);
+    const Decision second=MobileNativeStartupPolicy::beginOncePerProcess(s);
+    require(first==Decision::Launch && second==Decision::Launch &&
+            MobileNativeStartupPolicy::enabled(s),
+            "second same-process main window falsely activated recovery");
+    app.setProperty(MobileNativeStartupPolicy::processDecisionKey(),QVariant());
+    QSettings nextProcess(dir.filePath(QStringLiteral("native.ini")),
+                          QSettings::IniFormat);
+    require(MobileNativeStartupPolicy::beginOncePerProcess(nextProcess)==
+                Decision::RecoverDesktop &&
+            !MobileNativeStartupPolicy::enabled(nextProcess),
+            "interrupted NEXT process did not activate desktop fallback");
+    app.setProperty(MobileNativeStartupPolicy::processDecisionKey(),QVariant());
+
     MobileNativeStartupPolicy::setEnabled(s,true);
     MobileNativeStartupPolicy::setEnabled(s,false);
     require(!MobileNativeStartupPolicy::mayDeferDesktopUi(s),

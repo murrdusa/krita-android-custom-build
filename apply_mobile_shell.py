@@ -428,7 +428,7 @@ KisMainWindow * KisView::mainWindow() const''',
     // can fail. If this lightweight boot crashes, next launch sees
     // the pending marker and creates Krita's full fallback UI.
     const auto nativeBootDecision =
-        MobileNativeStartupPolicy::begin(nativeBootstrapSettings);
+        MobileNativeStartupPolicy::beginOncePerProcess(nativeBootstrapSettings);
     setProperty("_mobileNativeBootDecision",int(nativeBootDecision));
     const bool mobileNativePreferred =
         nativeBootDecision==MobileNativeStartupPolicy::Decision::Launch;

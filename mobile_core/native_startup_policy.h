@@ -10,6 +10,8 @@
 #pragma once
 #if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
 #include <QSettings>
+#include <QCoreApplication>
+#include <QVariant>
 #include <QString>
 
 class MobileNativeStartupPolicy final
@@ -52,6 +54,26 @@ public:
             settings.setValue(QStringLiteral("MobileStudio/bootPending"),false);
         }
         settings.sync();
+    }
+
+    // Android normally has one native window, but session restore may
+    // construct another KisMainWindow in the same process. A second
+    // constructor must reuse the FIRST boot decision; otherwise it
+    // mistakes the current process' pending flag for a previous crash.
+    static const char *processDecisionKey()
+    {
+        return "_mobileNativeBootDecisionOnce";
+    }
+
+    static Decision beginOncePerProcess(QSettings &settings)
+    {
+        QObject *app=QCoreApplication::instance();
+        if(!app)return begin(settings);
+        const QVariant cached=app->property(processDecisionKey());
+        if(cached.isValid())return static_cast<Decision>(cached.toInt());
+        const Decision decision=begin(settings);
+        app->setProperty(processDecisionKey(),static_cast<int>(decision));
+        return decision;
     }
 
     static Decision begin(QSettings &settings)
