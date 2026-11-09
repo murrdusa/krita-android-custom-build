@@ -32,6 +32,8 @@
 #include "krita_native_workspace.h"
 #include "native_command_layout.h"
 #include "native_bootstrap_audit.h"
+#include "engine_only_root.h"
+#include "engine_only_startup_policy.h"
 
 class MobileKritaStandalonePilot final
 {
@@ -79,6 +81,10 @@ public:
         window->setWindowTitle(
             QObject::tr("Krita native engine test"));
         window->setAttribute(Qt::WA_DeleteOnClose,true);
+        // In V2 the parent is a plain QMainWindow, not KisMainWindow.
+        // Android keeps a single native top-level in both boot modes.
+        if(auto *independent=dynamic_cast<MobileEngineOnlyRoot*>(nativeWindow))
+            independent->setDrawingHost(window);
         if(!window->createNativeDocumentRoot()) {
             delete window;
             return false;
@@ -132,6 +138,8 @@ public:
         auto *colorAction=makeAction("Color");
         auto *toolsAction=makeAction("Tools");
         auto *exitAction=makeAction("Exit test");
+        auto *engineOnlyAction=makeAction(
+            "Engine-only on next launch (experimental)");
         QObject::connect(brushesAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleBrushes();});
         QObject::connect(layersAction,&QAction::triggered,window,
@@ -146,9 +154,27 @@ public:
             QSettings settings;
             nativeStartup->setChecked(MobileNativeStartupPolicy::enabled(settings));
         }
-        QObject::connect(nativeStartup,&QAction::toggled,window,[](bool on) {
+        QObject::connect(nativeStartup,&QAction::toggled,window,
+                         [engineOnlyAction](bool on) {
             QSettings settings;
             MobileNativeStartupPolicy::setEnabled(settings,on);
+            if(on)engineOnlyAction->setChecked(false);
+        });
+        engineOnlyAction->setCheckable(true);
+        {
+            QSettings settings;
+            engineOnlyAction->setChecked(
+                MobileEngineOnlyStartupPolicy::enabled(settings));
+        }
+        engineOnlyAction->setToolTip(QObject::tr(
+            "Experimental: restart into Krita's painting engine "
+            "without constructing KisMainWindow, desktop MDI, or dockers. "
+            "An interrupted launch restores original Krita on restart."));
+        QObject::connect(engineOnlyAction,&QAction::toggled,window,
+                         [nativeStartup](bool on) {
+            QSettings settings;
+            MobileEngineOnlyStartupPolicy::setEnabled(settings,on);
+            if(on)nativeStartup->setChecked(false);
         });
         // Avoid an overflow chevron hiding the primary drawing tools.
         // Less-common operations stay in an explicit, labeled menu.
@@ -157,7 +183,8 @@ public:
             {canvasesAction,undoAction,redoAction,saveAction},
             {brushesAction,layersAction,colorAction,toolsAction},
             {newAction,openAction,previousAction,nextAction,
-             saveAsAction,closeAction,nativeStartup,exitAction})) {
+             saveAsAction,closeAction,nativeStartup,
+             engineOnlyAction,exitAction})) {
             qWarning() << "Independent Krita command layout unavailable";
         }
 
@@ -258,9 +285,20 @@ public:
         // Exit returns to the original canvas without closing it.
         // The child host's closeEvent still enforces Krita's
         // Save/Discard/Cancel for any experimental drawings.
-        QObject::connect(exitAction,&QAction::triggered,window,[alive]() {
-            if(alive)QTimer::singleShot(0,alive.data(),[alive]() {
-                if(alive)alive->close();
+        QPointer<QWidget> topLevel=nativeWindow;
+        QObject::connect(exitAction,&QAction::triggered,window,
+                         [alive,topLevel]() {
+            if(!alive)return;
+            QTimer::singleShot(0,alive.data(),[alive,topLevel]() {
+                if(!alive)return;
+                // In engine-only mode there is no desktop to return to.
+                // Close the SINGLE native top-level; its closeEvent
+                // enforces the native Save/Discard/Cancel transaction.
+                if(topLevel && topLevel->property(
+                       "_mobileNativeEngineOnlyRoot").toBool())
+                    topLevel->close();
+                else
+                    alive->close();
             });
         });
 

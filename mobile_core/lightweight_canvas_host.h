@@ -42,13 +42,17 @@ public:
             delete runtime;
 #endif
         if(m_embeddedParent) {
-            // Native painting must not be interrupted by Krita's
-            // Android hide/show refresh workaround. Release the guard
-            // and re-enable desktop menus when leaving this host.
             m_embeddedParent->setProperty("_mobileNativeHostActive",false);
-            m_embeddedParent->setProperty("_mobileNativeDesktopDeferred",false);
-            QMetaObject::invokeMethod(m_embeddedParent.data(),
-                                      "updateWindowMenu",Qt::QueuedConnection);
+            if(!m_embeddedParent->property(
+                   "_mobileNativeEngineOnlyRoot").toBool()) {
+                // These desktop-only callbacks must never be requested
+                // from the plain QMainWindow used by engine-only V2.
+                m_embeddedParent->setProperty(
+                    "_mobileNativeDesktopDeferred",false);
+                QMetaObject::invokeMethod(m_embeddedParent.data(),
+                                          "updateWindowMenu",
+                                          Qt::QueuedConnection);
+            }
         }
         // Restore exactly the original desktop fallback visibility.
         if(m_desktopStatusBar)
