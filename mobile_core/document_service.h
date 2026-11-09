@@ -22,6 +22,7 @@
 #include <QString>
 #include <QVector>
 #include <QWidget>
+#include <utility>
 #include <KoColor.h>
 #include <KoColorSpaceRegistry.h>
 #include <KoFileDialog.h>
