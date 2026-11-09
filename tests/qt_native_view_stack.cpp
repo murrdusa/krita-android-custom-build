@@ -1,0 +1,122 @@
+/*
+ * Qt-only regression for a lightweight real-widget document stack.
+ * No KisView or Krita engine is instantiated by this smoke test.
+ */
+#include <QApplication>
+#include <QAction>
+#include <QDebug>
+#include <QLabel>
+#include <QPointer>
+#include <QSharedPointer>
+#include <QVBoxLayout>
+#include "mobile_core/native_view_stack.h"
+#include "mobile_core/lightweight_canvas_host.h"
+#include "mobile_core/view_identity_guard.h"
+
+static void require(bool passed,const char *why)
+{
+    if(!passed)qFatal("Native view stack test failed: %s",why);
+}
+struct DummyDocuments final : MobileDocumentHostPort {
+    bool available() const override {return true;}
+    bool attachNewDocument(KisDocument *d) const override {return d!=nullptr;}
+    bool openFile(const QString &s) const override {return !s.isEmpty();}
+    bool save(KisDocument *d,bool) const override {return d!=nullptr;}
+};
+struct DummyActions final : MobileCommandRegistryPort {
+    QAction *action(const QString &) const override {return nullptr;}
+    QList<QAction*> availableActions() const override {return {};}
+    QList<QAction*> menuRootActions() const override {return {};}
+};
+struct ParentCounter final : QObject {
+    int changes=0;
+    bool eventFilter(QObject *,QEvent *event) override {
+        if(event->type()==QEvent::ParentChange)++changes;
+        return false;
+    }
+};
+int main(int argc,char **argv)
+{
+    QApplication app(argc,argv);
+    MobileLightweightCanvasHost host;
+    host.resize(440,750);
+    auto *root=new MobileNativeViewStack;
+    auto *doc1=new QObject(&host),*doc2=new QObject(&host);
+    auto *a=new QWidget,*b=new QWidget;
+    a->setProperty("drawingRevision",17);
+    b->setProperty("drawingRevision",29);
+    ParentCounter parentA,parentB;
+    a->installEventFilter(&parentA);
+    b->installEventFilter(&parentB);
+    bool approve=false;
+    int closeCalls=0;
+    require(root->adoptView(a,doc1,QStringLiteral("A.kra"),
+                             [&]() {++closeCalls;return approve;}),
+            "failed to adopt first native widget");
+    require(root->adoptView(b,doc2,QStringLiteral("B.kra"),
+                             [&]() {++closeCalls;return true;}),
+            "failed to adopt second native widget");
+    require(!root->adoptView(a,doc1,QStringLiteral("duplicate"),
+                              [](){return true;}),
+            "adopted one native painting view twice");
+    QPointer<QObject> aid=a,bid=b;
+    require(host.installNativeCanvas(root),"could not install document root");
+    MobileHostServices services;
+    services.documents=QSharedPointer<DummyDocuments>::create();
+    services.commands=QSharedPointer<DummyActions>::create();
+    // Only QMainWindow owns the root QWidget. The port handle is
+    // non-owning, preventing double-deletion of the canvas.
+    services.views=QSharedPointer<MobileViewHostPort>(
+        static_cast<MobileViewHostPort*>(root),[](MobileViewHostPort*){});
+    services.documentRoot=root;
+    require(host.attachServices(services),"could not attach view port");
+    auto *top=new QWidget,*bottom=new QWidget;
+    auto *topLayout=new QVBoxLayout(top),*bottomLayout=new QVBoxLayout(bottom);
+    topLayout->addWidget(new QLabel(QStringLiteral("Documents")));
+    bottomLayout->addWidget(new QLabel(QStringLiteral("Brush controls")));
+    require(host.installMobileChrome(top,bottom),
+            "could not install lightweight host chrome");
+    host.show();
+    QApplication::processEvents();
+    const int oldA=parentA.changes,oldB=parentB.changes;
+    for(int i=0;i<12;++i) {
+        require(host.setMobileVisible(true),"enter failed");
+        require(root->activateView(i%2?aid:bid),"native view switch failed");
+        QApplication::processEvents();
+        require(root->currentDocument()==(i%2?doc1:doc2) &&
+                root->openViews().size()==2,"wrong active document");
+        require(host.setMobileVisible(false),"Back failed");
+        QApplication::processEvents();
+        require(host.retainsOriginalCanvas() &&
+                parentA.changes==oldA && parentB.changes==oldB &&
+                a->property("drawingRevision").toInt()==17 &&
+                b->property("drawingRevision").toInt()==29,
+                "mode transition moved or replaced painting widgets");
+    }
+    require(root->activateView(aid) &&
+            root->updateViewState(aid,QStringLiteral("A renamed.kra"),true),
+            "view state update failed");
+    require(MobileViewIdentityGuard::maySave(root->openViews(),aid,doc1),
+            "selected native view rejected for save");
+    require(!MobileViewIdentityGuard::maySave(root->openViews(),bid,doc2),
+            "inactive view incorrectly allowed to save");
+    require(!root->closeView(aid) && root->openViews().size()==2 &&
+            root->currentDocument()==doc1 && closeCalls==1,
+            "canceled native close destroyed document");
+    approve=true;
+    require(root->closeView(aid) && root->openViews().size()==1 &&
+            root->currentDocument()==doc2 && closeCalls==2 &&
+            a->property("drawingRevision").toInt()==17,
+            "accepted close targeted wrong view or destroyed canvas");
+    require(!root->closeView(aid) && !root->activateView(aid),
+            "stale closed view remained actionable");
+    delete doc2;
+    require(root->openViews().isEmpty() && !root->currentDocument() &&
+            !root->activateView(bid) && !root->closeView(bid) &&
+            host.retainsOriginalCanvas(),
+            "destroyed engine document left dangerous view operations");
+    qInfo() << "PASS: MDI-free multi-document stack, selected view identity,"
+            << "save guard, close cancellation, document loss,"
+            << "and twelve chrome-only canvas switches";
+    return 0;
+}
