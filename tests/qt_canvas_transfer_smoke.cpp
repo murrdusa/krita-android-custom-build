@@ -200,6 +200,9 @@ int main(int argc,char **argv)
         require(transfer.enter(mobile),"failed to embed mobile presentation");
         QApplication::processEvents();
         require(transfer.active(),"transfer not active after entering");
+        require(backend.property("_mobileStudioCanvasTransferred").toBool() &&
+                backend.property("_mobileStudioPresentationActive").toBool(),
+                "default transfer did not set canvas/presentation flags");
         require(backend.centralWidget()==mobile,
                 "mobile presentation is not native central widget");
         require(mobile->ownsNativeCanvas(canvas),
@@ -248,6 +251,9 @@ int main(int argc,char **argv)
                 "Back temporarily unparented the original native canvas");
         QApplication::processEvents();
         require(!transfer.active(),"transfer still active after returning");
+        require(!backend.property("_mobileStudioCanvasTransferred").toBool() &&
+                !backend.property("_mobileStudioPresentationActive").toBool(),
+                "default transfer did not reset canvas/presentation flags");
         require(backend.centralWidget()==canvas,
                 "desktop did not recover the identical native canvas");
         require(canvas->property("testDrawingRevision").toInt()==17,
@@ -276,11 +282,17 @@ int main(int argc,char **argv)
     require(persistent.persistentHostInstalled(),
             "persistent opt-in was not honored");
     require(persistent.active(),"persistent host did not enter mobile mode");
+    require(backend.property("_mobileStudioCanvasTransferred").toBool() &&
+            backend.property("_mobileStudioPresentationActive").toBool(),
+            "persistent entry did not set canvas/presentation flags");
     const int parentChangesAfterInstall=parentObserver.escapes;
     for(int i=0;i<10;++i) {
         require(persistent.leave(),"persistent host refused desktop mode");
         QApplication::processEvents();
         require(!persistent.active(),"persistent host still in mobile mode");
+        require(backend.property("_mobileStudioCanvasTransferred").toBool() &&
+                !backend.property("_mobileStudioPresentationActive").toBool(),
+                "persistent Back lost ownership or left mobile mode active");
         require(backend.centralWidget()==stableSurface,
                 "persistent mode replaced its original central host");
         require(stableSurface->ownsNativeCanvas(canvas),
@@ -297,6 +309,9 @@ int main(int argc,char **argv)
         QApplication::processEvents();
         require(stableSurface->mobilePresentationEnabled(),
                 "persistent mode did not restore mobile controls");
+        require(backend.property("_mobileStudioCanvasTransferred").toBool() &&
+                backend.property("_mobileStudioPresentationActive").toBool(),
+                "persistent reentry did not restore presentation-active flag");
         require(!backend.menuBar()->isVisible() &&
                 !backend.statusBar()->isVisible(),
                 "persistent reentry exposed desktop chrome");
