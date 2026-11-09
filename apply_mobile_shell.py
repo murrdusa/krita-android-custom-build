@@ -17,6 +17,36 @@ def one(source, old, new, label):
         raise RuntimeError(f"Mobile shell {label}: expected 1 anchor, got {count}")
     return source.replace(old,new,1)
 
+def redirect_android_engine_method(source:str, return_type:str, name:str, android_body:str):
+    """Move Android resource/registry setup into a standalone engine TU.
+
+    Keep the original upstream body for non-Android builds; the Android
+    compiler only uses MobileKritaEngineInitialization's implementation.
+    """
+    signature=f"{return_type} KisApplication::{name}()"
+    if source.count(signature)!=1:
+        raise RuntimeError(f"Expected one Krita {name} function")
+    at=source.index(signature)
+    brace=source.index("{",at+len(signature))
+    if source[at+len(signature):brace].strip():
+        raise RuntimeError(f"Unexpected Krita {name} function syntax")
+    depth=0
+    end=brace
+    while end<len(source):
+        if source[end]=="{": depth+=1
+        elif source[end]=="}":
+            depth-=1
+            if depth==0: break
+        end+=1
+    if depth!=0:
+        raise RuntimeError(f"Unbalanced Krita {name} body")
+    body=source[brace+1:end]
+    old=source[at:end+1]
+    replacement=(signature+"\\n{\\n#ifdef Q_OS_ANDROID\\n"+
+                 android_body+"\\n#else"+body+"#endif\\n}")
+    return one(source,old,replacement,f"Android engine {name} extraction")
+
+
 def main(root:Path):
     root=root.resolve()
     own=Path(__file__).resolve().parent
@@ -44,6 +74,8 @@ def main(root:Path):
     engine_only_root=own/"mobile_core/engine_only_root.h"
     engine_only_bootstrap_header=own/"mobile_core/engine_only_bootstrap.h"
     engine_only_bootstrap_source=own/"mobile_core/engine_only_bootstrap.cpp"
+    engine_init_header=own/"mobile_core/krita_engine_initialization.h"
+    engine_init_source=own/"mobile_core/krita_engine_initialization.cpp"
     native_workspace=own/"mobile_core/krita_native_workspace.h"
     native_reorder_policy=own/"mobile_core/native_layer_reorder_policy.h"
     native_command_layout=own/"mobile_core/native_command_layout.h"
@@ -75,7 +107,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,startup_policy,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,canvas_resume_observer,standalone_krita_runtime,standalone_krita_documents,standalone_engine_session,native_engine_probe,standalone_engine_pilot,native_startup_policy,native_boot_coordinator,native_bootstrap_audit,engine_only_policy,engine_only_root,engine_only_bootstrap_header,engine_only_bootstrap_source,native_workspace,native_command_layout,native_reorder_policy,deferred_view_command,document_navigation,surface,switcher,bridge,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+               (shell,session,startup_policy,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,canvas_resume_observer,standalone_krita_runtime,standalone_krita_documents,standalone_engine_session,native_engine_probe,standalone_engine_pilot,native_startup_policy,native_boot_coordinator,native_bootstrap_audit,engine_only_policy,engine_only_root,engine_only_bootstrap_header,engine_only_bootstrap_source,engine_init_header,engine_init_source,native_workspace,native_command_layout,native_reorder_policy,deferred_view_command,document_navigation,surface,switcher,bridge,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
                 reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
@@ -85,7 +117,7 @@ def main(root:Path):
     # so a future lightweight application host can replace it in one place.
     desktop_dependent=(desktop_adapters,mdi_view_adapter)
     qt_host_components=(session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,surface)
-    mobile_frontend=(standalone_engine_session,engine_only_root,engine_only_policy,engine_only_bootstrap_header,engine_only_bootstrap_source,native_bootstrap_audit,native_boot_coordinator,native_command_layout,native_workspace,native_reorder_policy,native_startup_policy,canvas_resume_observer,deferred_view_command,document_navigation,shell,bridge,host_services,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,
+    mobile_frontend=(standalone_engine_session,engine_only_root,engine_only_policy,engine_only_bootstrap_header,engine_only_bootstrap_source,engine_init_header,engine_init_source,native_bootstrap_audit,native_boot_coordinator,native_command_layout,native_workspace,native_reorder_policy,native_startup_policy,canvas_resume_observer,deferred_view_command,document_navigation,shell,bridge,host_services,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,
                      command_service,command_port,switcher,brush,color,layers,
                      commands,quick,mdi_identity,pressure_calibration,pressure_settings,
                      reorder,tools,documents,*qt_host_components)
@@ -427,8 +459,23 @@ KisMainWindow * KisView::mainWindow() const''',
         '''#include "KisAndroidDonations.h"''',
         '''#include "KisAndroidDonations.h"
 #include "engine_only_startup_policy.h"
-#include "engine_only_bootstrap.h"''',
+#include "engine_only_bootstrap.h"
+#include "krita_engine_initialization.h"''',
         "Android engine-only application bootstrap headers")
+    # Engine registries are now compiled in their own Android module,
+    # not as methods implemented by the desktop application's class.
+    app=redirect_android_engine_method(
+        app,"void","addResourceTypes",
+        "    MobileKritaEngineInitialization::addResourceTypes();")
+    app=redirect_android_engine_method(
+        app,"void","loadPlugins",
+        "    MobileKritaEngineInitialization::loadPlugins();")
+    app=redirect_android_engine_method(
+        app,"bool","registerResources",
+        "    const bool ready=MobileKritaEngineInitialization::registerResources();\\n"
+        "    connect(KisResourceLocator::instance(), SIGNAL(progressMessage(const QString&)),\\n"
+        "            this, SLOT(setSplashScreenLoadingText(const QString&)));\\n"
+        "    return ready;")
     app=one(app,
         '''    KisPart *kisPart = KisPart::instance();
     if (needsMainWindow) {''',
@@ -1028,6 +1075,10 @@ KisMainWindow * KisView::mainWindow() const''',
         engine_only_bootstrap_header.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/engine_only_bootstrap.cpp").write_text(
         engine_only_bootstrap_source.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/krita_engine_initialization.h").write_text(
+        engine_init_header.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/krita_engine_initialization.cpp").write_text(
+        engine_init_source.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/krita_native_workspace.h").write_text(
         native_workspace.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/native_layer_reorder_policy.h").write_text(
@@ -1052,6 +1103,7 @@ KisMainWindow * KisView::mainWindow() const''',
     list(APPEND kritaui_LIB_SRCS
         mobile_native_engine_compile_probe.cpp
         engine_only_bootstrap.cpp
+        krita_engine_initialization.cpp
         KisAndroidDonations.cpp''',
         "real Android kritaui engine compilation gate")
     ui_cmake_file.write_text(ui_cmake,encoding="utf-8")
