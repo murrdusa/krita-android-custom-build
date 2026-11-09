@@ -78,9 +78,11 @@ public:
         // the manager or its action collection while a live native view
         // is still attached. The host's central widget may already be gone.
         if(m_root && m_manager) {
-            const auto views=m_root->openViews();
-            for(const auto &entry:views) {
-                auto *view=qobject_cast<KisView*>(entry.nativeView.data());
+            // Include hidden/removed native views as well as those
+            // with a still-live document identity. An unregistered
+            // QWidget must not outlive the view manager either.
+            const auto views=m_root->findChildren<KisView*>();
+            for(KisView *view:views) {
                 if(view && view->viewManager()==m_manager)
                     delete view;
             }

@@ -7,6 +7,8 @@
 #pragma once
 #ifdef Q_OS_ANDROID
 #include <QPointer>
+#include <QTimer>
+#include <QMetaObject>
 #include <QStackedWidget>
 #include <KisDocument.h>
 #include <KisPart.h>
@@ -66,20 +68,46 @@ public:
             QObject::connect(stack,&QStackedWidget::currentChanged,manager,
                 [root,vm](int) {
                     if(!root || !vm)return;
-                    auto *selected=qobject_cast<KisView*>(root->currentWidget());
-                    if(vm->canvasBase()!=(selected?selected->canvasBase():nullptr))
-                        vm->setCurrentView(selected);
+                    scheduleActivation(vm,root,
+                        qobject_cast<KisView*>(root->currentWidget()));
                 });
             stack->setProperty("_mobileStudioKritaSelectionWired",true);
         }
 
         view->show();
         stack->setCurrentWidget(view);
-        // Krita's upstream showView initializes tools *after* show().
-        KoToolManager::instance()->initializeCurrentToolForCanvas();
-        if(manager->canvasBase()!=view->canvasBase())
-            manager->setCurrentView(view);
+        // On desktop Krita initializes tools only once the native GL
+        // canvas is visible. Do the same on the next Qt event-loop turn.
+        scheduleActivation(manager,stack,guarded);
         return view;
+    }
+
+private:
+    static void scheduleActivation(
+        QPointer<KisViewManager> manager,
+        QPointer<MobileNativeViewStack> root,
+        QPointer<KisView> selected)
+    {
+        if(!manager || !root)return;
+        QTimer::singleShot(0,manager,[manager,root,selected]() {
+            if(!manager || !root)return;
+            if(selected && (root->currentWidget()!=selected ||
+                            !selected->isVisible()))
+                return; // Switch was superseded before the GL show.
+            if(!selected && root->currentWidget())return;
+            if(selected) {
+                // Desktop KisCanvas2 listens to the KisMainWindow
+                // guiLoadingFinished() signal, absent on QMainWindow.
+                // This private Qt slot is safe to invoke through
+                // QObject metadata once the paint widget is visible.
+                QMetaObject::invokeMethod(
+                    selected->canvasBase(),"bootstrapFinished",
+                    Qt::DirectConnection);
+                KoToolManager::instance()->initializeCurrentToolForCanvas();
+            }
+            if(manager->canvasBase()!=(selected?selected->canvasBase():nullptr))
+                manager->setCurrentView(selected);
+        });
     }
 };
 #endif

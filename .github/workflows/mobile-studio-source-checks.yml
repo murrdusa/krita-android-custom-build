@@ -185,7 +185,7 @@ jobs:
                            "new KisViewManager(host,runtime->m_actions)",
                            "runtime->m_manager->setParent(runtime)",
                            "delete m_manager.data()",
-                           "m_root->openViews()",
+                           "m_root->findChildren<KisView*>()",
                            "MobileKritaNativeViewFactory::attach("):
               assert fragment in native_runtime
           assert '(root/"libs/ui/krita_native_view_factory.h").write_text(' in shell_patch
@@ -199,7 +199,9 @@ jobs:
                            "view->slotLoadingFinished()",
                            "delete guarded.data()",
                            "QPointer<KisView>",
-                           "manager->setCurrentView(view)"):
+                           "manager->setCurrentView(selected)",
+                           "bootstrapFinished",
+                           "QTimer::singleShot(0,manager"):
               assert fragment in native_factory
           assert '(root/"libs/ui/native_krita_save_host.h").write_text(' in shell_patch
           assert 'viewcpp=root/"libs/ui/KisView.cpp"' in shell_patch
