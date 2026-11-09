@@ -108,6 +108,10 @@ print("## Target: mobile_native_engine_compile_probe.cpp", flush=True)
 subprocess.run(clean, cwd=entry["directory"], check=True)
 print("## PASS: standalone Krita API headers type-checked", flush=True)
 PY
+  if [[ "${KRITA_NATIVE_PREFLIGHT_ONLY:-0}" == "1" ]]; then
+    echo "## PASS: Android compiler preflight only (no target build, no APK)"
+    exit 0
+  fi
   echo "## Building real Android kritaui target (no APK packaging)"
   cmake --build . --target kritaui --parallel "${KRITA_BUILD_JOBS:-3}"
   echo "## PASS: Native Krita engine sources compiled into kritaui"
