@@ -147,7 +147,12 @@ private:
                 const QSignalBlocker blocked(m_entry);
                 m_entry->setChecked(false);
             }
-            if(m_host && !m_host->hasNativeCanvas()) {
+            if(m_host && !m_host->hasNativeCanvas() &&
+               !m_transfer.persistentHostInstalled()) {
+                // An embedded persistent host remains Krita's central
+                // widget even if Qt unexpectedly loses its canvas child.
+                // Never delete that host on failed reentry: doing so would
+                // discard the last chance to recover the original view.
                 m_host->hide();
                 m_host->deleteLater();
                 m_host=nullptr;
