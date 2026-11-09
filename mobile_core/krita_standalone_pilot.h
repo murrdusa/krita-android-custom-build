@@ -199,8 +199,8 @@ public:
                 "_mobileNativeEngineOnlyRoot").toBool();
             QMessageBox::information(
                 alive.data(),QObject::tr("Engine architecture"),
-                QObject::tr("Engine-only startup: %1\\n"
-                            "KisMainWindow instances: %2\\n"
+                QObject::tr("Engine-only startup: %1\n"
+                            "KisMainWindow instances: %2\n"
                             "Desktop widget audit: %3")
                     .arg(engineOnly?QObject::tr("Yes"):QObject::tr("No"))
                     .arg(legacyWindows)
