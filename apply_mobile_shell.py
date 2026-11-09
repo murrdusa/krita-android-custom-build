@@ -445,12 +445,22 @@ KisMainWindow * KisView::mainWindow() const''',
         '''    <Action name="tablet_compact_ui"/>
     <Action name="tablet_mobile_engine_pilot"/>''',
         "native toolbar action")
+    # The normal toolbar can be hidden by a saved Krita workspace.
+    # Keep Mobile Studio directly recoverable in Settings after a
+    # previous failed/disabled automatic launch.
+    xml=one(xml,
+        '    <Menu name="settings">\n      <text>Setti&amp;ngs</text>',
+        '''    <Menu name="settings">
+      <text>Setti&amp;ngs</text>
+      <Action name="tablet_mobile_engine_pilot"/>
+      <Separator/>''',
+        "Settings menu mobile recovery launcher")
     xmlfile.write_text(xml,encoding="utf-8")
     cmakefile=root/"krita/CMakeLists.txt"
     cmake=cmakefile.read_text(encoding="utf-8")
     cmake=one(cmake,
         'set(KRITA5_XMLGUI_VERSION 548)',
-        'set(KRITA5_XMLGUI_VERSION 549)',
+        'set(KRITA5_XMLGUI_VERSION 550)',
         "XMLGUI version")
     oldhash=re.findall(r'set\(krita5_xmlgui_hash_expected "[0-9a-f]+"\)',cmake)
     if len(oldhash)!=1:
