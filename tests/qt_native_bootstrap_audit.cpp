@@ -41,8 +41,9 @@ int main(int argc,char **argv)
     check(bare.mdiAreas==1 && bare.desktopDockers==0 &&
           bare.welcomeScrollAreas==1,
           "retained MDI, welcome scroller or dockers counted incorrectly");
-    check(bare.commandPalettes==0,
-          "command palette falsely reported before lazy creation");
+    check(bare.commandPalettes==0 &&
+          bare.detachedCanvasWindows==0,
+          "legacy desktop auxiliary window falsely reported as present");
     check(!bare.desktopStatusVisible,
           "hidden footer falsely reported visible");
     auto *docker=new QDockWidget(QStringLiteral("Legacy desktop docker"),

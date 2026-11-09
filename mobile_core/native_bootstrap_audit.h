@@ -27,19 +27,20 @@ public:
         int desktopDockers=0;
         int welcomeScrollAreas=0;
         int commandPalettes=0;
+        int detachedCanvasWindows=0;
         bool desktopStatusVisible=false;
 
         QString display() const
         {
             return QStringLiteral(
                 "Native %1, host %2; MDI %3, dockers %4, "
-                "welcome scroll %5, command palette %6; "
-                "desktop status %7")
+                "welcome scroll %5, command palette %6, "
+                "detached canvas %7; desktop status %8")
                 .arg(nativeSelected?QStringLiteral("yes"):QStringLiteral("no"))
                 .arg(nativeHostActive?QStringLiteral("active"):
                                       QStringLiteral("inactive"))
                 .arg(mdiAreas).arg(desktopDockers).arg(welcomeScrollAreas)
-                .arg(commandPalettes)
+                .arg(commandPalettes).arg(detachedCanvasWindows)
                 .arg(desktopStatusVisible?QStringLiteral("shown"):
                                           QStringLiteral("hidden"));
         }
@@ -65,9 +66,13 @@ public:
         // A desktop command palette is constructed by Krita from Kate;
         // no dependency on KateCommandBar's header is needed here.
         for(QObject *obj:desktop->findChildren<QObject*>()) {
-            if(obj && QString::fromLatin1(obj->metaObject()->className())==
-                       QStringLiteral("KateCommandBar"))
+            if(!obj)continue;
+            const QString kind=QString::fromLatin1(
+                obj->metaObject()->className());
+            if(kind==QStringLiteral("KateCommandBar"))
                 ++result.commandPalettes;
+            else if(kind==QStringLiteral("KisCanvasWindow"))
+                ++result.detachedCanvasWindows;
         }
         if(auto *status=desktop->findChild<QStatusBar*>(
                QString(),Qt::FindDirectChildrenOnly))
