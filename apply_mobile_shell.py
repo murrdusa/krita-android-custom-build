@@ -447,10 +447,14 @@ KisMainWindow * KisView::mainWindow() const''',
           "independent startup desktop tool options bypass")
     s=one(s,
           '    for (KoDockFactoryBase *factory : KoDockRegistry::instance()->sortedDockWidgetFactories()) {',
-          '    if (!mobileNativePreferred)\\n    for (KoDockFactoryBase *factory : KoDockRegistry::instance()->sortedDockWidgetFactories()) {',
+          '    if (!mobileNativePreferred)\n    for (KoDockFactoryBase *factory : KoDockRegistry::instance()->sortedDockWidgetFactories()) {',
           "independent startup legacy docker factory bypass")
     native='''    auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);'''
-    injected='''    // Independent window prototype is opt-in and never auto-starts.
+    injected='''    // The legacy controller action is registered inside createActions(),
+    // while the native startup decision is computed earlier in the
+    // KisMainWindow constructor. Read the Qt property across that seam.
+    const bool mobileNativePreferred =
+        property("_mobileNativeDesktopDeferred").toBool();
     QAction *mobilePilotAction = new QAction(
         KisIconUtils::loadIcon("draw-freehand"),
         i18n("Mobile Studio (experimental)"),this);
