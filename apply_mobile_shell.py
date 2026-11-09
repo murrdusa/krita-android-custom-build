@@ -42,8 +42,8 @@ def redirect_android_engine_method(source:str, return_type:str, name:str, androi
         raise RuntimeError(f"Unbalanced Krita {name} body")
     body=source[brace+1:end]
     old=source[at:end+1]
-    replacement=(signature+"\\n{\\n#ifdef Q_OS_ANDROID\\n"+
-                 android_body+"\\n#else"+body+"#endif\\n}")
+    replacement=(signature+"\n{\n#ifdef Q_OS_ANDROID\n"+
+                 android_body+"\n#else"+body+"#endif\n}")
     return one(source,old,replacement,f"Android engine {name} extraction")
 
 
@@ -472,9 +472,9 @@ KisMainWindow * KisView::mainWindow() const''',
         "    MobileKritaEngineInitialization::loadPlugins();")
     app=redirect_android_engine_method(
         app,"bool","registerResources",
-        "    const bool ready=MobileKritaEngineInitialization::registerResources();\\n"
-        "    connect(KisResourceLocator::instance(), SIGNAL(progressMessage(const QString&)),\\n"
-        "            this, SLOT(setSplashScreenLoadingText(const QString&)));\\n"
+        "    const bool ready=MobileKritaEngineInitialization::registerResources();\n"
+        "    connect(KisResourceLocator::instance(), SIGNAL(progressMessage(const QString&)),\n"
+        "            this, SLOT(setSplashScreenLoadingText(const QString&)));\n"
         "    return ready;")
     app=one(app,
         '''    KisPart *kisPart = KisPart::instance();
