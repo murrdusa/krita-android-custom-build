@@ -6,6 +6,7 @@
  */
 #pragma once
 #ifdef Q_OS_ANDROID
+#include <QDebug>
 #include <QFileInfo>
 #include <QPointer>
 #include <QTimer>
@@ -89,7 +90,9 @@ public:
 
         // One native manager activation router per Qt document root.
         // Connections are scoped to the native manager QObject.
-        if(!stack->property("_mobileStudioKritaSelectionWired").toBool()) {
+        const bool selectionAlreadyWired=
+            stack->property("_mobileStudioKritaSelectionWired").toBool();
+        if(!selectionAlreadyWired) {
             QPointer<MobileNativeViewStack> root=stack;
             QPointer<KisViewManager> vm=manager;
             QObject::connect(stack,&QStackedWidget::currentChanged,manager,
@@ -103,9 +106,11 @@ public:
 
         view->show();
         stack->setCurrentWidget(view);
-        // On desktop Krita initializes tools only once the native GL
-        // canvas is visible. Do the same on the next Qt event-loop turn.
-        scheduleActivation(manager,stack,guarded);
+        // First addWidget() emits currentChanged before the router is
+        // wired. Only that first canvas needs explicit activation.
+        // Later changes are already routed through currentChanged.
+        if(!selectionAlreadyWired)
+            scheduleActivation(manager,stack,guarded);
         return view;
     }
 
@@ -123,13 +128,20 @@ private:
                 return; // Switch was superseded before the GL show.
             if(!selected && root->currentWidget())return;
             if(selected) {
-                // Desktop KisCanvas2 listens to the KisMainWindow
-                // guiLoadingFinished() signal, absent on QMainWindow.
-                // This private Qt slot is safe to invoke through
-                // QObject metadata once the paint widget is visible.
-                QMetaObject::invokeMethod(
-                    selected->canvasBase(),"bootstrapFinished",
-                    Qt::DirectConnection);
+                // Native guiLoadingFinished() only fires once on
+                // desktop Krita. Never re-bootstrap on each tab switch.
+                if(!selected->property(
+                       "_mobileStudioKritaCanvasBootstrapped").toBool()) {
+                    const bool bootstrapped=QMetaObject::invokeMethod(
+                        selected->canvasBase(),"bootstrapFinished",
+                        Qt::DirectConnection);
+                    if(bootstrapped)
+                        selected->setProperty(
+                            "_mobileStudioKritaCanvasBootstrapped",true);
+                    else
+                        qWarning() << "Mobile Studio: canvas bootstrap"
+                                   << "method unavailable";
+                }
                 KoToolManager::instance()->initializeCurrentToolForCanvas();
             }
             if(manager->canvasBase()!=(selected?selected->canvasBase():nullptr))

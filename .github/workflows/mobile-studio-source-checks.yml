@@ -253,6 +253,11 @@ jobs:
           assert '(root/"libs/ui/krita_standalone_pilot.h").write_text(' in shell_patch
           assert 'tablet_standalone_engine_test' in shell_patch
           assert 'MobileKritaStandalonePilot::launch()' in shell_patch
+          native_factory = Path("mobile_core/krita_native_view_factory.h").read_text()
+          assert 'const bool selectionAlreadyWired=' in native_factory
+          assert 'if(!selectionAlreadyWired)' in native_factory
+          assert '_mobileStudioKritaCanvasBootstrapped' in native_factory
+          assert 'if(bootstrapped)' in native_factory
           assert 'MobileKritaStandaloneRuntime::create(window)' in native_pilot
           assert 'MobileKritaStandaloneDocumentsBootstrap::create(runtime)' in native_pilot
           assert 'documents->createCanvas(' in native_pilot

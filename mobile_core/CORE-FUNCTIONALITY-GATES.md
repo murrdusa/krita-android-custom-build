@@ -197,6 +197,11 @@ serialization or brushes.
   `KisView::setViewManager()` requests the default brush. This
   prevents a valid canvas from having a missing tool action registry.
   The pilot remains opt-in and requires device validation.
+- Native view activation now uses one deferred event for the first
+  canvas and one per later document switch. The
+  `KisCanvas2::bootstrapFinished` call is single-shot per view,
+  mirroring Krita's desktop GUI-load event rather than running
+  again on tab switching. Tool state is refreshed on selection.
 - The opt-in stationary canvas header was found consuming hundreds of
   pixels of height on a real device. The top dock is now capped at 76
   logical pixels and its title/header widget is height-fixed; a Qt
