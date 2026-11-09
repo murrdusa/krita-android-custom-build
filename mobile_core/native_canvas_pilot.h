@@ -79,6 +79,7 @@ public:
         });
         headerRow->addWidget(m_document,1);
         auto *layers=makeButton(i18n("Layers"),header);
+        m_layersToggle=layers;
         QObject::connect(layers,&QToolButton::clicked,layers,[this]() {
             if(m_engine.hasDocument() &&
                m_chrome.setSidePanelVisible(!m_chrome.sidePanelVisible()) &&
@@ -87,6 +88,7 @@ public:
         });
         headerRow->addWidget(layers);
         auto *color=makeButton(i18n("Color"),header);
+        m_colorToggle=color;
         QObject::connect(color,&QToolButton::clicked,color,[this]() {
             if(m_color && m_engine.hasDocument()) {
                 m_color->setVisible(!m_color->isVisible());
@@ -192,6 +194,8 @@ private:
         // not an empty brush-and-actions dock consuming the canvas height.
         // Opening the first document restores the same controls in place.
         m_chrome.setBottomPanelVisible(has);
+        if(m_layersToggle)m_layersToggle->setEnabled(has);
+        if(m_colorToggle)m_colorToggle->setEnabled(has);
         if(m_document) {
             const QString title=m_engine.activeDocumentTitle();
             const QString fullTitle=has?
@@ -384,6 +388,8 @@ private:
     MobileEngineBridge m_engine;
     MobileNativeCanvasChrome m_chrome;
     QPointer<QToolButton> m_document;
+    QPointer<QToolButton> m_layersToggle;
+    QPointer<QToolButton> m_colorToggle;
     QPointer<KritaMobileBrushWorkspace> m_brush;
     QPointer<MobileQuickActions> m_quick;
     QPointer<KritaMobileLayersPanel> m_layers;
