@@ -114,15 +114,19 @@ public:
     bool deactivate()
     {
         if(!m_active)return true;
-        if(!ownsUnmovedCanvas())return false;
+        const bool originalCanvasStillPresent=ownsUnmovedCanvas();
+        // Krita may replace its document stack while Mobile Studio is
+        // visible. Never touch or overwrite that replacement. Always
+        // restore the surrounding desktop controls and hide our own
+        // docks so the user can recover via normal Krita UI.
         m_guard.stop();
-        m_topDock->hide();
-        m_bottomDock->hide();
+        if(m_topDock)m_topDock->hide();
+        if(m_bottomDock)m_bottomDock->hide();
         restoreTabs();
         restoreDesktopChrome();
         m_active=false;
-        scheduleCanvasUpdate();
-        return true;
+        if(originalCanvasStillPresent)scheduleCanvasUpdate();
+        return originalCanvasStillPresent;
     }
 
     void enforceMobileChrome()
