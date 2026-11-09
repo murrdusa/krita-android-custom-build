@@ -32,7 +32,7 @@ public:
     // Krita 6.0.4's KisCanvasController needs a KoCanvasSupervisor
     // even when there are no traditional desktop dockers. Returning
     // an empty list is correct until native observer widgets exist.
-    // Do not impersonate KisMainWindow or borrow its docker instances.
+    // Do not borrow desktop-window docker instances.
     QList<KoCanvasObserverBase*> canvasObservers() const override
     {
         return {};
