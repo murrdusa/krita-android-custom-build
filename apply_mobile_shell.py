@@ -39,6 +39,8 @@ def main(root:Path):
     native_startup_policy=own/"mobile_core/native_startup_policy.h"
     native_boot_coordinator=own/"mobile_core/native_boot_coordinator.h"
     native_bootstrap_audit=own/"mobile_core/native_bootstrap_audit.h"
+    engine_only_policy=own/"mobile_core/engine_only_startup_policy.h"
+    engine_only_root=own/"mobile_core/engine_only_root.h"
     native_workspace=own/"mobile_core/krita_native_workspace.h"
     native_reorder_policy=own/"mobile_core/native_layer_reorder_policy.h"
     native_command_layout=own/"mobile_core/native_command_layout.h"
@@ -70,7 +72,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,startup_policy,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,canvas_resume_observer,standalone_krita_runtime,standalone_krita_documents,native_engine_probe,standalone_engine_pilot,native_startup_policy,native_boot_coordinator,native_bootstrap_audit,native_workspace,native_command_layout,native_reorder_policy,deferred_view_command,document_navigation,surface,switcher,bridge,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+               (shell,session,startup_policy,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,canvas_resume_observer,standalone_krita_runtime,standalone_krita_documents,native_engine_probe,standalone_engine_pilot,native_startup_policy,native_boot_coordinator,native_bootstrap_audit,engine_only_policy,engine_only_root,native_workspace,native_command_layout,native_reorder_policy,deferred_view_command,document_navigation,surface,switcher,bridge,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
                 reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
@@ -80,7 +82,7 @@ def main(root:Path):
     # so a future lightweight application host can replace it in one place.
     desktop_dependent=(desktop_adapters,mdi_view_adapter)
     qt_host_components=(session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,surface)
-    mobile_frontend=(native_bootstrap_audit,native_boot_coordinator,native_command_layout,native_workspace,native_reorder_policy,native_startup_policy,canvas_resume_observer,deferred_view_command,document_navigation,shell,bridge,host_services,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,
+    mobile_frontend=(engine_only_root,engine_only_policy,native_bootstrap_audit,native_boot_coordinator,native_command_layout,native_workspace,native_reorder_policy,native_startup_policy,canvas_resume_observer,deferred_view_command,document_navigation,shell,bridge,host_services,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,
                      command_service,command_port,switcher,brush,color,layers,
                      commands,quick,mdi_identity,pressure_calibration,pressure_settings,
                      reorder,tools,documents,*qt_host_components)
@@ -409,6 +411,99 @@ KisMainWindow * KisView::mainWindow() const''',
         mainWindowAsQWidget();''',
                "native canvas config parent")
     canvasfile.write_text(canvas,encoding="utf-8")
+
+    # EXPERIMENTAL engine-only startup: after KisApplication has
+    # initialized its global engines, brush resources, plugin registries
+    # and KisPart, it can create a plain Android QMainWindow instead of
+    # calling KisPart::startBlankSession() -> KisMainWindow.
+    # The existing V1 desktop-backed native startup is unchanged, and
+    # engine-only mode requires a separate explicit opt-in.
+    appfile=root/"libs/ui/KisApplication.cpp"
+    app=appfile.read_text(encoding="utf-8")
+    app=one(app,
+        '''#include "KisAndroidDonations.h"''',
+        '''#include "KisAndroidDonations.h"
+#include "engine_only_startup_policy.h"
+#include "engine_only_root.h"
+#include "krita_standalone_pilot.h"''',
+        "Android engine-only application bootstrap headers")
+    app=one(app,
+        '''    KisPart *kisPart = KisPart::instance();
+    if (needsMainWindow) {''',
+        '''    KisPart *kisPart = KisPart::instance();
+#ifdef Q_OS_ANDROID
+    // Do not skip Krita's engine/resource/plugin initialization. Only
+    // substitute its original desktop *window/session bootstrap*.
+    // External file intents, batch mode and explicit sessions must
+    // remain on the tested KisMainWindow path until native routing.
+    const bool compatibleEngineOnlyBoot =
+        needsMainWindow && showmainWindow && !d->batchRun &&
+        !doNewImage && !doTemplate &&
+        args.filenames().isEmpty() && args.fileLayer().isEmpty() &&
+        args.session().isEmpty() && args.workspace().isEmpty() &&
+        args.windowLayout().isEmpty() &&
+        !args.canvasOnly() && !args.fullScreen() &&
+        d->earlyRemoteArguments.isEmpty() &&
+        d->earlyFileOpenEvents.isEmpty();
+    QSettings engineOnlySettings;
+    const auto engineOnlyDecision=MobileEngineOnlyStartupPolicy::begin(
+        engineOnlySettings,compatibleEngineOnlyBoot);
+    const bool engineOnlyBoot=
+        engineOnlyDecision==MobileEngineOnlyStartupPolicy::Decision::Launch;
+    if(engineOnlyBoot) {
+        // One Android Qt top-level, ZERO KisMainWindow or QMdiArea.
+        // The real KisViewManager/KisCanvas2 is created independently
+        // by the existing proven native engine pilot underneath it.
+        auto *nativeRoot=new MobileEngineOnlyRoot;
+        nativeRoot->setAttribute(Qt::WA_DeleteOnClose,true);
+        nativeRoot->setWindowTitle(
+            QObject::tr("Krita Mobile Engine (experimental)"));
+        nativeRoot->setCentralWidget(new QWidget(nativeRoot));
+        nativeRoot->show();
+        QPointer<MobileEngineOnlyRoot> guardedRoot=nativeRoot;
+        QTimer::singleShot(0,nativeRoot,[guardedRoot]() {
+            if(!guardedRoot)return;
+            bool started=MobileKritaStandalonePilot::launch(
+                guardedRoot.data(),[guardedRoot](bool success) {
+                    QSettings settings;
+                    MobileEngineOnlyStartupPolicy::complete(settings,success);
+                    if(!success)
+                        qWarning() << "Experimental engine-only boot failed;"
+                                   << "next launch restores original Krita";
+                });
+            if(!started) {
+                QSettings settings;
+                MobileEngineOnlyStartupPolicy::complete(settings,false);
+                if(guardedRoot)guardedRoot->close();
+            }
+        });
+        qInfo() << "Experimental engine-only boot: KisMainWindow skipped";
+    }
+#else
+    const bool engineOnlyBoot=false;
+#endif
+    if (needsMainWindow && !engineOnlyBoot) {''',
+        "replace desktop KisPart session bootstrap when engine-only selected")
+    app=one(app,
+        '''    if (!d->batchRun) {
+        checkAutosaveFiles();
+    }''',
+        '''    if (!d->batchRun && !engineOnlyBoot) {
+        checkAutosaveFiles();
+    }''',
+        "defer desktop autosave manager while engine-only")
+    # A native Android document intent might be queued after the
+    # eligibility check. Never dereference a null desktop mainWindow.
+    app=one(app,
+        '''            d->mainWindow->openDocument(fileName, QFlags<KisMainWindow::OpenFlag>());''',
+        '''            if (d->mainWindow)
+                d->mainWindow->openDocument(
+                    fileName,QFlags<KisMainWindow::OpenFlag>());
+            else
+                qWarning() << "Engine-only file intent requires native"
+                           << " routing; reopen this file through Open:" << fileName;''',
+        "guard late Android open intent without desktop window")
+    appfile.write_text(app,encoding="utf-8")
 
     mainfile=root/"libs/ui/KisMainWindow.cpp"
     s=mainfile.read_text(encoding="utf-8")
@@ -931,6 +1026,10 @@ KisMainWindow * KisView::mainWindow() const''',
         native_boot_coordinator.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/native_bootstrap_audit.h").write_text(
         native_bootstrap_audit.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/engine_only_startup_policy.h").write_text(
+        engine_only_policy.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/engine_only_root.h").write_text(
+        engine_only_root.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/krita_native_workspace.h").write_text(
         native_workspace.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/native_layer_reorder_policy.h").write_text(
