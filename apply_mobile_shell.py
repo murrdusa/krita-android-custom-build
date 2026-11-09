@@ -583,9 +583,10 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
 {
 #ifdef Q_OS_ANDROID
     if (MobileAndroidDocumentIntents::active()) {
+        QByteArray serialized=QByteArray::fromBase64(
+            message.toLatin1());
         const KisApplicationArguments incoming=
-            KisApplicationArguments::deserialize(
-                QByteArray::fromBase64(message.toLatin1()));
+            KisApplicationArguments::deserialize(serialized);
         if(incoming.filenames().isEmpty())
             qWarning() << "Mobile Studio: remote request has no file paths";
         for(const QString &path:incoming.filenames())
