@@ -777,7 +777,7 @@ private:
             const QColor background=active?QColor(46,103,139):
                 highlighted?QColor(43,82,114):
                 group?QColor(37,66,83):QColor(42,55,68);
-            if(auto *frame=m_rowFrames.value(i)) {
+            if(QFrame *frame=m_rowFrames.value(i).data()) {
                 const QString edge=clipped?QStringLiteral("#46b5a5"):
                     group?QStringLiteral("#74acda"):
                     m_rowDepths.value(i)>0?QStringLiteral("#607c92"):
@@ -787,7 +787,7 @@ private:
                     "border-left:%2px solid %3;border-radius:5px;}")
                     .arg(background.name()).arg(clipped?7:4).arg(edge));
             }
-            if(auto *thumb=m_rowButtons.value(i)) {
+            if(QToolButton *thumb=m_rowButtons.value(i).data()) {
                 thumb->setStyleSheet(active?
                     "QToolButton{background:#808b97;color:white;"
                     "border:3px solid #ec7683;border-radius:5px;}":
@@ -860,7 +860,7 @@ private:
                 "QToolButton{background:#244f71;color:#e7f7ff;"
                 "border:1px solid #7fc5ef;border-radius:5px;}");
             row->addWidget(fold);
-            QObject::connect(fold,&QToolButton::clicked,this,[this,node,item]() {
+            QObject::connect(fold,&QToolButton::clicked,this,[this,node,item]() mutable {
                 item->setExpanded(!item->isExpanded());
                 node->setCollapsed(!item->isExpanded());
                 QTimer::singleShot(0,this,[this]() {reload();});
