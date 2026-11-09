@@ -85,9 +85,17 @@ jobs:
           assert "MobileDocumentHostPort" in document_service
           assert "MobileCommandRegistryPort" in command_service
           assert "MobileEngineBridge(" in mobile_bridge
-          assert "new MobileDesktopDocumentHost(this)" in shell_patch
-          assert "new MobileDesktopCommandRegistry(this)" in shell_patch
-          assert "mobile_frontend=(shell,bridge,document_service,document_port" in shell_patch
+          host_bundle = Path("mobile_core/host_services.h").read_text()
+          assert "struct MobileHostServices final" in host_bundle
+          assert "QPointer<QWidget> documentRoot" in host_bundle
+          assert "bool ready() const" in host_bundle
+          assert "MobileDesktopEngineBootstrap::create(" in shell_patch
+          assert "new MobileDesktopDocumentHost(window)" in desktop_adapters
+          assert "new MobileDesktopCommandRegistry(window)" in desktop_adapters
+          assert "new MobileMdiViewHostAdapter(documentRoot,manager)" in desktop_adapters
+          assert "MobileEngineBridge(mobileServices,d->viewManager)" in shell_patch
+          assert 'host_services=own/"mobile_core/host_services.h"' in shell_patch
+          assert '(root/"libs/ui/host_services.h").write_text(' in shell_patch
           switcher = Path("mobile_core/document_switcher.h").read_text()
           view_port = Path("mobile_core/view_host_port.h").read_text()
           view_guard = Path("mobile_core/view_identity_guard.h").read_text()
