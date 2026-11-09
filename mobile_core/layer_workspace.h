@@ -48,6 +48,7 @@
 #include "kis_node.h"
 #include "kis_layer.h"
 #include "kis_paint_layer.h"
+#include "kis_layer_properties_icons.h"
 #include "kis_image.h"
 #include <klocalizedstring.h>
 
@@ -295,9 +296,12 @@ public:
                 // Eye / Lock columns operate on the tapped layer, not
                 // the previously active one. Use Krita's native undoable
                 // node commands instead of changing KisNode directly.
-                m_engine.selectLayer(node);
-                if(column==1)m->toggleVisibility();
-                else m->toggleLock();
+                if(column==1)
+                    setLayerProperty(node,KisLayerPropertiesIcons::visible,
+                                     !node->visible());
+                else
+                    setLayerProperty(node,KisLayerPropertiesIcons::locked,
+                                     !node->userLocked());
                 reload();
                 return;
             }
@@ -598,12 +602,18 @@ private:
         } else if(chosen==properties) {
             m->nodeProperties(node);
         } else if(chosen==alphaLock || chosen==inheritAlpha) {
-            // Krita's native layer manager applies its undoable node
-            // property commands and respects layer-type constraints.
-            // The context menu targets exactly the tapped layer.
-            if(!m_engine.selectLayer(node))return;
-            if(chosen==alphaLock)m->toggleAlphaLock();
-            else m->toggleInheritAlpha();
+            // Do NOT switch active layers then toggle: KisNodeManager's
+            // activeNode()/selectedNodes() can still refer to the previous
+            // layer on the same Qt event turn. Address exactly the tapped
+            // node with Krita's undoable property command instead.
+            if(chosen==alphaLock) {
+                if(auto *paint=qobject_cast<KisPaintLayer*>(node.data()))
+                    setLayerProperty(node,KisLayerPropertiesIcons::alphaLocked,
+                                     !paint->alphaLocked());
+            } else if(auto *layer=qobject_cast<KisLayer*>(node.data())) {
+                setLayerProperty(node,KisLayerPropertiesIcons::inheritAlpha,
+                                 !layer->alphaChannelDisabled());
+            }
         } else if(chosen==merge || chosen==flatten) {
             // Invoke the native Krita layer manager so group/mask
             // semantics, disabled states and image undo stay intact.
@@ -674,6 +684,21 @@ private:
         const KisNodeSP active=view->activeNode();
         if(active)key+=active->uuid().toString();
         return key;
+    }
+
+    // Unlike the native active-layer toggle actions, this explicitly
+    // addresses the row the user touched, even before selection signals
+    // and rendering catch up. The native command remains fully undoable.
+    bool setLayerProperty(KisNodeSP node,const KoID &id,bool enabled)
+    {
+        auto *view=m_engine.manager();
+        KisImageSP image=view?view->image().toStrongRef():KisImageSP();
+        if(!image || !node || !node->parent())return false;
+        KisNodeSP root=node;
+        while(root && root!=image->root())root=root->parent();
+        if(root!=image->root())return false;
+        KisLayerPropertiesIcons::setNodePropertyAutoUndo(node,id,enabled,image);
+        return true;
     }
 
     KisNodeManager *manager() const
