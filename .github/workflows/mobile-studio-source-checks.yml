@@ -245,6 +245,11 @@ jobs:
           assert '(root/"libs/ui/krita_standalone_runtime.h").write_text(' in shell_patch
           assert 'Krita native view count' in shell_patch
           assert 'Native KisViewManager missing desktop canvas-only action' in shell_patch
+          assert 'KisStatusBar native Qt host' in shell_patch
+          assert 'KisStatusBar desktop-only signal guard' in shell_patch
+          assert 'statusbarfile=root/"libs/ui/kis_statusbar.cc"' in shell_patch
+          assert 'm_statusBar = qtHost->statusBar();' in shell_patch
+          assert 'QMainWindow *qtHost=m_viewManager->qtMainWindow();' in shell_patch
           assert 'canvasOnlyAction && canvasOnlyAction->isChecked()' in shell_patch
           assert 'candidate->viewManager()==this' in shell_patch
           assert 'native canvas color-managed surface parent' in shell_patch

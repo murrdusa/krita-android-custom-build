@@ -289,6 +289,43 @@ KisMainWindow * KisView::mainWindow() const''',
            "Native KisViewManager missing desktop canvas-only action")
     managercpp.write_text(mc,encoding="utf-8")
 
+    # KisStatusBar::setup() runs inside KisViewManager's constructor.
+    # It dereferences KisMainWindow, which is intentionally absent in
+    # our independent QMainWindow host. Android uses the Qt-native
+    # host's own status bar; desktop Krita keeps its original code.
+    statusbarfile=root/"libs/ui/kis_statusbar.cc"
+    sb=statusbarfile.read_text(encoding="utf-8")
+    sb=one(sb,'#include <QStatusBar>',
+           '#include <QStatusBar>\\n#ifdef Q_OS_ANDROID\\n#include <QMainWindow>\\n#include <QDebug>\\n#endif',
+           "KisStatusBar Qt host includes")
+    sb=one(sb,
+           '    m_statusBar = m_viewManager->mainWindow()->statusBar();',
+           '''#ifdef Q_OS_ANDROID
+    // mainWindow() returns a KisMainWindow* and is null for the
+    // independent native canvas. qtMainWindow() retains QMainWindow.
+    QMainWindow *qtHost=m_viewManager->qtMainWindow();
+    if (!qtHost) {
+        qWarning() << "Krita native status bar: no Qt window";
+        return;
+    }
+    m_statusBar = qtHost->statusBar();
+#else
+    m_statusBar = m_viewManager->mainWindow()->statusBar();
+#endif''',
+           "KisStatusBar native Qt host")
+    sb=one(sb,
+           '    connect(m_viewManager->mainWindow(), SIGNAL(themeChanged()), this, SLOT(updateSelectionIcon()));',
+           '''#ifdef Q_OS_ANDROID
+    // themeChanged is a desktop KisMainWindow signal, not a
+    // QMainWindow signal. Do not connect to a null desktop host.
+    if (m_viewManager->mainWindow())
+        connect(m_viewManager->mainWindow(), SIGNAL(themeChanged()), this, SLOT(updateSelectionIcon()));
+#else
+    connect(m_viewManager->mainWindow(), SIGNAL(themeChanged()), this, SLOT(updateSelectionIcon()));
+#endif''',
+           "KisStatusBar desktop-only signal guard")
+    statusbarfile.write_text(sb,encoding="utf-8")
+
     # Krita 6.0.4 canvas uses a desktop window for color-management
     # operations, although its manager already stores QMainWindow.
     canvasfile=root/"libs/ui/canvas/kis_canvas2.cpp"

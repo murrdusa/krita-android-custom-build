@@ -291,3 +291,19 @@ normally support. The original Krita canvas is left in place. The
 test host has an explicit Exit test action and follows host resize.
 Automated Qt tests cover top-level identity and canvas preservation;
 device rendering remains unverified.
+
+
+## Standalone crash checkpoint — 2026-11-09
+
+An Android device test terminated during the `Creating independent
+Krita view manager` phase, before native document creation. Source
+inspection of Krita 6.0.4 found a specific null dereference during
+`KisViewManager` construction:
+`KisStatusBar::setup()` dereferences
+`m_viewManager->mainWindow()->statusBar()`, but this independent
+`QMainWindow` is intentionally not a desktop `KisMainWindow`.
+
+The Android-only patch uses `qtMainWindow()->statusBar()` in the
+independent host and retains upstream desktop behavior. The desktop-only
+`themeChanged` connection is guarded. This addresses a concrete
+crash path; another Android launch is still required to validate it.
