@@ -296,7 +296,7 @@ KisMainWindow * KisView::mainWindow() const''',
     statusbarfile=root/"libs/ui/kis_statusbar.cc"
     sb=statusbarfile.read_text(encoding="utf-8")
     sb=one(sb,'#include <QStatusBar>',
-           '#include <QStatusBar>\\n#ifdef Q_OS_ANDROID\\n#include <QMainWindow>\\n#include <QDebug>\\n#endif',
+           '#include <QStatusBar>\n#ifdef Q_OS_ANDROID\n#include <QMainWindow>\n#include <QDebug>\n#endif',
            "KisStatusBar Qt host includes")
     sb=one(sb,
            '    m_statusBar = m_viewManager->mainWindow()->statusBar();',
