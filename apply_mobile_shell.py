@@ -30,6 +30,9 @@ def main(root:Path):
     switcher=own/"mobile_core/document_switcher.h"
     bridge=own/"mobile_core/engine_bridge.h"
     document_service=own/"mobile_core/document_service.h"
+    document_port=own/"mobile_core/document_host_port.h"
+    command_port=own/"mobile_core/command_registry_port.h"
+    desktop_adapters=own/"mobile_core/desktop_host_adapters.h"
     mdi_identity=own/"mobile_core/mdi_view_identity.h"
     command_service=own/"mobile_core/command_service.h"
     brush=own/"mobile_core/brush_workspace.h"
@@ -43,7 +46,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,back_policy,transfer,native_chrome,native_pilot,surface,switcher,bridge,document_service,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+               (shell,session,back_policy,transfer,native_chrome,native_pilot,surface,switcher,bridge,document_service,document_port,command_port,desktop_adapters,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
                 reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
@@ -51,9 +54,10 @@ def main(root:Path):
     # transfer controller may directly include Krita's desktop window.
     # Keep the mobile widgets/engine facade unaware of this legacy class,
     # so a future lightweight application host can replace it in one place.
-    desktop_dependent=(document_service,command_service)
+    desktop_dependent=(desktop_adapters,)
     qt_host_components=(session,back_policy,transfer,native_chrome,native_pilot,surface)
-    mobile_frontend=(shell,bridge,switcher,brush,color,layers,
+    mobile_frontend=(shell,bridge,document_service,document_port,
+                     command_service,command_port,switcher,brush,color,layers,
                      commands,quick,mdi_identity,pressure_calibration,pressure_settings,
                      reorder,tools,documents,*qt_host_components)
     for module in mobile_frontend:
@@ -82,7 +86,7 @@ def main(root:Path):
     mainfile=root/"libs/ui/KisMainWindow.cpp"
     s=mainfile.read_text(encoding="utf-8")
     s=one(s,'#include "tablet_compact_skin.h"',
-          '#include "tablet_compact_skin.h"\n#include "canvas_session.h"\n#include <QSharedPointer>',
+          '#include "tablet_compact_skin.h"\n#include "canvas_session.h"\n#include "desktop_host_adapters.h"\n#include <QSharedPointer>',
           "main window include")
 
     native='''    auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);'''
@@ -123,7 +127,12 @@ def main(root:Path):
     });
     auto *mobileStudio = new MobileAppController(
         this,d->mdiArea,
-        MobileEngineBridge(this,d->viewManager,d->mdiArea),
+        MobileEngineBridge(
+            QSharedPointer<MobileDocumentHostPort>(
+                new MobileDesktopDocumentHost(this)),
+            QSharedPointer<MobileCommandRegistryPort>(
+                new MobileDesktopCommandRegistry(this)),
+            d->viewManager,d->mdiArea),
         mobilePilotAction);
     Q_UNUSED(mobileStudio);
     connect(tabletCompact,&QAction::toggled,this,
@@ -213,6 +222,12 @@ def main(root:Path):
         bridge.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_service.h").write_text(
         document_service.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/document_host_port.h").write_text(
+        document_port.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/command_registry_port.h").write_text(
+        command_port.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/desktop_host_adapters.h").write_text(
+        desktop_adapters.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/mdi_view_identity.h").write_text(
         mdi_identity.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/command_service.h").write_text(
