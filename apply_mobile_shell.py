@@ -28,6 +28,7 @@ def main(root:Path):
     native_pilot=own/"mobile_core/native_canvas_pilot.h"
     lightweight=own/"mobile_core/lightweight_canvas_host.h"
     native_view_stack=own/"mobile_core/native_view_stack.h"
+    native_krita_save_host=own/"mobile_core/native_krita_save_host.h"
     surface=own/"mobile_core/canvas_surface.h"
     switcher=own/"mobile_core/document_switcher.h"
     bridge=own/"mobile_core/engine_bridge.h"
@@ -52,7 +53,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,surface,switcher,bridge,document_service,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+               (shell,session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,surface,switcher,bridge,document_service,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
                 reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
@@ -61,7 +62,7 @@ def main(root:Path):
     # Keep the mobile widgets/engine facade unaware of this legacy class,
     # so a future lightweight application host can replace it in one place.
     desktop_dependent=(desktop_adapters,mdi_view_adapter)
-    qt_host_components=(session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,surface)
+    qt_host_components=(session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,surface)
     mobile_frontend=(shell,bridge,host_services,document_service,document_port,view_port,view_guard,
                      command_service,command_port,switcher,brush,color,layers,
                      commands,quick,mdi_identity,pressure_calibration,pressure_settings,
@@ -88,6 +89,90 @@ def main(root:Path):
         if not module.is_file():
             raise RuntimeError(
                 f"Missing isolated Krita backend module: {module.name}")
+
+    # Host-neutral native KisView teardown and close-time Save seams.
+    # Changes are Android-only. The desktop Krita path is untouched.
+    viewheader=root/"libs/ui/KisView.h"
+    vh=viewheader.read_text(encoding="utf-8")
+    vh=one(vh,"class KisViewManager;","class KisViewManager;\n#ifdef Q_OS_ANDROID\nclass MobileKritaNativeSaveHost;\n#endif",
+           "KisView native save host forward declaration")
+    vh=one(vh,"    KisViewManager *viewManager() const;",
+           "    KisViewManager *viewManager() const;\n#ifdef Q_OS_ANDROID\n    void setMobileNativeSaveHost(MobileKritaNativeSaveHost *host);\n    MobileKritaNativeSaveHost *mobileNativeSaveHost() const;\n#endif",
+           "KisView native save host access")
+    viewheader.write_text(vh,encoding="utf-8")
+
+    viewcpp=root/"libs/ui/KisView.cpp"
+    vc=viewcpp.read_text(encoding="utf-8")
+    vc=one(vc,'#include "KisViewManager.h"',
+           '#include "KisViewManager.h"\n#ifdef Q_OS_ANDROID\n#include "native_krita_save_host.h"\n#endif',
+           "KisView native save host include")
+    vc=one(vc,'    KisViewManager *viewManager {nullptr};',
+           '    KisViewManager *viewManager {nullptr};\n#ifdef Q_OS_ANDROID\n    QPointer<MobileKritaNativeSaveHost> mobileNativeSaveHost;\n#endif',
+           "KisView guarded native save port")
+    vc=one(vc,'        d->viewManager->mainWindow()->notifyChildViewDestroyed(this);',
+           '        // An independent QMainWindow has no KisMainWindow hooks.\n        if (KisMainWindow *desktop=d->viewManager->mainWindow())\n            desktop->notifyChildViewDestroyed(this);',
+           "KisView destructor desktop notification")
+    vc=one(vc,'KisMainWindow * KisView::mainWindow() const',
+           '''#ifdef Q_OS_ANDROID
+void KisView::setMobileNativeSaveHost(MobileKritaNativeSaveHost *host)
+{
+    d->mobileNativeSaveHost=host;
+}
+MobileKritaNativeSaveHost *KisView::mobileNativeSaveHost() const
+{
+    return d->mobileNativeSaveHost.data();
+}
+#endif
+
+KisMainWindow * KisView::mainWindow() const''',
+           "KisView native save host methods")
+    vc=one(vc,'''            if (!viewManager()->mainWindow()->saveDocument(document(), !isNative, false))
+                return false;''',
+           '''#ifdef Q_OS_ANDROID
+            if (!viewManager()->mainWindow()) {
+                // Without a live injected host, refuse Save and retain
+                // the modified painting. Never silently discard it.
+                if (!d->mobileNativeSaveHost ||
+                    !d->mobileNativeSaveHost->save(document(), !isNative))
+                    return false;
+            } else
+#endif
+            if (!viewManager()->mainWindow()->saveDocument(document(), !isNative, false))
+                return false;''',
+           "KisView native close Save")
+    viewcpp.write_text(vc,encoding="utf-8")
+
+    partcpp=root/"libs/ui/KisPart.cpp"
+    pc=partcpp.read_text(encoding="utf-8")
+    pc=one(pc,'#include "KisView.h"',
+           '#include "KisView.h"\n#ifdef Q_OS_ANDROID\n#include "native_krita_save_host.h"\n#endif',
+           "KisPart native host include")
+    pc=one(pc,'    KIS_ASSERT_RECOVER_RETURN(!view->mainWindow()->hackIsSaving());',
+           '''    if (KisMainWindow *desktop=view->mainWindow()) {
+        KIS_ASSERT_RECOVER_RETURN(!desktop->hackIsSaving());
+    }
+#ifdef Q_OS_ANDROID
+    else if (auto *host=view->mobileNativeSaveHost()) {
+        KIS_ASSERT_RECOVER_RETURN(!host->saving());
+    }
+#endif''',
+           "KisPart host-neutral view removal guard")
+    partcpp.write_text(pc,encoding="utf-8")
+
+    managercpp=root/"libs/ui/KisViewManager.cpp"
+    mc=managercpp.read_text(encoding="utf-8")
+    mc=one(mc,'''QWidget *KisViewManager::mainWindowAsQWidget() const
+{
+    return mainWindow();
+}''',
+           '''QWidget *KisViewManager::mainWindowAsQWidget() const
+{
+    // The view manager already supports a plain QMainWindow host.
+    // Do not lose the dialog parent by forcing KisMainWindow here.
+    return qtMainWindow();
+}''',
+           "Qt-native lightweight dialog parent")
+    managercpp.write_text(mc,encoding="utf-8")
 
     mainfile=root/"libs/ui/KisMainWindow.cpp"
     s=mainfile.read_text(encoding="utf-8")
@@ -232,6 +317,8 @@ def main(root:Path):
         lightweight.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/native_view_stack.h").write_text(
         native_view_stack.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/native_krita_save_host.h").write_text(
+        native_krita_save_host.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/canvas_surface.h").write_text(
         surface.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_switcher.h").write_text(

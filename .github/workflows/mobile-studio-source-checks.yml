@@ -168,6 +168,14 @@ jobs:
           assert "retainsOriginalCanvas()" in lightweight
           assert "createNativeDocumentRoot()" in lightweight
           assert "nativeViewPort()" in lightweight
+          assert 'native_krita_save_host=own/"mobile_core/native_krita_save_host.h"' in shell_patch
+          assert '(root/"libs/ui/native_krita_save_host.h").write_text(' in shell_patch
+          assert 'viewcpp=root/"libs/ui/KisView.cpp"' in shell_patch
+          assert 'partcpp=root/"libs/ui/KisPart.cpp"' in shell_patch
+          assert 'managercpp=root/"libs/ui/KisViewManager.cpp"' in shell_patch
+          assert 'setMobileNativeSaveHost' in shell_patch
+          assert 'mobileNativeSaveHost->save(document(), !isNative)' in shell_patch
+          assert 'return qtMainWindow();' in shell_patch
           native_stack = Path("mobile_core/native_view_stack.h").read_text()
           assert "class MobileNativeViewStack final" in native_stack
           assert "MobileViewHostPort" in native_stack
@@ -263,6 +271,14 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: /tmp/krita-lightweight-canvas-host-test
+      - name: Compile native Krita close-time Save host Qt test
+        run: |
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+            tests/qt_native_krita_save_host.cpp \
+            -o /tmp/krita-native-save-host-test \
+            $(pkg-config --cflags --libs Qt5Widgets)
+      - name: Test guarded close-time Save delegation
+        run: /tmp/krita-native-save-host-test
       - name: Build MDI-free native multi-document view host
         run: |
           c++ -std=c++17 -fPIC -g -fsanitize=address -fno-omit-frame-pointer -DKRITA_MOBILE_QT_TEST -I. \

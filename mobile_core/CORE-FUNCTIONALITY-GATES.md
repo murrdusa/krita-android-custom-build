@@ -68,6 +68,17 @@ serialization or brushes.
   views when their document is destroyed. A Qt-only test verifies twelve
   canvas-preserving UI transitions. This is a functional host boundary,
   **not yet live KisView construction or Android painting parity**.
+- Krita 6.0.4's actual `KisView` teardown and modified-document
+  close-save path both assumed a concrete `KisMainWindow`. Android
+  source patching now guards those hard-coded dependencies, introduces a
+  QPointer-guarded native save-host callback on `KisView`, and changes
+  `KisViewManager::mainWindowAsQWidget()` to use its existing Qt-native
+  parent accessor. `native_krita_save_host.h` delegates close-time
+  Save/Save As to the injected real Krita document port, and has a Qt
+  regression for backend failure, reentrancy and host destruction.
+  Missing save callbacks fail closed; the working desktop fallback
+  continues to use Krita's original native methods. This is a source
+  compatibility seam, **not live Android `KisView` initialization**.
 - The opt-in stationary canvas header was found consuming hundreds of
   pixels of height on a real device. The top dock is now capped at 76
   logical pixels and its title/header widget is height-fixed; a Qt
