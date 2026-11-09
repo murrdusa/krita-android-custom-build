@@ -314,6 +314,8 @@ jobs:
           assert '#include "KisMainWindow.h"' not in composition
           tiny=Path("mobile_core/engine_only_bootstrap.h").read_text()
           assert 'class MobileEngineOnlyBootstrap final' in tiny
+          assert '#include <QtGlobal>' in tiny
+          assert tiny.index('#include <QtGlobal>') < tiny.index('#ifdef Q_OS_ANDROID')
           assert '#include "KisMainWindow.h"' not in tiny
           assert 'MobileEngineOnlyStartupPolicy::setEnabled(settings,on)' in native_pilot
           assert 'dynamic_cast<MobileEngineOnlyRoot*>(nativeWindow)' in native_pilot
