@@ -263,7 +263,10 @@ jobs:
           assert 'MobileKritaStandaloneRuntime::create(window)' in native_pilot
           assert 'MobileKritaStandaloneDocumentsBootstrap::create(runtime)' in native_pilot
           assert 'documents->createCanvas(' in native_pilot
-          assert 'documents->saveCurrentDocument(' in native_pilot
+          assert 'MobileDeferredViewCommand::schedule(' in native_pilot
+          assert 'documents->saveDocumentView(' in native_pilot
+          assert 'documents->closeDocumentView(' in native_pilot
+          assert '(root/"libs/ui/deferred_view_command.h").write_text(' in shell_patch
           assert 'doc->undoStack()->undo()' in native_pilot
           assert 'doc->undoStack()->redo()' in native_pilot
           assert 'documents->openFiles(alive)' in native_pilot
@@ -487,6 +490,14 @@ jobs:
             $(pkg-config --cflags --libs Qt5Core)
       - name: Verify view identity, safe Save and native close delegation
         run: /tmp/krita-mobile-view-host-test
+      - name: Build deferred native document command Qt regression
+        run: |
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+            tests/qt_deferred_view_command.cpp \
+            -o /tmp/krita-deferred-view-command-test \
+            $(pkg-config --cflags --libs Qt5Core)
+      - name: Verify deferred native Save and Close cannot switch drawings
+        run: /tmp/krita-deferred-view-command-test
       - name: Build engine-host-independent document and action port test
         run: |
           c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
