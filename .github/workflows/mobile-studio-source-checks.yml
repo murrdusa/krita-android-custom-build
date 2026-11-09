@@ -62,7 +62,14 @@ jobs:
           assert 'property("_mobileStudioPresentationActive").toBool()' in Path("apply_mobile_shell.py").read_text()
           assert "m_transfer.leave()" in Path("mobile_core/canvas_session.h").read_text()
           assert "MobileStudio/fingerContactPressureV1" in Path("mobile_core/standalone_host.h").read_text()
-          print("Canvas ownership and optional finger pressure invariants intact")
+          pressure_settings = Path("mobile_core/finger_pressure_settings.h").read_text()
+          assert "minPressure() {return 0.0;}" in pressure_settings
+          assert "maxPressure() {return 1.0;}" in pressure_settings
+          pressure_input = Path("mobile_core/finger_contact_pressure.h").read_text()
+          assert "MobileFingerPressureSettings::mapDiameter(" in pressure_input
+          assert "stroke.smoothed=target;" in pressure_input
+          assert "finger_pressure_settings.h" in pressure_input
+          print("Canvas ownership and full-range optional finger pressure invariants intact")
           PY
 
   qt-canvas-host-test:
