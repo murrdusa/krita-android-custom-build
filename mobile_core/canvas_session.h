@@ -22,6 +22,7 @@
 #include <QTimer>
 #include <memory>
 #include "engine_bridge.h"
+#include "android_back_policy.h"
 #include "canvas_transfer.h"
 #include "native_canvas_chrome.h" // Qt-only stationary canvas UI architecture
 #include "native_canvas_pilot.h"  // Optional no-reparent Mobile Studio UI
@@ -135,14 +136,11 @@ protected:
                     key->accept();
                     return true;
                 }
-                QWidget *focused=qobject_cast<QWidget*>(watched);
-                const bool onKritaWindow=m_backend && focused &&
-                    focused->window()==m_backend;
-                if(event->type()==QEvent::KeyPress &&
-                   !key->isAutoRepeat() && onKritaWindow &&
-                   sessionActive() && !m_transitioning &&
-                   qApp && !qApp->activeModalWidget() &&
-                   !qApp->activePopupWidget()) {
+                if(MobileAndroidBackPolicy::mayDismiss(
+                       m_backend,watched,event->type(),key->key(),
+                       key->isAutoRepeat(),sessionActive(),m_transitioning,
+                       qApp && qApp->activeModalWidget(),
+                       qApp && qApp->activePopupWidget())) {
                     bool dismissed=false;
                     if(m_nativePilot && m_nativePilot->active())
                         dismissed=m_nativePilot->dismissTransientControls();
