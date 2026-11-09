@@ -1263,7 +1263,7 @@ private:
         if(type!=QEvent::TouchBegin && type!=QEvent::TouchUpdate &&
            type!=QEvent::TouchEnd && type!=QEvent::TouchCancel)
             return false;
-        const auto *widget=qobject_cast<QWidget*>(watched);
+        auto *widget=qobject_cast<QWidget*>(watched);
         const bool relevant=widget &&
             (widget==m_tree->viewport() ||
              m_rowButtons.contains(qobject_cast<QToolButton*>(widget)));
