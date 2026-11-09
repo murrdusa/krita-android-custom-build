@@ -8,6 +8,7 @@ on:
       - "krita_build_reporter.py"
       - "krita_build_cache.py"
       - "apply_mobile_shell.py"
+      - "apply_finger_contact_pressure.py"
       - "mobile_core/**"
       - "tests/**"
       - ".github/workflows/mobile-studio-source-checks.yml"
@@ -17,6 +18,7 @@ on:
       - "krita_build_reporter.py"
       - "krita_build_cache.py"
       - "apply_mobile_shell.py"
+      - "apply_finger_contact_pressure.py"
       - "mobile_core/**"
       - "tests/**"
   workflow_dispatch:
@@ -34,7 +36,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Compile Python source
-        run: python -m py_compile apk_size_report.py krita_build_reporter.py krita_build_cache.py apply_mobile_shell.py
+        run: python -m py_compile apk_size_report.py krita_build_reporter.py krita_build_cache.py apply_mobile_shell.py apply_finger_contact_pressure.py
       - name: Test APK size reporting
         run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Check canvas ownership boundary
@@ -79,3 +81,13 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: /tmp/krita-canvas-transfer-smoke
+      - name: Build optional finger pressure mapping test
+        run: |
+          c++ -std=c++17 -fPIC -I. \
+            tests/qt_finger_contact_pressure.cpp \
+            -o /tmp/krita-finger-area-pressure-test \
+            $(pkg-config --cflags --libs Qt5Widgets)
+      - name: Verify finger mapping, smoothing and original-pressure fallback
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /tmp/krita-finger-area-pressure-test
