@@ -265,6 +265,31 @@ public:
         // render-completion checks, backups and Android file provider.
         return m_host->save(m_manager->document(),saveAs);
     }
+
+    // A deferred UI Save must never silently target a different drawing
+    // if document selection changes while a modal menu is closing.
+    // Capture the selected MDI identity at click time and revalidate it
+    // immediately before invoking Krita's own native save operation.
+    bool saveDocumentView(const QPointer<QObject> &identity,
+                          bool saveAs=false) const
+    {
+        if(!m_host || !m_host->available() || !m_documents ||
+           !m_manager || !identity)return false;
+        const auto items=openDocuments();
+        int activeCount=0;
+        bool identityWasCurrent=false;
+        for(const auto &item:items) {
+            if(!item.active)continue;
+            ++activeCount;
+            identityWasCurrent=item.nativeView==identity;
+        }
+        if(activeCount!=1 || !identityWasCurrent)return false;
+        const auto sub=MobileMdiViewIdentity::resolve(m_documents,identity);
+        const auto *view=sub?qobject_cast<KisView*>(sub->widget()):nullptr;
+        KisDocument *document=view?view->document():nullptr;
+        if(!document || document!=m_manager->document())return false;
+        return m_host->save(document,saveAs);
+    }
     QString activeDocumentTitle() const
     {
         if(!m_manager || !m_manager->document())return {};
