@@ -222,12 +222,17 @@ private:
         if(id.startsWith(QStringLiteral("tool:")))
             return m_engine.hasDocument();
         if(id==QStringLiteral("mobile:close")) {
-            // Do not enable a destructive command unless Krita can
-            // identify exactly one current view. Multiple views of the
-            // same document are otherwise ambiguous after reparenting.
-            for(const auto &view:m_engine.openDocuments())
-                if(view.active && view.nativeView)return true;
-            return false;
+            // A stale view manager or reentrant selection callback can
+            // mark more than one native view active. Never enable a
+            // destructive button unless exactly one live MDI view is
+            // explicitly selected. MobileDocumentService revalidates
+            // that guarded identity before dispatching the close.
+            int activeCount=0;
+            for(const auto &view:m_engine.openDocuments()) {
+                if(view.active && view.nativeView)
+                    ++activeCount;
+            }
+            return activeCount==1;
         }
         if(id.startsWith(QStringLiteral("mobile:")))
             return !mobileNeedsDocument(id) || m_engine.hasDocument();
