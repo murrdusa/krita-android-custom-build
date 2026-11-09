@@ -37,7 +37,8 @@ def main(root):
         float minorPixels, float density, boolean historical);
     // Reset the previous stroke's size-only ring buffer on finger-down,
     // pointer-down (multitouch) and cancelled gestures.
-    public static native void fingerRawGestureReset();""",
+    public static native void fingerRawGestureReset();
+    public static native boolean fingerRawCaptureEnabled(long eventUptimeMs);""",
         "Java native declaration")
     jni.write_text(s,encoding="utf-8")
 
@@ -70,11 +71,22 @@ def main(root):
                     (action == MotionEvent.ACTION_DOWN ||
                      action == MotionEvent.ACTION_MOVE ||
                      action == MotionEvent.ACTION_UP)) {
-                final int id = event.getPointerId(0);
-                final float density = getResources()
-                    .getDisplayMetrics().density;
+                // User must opt in: no raw size samples are recorded
+                // while the experimental finger-pressure toggle is off.
+                // A cached JNI flag avoids settings reads per touch frame.
+                boolean capture = false;
                 try {
-                    final int history = event.getHistorySize();
+                    capture = JNIWrappers.fingerRawCaptureEnabled(
+                        event.getEventTime());
+                } catch (UnsatisfiedLinkError unavailable) {
+                    fingerRawBridgeAvailable = false;
+                }
+                if (capture) {
+                    final int id = event.getPointerId(0);
+                    final float density = getResources()
+                        .getDisplayMetrics().density;
+                    try {
+                        final int history = event.getHistorySize();
                     // Keep the most recent historical samples. The native
                     // buffer itself is bounded and records no positions.
                     for (int i=Math.max(0, history-8); i<history; ++i) {
@@ -87,10 +99,11 @@ def main(root):
                     JNIWrappers.fingerRawContactSample(id,
                         event.getEventTime(), event.getTouchMajor(0),
                         event.getTouchMinor(0), density,false);
-                } catch (UnsatisfiedLinkError unavailable) {
-                    // Optional native symbol missing: do not break Qt
-                    // painting, document dialogs or normal touch input.
-                    fingerRawBridgeAvailable = false;
+                    } catch (UnsatisfiedLinkError unavailable) {
+                        // Optional native symbol missing: do not break Qt
+                        // painting, document dialogs or normal touch input.
+                        fingerRawBridgeAvailable = false;
+                    }
                 }
             }
         }
@@ -127,6 +140,13 @@ extern "C" JNIEXPORT void JNICALL
 Java_org_krita_android_JNIWrappers_fingerRawGestureReset(JNIEnv*,jclass)
 {
     MobileFingerRawBridge::reset();
+}
+extern "C" JNIEXPORT jboolean JNICALL
+Java_org_krita_android_JNIWrappers_fingerRawCaptureEnabled(
+    JNIEnv*,jclass,jlong uptimeMs)
+{
+    return MobileFingerRawBridge::captureEnabled(
+        static_cast<quint64>(uptimeMs)) ? JNI_TRUE : JNI_FALSE;
 }
 #endif
 """
