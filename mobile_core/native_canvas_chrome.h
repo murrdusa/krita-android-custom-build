@@ -178,6 +178,13 @@ public:
         return m_active && m_sideDock && m_sideDock->isVisible();
     }
 
+    bool sidePanelAtBottom() const
+    {
+        return m_backend && m_sideDock &&
+               m_backend->dockWidgetArea(m_sideDock)==
+                   Qt::BottomDockWidgetArea;
+    }
+
     void enforceMobileChrome()
     {
         if(m_active && ownsUnmovedCanvas()) {
