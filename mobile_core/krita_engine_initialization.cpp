@@ -40,6 +40,7 @@
 #include <KoPattern.h>
 #include <kis_workspace_resource.h>
 #include <KisSessionResource.h>
+#include <config-seexpr.h>
 #include <resources/KoGamutMask.h>
 #if defined(HAVE_SEEXPR)
 #include <resources/KisSeExprScript.h>
@@ -48,7 +49,6 @@
 #include <resources/KoFontFamily.h>
 #include <resources/KoCssStylePreset.h>
 #include <kis_psd_layer_style.h>
-#include <config-seexpr.h>
 
 void MobileKritaEngineInitialization::addResourceTypes()
 {
