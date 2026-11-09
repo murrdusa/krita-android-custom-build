@@ -344,7 +344,8 @@ private:
                 QStringLiteral("MobileStudio/fingerContactPressureV1"),on);
             settings.sync();
         });
-        auto *calibrate=menu.addAction(i18n("Calibrate finger pressure"));
+        auto *calibrate=menu.addAction(i18n(
+            "Finger pressure calibration and live diagnostics"));
         QObject::connect(calibrate,&QAction::triggered,calibrate,[this]() {
             QTimer::singleShot(0,&m_refresh,[this]() {
                 if(!m_backend)return;
@@ -381,7 +382,25 @@ private:
                     QStringLiteral("Finger pressure simulation enabled: %1")
                         .arg(QSettings().value(
                             QStringLiteral("MobileStudio/fingerContactPressureV1"),
-                            false).toBool())
+                            false).toBool()),
+                    QStringLiteral("Response gamma: %1")
+                        .arg(MobileFingerPressureSettings::readResponse(
+                            QSettings()).gamma,0,'f',2),
+                    QStringLiteral("Stability: %1%")
+                        .arg(MobileFingerPressureSettings::readResponse(
+                            QSettings()).stability*100.0,0,'f',0),
+                    QStringLiteral("Raw Android preferred: %1")
+                        .arg(MobileFingerPressureSettings::readResponse(
+                            QSettings()).useRawAndroid),
+                    QStringLiteral("Last brush contact source: %1")
+                        .arg(qApp->property(
+                            "_mobileFingerAreaLastSource").toString()),
+                    QStringLiteral("Brush touch levels: %1")
+                        .arg(qApp->property(
+                            "_mobileFingerAreaLastUniqueSteps").toInt()),
+                    QStringLiteral("Latest Android raw contact: %1 logical px")
+                        .arg(qApp->property(
+                            "_mobileFingerRawDiameter").toDouble(),0,'f',1)
                 }).join(QLatin1Char('\n'));
                 QGuiApplication::clipboard()->setText(report);
             });
