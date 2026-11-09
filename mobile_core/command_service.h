@@ -12,6 +12,7 @@
 #include <QList>
 #include <QMenu>
 #include <QPointer>
+#include <QSharedPointer>
 #include <QString>
 #include <QVector>
 #include <QWidget>
@@ -19,35 +20,33 @@
 #include <brushengine/kis_paintop_preset.h>
 #include <KoToolManager.h>
 
-#include "KisMainWindow.h"
 #include "KisViewManager.h"
+#include "command_registry_port.h"
 #include "kis_paintop_box.h"
 
 class MobileCommandService final
 {
 public:
-    MobileCommandService(KisMainWindow *host,KisViewManager *manager)
-        : m_mainWindow(host),m_manager(manager) {}
+    MobileCommandService(QSharedPointer<MobileCommandRegistryPort> registry,
+                         KisViewManager *manager)
+        : m_registry(std::move(registry)),m_manager(manager) {}
 
     // Only this adapter knows the temporary desktop backend. Client
     // workspaces see Krita services, not KisMainWindow or its toolbars.
     QAction *action(const QString &id) const {
-        return m_mainWindow && m_mainWindow->actionCollection()?
-            m_mainWindow->actionCollection()->action(id):nullptr;
+        return m_registry?m_registry->action(id):nullptr;
     }
     QAction *action(const char *id) const {
         return action(QString::fromLatin1(id));
     }
     QList<QAction*> availableActions() const {
-        if(!m_mainWindow || !m_mainWindow->actionCollection())return {};
-        return m_mainWindow->actionCollection()->actions();
+        return m_registry?m_registry->availableActions():QList<QAction*>{};
     }
     // Native menu actions are accessed only through the adapter. The
     // mobile menu browser can preserve Krita's real File/Edit/View/etc.
     // hierarchy without referencing the hidden KisMainWindow itself.
     QList<QAction*> menuRootActions() const {
-        if(!m_mainWindow || !m_mainWindow->menuBar())return {};
-        return m_mainWindow->menuBar()->actions();
+        return m_registry?m_registry->menuRootActions():QList<QAction*>{};
     }
     bool canRun(const char *id) const {
         const QAction *a=action(id);
@@ -126,8 +125,8 @@ public:
     }
     QMenu *nativeMenus(QWidget *parent) const {
         auto *menu=new QMenu(parent);
-        if(!m_mainWindow || !m_mainWindow->menuBar())return menu;
-        for(QAction *top:m_mainWindow->menuBar()->actions())
+        if(!m_registry)return menu;
+        for(QAction *top:m_registry->menuRootActions())
             if(top && top->menu())menu->addMenu(top->menu());
         return menu;
     }
@@ -136,7 +135,7 @@ private:
     bool hasDocument() const {
         return m_manager && m_manager->document();
     }
-    QPointer<KisMainWindow> m_mainWindow;
+    QSharedPointer<MobileCommandRegistryPort> m_registry;
     KisViewManager *m_manager=nullptr; // Owned by native Krita backend
 };
 #endif // Q_OS_ANDROID
