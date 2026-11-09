@@ -64,6 +64,10 @@ int main(int argc,char **argv)
         QStringLiteral("fingerPressureSettingsScroll"));
     require(curve && stability && raw && scroll,
             "response curve / smoothing / raw / scroll controls missing");
+    auto *preview=dialog.findChild<MobileFingerResponsePreview*>(
+        QStringLiteral("fingerPressureResponsePreview"));
+    require(preview && qAbs(preview->gamma()-1.0)<0.001,
+            "initial response curve preview missing");
     require(curve->value()==100 && stability->value()==50 && raw->isChecked(),
             "incorrect default response settings");
     auto *save=buttons->button(QDialogButtonBox::Save);
@@ -80,6 +84,8 @@ int main(int argc,char **argv)
     maximum->setValue(35.0);
     require(save->isEnabled(),"valid custom range not accepted");
     curve->setValue(55);
+    require(qAbs(preview->gamma()-0.55)<0.001,
+            "response curve preview did not update with slider");
     stability->setValue(80);
     raw->setChecked(false);
     save->click();
