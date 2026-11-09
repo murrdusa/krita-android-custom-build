@@ -25,6 +25,7 @@
 #include "dialogs/kis_delayed_save_dialog.h"
 #include "document_host_port.h"
 #include "native_document_rollback.h"
+#include "native_document_path_policy.h"
 #include "host_services.h"
 #include "krita_standalone_runtime.h"
 #include "native_krita_save_host.h"
@@ -60,8 +61,9 @@ public:
 
     bool openFile(const QString &path) const override
     {
-        if(!available() || m_opening || path.isEmpty() ||
-           !QFile::exists(path))return false;
+        if(!available() || m_opening ||
+           !MobileNativeDocumentPathPolicy::mayAttemptOpen(path))
+            return false;
         const QScopedValueRollback<bool> transaction(m_opening,true);
 
         KisDocument *document=KisPart::instance()->createDocument();
@@ -114,9 +116,9 @@ public:
             KisImportExportManager::Export);
         const bool unsupportedMime=!formats.contains(
             QString::fromLatin1(currentMime));
-        const bool choosePath=saveAs || currentPath.isEmpty() ||
-            guardedDocument->isRecovered() ||
-            !QFile::exists(currentPath) || unsupportedMime;
+        const bool choosePath=MobileNativeDocumentPathPolicy::needsSaveAs(
+            currentPath,saveAs,guardedDocument->isRecovered(),
+            unsupportedMime);
 
         QString target=currentPath;
         QByteArray targetMime=currentMime;

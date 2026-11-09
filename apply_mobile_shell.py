@@ -40,6 +40,7 @@ def main(root:Path):
     bridge=own/"mobile_core/engine_bridge.h"
     document_service=own/"mobile_core/document_service.h"
     native_document_rollback=own/"mobile_core/native_document_rollback.h"
+    native_document_path_policy=own/"mobile_core/native_document_path_policy.h"
     document_port=own/"mobile_core/document_host_port.h"
     view_port=own/"mobile_core/view_host_port.h"
     view_guard=own/"mobile_core/view_identity_guard.h"
@@ -60,7 +61,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,startup_policy,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,standalone_krita_runtime,standalone_krita_documents,native_engine_probe,standalone_engine_pilot,surface,switcher,bridge,document_service,native_document_rollback,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+               (shell,session,startup_policy,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,standalone_krita_runtime,standalone_krita_documents,native_engine_probe,standalone_engine_pilot,surface,switcher,bridge,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
                 reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
@@ -70,7 +71,7 @@ def main(root:Path):
     # so a future lightweight application host can replace it in one place.
     desktop_dependent=(desktop_adapters,mdi_view_adapter)
     qt_host_components=(session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,surface)
-    mobile_frontend=(shell,bridge,host_services,document_service,native_document_rollback,document_port,view_port,view_guard,
+    mobile_frontend=(shell,bridge,host_services,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,
                      command_service,command_port,switcher,brush,color,layers,
                      commands,quick,mdi_identity,pressure_calibration,pressure_settings,
                      reorder,tools,documents,*qt_host_components)
@@ -500,6 +501,8 @@ KisMainWindow * KisView::mainWindow() const''',
         document_service.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/native_document_rollback.h").write_text(
         native_document_rollback.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/native_document_path_policy.h").write_text(
+        native_document_path_policy.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_host_port.h").write_text(
         document_port.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/view_host_port.h").write_text(

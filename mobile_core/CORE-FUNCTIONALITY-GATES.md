@@ -182,6 +182,15 @@ serialization or brushes.
   history or brush engines. The initial observed Android compile error
   was a Qt `QPointer<KisView>` to `QPointer<QObject>` conversion;
   that native-view identity conversion has been made explicit.
+- Native document open/save now recognizes Android Storage Access
+  Framework `content://` identities. It no longer rejects the
+  document-picker's provider URI based only on `QFile::exists`, or
+  forces Save As on an already-open provider document merely because
+  ordinary filesystem checks cannot inspect it. Krita remains the
+  authority for permission validation, import and overwrite. The
+  native path policy has focused Qt regression coverage for local
+  files, missing paths, provider URIs, explicit Save As, autosave
+  recovery and unsupported formats. It is an opt-in prototype change.
 - The opt-in stationary canvas header was found consuming hundreds of
   pixels of height on a real device. The top dock is now capped at 76
   logical pixels and its title/header widget is height-fixed; a Qt
