@@ -28,7 +28,10 @@ class MobileCanvasTransfer final
 {
 public:
     MobileCanvasTransfer(QMainWindow *backend,QMdiArea *documents)
-        : m_backend(backend),m_documents(documents)
+        : m_backend(backend),m_documents(documents),
+          m_persistentRequestedAtStartup(QSettings().value(
+              QStringLiteral("MobileStudio/persistentCanvasHostV1"),
+              false).toBool())
     {
         m_tabTimer.setInterval(750);
         QObject::connect(&m_tabTimer,&QTimer::timeout,&m_tabTimer,
@@ -94,9 +97,7 @@ public:
         m_savedWindowState=m_backend->windowState();
         // Experimental and opt-in. Preserve existing physical handoffs by
         // default until the permanent-host path passes Android testing.
-        const bool wantPersistent=QSettings().value(
-            QStringLiteral("MobileStudio/persistentCanvasHostV1"),
-            false).toBool();
+        const bool wantPersistent=m_persistentRequestedAtStartup;
         rememberBackendChrome();
         // Make Mobile Studio a child presentation widget before moving
         // the real painting canvas. Only Krita's existing QMainWindow
@@ -392,5 +393,6 @@ private:
     QTimer m_tabTimer;
     bool m_active=false;
     bool m_persistentHostInstalled=false;
+    const bool m_persistentRequestedAtStartup;
 };
 #endif // Q_OS_ANDROID || KRITA_MOBILE_QT_TEST
