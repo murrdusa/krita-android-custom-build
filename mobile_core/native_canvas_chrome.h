@@ -44,15 +44,20 @@ public:
         // native central canvas or unrelated dockers.
         delete m_topDock.data();
         delete m_bottomDock.data();
+        delete m_sideDock.data();
     }
 
-    bool install(QWidget *topPanel,QWidget *bottomPanel)
+    bool install(QWidget *topPanel,QWidget *bottomPanel,
+                 QWidget *sidePanel=nullptr)
     {
         if(m_installed || !m_backend || !topPanel || !bottomPanel ||
            topPanel==bottomPanel || !m_backend->centralWidget())
             return false;
         if(topPanel->isAncestorOf(m_backend->centralWidget()) ||
-           bottomPanel->isAncestorOf(m_backend->centralWidget()))
+           bottomPanel->isAncestorOf(m_backend->centralWidget()) ||
+           (sidePanel &&
+            (sidePanel==topPanel || sidePanel==bottomPanel ||
+             sidePanel->isAncestorOf(m_backend->centralWidget()))))
             return false;
 
         m_nativeCanvas=m_backend->centralWidget();
@@ -78,6 +83,18 @@ public:
         m_backend->addDockWidget(Qt::BottomDockWidgetArea,m_bottomDock);
         m_topDock->hide();
         m_bottomDock->hide();
+        if(sidePanel) {
+            m_sideDock=new QDockWidget(m_backend);
+            m_sideDock->setObjectName(
+                QStringLiteral("MobileStudioNativeSideDock"));
+            m_sideDock->setFeatures(QDockWidget::NoDockWidgetFeatures);
+            m_sideDock->setAllowedAreas(
+                Qt::LeftDockWidgetArea|Qt::RightDockWidgetArea);
+            m_sideDock->setTitleBarWidget(new QWidget(m_sideDock));
+            m_sideDock->setWidget(sidePanel);
+            m_backend->addDockWidget(Qt::RightDockWidgetArea,m_sideDock);
+            m_sideDock->hide();
+        }
 
         m_installed=true;
         return ownsUnmovedCanvas();
@@ -106,6 +123,7 @@ public:
         hideTabs();
         m_topDock->show();
         m_bottomDock->show();
+        if(m_sideDock)m_sideDock->hide();
         m_guard.start();
         scheduleCanvasUpdate();
         return true;
@@ -122,11 +140,25 @@ public:
         m_guard.stop();
         if(m_topDock)m_topDock->hide();
         if(m_bottomDock)m_bottomDock->hide();
+        if(m_sideDock)m_sideDock->hide();
         restoreTabs();
         restoreDesktopChrome();
         m_active=false;
         if(originalCanvasStillPresent)scheduleCanvasUpdate();
         return originalCanvasStillPresent;
+    }
+
+    bool setSidePanelVisible(bool visible)
+    {
+        if(!m_active || !ownsUnmovedCanvas() || !m_sideDock)return false;
+        m_sideDock->setVisible(visible);
+        scheduleCanvasUpdate();
+        return true;
+    }
+
+    bool sidePanelVisible() const
+    {
+        return m_active && m_sideDock && m_sideDock->isVisible();
     }
 
     void enforceMobileChrome()
@@ -154,8 +186,8 @@ private:
         m_chrome.clear();
         if(!m_backend)return;
         const auto store=[this](QWidget *widget) {
-            if(!widget || widget==m_topDock || widget==m_bottomDock)
-                return;
+            if(!widget || widget==m_topDock || widget==m_bottomDock ||
+               widget==m_sideDock)return;
             for(const ChromeSnapshot &saved:m_chrome)
                 if(saved.widget==widget)return;
             m_chrome.append({widget,widget->isVisible()});
@@ -228,6 +260,7 @@ private:
     QPointer<QWidget> m_nativeCanvas;
     QPointer<QDockWidget> m_topDock;
     QPointer<QDockWidget> m_bottomDock;
+    QPointer<QDockWidget> m_sideDock;
     QVector<ChromeSnapshot> m_chrome;
     QVector<TabSnapshot> m_tabs;
     QTimer m_guard;
