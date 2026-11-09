@@ -83,6 +83,7 @@ public:
             surface->setMobilePresentationEnabled(true);
             enforceMobileChrome();
             m_backend->show();
+            schedulePersistentCanvasRefresh(true);
             return true;
         }
         if(surface->hasNativeCanvas())return false;
@@ -203,6 +204,7 @@ public:
             m_active=false;
             m_backend->show();
             m_backend->activateWindow();
+            schedulePersistentCanvasRefresh(false);
             return true;
         }
 
@@ -285,6 +287,34 @@ public:
     }
 
 private:
+    // After a chrome-only mode switch QMainWindow needs to redistribute
+    // space freed/occupied by headers, dockers and status bars. Ask the
+    // existing native paint surface to recalculate and repaint *after*
+    // the layout pass; never create a new KisView or QOpenGLWidget.
+    void schedulePersistentCanvasRefresh(bool expectedMobileState)
+    {
+        const QPointer<QMainWindow> backend=m_backend;
+        const QPointer<QWidget> host=m_mobileWindow;
+        const QPointer<QWidget> canvas=m_canvas;
+        const QPointer<QMdiArea> documents=m_documents;
+        QTimer::singleShot(0,&m_tabTimer,
+            [this,backend,host,canvas,documents,expectedMobileState]() {
+                // A rapid return/reentry may invalidate the queued state.
+                if(!backend || !host || !canvas ||
+                   !m_persistentHostInstalled ||
+                   backend->centralWidget()!=host ||
+                   m_active!=expectedMobileState)return;
+                canvas->updateGeometry();
+                canvas->update();
+                if(documents) {
+                    documents->updateGeometry();
+                    documents->update();
+                    if(documents->viewport())
+                        documents->viewport()->update();
+                }
+            });
+    }
+
     struct ChromeSnapshot {
         QPointer<QWidget> widget;
         bool wasVisible=false;
