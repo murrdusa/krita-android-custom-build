@@ -182,6 +182,10 @@ int main(int argc,char **argv)
             "completed stroke did not record valid contact samples");
     require(app.property("_mobileFingerAreaLastUniqueSteps").toInt()>=3,
             "diagnostics did not count distinct touch contact levels");
+    require(app.property("_mobileFingerAreaLastQtSamples").toInt()>10 &&
+            app.property("_mobileFingerAreaLastRawSamples").toInt()==0 &&
+            app.property("_mobileFingerAreaLastAlignedFallbacks").toInt()==0,
+            "Qt-only test incorrectly reported Android raw source usage");
     require(app.property("_mobileFingerAreaLastMinDiameter").toDouble()<=10,
             "contact diagnostic did not track smallest size");
     require(app.property("_mobileFingerAreaLastMaxDiameter").toDouble()>=23,
