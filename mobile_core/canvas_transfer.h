@@ -15,6 +15,7 @@
 #include <QMenuBar>
 #include <QMdiArea>
 #include <QPointer>
+#include <QSettings>
 #include <QStatusBar>
 #include <QTabBar>
 #include <QToolBar>
@@ -45,6 +46,7 @@ public:
     }
 
     bool active() const {return m_active;}
+    bool persistentHostInstalled() const {return m_persistentHostInstalled;}
 
     // The native Krita QMainWindow remains the only Android top-level.
     // Called after deferred desktop chrome changes from Krita's old skin.
@@ -59,15 +61,40 @@ public:
 
     bool enter(MobileCanvasSurface *surface)
     {
-        if(m_active || !surface || !m_backend || !m_documents ||
-           surface->hasNativeCanvas())return false;
+        if(m_active || !surface || !m_backend || !m_documents)return false;
         QWidget *mobile=surface->canvasSurfaceWindow();
         if(!mobile || mobile==m_backend)return false;
+        if(m_persistentHostInstalled) {
+            // After initial attachment the native canvas must never move
+            // again; only Mobile Studio's header, footer and side panels
+            // change visibility. Reject a swapped canvas or UI host.
+            if(m_surface!=surface || m_mobileWindow!=mobile ||
+               !m_canvas || m_backend->centralWidget()!=mobile ||
+               !surface->ownsNativeCanvas(m_canvas)) {
+                qWarning() << "Mobile Studio: persistent host ownership changed";
+                return false;
+            }
+            rememberBackendChrome();
+            m_backend->setProperty("_mobileStudioCanvasTransferred",true);
+            m_active=true;
+            hideNativeTabs();
+            m_tabTimer.start();
+            surface->setMobilePresentationEnabled(true);
+            enforceMobileChrome();
+            m_backend->show();
+            return true;
+        }
+        if(surface->hasNativeCanvas())return false;
         // Guard the backend's original central widget before changing
         // ownership. No document or view gets instantiated by this path.
         if(!m_backend->centralWidget())return false;
 
         m_savedWindowState=m_backend->windowState();
+        // Experimental and opt-in. Preserve existing physical handoffs by
+        // default until the permanent-host path passes Android testing.
+        const bool wantPersistent=QSettings().value(
+            QStringLiteral("MobileStudio/persistentCanvasHostV1"),
+            false).toBool();
         rememberBackendChrome();
         // Make Mobile Studio a child presentation widget before moving
         // the real painting canvas. Only Krita's existing QMainWindow
@@ -115,6 +142,7 @@ public:
         // overlap and avoids reparenting the GL canvas across top-levels
         // on every Back/enter cycle.
         m_backend->setCentralWidget(mobile);
+        m_persistentHostInstalled=wantPersistent;
         m_active=true;
         hideNativeTabs();
         m_tabTimer.start();
@@ -151,6 +179,21 @@ public:
             return false;
         }
         m_tabTimer.stop();
+        if(m_persistentHostInstalled) {
+            // Keep the original Krita canvas and MDI root parented to the
+            // embedded host. Desktop Krita gets its normal surrounding
+            // chrome back, while Mobile Studio's own controls disappear.
+            // Crucially there is no QWidget::setParent, takeCentralWidget
+            // or setCentralWidget during subsequent mode switches.
+            m_surface->setMobilePresentationEnabled(false);
+            restoreNativeTabs();
+            restoreBackendChrome();
+            m_backend->setProperty("_mobileStudioCanvasTransferred",false);
+            m_active=false;
+            m_backend->show();
+            m_backend->activateWindow();
+            return true;
+        }
 
         MobileCanvasSurface *surface=m_surface;
         QWidget *mobile=m_mobileWindow;
@@ -304,5 +347,6 @@ private:
     QVector<ChromeSnapshot> m_chrome;
     QTimer m_tabTimer;
     bool m_active=false;
+    bool m_persistentHostInstalled=false;
 };
 #endif // Q_OS_ANDROID || KRITA_MOBILE_QT_TEST
