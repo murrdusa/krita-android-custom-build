@@ -74,6 +74,11 @@ public:
         m_bottomDock->setFeatures(QDockWidget::NoDockWidgetFeatures);
         m_topDock->setAllowedAreas(Qt::TopDockWidgetArea);
         m_bottomDock->setAllowedAreas(Qt::BottomDockWidgetArea);
+        // Bound Qt's dock splitter allocation, not just the header
+        // widget's sizeHint: otherwise the whole navigation row can
+        // inflate to several hundred pixels as seen on Android.
+        m_topDock->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
+        m_topDock->setMaximumHeight(76);
         // Empty title bars reserve no unnecessary desktop chrome.
         m_topDock->setTitleBarWidget(new QWidget(m_topDock));
         m_bottomDock->setTitleBarWidget(new QWidget(m_bottomDock));
