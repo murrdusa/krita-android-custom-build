@@ -15,6 +15,7 @@
 #include <QSharedPointer>
 #include <utility>
 #include <brushengine/kis_paintop_preset.h>
+#include "host_services.h"
 #include "document_service.h"
 #include "command_service.h"
 #include "KisViewManager.h"
@@ -29,15 +30,11 @@ public:
     // Both ports are shared because document dialogs copy this facade
     // into deferred Qt callbacks; destroyed hosts are QPointer-guarded
     // by the concrete adapter instead of leaving dangling pointers.
-    MobileEngineBridge(
-        QSharedPointer<MobileDocumentHostPort> documentHost,
-        QSharedPointer<MobileViewHostPort> viewHost,
-        QSharedPointer<MobileCommandRegistryPort> commands,
-        KisViewManager *manager)
+    MobileEngineBridge(const MobileHostServices &services,
+                       KisViewManager *manager)
         : m_manager(manager),
-          m_documentsService(std::move(documentHost),
-                             std::move(viewHost)),
-          m_commands(std::move(commands),manager) {}
+          m_documentsService(services.documents,services.views),
+          m_commands(services.commands,manager) {}
 
     using OpenDocument=MobileDocumentService::OpenDocument;
     QVector<OpenDocument> openDocuments() const {
