@@ -19,10 +19,11 @@
 #include <QApplication>
 #include <QSettings>
 #include <QTimer>
+#include <memory>
 #include "engine_bridge.h"
 #include "canvas_transfer.h"
 #include "native_canvas_chrome.h" // Qt-only stationary canvas UI architecture
-#include "native_canvas_pilot.h"  // Compiled prototype; not yet active
+#include "native_canvas_pilot.h"  // Optional no-reparent Mobile Studio UI
 #include "standalone_host.h"
 
 class MobileAppController final : public QObject
@@ -33,7 +34,10 @@ public:
                         const MobileEngineBridge &bridge,
                         QAction *entry)
         : QObject(backend),m_transfer(backend,mdi),m_backend(backend),
-          m_bridge(bridge),m_entry(entry)
+          m_bridge(bridge),m_entry(entry),
+          m_nativeCanvasMode(QSettings().value(
+              QStringLiteral("MobileStudio/nativeDockCanvasV1"),
+              false).toBool())
     {
         if(m_backend)m_backend->installEventFilter(this);
         connect(entry,&QAction::toggled,this,[this](bool value) {
@@ -69,7 +73,7 @@ public:
                 QSettings verified;
                 verified.setValue(
                     QStringLiteral("MobileStudio/bootPending"),false);
-                if(!m_transfer.active())
+                if(!sessionActive())
                     verified.setValue(
                         QStringLiteral("MobileStudio/startDirectly"),false);
                 verified.sync();
@@ -78,6 +82,12 @@ public:
     }
     ~MobileAppController() override
     {
+        // Native dock mode owns only its mobile chrome, not the canvas.
+        // Destruction of the pilot never destroys Krita's central widget.
+        if(m_nativePilot) {
+            m_nativePilot->leave();
+            m_nativePilot.reset();
+        }
         if(m_transfer.persistentHostInstalled()) {
             // The persistent central widget and native Krita canvas are
             // children of the backend QMainWindow. Leave teardown to
@@ -110,18 +120,28 @@ protected:
         // Android native window. Do NOT hide the backend here: doing so
         // would hide the canvas and mobile controls together. Reassert
         // only the hidden desktop toolbars/status after deferred shows.
-        if(watched==m_backend && m_transfer.active() &&
+        if(watched==m_backend && sessionActive() &&
            event->type()==QEvent::Show) {
             QTimer::singleShot(0,this,[this]() {
-                if(!m_transfer.active() || !m_backend)return;
-                m_transfer.enforceMobileChrome();
-                if(m_host && !m_host->isVisible())m_host->show();
+                if(!sessionActive() || !m_backend)return;
+                if(m_nativePilot && m_nativePilot->active()) {
+                    m_nativePilot->enforceMobileChrome();
+                } else {
+                    m_transfer.enforceMobileChrome();
+                    if(m_host && !m_host->isVisible())m_host->show();
+                }
             });
         }
         return QObject::eventFilter(watched,event);
     }
 
 private:
+    bool sessionActive() const
+    {
+        return (m_nativePilot && m_nativePilot->active()) ||
+               m_transfer.active();
+    }
+
     void enter()
     {
         // Modal file dialogs and deferred Compact UI callbacks can toggle
@@ -130,12 +150,26 @@ private:
         if(m_transitioning) {
             if(m_entry) {
                 const QSignalBlocker blocked(m_entry);
-                m_entry->setChecked(m_transfer.active());
+                m_entry->setChecked(sessionActive());
             }
             return;
         }
-        if(m_transfer.active())return;
+        if(sessionActive())return;
         const QScopedValueRollback<bool> transition(m_transitioning,true);
+        if(m_nativeCanvasMode) {
+            if(!m_nativePilot) {
+                m_nativePilot.reset(
+                    new MobileNativeCanvasPilot(m_backend,m_bridge));
+                m_nativePilot->setExitCallback([this]() {
+                    if(m_entry)m_entry->setChecked(false);
+                });
+            }
+            if(!m_nativePilot->enter() && m_entry) {
+                const QSignalBlocker blocked(m_entry);
+                m_entry->setChecked(false);
+            }
+            return;
+        }
         if(!m_host) {
             m_host=new MobileStandaloneWindow(m_bridge);
             m_host->setExitCallback([this]() {
@@ -166,11 +200,18 @@ private:
         if(m_transitioning) {
             if(m_entry) {
                 const QSignalBlocker blocked(m_entry);
-                m_entry->setChecked(m_transfer.active());
+                m_entry->setChecked(sessionActive());
             }
             return;
         }
         const QScopedValueRollback<bool> transition(m_transitioning,true);
+        if(m_nativeCanvasMode) {
+            // The original Krita central canvas never moves here. Even if
+            // Qt replaced it unexpectedly, the dock adapter restores
+            // desktop chrome before refusing a new mobile entry.
+            if(m_nativePilot)m_nativePilot->leave();
+            return;
+        }
         if(m_transfer.leave()) {
             if(m_transfer.persistentHostInstalled()) {
                 // Its paint canvas remains parented to this central host.
@@ -212,6 +253,8 @@ private:
     // controller being notified; QPointer prevents a stale Back handler
     // from dereferencing the destroyed mobile presentation.
     QPointer<MobileStandaloneWindow> m_host;
+    std::unique_ptr<MobileNativeCanvasPilot> m_nativePilot;
+    const bool m_nativeCanvasMode;
     bool m_transitioning=false;
 };
 
