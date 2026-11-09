@@ -32,6 +32,7 @@
 #include "kis_config.h"
 #include "document_host_port.h"
 #include "view_host_port.h"
+#include "view_identity_guard.h"
 
 class MobileDocumentService final
 {
@@ -57,12 +58,8 @@ public:
     }
     bool activateDocument(int nativeIndex) const
     {
-        if(nativeIndex<0)return false;
-        for(const auto &item:openDocuments()) {
-            if(item.nativeIndex==nativeIndex)
-                return activateDocumentView(item.nativeView);
-        }
-        return false;
+        return activateDocumentView(
+            MobileViewIdentityGuard::byIndex(openDocuments(),nativeIndex));
     }
 
     // Native Krita still owns the Save / Discard / Cancel close prompt.
@@ -74,40 +71,16 @@ public:
     }
     bool closeDocument(int nativeIndex) const
     {
-        if(nativeIndex<0)return false;
-        for(const auto &item:openDocuments()) {
-            if(item.nativeIndex==nativeIndex)
-                return closeDocumentView(item.nativeView);
-        }
-        return false;
+        return closeDocumentView(
+            MobileViewIdentityGuard::byIndex(openDocuments(),nativeIndex));
     }
     bool closeActiveDocument() const
     {
         const auto views=openDocuments();
-        QPointer<QObject> selected;
-        int count=0;
-        for(const auto &view:views) {
-            if(!view.active || !view.nativeView)continue;
-            ++count;
-            selected=view.nativeView;
-        }
-        if(count==1)return closeDocumentView(selected);
-        if(count>1)return false;
-
-        // If native focus is temporarily missing, select a *unique*
-        // view for the manager's document; never close the first of
-        // several possible views, especially if one is modified.
-        KisDocument *current=m_manager?m_manager->document():nullptr;
-        if(current) {
-            for(const auto &view:views) {
-                if(!view.nativeView || view.document!=current)continue;
-                if(selected)return false;
-                selected=view.nativeView;
-            }
-            if(selected)return closeDocumentView(selected);
-        }
-        return views.size()==1 &&
-               closeDocumentView(views.first().nativeView);
+        const QPointer<QObject> current=m_manager?
+            QPointer<QObject>(m_manager->document()):QPointer<QObject>();
+        return closeDocumentView(
+            MobileViewIdentityGuard::safeCloseTarget(views,current));
     }
 
     // Document I/O and image construction are owned by Krita's engine.
@@ -187,15 +160,10 @@ public:
         // must still contain exactly this selected identity and the
         // same live KisDocument currently owned by Krita's manager.
         const auto views=m_viewHost->openViews();
-        int activeCount=0;
-        QPointer<QObject> document;
-        for(const auto &view:views) {
-            if(!view.active)continue;
-            ++activeCount;
-            if(view.nativeView==identity)document=view.document;
-        }
-        if(activeCount!=1 || !document ||
-           document!=m_manager->document())return false;
+        if(!MobileViewIdentityGuard::maySave(
+               views,identity,
+               QPointer<QObject>(m_manager->document())))
+            return false;
         return m_host->save(m_manager->document(),saveAs);
     }
     QString activeDocumentTitle() const
