@@ -76,6 +76,7 @@ public:
             }
             rememberBackendChrome();
             m_backend->setProperty("_mobileStudioCanvasTransferred",true);
+            m_backend->setProperty("_mobileStudioPresentationActive",true);
             m_active=true;
             hideNativeTabs();
             m_tabTimer.start();
@@ -115,6 +116,7 @@ public:
         // Krita's Android refresh workaround observes this Qt property.
         // It must be set before the host exposes the native canvas.
         m_backend->setProperty("_mobileStudioCanvasTransferred",true);
+        m_backend->setProperty("_mobileStudioPresentationActive",true);
 
         if(!surface->attachNativeCanvas(native) ||
            !surface->ownsNativeCanvas(native)) {
@@ -131,6 +133,7 @@ public:
             mobile->setParent(nullptr);
             m_chrome.clear();
             m_backend->setProperty("_mobileStudioCanvasTransferred",false);
+            m_backend->setProperty("_mobileStudioPresentationActive",false);
             m_surface=nullptr;
             m_canvas=nullptr;
             m_mobileWindow=nullptr;
@@ -190,7 +193,13 @@ public:
             m_surface->setMobilePresentationEnabled(false);
             restoreNativeTabs();
             restoreBackendChrome();
-            m_backend->setProperty("_mobileStudioCanvasTransferred",false);
+            // The canvas still lives under the persistent Mobile Studio
+            // wrapper even when its controls are hidden. Keep the Krita
+            // Android flash-window workaround enabled for the embedded
+            // canvas, but permit Compact UI to reactivate via the
+            // independent presentation-active property.
+            m_backend->setProperty("_mobileStudioCanvasTransferred",true);
+            m_backend->setProperty("_mobileStudioPresentationActive",false);
             m_active=false;
             m_backend->show();
             m_backend->activateWindow();
@@ -238,6 +247,7 @@ public:
 
         if(m_backend) {
             m_backend->setProperty("_mobileStudioCanvasTransferred",false);
+            m_backend->setProperty("_mobileStudioPresentationActive",false);
             m_backend->show();
             native->show();
             m_backend->activateWindow();
