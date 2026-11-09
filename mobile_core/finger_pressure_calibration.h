@@ -9,6 +9,12 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
+#include <QCheckBox>
+#include <QCoreApplication>
+#include <QPainter>
+#include <QPen>
+#include <QSet>
+#include <QSlider>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -30,6 +36,17 @@ class MobileFingerCalibrationPad final : public QFrame
 public:
     std::function<void(qreal)> onMeasured;
     std::function<void(qreal)> onCompleted;
+
+    int distinctLevels() const {return m_distinct.size();}
+    int observedSamples() const {return m_history.size();}
+    qreal observedNoise() const {
+        if(m_history.size()<2)return 0;
+        qreal sum=0,sum2=0;
+        for(qreal d:m_history) {sum+=d;sum2+=d*d;}
+        const qreal n=m_history.size();
+        return std::sqrt(qMax(qreal(0),sum2/n-(sum/n)*(sum/n)));
+    }
+    QString observedSource() const {return m_source;}
 
     explicit MobileFingerCalibrationPad(QWidget *parent=nullptr)
         : QFrame(parent)
@@ -75,14 +92,34 @@ protected:
         }
 
         const QSizeF size=point.ellipseDiameters();
-        if(std::isfinite(size.width()) && std::isfinite(size.height()) &&
-           size.width()>0 && size.height()>0) {
-            const qreal diameter=std::sqrt(size.width()*size.height());
-            if(std::isfinite(diameter) && diameter>=1.0 &&
-               diameter<=250.0) {
-                m_samples.append(diameter);
-                if(onMeasured)onMeasured(diameter);
+        qreal diameter=std::sqrt(size.width()*size.height());
+        m_source=QStringLiteral("Qt touch ellipse");
+        // MainActivity captures MotionEvent contact dimensions before Qt
+        // dispatch; the size-only diagnostic is used only when timestamps
+        // match. Krita's touch events remain unmodified.
+        QCoreApplication *app=QCoreApplication::instance();
+        if(app && QSettings().value(QString::fromLatin1(
+            MobileFingerPressureSettings::rawEnabledKey()),true).toBool()) {
+            const quint64 rawTime=app->property(
+                "_mobileFingerRawTimestamp").toULongLong();
+            const quint64 qtTime=touch->timestamp();
+            const quint64 delta=rawTime>qtTime?
+                rawTime-qtTime:qtTime-rawTime;
+            const qreal raw=app->property(
+                "_mobileFingerRawDiameter").toDouble();
+            if(qtTime>0 && delta<=65 && raw>=1 && raw<=250) {
+                diameter=raw;
+                m_source=QStringLiteral("Android MotionEvent");
             }
+        }
+        if(std::isfinite(diameter) && diameter>=1.0 &&
+           diameter<=250.0) {
+            m_samples.append(diameter);
+            m_history.append(diameter);
+            if(m_history.size()>128)m_history.removeFirst();
+            m_distinct.insert(qRound(diameter*4));
+            update();
+            if(onMeasured)onMeasured(diameter);
         }
 
         if(touch->type()==QEvent::TouchEnd ||
@@ -106,8 +143,40 @@ protected:
         return true;
     }
 
+    void paintEvent(QPaintEvent *event) override
+    {
+        QFrame::paintEvent(event);
+        if(m_history.size()<2)return;
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing,true);
+        const QRectF graph=rect().adjusted(14,35,-14,-14);
+        if(graph.width()<20 || graph.height()<25)return;
+        qreal min=1e9,max=0;
+        for(qreal d:m_history) {min=qMin(min,d);max=qMax(max,d);}
+        const qreal span=qMax(qreal(1.0),max-min);
+        QPolygonF line;
+        for(int i=0;i<m_history.size();++i) {
+            const qreal x=graph.left()+
+                graph.width()*i/qMax(1,m_history.size()-1);
+            const qreal y=graph.bottom()-
+                graph.height()*(m_history.at(i)-min)/span;
+            line.append(QPointF(x,y));
+        }
+        painter.setPen(QPen(QColor(110,220,251),2));
+        painter.drawPolyline(line);
+        painter.setPen(QColor(240,245,250));
+        painter.drawText(rect().adjusted(11,3,-11,-3),
+            Qt::AlignTop|Qt::AlignLeft,
+            QStringLiteral("%1–%2 px | %3 levels")
+            .arg(min,0,'f',1).arg(max,0,'f',1)
+            .arg(m_distinct.size()));
+    }
+
 private:
     QVector<qreal> m_samples;
+    QVector<qreal> m_history;
+    QSet<int> m_distinct;
+    QString m_source=QStringLiteral("Qt");
     bool m_tracking=false;
 };
 
