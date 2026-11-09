@@ -16,8 +16,8 @@ static void check(bool ok,const char *message)
 struct FakeHost final : MobileViewHostPort
 {
     QObject a,b,c,da,db,dc;
-    QPointer<QObject> active=&a;
-    QPointer<QObject> current=&da;
+    mutable QPointer<QObject> active=&a;
+    mutable QPointer<QObject> current=&da;
     bool ambiguous=false;
     bool missing=false;
     bool duplicate=false;
@@ -37,9 +37,9 @@ struct FakeHost final : MobileViewHostPort
     QPointer<QObject> currentDocument() const override {return current;}
     bool activateView(const QPointer<QObject> &view) const override
     {
-        if(view==&a){active=&a;current=&da;return true;}
-        if(view==&b){active=&b;current=&db;return true;}
-        if(view==&c){active=&c;current=&dc;return true;}
+        if(view==&a){active=const_cast<QObject*>(&a);current=const_cast<QObject*>(&da);return true;}
+        if(view==&b){active=const_cast<QObject*>(&b);current=const_cast<QObject*>(&db);return true;}
+        if(view==&c){active=const_cast<QObject*>(&c);current=const_cast<QObject*>(&dc);return true;}
         return false;
     }
     bool closeView(const QPointer<QObject> &) const override {return false;}
