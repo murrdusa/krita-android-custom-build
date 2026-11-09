@@ -58,6 +58,29 @@ panels still require validation. **Only use disposable artwork.**
    instead of looping. Under **Settings → Last Standalone Engine Test
    Status**, report the last checkpoint and last native control.
 
+## C. Reduced desktop bootstrap — new migration gate
+
+The opt-in native startup now avoids building the desktop toolbox,
+tool-options docker, other desktop docker widgets, and the earlier
+Mobile Studio controller. Resource/plugin registration and one
+existing Android native window are retained. This is **not** yet a
+standalone executable without Krita's application bootstrap.
+
+1. Enable **Start here next launch** from the independent canvas, save
+   your disposable drawing, and restart.
+2. Confirm the independent host opens normally and can paint, save,
+   undo/redo, change brushes and layers, choose colors and tools.
+3. Confirm app rotation, background/resume, multi-canvas switching,
+   and KRA reopen still work despite the missing desktop dockers.
+4. Disable **Start here next launch**, fully close the app, and restart.
+   Confirm the original Krita interface has its desktop dockers and
+   toolbars again. Those widgets are restored on restart, not when
+   simply closing the independent overlay.
+5. If native boot crashes before the drawing appears, the next launch
+   must restore the original desktop Krita setup. Use
+   **Settings → Last Standalone Engine Test Status** and report the
+   checkpoint. Do not repeatedly enable a failing native boot.
+
 ## Reporting
 
 Provide the failing step, screenshot or exact error message, and
