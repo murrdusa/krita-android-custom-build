@@ -175,6 +175,22 @@ public:
         return restored;
     }
 
+    // Android system Back should dismiss transient mobile panels before
+    // exiting the stationary canvas interface. No native document or
+    // painting widget is touched by this operation.
+    bool dismissTransientControls()
+    {
+        if(m_chrome.sidePanelVisible()) {
+            m_chrome.setSidePanelVisible(false);
+            return true;
+        }
+        if(m_color && m_color->isVisible()) {
+            m_color->hide();
+            return true;
+        }
+        return false;
+    }
+
     void enforceMobileChrome() {m_chrome.enforceMobileChrome();}
 
 private:
