@@ -135,6 +135,35 @@ int main(int argc,char **argv)
         QApplication::processEvents();
         require(mobile.sidePanelVisible() && side->isVisible(),
                 "side dock failed to expose mobile layer controls");
+        auto *layerDock=backend.findChild<QDockWidget*>(
+            QStringLiteral("MobileStudioNativeSideDock"));
+        require(layerDock && backend.dockWidgetArea(layerDock)==
+                    Qt::RightDockWidgetArea,
+                "wide screen did not use side-mounted layers");
+        if(cycle==6) {
+            // A phone rotating into portrait must preserve its real
+            // canvas while moving ONLY the mobile layer docker below it.
+            backend.resize(390,730);
+            QApplication::processEvents();
+            mobile.enforceMobileChrome();
+            QApplication::processEvents();
+            require(backend.dockWidgetArea(layerDock)==
+                        Qt::BottomDockWidgetArea,
+                    "narrow portrait layout did not move layers to bottom");
+            require(backend.centralWidget()==originalCanvas &&
+                    observer.changes==parentChangesAtInstall,
+                    "portrait layers dock moved the native Krita canvas");
+            backend.resize(900,650);
+            QApplication::processEvents();
+            mobile.enforceMobileChrome();
+            QApplication::processEvents();
+            require(backend.dockWidgetArea(layerDock)==
+                        Qt::RightDockWidgetArea,
+                    "wide layout did not restore side-mounted layers");
+            require(backend.centralWidget()==originalCanvas &&
+                    observer.changes==parentChangesAtInstall,
+                    "returning to landscape moved the native Krita canvas");
+        }
         require(backend.centralWidget()==originalCanvas &&
                 observer.changes==parentChangesAtInstall,
                 "opening native-host layers moved original canvas");
@@ -237,7 +266,8 @@ int main(int argc,char **argv)
 
     qInfo() << "PASS: 25 chrome-only switches, identical canvas identity,"
             << "no reparenting during switches, tab and desktop restoration,"
-            << "empty-document dock recovery, late toolbar/tab/docker restoration,"
+            << "portrait/landscape layer dock layout, empty-document recovery,"
+            << "late toolbar/tab/docker restoration,"
             << "synthetic document retention,"
             << "and desktop recovery when"
             << "Krita unexpectedly replaces its canvas";
