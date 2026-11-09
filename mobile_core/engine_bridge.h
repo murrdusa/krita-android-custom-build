@@ -12,7 +12,6 @@
 #include <QVector>
 #include <QWidget>
 #include <QList>
-#include <QMdiArea>
 #include <QSharedPointer>
 #include <utility>
 #include <brushengine/kis_paintop_preset.h>
@@ -32,10 +31,12 @@ public:
     // by the concrete adapter instead of leaving dangling pointers.
     MobileEngineBridge(
         QSharedPointer<MobileDocumentHostPort> documentHost,
+        QSharedPointer<MobileViewHostPort> viewHost,
         QSharedPointer<MobileCommandRegistryPort> commands,
-        KisViewManager *manager,QMdiArea *documents=nullptr)
+        KisViewManager *manager)
         : m_manager(manager),
-          m_documentsService(std::move(documentHost),manager,documents),
+          m_documentsService(std::move(documentHost),
+                             std::move(viewHost),manager),
           m_commands(std::move(commands),manager) {}
 
     using OpenDocument=MobileDocumentService::OpenDocument;
