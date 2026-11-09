@@ -88,6 +88,12 @@ int main(int argc,char **argv)
         device,QEvent::TouchUpdate,10,1140+10*i);
     require(last<start-0.05,"smaller contact area did not reduce pressure");
     touch(device,QEvent::TouchEnd,10,1280,Qt::TouchPointReleased);
+    require(app.property("_mobileFingerAreaLastSampleCount").toInt()>=10,
+            "completed stroke did not record valid contact samples");
+    require(app.property("_mobileFingerAreaLastMinDiameter").toDouble()<=10,
+            "contact diagnostic did not track smallest size");
+    require(app.property("_mobileFingerAreaLastMaxDiameter").toDouble()>=23,
+            "contact diagnostic did not track largest size");
 
     // Disabling after a stroke must restore the exact native input.
     setting.setValue(key,false);
@@ -102,6 +108,8 @@ int main(int argc,char **argv)
                        Qt::TouchPointPressed,1,1,native)-native)<0.00001,
             "unavailable contact size did not fall back");
     touch(device,QEvent::TouchEnd,0,3010,Qt::TouchPointReleased);
+    require(app.property("_mobileFingerAreaLastSampleCount").toInt()==0,
+            "unsupported touch dimensions were reported as usable");
 
     // Even if a device reports a pen through its TouchScreen events,
     // the Qt Pen designation always preserves its original pressure.
