@@ -78,6 +78,8 @@ def main(root:Path):
     engine_init_source=own/"mobile_core/krita_engine_initialization.cpp"
     app_entry_header=own/"mobile_core/krita_application_entry.h"
     app_entry_source=own/"mobile_core/krita_application_entry.cpp"
+    android_runtime_header=own/"mobile_core/krita_android_runtime.h"
+    android_runtime_source=own/"mobile_core/krita_android_runtime.cpp"
     native_workspace=own/"mobile_core/krita_native_workspace.h"
     native_reorder_policy=own/"mobile_core/native_layer_reorder_policy.h"
     native_command_layout=own/"mobile_core/native_command_layout.h"
@@ -109,7 +111,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,startup_policy,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,canvas_resume_observer,standalone_krita_runtime,standalone_krita_documents,standalone_engine_session,native_engine_probe,standalone_engine_pilot,native_startup_policy,native_boot_coordinator,native_bootstrap_audit,engine_only_policy,engine_only_root,engine_only_bootstrap_header,engine_only_bootstrap_source,engine_init_header,engine_init_source,app_entry_header,app_entry_source,native_workspace,native_command_layout,native_reorder_policy,deferred_view_command,document_navigation,surface,switcher,bridge,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+               (shell,session,startup_policy,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,canvas_resume_observer,standalone_krita_runtime,standalone_krita_documents,standalone_engine_session,native_engine_probe,standalone_engine_pilot,native_startup_policy,native_boot_coordinator,native_bootstrap_audit,engine_only_policy,engine_only_root,engine_only_bootstrap_header,engine_only_bootstrap_source,engine_init_header,engine_init_source,app_entry_header,app_entry_source,android_runtime_header,android_runtime_source,native_workspace,native_command_layout,native_reorder_policy,deferred_view_command,document_navigation,surface,switcher,bridge,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
                 reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
@@ -119,7 +121,7 @@ def main(root:Path):
     # so a future lightweight application host can replace it in one place.
     desktop_dependent=(desktop_adapters,mdi_view_adapter)
     qt_host_components=(session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,surface)
-    mobile_frontend=(standalone_engine_session,engine_only_root,engine_only_policy,engine_only_bootstrap_header,engine_only_bootstrap_source,engine_init_header,engine_init_source,app_entry_header,app_entry_source,native_bootstrap_audit,native_boot_coordinator,native_command_layout,native_workspace,native_reorder_policy,native_startup_policy,canvas_resume_observer,deferred_view_command,document_navigation,shell,bridge,host_services,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,
+    mobile_frontend=(standalone_engine_session,engine_only_root,engine_only_policy,engine_only_bootstrap_header,engine_only_bootstrap_source,engine_init_header,engine_init_source,app_entry_header,app_entry_source,android_runtime_header,android_runtime_source,native_bootstrap_audit,native_boot_coordinator,native_command_layout,native_workspace,native_reorder_policy,native_startup_policy,canvas_resume_observer,deferred_view_command,document_navigation,shell,bridge,host_services,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,
                      command_service,command_port,switcher,brush,color,layers,
                      commands,quick,mdi_identity,pressure_calibration,pressure_settings,
                      reorder,tools,documents,*qt_host_components)
@@ -463,6 +465,54 @@ KisMainWindow * KisView::mainWindow() const''',
 #include "krita_engine_initialization.h"
 #include "krita_application_entry.h"''',
         "Android engine-only application bootstrap headers")
+    # Preserve Android display-density scaling for the independent
+    # process startup. Its singleton pointer lives on KisApplication;
+    # expose only the small initialization operation to the new entry.
+    appheader=root/"libs/ui/KisApplication.h"
+    ah=appheader.read_text(encoding="utf-8")
+    ah=one(ah,"class KisApplicationArguments;",
+           "class KisApplicationArguments;\\nclass KisConfig;",
+           "Android scaling config forward declaration")
+    ah=one(ah,
+        "    KisAndroidScaling *androidScaling();",
+        "    KisAndroidScaling *androidScaling();\\n    void initializeAndroidScaling(KisConfig &cfg);",
+        "Android scaling bootstrap API")
+    appheader.write_text(ah,encoding="utf-8")
+    app=one(app,
+        '''#include "krita_application_entry.h"''',
+        '''#include "krita_application_entry.h"''',
+        "Android runtime header already includes bootstrap")
+    scaling_anchor='''    d->androidScaling = new KisAndroidScaling(cfg, this);'''
+    app=one(app,scaling_anchor,
+        "    initializeAndroidScaling(cfg);",
+        "use shared Android scaling init")
+    marker='''KisAndroidScaling *KisApplication::androidScaling()'''
+    if app.count(marker)!=1:
+        raise RuntimeError("Missing Android scaling getter")
+    start=app.index(marker)
+    brace=app.index("{",start)
+    depth=0
+    end=brace
+    while end<len(app):
+        if app[end]=="{": depth+=1
+        elif app[end]=="}":
+            depth-=1
+            if depth==0: break
+        end+=1
+    if depth!=0: raise RuntimeError("Unbalanced Android scaling getter")
+    new_scaling='''
+
+void KisApplication::initializeAndroidScaling(KisConfig &cfg)
+{
+#if KRITA_QT_HAS_ANDROID_QPLATFORMSCREEN_DENSITY_ADJUSTMENT
+    if (!d->androidScaling)
+        d->androidScaling = new KisAndroidScaling(cfg, this);
+#else
+    Q_UNUSED(cfg);
+#endif
+}
+'''
+    app=app[:end+1]+new_scaling+app[end+1:]
     # Engine registries are now compiled in their own Android module,
     # not as methods implemented by the desktop application's class.
     app=redirect_android_engine_method(
@@ -1065,6 +1115,10 @@ KisMainWindow * KisView::mainWindow() const''',
         app_entry_header.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/krita_application_entry.cpp").write_text(
         app_entry_source.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/krita_android_runtime.h").write_text(
+        android_runtime_header.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/krita_android_runtime.cpp").write_text(
+        android_runtime_source.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/krita_native_workspace.h").write_text(
         native_workspace.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/native_layer_reorder_policy.h").write_text(
@@ -1091,6 +1145,7 @@ KisMainWindow * KisView::mainWindow() const''',
         engine_only_bootstrap.cpp
         krita_engine_initialization.cpp
         krita_application_entry.cpp
+        krita_android_runtime.cpp
         KisAndroidDonations.cpp''',
         "real Android kritaui engine compilation gate")
     ui_cmake_file.write_text(ui_cmake,encoding="utf-8")
@@ -1179,6 +1234,39 @@ KisMainWindow * KisView::mainWindow() const''',
     cmake=cmake.replace(oldhash[0],
         f'set(krita5_xmlgui_hash_expected "{digest}")',1)
     cmakefile.write_text(cmake,encoding="utf-8")
+    # The Android process now enters Mobile Studio's own startup
+    # routine directly from main(), skipping KisApplication::start on
+    # ordinary launches. Krita's Qt event dispatcher remains in place.
+    mainfile=root/"krita/main.cc"
+    entry=mainfile.read_text(encoding="utf-8")
+    entry=one(entry,
+        '#include <KisApplication.h>',
+        '''#include <KisApplication.h>
+#ifdef Q_OS_ANDROID
+#include <krita_android_runtime.h>
+#endif''',
+        "Android process bootstrap include")
+    entry=one(entry,
+        '''    if (!app.start(args)) {
+        KisUsageLogger::log("Could not start Krita Application");
+        return 1;
+    }''',
+        '''#ifdef Q_OS_ANDROID
+    const auto mobileResult=MobileKritaAndroidRuntime::launch(app,args);
+    const bool startupReady=
+        mobileResult==MobileKritaAndroidRuntime::Result::Started ||
+        (mobileResult==MobileKritaAndroidRuntime::Result::UseLegacyInvocation &&
+         app.start(args));
+#else
+    const bool startupReady=app.start(args);
+#endif
+    if (!startupReady) {
+        KisUsageLogger::log("Could not start painting application");
+        return 1;
+    }''',
+        "Android independent main entry")
+    mainfile.write_text(entry,encoding="utf-8")
+
     # Package Mobile Studio as an independently installable Android app.
     # Keep Krita's Qt/Java namespace; changing only applicationId avoids
     # rewriting the JNI bindings and Java activity class paths.
