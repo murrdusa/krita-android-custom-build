@@ -265,6 +265,10 @@ jobs:
           assert 'static Decision beginOncePerProcess(' in Path("mobile_core/native_startup_policy.h").read_text()
           assert 'early native host startup decision' in shell_patch
           assert 'defer welcome scroll and MDI tab setup' in shell_patch
+          assert 'defer legacy desktop command palette on native bootstrap' in shell_patch
+          assert 'restore desktop command palette only when opened' in shell_patch
+          assert 'if (!d->commandBar)' in shell_patch
+          assert 'if (!nativeUiPreferred)' in shell_patch
           assert 'defer unused desktop MDI controls' in shell_patch
           assert 'skip desktop workspace menu updates while native' in shell_patch
           assert 'defer desktop MDI window layout restoration' in shell_patch

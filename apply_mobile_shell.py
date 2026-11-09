@@ -484,6 +484,29 @@ KisMainWindow * KisView::mainWindow() const''',
         }''',
           "defer welcome scroll and MDI tab setup")
 
+    # Kate's desktop command palette does not take part in rendering,
+    # document saves, or the independent native action registry.
+    # Its only entry point is KisMainWindow::openCommandBar(), so it can
+    # be constructed lazily if the user returns to desktop commands.
+    s=one(s,
+          '''        commandBar = new KateCommandBar(parent);''',
+          '''        if (!nativeUiPreferred)
+            commandBar = new KateCommandBar(parent);''',
+          "defer legacy desktop command palette on native bootstrap")
+    s=one(s,
+          '''void KisMainWindow::openCommandBar()
+{
+    QList<KisKActionCollection *> actionCollections;''',
+          '''void KisMainWindow::openCommandBar()
+{
+    // A reduced Android startup does not allocate the desktop
+    // Kate command palette. Restore it if an old command action
+    // explicitly requests it after the native host is closed.
+    if (!d->commandBar)
+        d->commandBar = new KateCommandBar(this);
+    QList<KisKActionCollection *> actionCollections;''',
+          "restore desktop command palette only when opened")
+
     # Resource and plugin registries are loaded by Krita's application
     # startup and by the independent view manager. Desktop workspace
     # menu tracking is not needed when that window is just the Android

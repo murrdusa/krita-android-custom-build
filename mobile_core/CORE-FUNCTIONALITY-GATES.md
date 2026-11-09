@@ -481,3 +481,14 @@ The panel now awaits completion of the rename or reorder stroke
 before reconstructing the node tree. Add/delete and visibility/lock
 remain on Krita's existing mechanisms and should be validated
 separately if their undo history is also affected.
+
+
+## Deferred desktop command palette (native boot)
+
+The desktop KateCommandBar was previously always constructed in
+KisMainWindow::Private, even when the Qt-only native command controls
+are selected. Opt-in native startup now skips this widget and creates
+it lazily in KisMainWindow::openCommandBar() if the user explicitly
+opens Krita's old desktop command palette. Fallback/desktop startup
+remains eager as before. This does not change the native action
+registry, painting, the layer undo stack, or document persistence.
