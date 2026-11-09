@@ -125,6 +125,20 @@ jobs:
           assert "MobileStudio/nativeDockCanvasV1" in session
           assert "if(m_nativeCanvasMode)" in session
           assert "m_nativePilot && !m_nativePilot->ready()" in session
+          assert "MobileAndroidBackPolicy::mayDismiss(" in session
+          assert "qApp->installEventFilter(this)" in session
+          assert "activeModalWidget()" in session
+          assert "activePopupWidget()" in session
+          assert "Qt::Key_Escape" not in session
+          assert "dismissTransientControls()" in Path("mobile_core/native_canvas_pilot.h").read_text()
+          assert "dismissTransientControls()" in Path("mobile_core/standalone_host.h").read_text()
+          raw_bridge = Path("mobile_core/finger_raw_bridge.h").read_text()
+          assert "static void reset()" in raw_bridge
+          assert "static bool captureEnabled(quint64 uptimeMs)" in raw_bridge
+          raw_patch = Path("apply_finger_raw_motion.py").read_text()
+          assert "fingerRawGestureReset" in raw_patch
+          assert "fingerRawCaptureEnabled" in raw_patch
+          assert "return super.dispatchTouchEvent(event);" in raw_patch
           assert "MobileStudio/nativeDockCanvasV1" in Path("mobile_core/standalone_host.h").read_text()
           assert "_mobileStudioPresentationActive" in Path("apply_mobile_shell.py").read_text()
           print("Canvas ownership, opt-in stationary pilot and finger pressure invariants intact")
@@ -161,6 +175,16 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: /tmp/krita-native-canvas-chrome-test
+      - name: Build guarded Android Back key routing test
+        run: |
+          c++ -std=c++17 -fPIC -I. \
+            tests/qt_android_back_policy.cpp \
+            -o /tmp/krita-android-back-policy-test \
+            $(pkg-config --cflags --libs Qt5Widgets)
+      - name: Test Back key popup/modal and Android focused child safety
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /tmp/krita-android-back-policy-test
       - name: Build guarded MDI view identity test
         run: |
           c++ -std=c++17 -fPIC -I. \
