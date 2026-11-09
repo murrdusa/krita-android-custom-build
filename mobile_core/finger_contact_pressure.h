@@ -111,7 +111,10 @@ public:
         if(!stroke.enabled)return originalPressure;
 
         const QSizeF ellipse=point.ellipseDiameters();
-        qreal diameter=std::sqrt(ellipse.width()*ellipse.height());
+        // Qt may use (-1,-1) for unavailable dimensions. Their product
+        // is positive, so reject each axis before taking the square root.
+        qreal diameter=(ellipse.width()>0 && ellipse.height()>0)?
+            std::sqrt(ellipse.width()*ellipse.height()):0.0;
         bool fromRaw=false;
 #ifdef Q_OS_ANDROID
         // MotionEvent history and raw touch-major/minor are captured in
