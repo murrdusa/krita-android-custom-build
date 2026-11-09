@@ -36,8 +36,14 @@ public:
     bool activateDocument(int nativeIndex) const {
         return m_documentsService.activateDocument(nativeIndex);
     }
+    bool activateDocumentView(const QPointer<QObject> &view) const {
+        return m_documentsService.activateDocumentView(view);
+    }
     bool closeDocument(int nativeIndex) const {
         return m_documentsService.closeDocument(nativeIndex);
+    }
+    bool closeDocumentView(const QPointer<QObject> &view) const {
+        return m_documentsService.closeDocumentView(view);
     }
     bool closeActiveDocument() const {
         return m_documentsService.closeActiveDocument();
