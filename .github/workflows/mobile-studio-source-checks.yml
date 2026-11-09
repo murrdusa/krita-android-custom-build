@@ -336,7 +336,7 @@ jobs:
           assert 'new KisNodeRenameCommand(' in layer_source
           assert 'm->setNodeName(node,next.trimmed())' not in layer_source
           assert 'stroke.end();' in layer_source
-          assert 'awaitReorder(completion);' in layer_source
+          assert 'awaitReorder(completion,operation);' in layer_source
           assert 'm_engine.selectLayer(node)' in layer_source
           assert 'native_reorder_policy=own/"mobile_core/native_layer_reorder_policy.h"' in shell_patch
           assert '(root/"libs/ui/native_layer_reorder_policy.h").write_text(' in shell_patch
