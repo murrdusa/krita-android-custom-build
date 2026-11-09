@@ -490,6 +490,17 @@ private:
                 QStringLiteral("MobileStudio/bootPending"),false);
             settings.sync();
         });
+        auto *openNative=menu.addAction(
+            i18n("Open independent Krita engine now"));
+        QPointer<QAction> nativeEntry=
+            m_engine.action(QStringLiteral("tablet_standalone_engine_test"));
+        openNative->setEnabled(nativeEntry && nativeEntry->isEnabled());
+        connect(openNative,&QAction::triggered,this,[this,nativeEntry]() {
+            QTimer::singleShot(0,this,[nativeEntry]() {
+                if(nativeEntry && nativeEntry->isEnabled())
+                    nativeEntry->trigger();
+            });
+        });
         auto *nativeStartup=menu.addAction(
             i18n("Start independent Krita engine on next launch"));
         nativeStartup->setCheckable(true);

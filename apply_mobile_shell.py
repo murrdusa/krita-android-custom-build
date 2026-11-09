@@ -469,12 +469,16 @@ KisMainWindow * KisView::mainWindow() const''',
         const bool pending=settings.value(
             QStringLiteral("MobileStudio/standaloneLaunchPending"),
             false).toBool();
+        const QString lastPanel=settings.value(
+            QStringLiteral("MobileStudio/nativeWorkspaceLastAction"),
+            QStringLiteral("None")).toString();
         QMessageBox::information(
             this,i18n("Standalone engine diagnostics"),
             i18n("Last startup checkpoint: %1\\n"
                  "Startup unfinished: %2\\n"
-                 "If the app closed on launch, report this text.",
-                 phase,pending?i18n("Yes"):i18n("No")));
+                 "Last native control: %3\\n"
+                 "If the app closed, report this text.",
+                 phase,pending?i18n("Yes"):i18n("No"),lastPanel));
     });
 #endif
     auto *compactSkin = new TabletCompactSkin(this, d->mdiArea, d->viewManager);

@@ -15,6 +15,7 @@
 #include <QMainWindow>
 #include <QPointer>
 #include <QTimer>
+#include <QSettings>
 
 #include "engine_bridge.h"
 #include "brush_workspace.h"
@@ -54,6 +55,7 @@ public:
     {
         if(!m_host || !m_engine.hasDocument())return;
         if(!m_brushDock) {
+            checkpoint("Brush controls: creating");
             auto *dock=new QDockWidget(
                 QObject::tr("Krita brush controls"),m_host);
             dock->setObjectName(QStringLiteral("_mobileNativeBrushDock"));
@@ -63,6 +65,7 @@ public:
             dock->setWidget(m_brush);
             m_host->addDockWidget(Qt::BottomDockWidgetArea,dock);
             m_brushDock=dock;
+            checkpoint("Brush controls: ready");
         } else m_brushDock->setVisible(!m_brushDock->isVisible());
         if(m_brushDock && m_brushDock->isVisible()) {
             m_brush->refresh();
@@ -74,6 +77,7 @@ public:
     {
         if(!m_host || !m_engine.hasDocument())return;
         if(!m_layersDock) {
+            checkpoint("Layers: creating");
             auto *dock=new QDockWidget(QObject::tr("Krita layers"),m_host);
             dock->setObjectName(QStringLiteral("_mobileNativeLayersDock"));
             dock->setAllowedAreas(Qt::LeftDockWidgetArea|
@@ -86,6 +90,7 @@ public:
             dock->setWidget(m_layers);
             m_host->addDockWidget(Qt::RightDockWidgetArea,dock);
             m_layersDock=dock;
+            checkpoint("Layers: ready");
         } else m_layersDock->setVisible(!m_layersDock->isVisible());
         if(m_layersDock && m_layersDock->isVisible()) {
             m_layers->refreshNow();
@@ -97,7 +102,9 @@ public:
     {
         if(!m_host || !m_engine.hasDocument())return;
         if(!m_color) {
+            checkpoint("Color wheel: creating");
             m_color=new MobileColorWorkspace(m_engine,m_host);
+            checkpoint("Color wheel: ready");
             m_color->show();
         } else {
             m_color->setVisible(!m_color->isVisible());
@@ -113,7 +120,11 @@ public:
         if(!m_host || !m_engine.hasDocument())return;
         QPointer<MobileLightweightCanvasHost> host=m_host;
         QTimer::singleShot(0,this,[this,host]() {
-            if(host)MobileToolBrowser::open(m_engine,host);
+            if(host) {
+                checkpoint("Tool chooser: opening");
+                MobileToolBrowser::open(m_engine,host);
+                checkpoint("Tool chooser: closed");
+            }
         });
     }
 
@@ -126,6 +137,13 @@ public:
     }
 
 private:
+    static void checkpoint(const char *stage)
+    {
+        QSettings settings;
+        settings.setValue(QStringLiteral("MobileStudio/nativeWorkspaceLastAction"),
+                          QString::fromLatin1(stage));
+        settings.sync();
+    }
     QPointer<MobileLightweightCanvasHost> m_host;
     MobileEngineBridge m_engine;
     QPointer<QDockWidget> m_brushDock;

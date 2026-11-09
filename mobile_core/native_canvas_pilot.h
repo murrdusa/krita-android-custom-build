@@ -346,6 +346,18 @@ private:
             });
         });
         menu.addSeparator();
+        auto *openNative=menu.addAction(
+            i18n("Open independent Krita engine now"));
+        QPointer<QAction> nativeEntry=
+            m_engine.action(QStringLiteral("tablet_standalone_engine_test"));
+        openNative->setEnabled(nativeEntry && nativeEntry->isEnabled());
+        QObject::connect(openNative,&QAction::triggered,openNative,
+                         [this,nativeEntry]() {
+            QTimer::singleShot(0,&m_refresh,[nativeEntry]() {
+                if(nativeEntry && nativeEntry->isEnabled())
+                    nativeEntry->trigger();
+            });
+        });
         auto *nativeMode=menu.addAction(i18n(
             "Experimental stationary canvas UI (next restart)"));
         nativeMode->setCheckable(true);

@@ -273,6 +273,10 @@ jobs:
           assert 'workspace->toggleColor()' in native_pilot
           assert 'workspace->chooseTool()' in native_pilot
           assert 'MobileDocumentWorkflow::create(' in native_pilot
+          assert 'MobileStudio/nativeWorkspaceLastAction' in shell_patch
+          assert 'MobileStudio/nativeWorkspaceLastAction' in Path("mobile_core/krita_native_workspace.h").read_text()
+          assert 'tablet_standalone_engine_test' in Path("mobile_core/standalone_host.h").read_text()
+          assert 'tablet_standalone_engine_test' in Path("mobile_core/native_canvas_pilot.h").read_text()
           assert 'MobileDocumentSwitcher::open(' in native_pilot
           assert 'const MobileEngineBridge nativeBridge(' in native_pilot
           assert 'native_workspace=own/"mobile_core/krita_native_workspace.h"' in shell_patch
