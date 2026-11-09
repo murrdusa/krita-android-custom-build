@@ -9,6 +9,7 @@ on:
       - "krita_build_cache.py"
       - "apply_mobile_shell.py"
       - "apply_finger_contact_pressure.py"
+      - "apply_finger_raw_motion.py"
       - "mobile_core/**"
       - "tests/**"
       - ".github/workflows/mobile-studio-source-checks.yml"
@@ -19,6 +20,7 @@ on:
       - "krita_build_cache.py"
       - "apply_mobile_shell.py"
       - "apply_finger_contact_pressure.py"
+      - "apply_finger_raw_motion.py"
       - "mobile_core/**"
       - "tests/**"
   workflow_dispatch:
@@ -36,7 +38,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Compile Python source
-        run: python -m py_compile apk_size_report.py krita_build_reporter.py krita_build_cache.py apply_mobile_shell.py apply_finger_contact_pressure.py
+        run: python -m py_compile apk_size_report.py krita_build_reporter.py krita_build_cache.py apply_mobile_shell.py apply_finger_contact_pressure.py apply_finger_raw_motion.py
       - name: Test APK size reporting
         run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Check canvas ownership boundary
@@ -81,6 +83,16 @@ jobs:
           assert "MobileFingerPressureSettings::mapDiameter(" in pressure_input
           assert "stroke.smoothed=target;" in pressure_input
           assert "finger_pressure_settings.h" in pressure_input
+          assert "MobileFingerPressureSettings::adaptiveAlpha(" in pressure_input
+          assert "MobileFingerRawBridge::nearest(" in pressure_input
+          pressure_ui = Path("mobile_core/finger_pressure_calibration.h").read_text()
+          assert "fingerPressureCurveGamma" in pressure_ui
+          assert "fingerPressureStability" in pressure_ui
+          assert "fingerPressureLevels" in pressure_ui
+          raw_patch = Path("apply_finger_raw_motion.py").read_text()
+          assert "dispatchTouchEvent(MotionEvent event)" in raw_patch
+          assert "getHistoricalTouchMajor" in raw_patch
+          assert "return super.dispatchTouchEvent(event)" in raw_patch
           native_chrome = Path("mobile_core/native_canvas_chrome.h").read_text()
           assert "class MobileNativeCanvasChrome" in native_chrome
           assert "m_backend->centralWidget()==m_nativeCanvas" in native_chrome
@@ -169,6 +181,14 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: /tmp/krita-finger-area-pressure-test
+      - name: Compile raw Android contact Qt-only regression
+        run: |
+          c++ -std=c++17 -fPIC -I. \
+            tests/qt_finger_raw_bridge.cpp \
+            -o /tmp/krita-finger-raw-bridge-test \
+            $(pkg-config --cflags --libs Qt5Core)
+      - name: Test raw size, history, finger identity and stale-sample rejection
+        run: /tmp/krita-finger-raw-bridge-test
       - name: Build min/max finger calibration dialog smoke test
         run: |
           c++ -std=c++17 -fPIC -I. \
