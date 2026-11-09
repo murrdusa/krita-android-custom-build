@@ -27,9 +27,22 @@ serialization or brushes.
   no longer store/require a `KisMainWindow`. Both host ports are held
   through copyable shared lifetime handles; the desktop adapters use
   guarded `QPointer` references to the actual window.
-- The Android bootstrap creates the two adapters once. The app can
-  later substitute mobile-first document/action hosts **without
-  rewriting brush controls, layers, Quick Actions or file dialogs**.
+- The Android bootstrap creates the document and command adapters
+  once. It now also injects a **view-host port**: `view_host_port.h`
+  exposes guarded view identities, current selection, modified state,
+  activation, and native close without requiring `QMdiArea`.
+  `mdi_view_host_adapter.h` alone handles Krita's desktop MDI views.
+- `document_service.h` and `engine_bridge.h` no longer take a
+  `QMdiArea` or include `KisView`. The UI keeps the same document
+  commands, but a future mobile-first host can supply both its own
+  view model and document/action implementations.
+- `view_identity_guard.h` rejects ambiguous active views, changed
+  document identities, reused native indices and destroyed view
+  pointers. This avoids saving/closing another canvas after deferred
+  UI callbacks.
+- The mobile frontend can later substitute new document, command and
+  view hosts **without rewriting brushes, layers, Quick Actions or
+  document dialogs**.
 - Deferred Save/Save As from the stationary-canvas path revalidates
   the exact native MDI view captured at tap time before delegating to
   Krita. This rejects ambiguous or changed document selection instead
@@ -45,7 +58,7 @@ serialization or brushes.
 | Navigation | Back/reentry without deleting/reparenting a document; portrait/landscape, suspend/resume | Stationary Qt docks are opt-in; Qt synthetic tests added; Android device regression pending |
 | Input | Stylus and S Pen, multi-finger gestures, opt-in calibrated finger pressure without interfering with pen/multitouch | Implemented prototype; real touch-size hardware validation pending |
 | Persistence | Save/reopen KRA preserving paint, groups, masks, brush resources and canvas coordinates | Uses Krita serializer; round-trip validation pending |
-| Host independence | Mobile document/command services compile without a desktop-window dependency | **Backend port separation implemented; Android build succeeds** |
+| Host independence | Mobile document, command and view services build without a desktop-window/MDI dependency | **Three backend ports integrated; Android build validation and Qt regression checks ongoing** |
 | Replacement host | Launch/paint/save via a lightweight host that initializes Krita engines without constructing the full desktop `KisMainWindow` | **Not yet implemented** |
 | APK | Build deployable Android package; no regressions on target phone | Android builds running; on-device signoff pending; automatic upload paused |
 
@@ -57,9 +70,9 @@ an APK compiled, and no test should use irreplaceable artwork.
 1. Keep the new document/action host contracts stable. Run the Qt fake
    host-port test and monitor local Android compilation after every
    backend change.
-2. Isolate active-view and canvas-session lifecycle behind host-neutral
-   interfaces. Add source/Qt checks for ownership and no-reparent mode
-   switching, including interruption and invalidated views.
+2. Extend the completed view-host separation to canvas-session
+   ownership, including interruption, invalidated views, and mode
+   switching. Run fake-port Qt tests and check Android build results.
 3. Introduce a **separate opt-in lightweight Krita host bootstrap**
    that wires the same host ports and existing KisDocument, KisPart,
    KisView and brush resources. Keep the old launcher as rollback.
