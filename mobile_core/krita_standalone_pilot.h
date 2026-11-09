@@ -16,6 +16,8 @@
 #include <QPointer>
 #include <QSharedPointer>
 #include <QSettings>
+#include <functional>
+#include "native_startup_policy.h"
 #include <QTimer>
 #include <QToolBar>
 #include <QWidget>
@@ -29,7 +31,8 @@
 class MobileKritaStandalonePilot final
 {
 public:
-    static bool launch(QWidget *nativeWindow)
+    static bool launch(QWidget *nativeWindow,
+                       std::function<void(bool)> firstCanvasReady={})
     {
         if(!nativeWindow || nativeWindow->window()!=nativeWindow ||
            !nativeWindow->isVisible())return false;
@@ -43,6 +46,8 @@ public:
             existing->show();
             existing->raise();
             existing->setFocus(Qt::OtherFocusReason);
+            if(firstCanvasReady)firstCanvasReady(existing->nativeViewPort() &&
+                         !existing->nativeViewPort()->openViews().isEmpty());
             return true;
         }
 
@@ -105,6 +110,17 @@ public:
         auto *saveAsAction=bar->addAction(QObject::tr("Save As"));
         auto *closeAction=bar->addAction(QObject::tr("Close view"));
         auto *exitAction=bar->addAction(QObject::tr("Exit test"));
+        auto *nativeStartup=bar->addAction(
+            QObject::tr("Start here next launch"));
+        nativeStartup->setCheckable(true);
+        {
+            QSettings settings;
+            nativeStartup->setChecked(MobileNativeStartupPolicy::enabled(settings));
+        }
+        QObject::connect(nativeStartup,&QAction::toggled,window,[](bool on) {
+            QSettings settings;
+            MobileNativeStartupPolicy::setEnabled(settings,on);
+        });
 
         QObject::connect(newAction,&QAction::triggered,window,
                          [alive,documents]() {
@@ -209,12 +225,13 @@ public:
         stage("Showing embedded engine test canvas");
         window->show();
         window->raise();
-        QTimer::singleShot(0,window,[alive,documents,stage]() {
+        QTimer::singleShot(0,window,[alive,documents,stage,firstCanvasReady]() {
             if(!alive)return;
             stage("Creating first native Krita document and view");
             if(!documents->createCanvas(
                        QStringLiteral("Engine test"),512,512,72,true)) {
                 stage("Krita refused first native document creation");
+                if(firstCanvasReady)firstCanvasReady(false);
                 QMessageBox::warning(
                     alive.data(),QObject::tr("Engine test"),
                     QObject::tr("Native view initialization failed. "
@@ -222,6 +239,7 @@ public:
                 return;
             }
             stage("First native Krita canvas ready",false);
+            if(firstCanvasReady)firstCanvasReady(true);
         });
         return true;
     }

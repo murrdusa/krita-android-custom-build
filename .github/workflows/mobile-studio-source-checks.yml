@@ -69,7 +69,7 @@ jobs:
           # The desktop fallback must always offer a manual way back
           # into the app, even if Krita remembered a hidden toolbar.
           assert "Settings menu mobile recovery launcher" in Path("apply_mobile_shell.py").read_text()
-          assert "'set(KRITA5_XMLGUI_VERSION 552)'" in Path("apply_mobile_shell.py").read_text()
+          assert "'set(KRITA5_XMLGUI_VERSION 553)'" in Path("apply_mobile_shell.py").read_text()
           startup = Path("mobile_core/canvas_session.h").read_text()
           assert "void attemptAutomaticStartup(int remaining)" in startup
           assert "attemptAutomaticStartup(12)" in startup
@@ -260,6 +260,14 @@ jobs:
           assert '(root/"libs/ui/krita_standalone_pilot.h").write_text(' in shell_patch
           assert 'tablet_standalone_engine_test' in shell_patch
           assert 'tablet_standalone_engine_status' in shell_patch
+          assert 'tablet_native_engine_autostart' in shell_patch
+          assert 'MobileNativeStartupPolicy::begin(settings)' in shell_patch
+          assert 'MobileNativeStartupPolicy::complete(settings,success)' in shell_patch
+          assert 'native_startup_policy=own/"mobile_core/native_startup_policy.h"' in shell_patch
+          assert '(root/"libs/ui/native_startup_policy.h").write_text(' in shell_patch
+          assert 'MobileStudio/nativeStartupV1' in Path("mobile_core/canvas_session.h").read_text()
+          assert 'MobileNativeStartupPolicy::setEnabled(' in native_pilot
+          assert 'MobileNativeStartupPolicy::setEnabled(' in Path("mobile_core/standalone_host.h").read_text()
           assert 'MobileStudio/standaloneLastPhase' in native_pilot
           assert 'MobileStudio/standaloneLaunchPending' in native_pilot
           assert 'MobileKritaStandalonePilot::launch(this)' in shell_patch
@@ -463,6 +471,14 @@ jobs:
             $(pkg-config --cflags --libs Qt5Core)
       - name: Check destroyed and registered document rollback
         run: /tmp/krita-native-document-rollback-test
+      - name: Build independent Krita startup recovery Qt test
+        run: |
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+            tests/qt_native_startup_policy.cpp \
+            -o /tmp/krita-native-startup-test \
+            $(pkg-config --cflags --libs Qt5Core)
+      - name: Verify native startup opt-in and desktop fallback
+        run: /tmp/krita-native-startup-test
       - name: Build mobile startup policy regression test
         run: |
           c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \

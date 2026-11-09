@@ -307,3 +307,18 @@ The Android-only patch uses `qtMainWindow()->statusBar()` in the
 independent host and retains upstream desktop behavior. The desktop-only
 `themeChanged` connection is guarded. This addresses a concrete
 crash path; another Android launch is still required to validate it.
+
+
+## Native host startup migration (opt-in)
+
+The device-validated separate Krita host now has an optional first
+launch route (`MobileStudio/nativeStartupV1`, off by default). Krita
+still initializes its resource and plugin registries, but the user can
+launch directly into an independent MDI-free view and document host
+rather than the legacy overlay. Settings, mobile More, and the
+independent host itself expose opt-in controls. Existing Mobile Studio
+autostart is suppressed when this mode is enabled. An interrupted
+or failed native launch automatically disables the mode and restores
+the standard Krita fallback on the next launch. The old desktop host
+is still compiled and retained for recovery; this is not yet a binary
+removal of the full KisMainWindow implementation.

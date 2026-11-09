@@ -56,6 +56,9 @@ public:
                qApp->property("_mobileStudioBootHandled").toBool())return;
             qApp->setProperty("_mobileStudioBootHandled",true);
             QSettings settings;
+            if(settings.value(
+                  QStringLiteral("MobileStudio/nativeStartupV1"),false).toBool())
+                return; // Independent host owns the opted-in startup.
             const auto decision=MobileStartupPolicy::begin(settings);
             if(decision==MobileStartupPolicy::Decision::NoAutostart)
                 return;

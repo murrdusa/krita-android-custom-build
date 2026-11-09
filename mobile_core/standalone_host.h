@@ -40,6 +40,7 @@
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QSettings>
+#include "native_startup_policy.h"
 #include <QStringList>
 #include <QCursor>
 #include <QVector>
@@ -488,6 +489,20 @@ private:
             settings.setValue(
                 QStringLiteral("MobileStudio/bootPending"),false);
             settings.sync();
+        });
+        auto *nativeStartup=menu.addAction(
+            i18n("Start independent Krita engine on next launch"));
+        nativeStartup->setCheckable(true);
+        {
+            QSettings settings;
+            nativeStartup->setChecked(MobileNativeStartupPolicy::enabled(settings));
+        }
+        nativeStartup->setToolTip(i18n(
+            "Start in the separate native canvas on next app launch. "
+            "A failed startup reverts to original Krita automatically."));
+        connect(nativeStartup,&QAction::toggled,this,[](bool on) {
+            QSettings settings;
+            MobileNativeStartupPolicy::setEnabled(settings,on);
         });
         auto *fingerPressure=menu.addAction(
             i18n("Experimental finger pressure (contact area)"));
