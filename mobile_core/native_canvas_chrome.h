@@ -34,7 +34,7 @@ public:
     {
         m_guard.setInterval(750);
         QObject::connect(&m_guard,&QTimer::timeout,&m_guard,
-                         [this]() {if(m_active)hideDesktopChrome();});
+                         [this]() {enforceMobileChrome();});
     }
 
     ~MobileNativeCanvasChrome()
@@ -164,6 +164,11 @@ public:
     void enforceMobileChrome()
     {
         if(m_active && ownsUnmovedCanvas()) {
+            // Krita can add new dockers or replace its MDI tabbar when
+            // opening/closing views. Include late widgets in the original
+            // visibility snapshot instead of leaving them on-screen.
+            captureAdditionalDesktopChrome();
+            captureAdditionalTabs();
             hideDesktopChrome();
             hideTabs();
         }
@@ -184,6 +189,11 @@ private:
     void snapshotDesktopChrome()
     {
         m_chrome.clear();
+        captureAdditionalDesktopChrome();
+    }
+
+    void captureAdditionalDesktopChrome()
+    {
         if(!m_backend)return;
         const auto store=[this](QWidget *widget) {
             if(!widget || widget==m_topDock || widget==m_bottomDock ||
@@ -217,10 +227,21 @@ private:
     void snapshotTabs()
     {
         m_tabs.clear();
+        captureAdditionalTabs();
+    }
+
+    void captureAdditionalTabs()
+    {
         if(!m_nativeCanvas)return;
-        for(QTabBar *bar:m_nativeCanvas->findChildren<QTabBar*>())
-            m_tabs.append({bar,bar->minimumHeight(),
-                           bar->maximumHeight(),bar->isVisible()});
+        for(QTabBar *bar:m_nativeCanvas->findChildren<QTabBar*>()) {
+            bool known=false;
+            for(const TabSnapshot &saved:m_tabs) {
+                if(saved.widget==bar) {known=true;break;}
+            }
+            if(!known)
+                m_tabs.append({bar,bar->minimumHeight(),
+                               bar->maximumHeight(),bar->isVisible()});
+        }
     }
 
     void hideTabs()
