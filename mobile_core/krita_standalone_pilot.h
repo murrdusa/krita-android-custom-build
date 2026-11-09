@@ -21,6 +21,7 @@
 
 #include "document_service.h"
 #include "deferred_view_command.h"
+#include "document_navigation.h"
 #include "krita_standalone_documents.h"
 #include "krita_standalone_runtime.h"
 
@@ -76,6 +77,8 @@ public:
         bar->setMovable(false);
         auto *newAction=bar->addAction(QObject::tr("New"));
         auto *openAction=bar->addAction(QObject::tr("Open"));
+        auto *previousAction=bar->addAction(QObject::tr("Previous canvas"));
+        auto *nextAction=bar->addAction(QObject::tr("Next canvas"));
         auto *undoAction=bar->addAction(QObject::tr("Undo"));
         auto *redoAction=bar->addAction(QObject::tr("Redo"));
         auto *saveAction=bar->addAction(QObject::tr("Save"));
@@ -98,6 +101,16 @@ public:
             QTimer::singleShot(0,alive.data(),[alive,documents]() {
                 if(alive)documents->openFiles(alive.data());
             });
+        });
+        // Independent host must be able to switch among real KisViews
+        // without using the desktop MDI tab index.
+        QObject::connect(previousAction,&QAction::triggered,window,
+                         [views=services.views]() {
+            MobileDocumentNavigation::cycle(views,-1);
+        });
+        QObject::connect(nextAction,&QAction::triggered,window,
+                         [views=services.views]() {
+            MobileDocumentNavigation::cycle(views,1);
         });
         // Exercise Krita's genuine image undo stack; this is not a
         // reconstructed history of mobile gestures. Read the currently
