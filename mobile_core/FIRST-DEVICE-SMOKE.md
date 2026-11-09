@@ -94,3 +94,23 @@ controls are still experimental. Desktop Krita initialization
 continues to run behind the independent shell for resource/plugin
 bootstrap and recovery. Do not remove that backend until these
 on-device flows pass across multiple documents and lifecycle events.
+
+
+## D. New EXPERIMENTAL engine-only V2 (do not enable until compiled)
+
+After the WSL watcher reports BUILD SUCCESS for the commit adding
+engine-only V2, run the existing reduced-shell test first. From the
+independent drawing host's **More** menu enable
+**Engine-only on next launch (experimental)**, save your disposable
+artwork, fully close, and reopen. This is the first mode that does
+not create KisMainWindow at all. Confirm painting, saving/reopening
+a KRA, Undo/Redo, brush/color/layer controls, multiple canvases,
+and Android background/resume. **Exit test** must obey Save/Discard/
+Cancel and close the application instead of leaving a blank shell.
+
+If the app crashes, reopen it once. It should automatically disable
+engine-only V2 and restore the full original Krita desktop, rather
+than looping. The previous independent V1 remains selectable.
+This mode is intentionally off by default, and original Android
+file-share intents are not yet routed into its native document
+service. Open files using the in-app **Open** action for now.

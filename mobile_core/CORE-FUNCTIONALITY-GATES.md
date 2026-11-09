@@ -520,3 +520,35 @@ explicitly requires it, including Krita's original close-event
 cleanup. On ordinary full-desktop startup, initialization is
 unchanged. This removes another unused desktop QWidget from normal
 independent startup without replacing the independent KisCanvas2.
+
+
+## Experimental engine-only startup V2 — first actual application split (2026-11-09)
+
+New opt-in `MobileStudio/engineOnlyBootV2` in the independent
+canvas's More menu. Unlike V1's reduced desktop shell, V2 changes
+`KisApplication::start` *after* all Krita globals, paintop plugins,
+color/brush resource registries, and `KisPart` are initialized:
+it uses one `MobileEngineOnlyRoot : QMainWindow` to host the existing
+independent KisViewManager/KisCanvas2/document stack, and **skips**
+the `KisPart::startBlankSession() / createMainWindow()` path.
+No `KisMainWindow`, `QMdiArea`, desktop docker, desktop workspace,
+or Krita desktop command-bar object is constructed for a normal
+empty-document engine-only Android startup. Krita's engine and
+resource/plugin libraries are retained.
+
+This is **experimental and disabled by default**. V1 remains the
+working device-tested option and does not change unless explicitly
+opting into V2. V2 has its own crash marker: if interrupted before
+the first canvas is available, the next launch disables V2 and boots
+the original desktop Krita. The single native Qt top-level intercepts
+close, and delegates to the native document Save/Discard/Cancel
+transaction before letting Android finish.
+
+Important limitations before device testing: explicit sessions,
+command-line files, Open intents, and batch modes use the original
+KisMainWindow startup; desktop autosave-session scanning is not run
+for V2; late external share-file intents are guarded but not yet
+routed to the native file opener. KRA documents are still saved
+by the existing KisDocument export pipeline. Qt startup-policy tests
+cannot prove actual Android startup stability; the entire path
+requires device testing before any default migration.

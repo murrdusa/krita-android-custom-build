@@ -292,6 +292,24 @@ jobs:
           assert 'Legacy mobile controller skipped on native startup' in shell_patch
           assert 'skip compact skin connection without a receiver' in shell_patch
           assert 'MobileNativeBootCoordinator::schedule(' in shell_patch
+          assert 'engine_only_policy=own/"mobile_core/engine_only_startup_policy.h"' in shell_patch
+          assert 'engine_only_root=own/"mobile_core/engine_only_root.h"' in shell_patch
+          assert '(root/"libs/ui/engine_only_startup_policy.h").write_text(' in shell_patch
+          assert '(root/"libs/ui/engine_only_root.h").write_text(' in shell_patch
+          assert 'replace desktop KisPart session bootstrap when engine-only selected' in shell_patch
+          assert 'guard late Android open intent without desktop window' in shell_patch
+          assert 'guard late remote document intent without desktop window' in shell_patch
+          assert 'if (needsMainWindow && !engineOnlyBoot)' in shell_patch
+          assert 'MobileEngineOnlyStartupPolicy::complete(settings,success)' in shell_patch
+          assert 'MobileEngineOnlyStartupPolicy::setEnabled(settings,on)' in native_pilot
+          assert 'dynamic_cast<MobileEngineOnlyRoot*>(nativeWindow)' in native_pilot
+          assert '_mobileNativeEngineOnlyRoot' in native_pilot
+          onlyPolicy=Path("mobile_core/engine_only_startup_policy.h").read_text()
+          onlyRoot=Path("mobile_core/engine_only_root.h").read_text()
+          assert '#include "KisMainWindow.h"' not in onlyPolicy + onlyRoot
+          assert '#include <QMdiArea>' not in onlyPolicy + onlyRoot
+          assert 'MobileEngineOnlyRoot final : public QMainWindow' in onlyRoot
+          assert 'm_drawingHost->close()' in onlyRoot
           assert 'native_bootstrap_audit=own/"mobile_core/native_bootstrap_audit.h"' in shell_patch
           assert '(root/"libs/ui/native_bootstrap_audit.h").write_text(' in shell_patch
           assert 'MobileNativeBootstrapAudit::record(desktop)' in native_pilot
@@ -596,6 +614,16 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: /tmp/krita-native-boot-audit-test
+      - name: Build engine-only Android Qt root and crash recovery test
+        run: |
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
+            tests/qt_engine_only_root.cpp \
+            -o /tmp/krita-engine-only-root-test \
+            $(pkg-config --cflags --libs Qt5Widgets)
+      - name: Verify engine-only boot is MDI-free and close is save-safe
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /tmp/krita-engine-only-root-test
       - name: Build native engine Qt boot coordinator regression
         run: |
           c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
