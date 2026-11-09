@@ -9,7 +9,7 @@ In **Mobile Studio → More**, enable **Experimental finger pressure (contact ar
 The dialog now has:
 
 - **Minimum / Maximum contact:** editable logical-pixel contact diameters corresponding to 0% and 100% simulated pressure. Initial defaults remain 8px and 24px.
-- **Response curve:** a slider from 0.30–3.00, default 1.00. Values below 1.00 emphasize smaller contact changes; values above 1.00 emphasize larger contacts. Changes apply from the next finger stroke.
+- **Response curve:** a slider from 0.30–3.00, default 1.00, with a live plotted preview of the input-to-pressure curve. Values below 1.00 emphasize smaller contact changes; values above 1.00 emphasize larger contacts. Changes apply from the next finger stroke.
 - **Stability:** 0–100%, default 50%. A higher value filters small variations more heavily; lower values feel faster.
 - **Prefer Android raw touch size:** enabled by default *when the overall experimental finger-pressure toggle is on*. Turn it off to compare Qt's contact ellipse with Android MotionEvent measurements. If raw samples cannot be matched, painting automatically falls back to Qt. If neither provides usable dimensions, Krita's original input pressure is used.
 - **Capture minimum / maximum:** touch the diagnostic pad with a small/light contact, or a broad/flattened contact, and lift. The median contact diameter from that touch sets the corresponding endpoint.
