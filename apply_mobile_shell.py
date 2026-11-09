@@ -1331,7 +1331,38 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
         'android:name=".android.DocumentSaverService"',
         'android:name="org.krita.android.DocumentSaverService"',
         "fully qualified save service")
+    # Android ACTION_VIEW/EDIT uses Intent.getData(); sharing through
+    # ACTION_SEND uses EXTRA_STREAM. Enable both without new desktop UI.
+    manifest=one(manifest,
+        '''            <intent-filter>
+                <action android:name="com.samsung.android.support.REMOTE_ACTION" />''',
+        '''            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="application/x-krita" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.samsung.android.support.REMOTE_ACTION" />''',
+        "Android Share single-document intent filter")
     manifestfile.write_text(manifest,encoding="utf-8")
+
+    # Preserve MainActivity's native Qt/JNI intent delivery; only widen
+    # URI extraction to include Android's single-file Share operation.
+    activityfile=root/"packaging/android/apk/src/org/krita/android/MainActivity.java"
+    activity=activityfile.read_text(encoding="utf-8")
+    activity=one(activity,
+        '''            Uri fileUri = intent.getData();
+            if (fileUri != null) {''',
+        '''            Uri fileUri = intent.getData();
+            if (fileUri == null && Intent.ACTION_SEND.equals(intent.getAction())) {
+                Object stream = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+                if (stream instanceof Uri) fileUri = (Uri) stream;
+            }
+            if (fileUri != null) {''',
+        "Android single Share URI extraction")
+    activityfile.write_text(activity,encoding="utf-8")
 
     debugManifest=root/"packaging/android/apk/flavors/debug/AndroidManifest.xml"
     debugXml=debugManifest.read_text(encoding="utf-8")
