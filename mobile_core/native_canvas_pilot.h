@@ -11,6 +11,7 @@
 #include <QAction>
 #include <QClipboard>
 #include <QFrame>
+#include <QFontMetrics>
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -61,7 +62,11 @@ public:
         });
         headerRow->addWidget(back);
         m_document=makeButton(i18n("Canvases"),header);
-        m_document->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Preferred);
+        // The document title should not force a wide desktop-sized header
+        // on narrow Android phone screens. The full title remains in the
+        // tooltip, while the visible button elides to the available space.
+        m_document->setMinimumWidth(42);
+        m_document->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Preferred);
         QObject::connect(m_document,&QToolButton::clicked,m_document,[this]() {
             // Return from the Qt button click before opening a new modal
             // QDialog; Android otherwise can stack a native file picker
@@ -189,10 +194,15 @@ private:
         m_chrome.setBottomPanelVisible(has);
         if(m_document) {
             const QString title=m_engine.activeDocumentTitle();
-            m_document->setText(has?
-                (title.isEmpty()?i18n("Canvases"):title.left(26))+
+            const QString fullTitle=has?
+                (title.isEmpty()?i18n("Canvases"):title)+
                 (m_engine.documentModified()?QStringLiteral(" *"):QString()):
-                i18n("No document"));
+                i18n("No document");
+            const int available=qMax(38,m_document->width()-18);
+            const QString fitted=m_document->fontMetrics().elidedText(
+                fullTitle,Qt::ElideMiddle,available);
+            if(m_document->text()!=fitted)m_document->setText(fitted);
+            m_document->setToolTip(fullTitle);
         }
         if(m_brush) {
             m_brush->setVisible(has);
