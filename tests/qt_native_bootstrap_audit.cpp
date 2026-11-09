@@ -8,6 +8,7 @@
 #include <QMdiArea>
 #include <QScrollArea>
 #include <QStatusBar>
+#include <QStackedWidget>
 #include <QWidget>
 #include "mobile_core/native_bootstrap_audit.h"
 
@@ -20,8 +21,12 @@ int main(int argc,char **argv)
 {
     QApplication app(argc,argv);
     QMainWindow desktop;
-    auto *mdi=new QMdiArea(&desktop);
-    desktop.setCentralWidget(mdi);
+    auto *desktopStack=new QStackedWidget(&desktop);
+    auto *mdi=new QMdiArea(desktopStack);
+    auto *welcomeScroll=new QScrollArea(desktopStack);
+    desktopStack->addWidget(mdi);
+    desktopStack->addWidget(welcomeScroll);
+    desktop.setCentralWidget(desktopStack);
     desktop.setProperty("_mobileNativeDesktopDeferred",true);
     desktop.setProperty("_mobileNativeHostActive",true);
     auto *status=desktop.statusBar();
@@ -33,8 +38,9 @@ int main(int argc,char **argv)
     const auto bare=MobileNativeBootstrapAudit::inspect(&desktop);
     check(bare.nativeSelected && bare.nativeHostActive,
           "missing reduced-shell startup mode");
-    check(bare.mdiAreas==1 && bare.desktopDockers==0,
-          "retained MDI or dockers counted incorrectly");
+    check(bare.mdiAreas==1 && bare.desktopDockers==0 &&
+          bare.welcomeScrollAreas==1,
+          "retained MDI, welcome scroller or dockers counted incorrectly");
     check(bare.commandPalettes==0,
           "command palette falsely reported before lazy creation");
     check(!bare.desktopStatusVisible,
@@ -50,8 +56,12 @@ int main(int argc,char **argv)
     auto *native=new QMainWindow(mdi);
     auto *nativeDocker=new QDockWidget(QStringLiteral("Brushes"),native);
     native->addDockWidget(Qt::BottomDockWidgetArea,nativeDocker);
-    check(MobileNativeBootstrapAudit::inspect(&desktop).desktopDockers==1,
-          "independent drawing controls counted as desktop dockers");
+    auto *nativeScroller=new QScrollArea(native);
+    nativeDocker->setWidget(nativeScroller);
+    const auto withNativeControls=MobileNativeBootstrapAudit::inspect(&desktop);
+    check(withNativeControls.desktopDockers==1 &&
+          withNativeControls.welcomeScrollAreas==1,
+          "independent drawing controls counted as desktop widgets");
 
     desktop.setProperty("_mobileNativeHostActive",false);
     desktop.setProperty("_mobileNativeDesktopDeferred",false);

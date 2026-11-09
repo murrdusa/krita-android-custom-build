@@ -56,8 +56,12 @@ public:
         result.desktopDockers=desktop->findChildren<QDockWidget*>(
             QString(),Qt::FindDirectChildrenOnly).size();
         result.mdiAreas=desktop->findChildren<QMdiArea*>().size();
-        result.welcomeScrollAreas=desktop->findChildren<QScrollArea*>(
-            QStringLiteral("_mobileNativeWelcomePlaceholder")).size();
+        // The original welcome page's scroller belongs to the
+        // desktop central widget, not to the native child host.
+        // Do not count scroll areas inside Brush/Color overlays.
+        QWidget *desktopCenter=desktop->centralWidget();
+        result.welcomeScrollAreas=desktopCenter ?
+            desktopCenter->findChildren<QScrollArea*>().size() : 0;
         // A desktop command palette is constructed by Krita from Kate;
         // no dependency on KateCommandBar's header is needed here.
         for(QObject *obj:desktop->findChildren<QObject*>()) {
