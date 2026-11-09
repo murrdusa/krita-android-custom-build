@@ -27,8 +27,7 @@
 #include "document_navigation.h"
 #include "document_workflow.h"
 #include "document_switcher.h"
-#include "krita_standalone_documents.h"
-#include "krita_standalone_runtime.h"
+#include "krita_engine_session.h"
 #include "krita_native_workspace.h"
 #include "native_command_layout.h"
 #include "native_bootstrap_audit.h"
@@ -98,37 +97,28 @@ public:
         // Android keeps a single native top-level in both boot modes.
         if(auto *independent=dynamic_cast<MobileEngineOnlyRoot*>(nativeWindow))
             independent->setDrawingHost(window);
-        if(!window->createNativeDocumentRoot()) {
+        stage("Creating independent Krita engine session");
+        MobileKritaEngineSession *engineSession=
+            MobileKritaEngineSession::attach(window);
+        if(!engineSession) {
             delete window;
             return false;
         }
-        stage("Creating independent Krita view manager");
-        MobileKritaStandaloneRuntime *runtime=
-            MobileKritaStandaloneRuntime::create(window);
-        if(!runtime) {
-            delete window;
-            return false;
-        }
-        // KisStatusBar::setup() still creates the Qt footer for the
-        // independent manager. Keep it alive for engine bookkeeping.
+        // KisStatusBar::setup() still creates the Qt footer for engine
+        // bookkeeping. Keep it live but hide desktop presentation.
         if(!window->suppressNativeStatusChrome())
             qWarning() << "Independent status footer was not found";
-        stage("Connecting native Krita services");
-        const MobileHostServices services=
-            MobileKritaStandaloneDocumentsBootstrap::create(runtime);
-        if(!services.ready()) {
-            delete window;
-            return false;
-        }
+        stage("Native Krita services connected");
+        const MobileHostServices services=engineSession->services();
         auto documents=QSharedPointer<MobileDocumentService>::create(
             services.documents,services.views);
         QPointer<MobileLightweightCanvasHost> alive=window;
         QPointer<QWidget> desktopNative=nativeWindow;
-        const MobileEngineBridge nativeBridge(services,runtime->viewManager());
+        const MobileEngineBridge nativeBridge(services,engineSession->viewManager());
         // Native controls now use the independent manager and host ports,
         // not the old desktop MDI window or its docker instances.
         auto *workspace=new MobileKritaNativeWorkspace(
-            window,services,runtime->viewManager());
+            window,services,engineSession->viewManager());
 
         // Reuse every real QAction callback from the validated engine,
         // but present the controls in short native rows, not one

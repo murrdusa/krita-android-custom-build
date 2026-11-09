@@ -612,3 +612,24 @@ entrypoint. Startup still depends on Krita's `KisApplication` for
 resource, brush, tool and plugin initialization and `KisPart` for
 documents. The next stage is separating that initialization path into
 an application-owned engine bootstrap after device validation.
+
+ 
+## Application-owned Krita engine session extraction
+
+`mobile_core/krita_engine_session.h` now owns construction of the
+native canvas stack, independent `KisViewManager`, and Krita-backed
+document/view/command service ports. The temporary painting pilot
+receives these through `MobileKritaEngineSession::attach(window)`
+rather than constructing engine objects directly.
+
+Both the device-verified V2 embedded host and experimental V3 direct
+application root run through the same host-neutral engine session.
+Lifetime remains owned by the native host and the real native Krita
+views are destroyed before their manager. The session is built into
+the Android `kritaui` compile probe, guarded by source checks, and
+is not dependent on a desktop `KisMainWindow` or MDI dockers.
+
+The next major boundary is extracting resource/plugin/brush
+registration out of the giant `KisApplication` initialization method;
+that is required before a truly separate APK/process entrypoint can
+replace original Krita startup without losing engine functionality.

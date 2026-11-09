@@ -430,8 +430,15 @@ jobs:
           assert 'MobileCanvasResumeObserver::attach(' in native_factory
           assert '(root/"libs/ui/canvas_resume_observer.h").write_text(' in shell_patch
           assert 'if(bootstrapped)' in native_factory
-          assert 'MobileKritaStandaloneRuntime::create(window)' in native_pilot
-          assert 'MobileKritaStandaloneDocumentsBootstrap::create(runtime)' in native_pilot
+          engine_session=Path("mobile_core/krita_engine_session.h").read_text()
+          assert 'MobileKritaEngineSession::attach(window)' in native_pilot
+          assert 'MobileKritaStandaloneRuntime::create(host)' in engine_session
+          assert 'MobileKritaStandaloneDocumentsBootstrap::create(runtime)' in engine_session
+          assert 'MobileKritaEngineSession final : public QObject' in engine_session
+          assert 'KisMainWindow.h' not in engine_session
+          assert 'standalone_engine_session=own/"mobile_core/krita_engine_session.h"' in shell_patch
+          assert '(root/"libs/ui/krita_engine_session.h").write_text(' in shell_patch
+          assert '#include "krita_engine_session.h"' in native_probe
           assert 'documents->createCanvas(' in native_pilot
           assert 'MobileDeferredViewCommand::schedule(' in native_pilot
           assert 'MobileDocumentNavigation::cycle(views,-1)' in native_pilot

@@ -12,6 +12,7 @@
 #include <KoCanvasSupervisor.h>
 #include "krita_standalone_documents.h"
 #include "krita_standalone_runtime.h"
+#include "krita_engine_session.h"
 #include "krita_native_view_factory.h"
 #include "krita_standalone_pilot.h"
 
@@ -24,6 +25,10 @@ static_assert(std::is_base_of<MobileViewHostPort,
 static_assert(std::is_base_of<MobileDocumentHostPort,
               MobileKritaStandaloneDocuments>::value,
               "Standalone documents must use Krita's document port");
+
+static_assert(std::is_base_of<QObject,
+              MobileKritaEngineSession>::value,
+              "Engine session must have a host-owned QObject lifetime");
 
 // No runtime entrypoint: inclusion itself forces the compiler to type-check
 // the inline Krita API calls of the future independent painting host.
