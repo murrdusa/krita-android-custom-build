@@ -679,6 +679,13 @@ private:
                     QStringLiteral("Distinct finger contact levels: %1")
                         .arg(qApp->property(
                             "_mobileFingerAreaLastUniqueSteps").toInt()),
+                    QStringLiteral("Last finger samples raw / Qt / aligned: %1 / %2 / %3")
+                        .arg(qApp->property(
+                            "_mobileFingerAreaLastRawSamples").toInt())
+                        .arg(qApp->property(
+                            "_mobileFingerAreaLastQtSamples").toInt())
+                        .arg(qApp->property(
+                            "_mobileFingerAreaLastAlignedFallbacks").toInt()),
                     QStringLiteral("Latest Android raw diameter: %1 logical px")
                         .arg(qApp->property(
                             "_mobileFingerRawDiameter").toDouble(),0,'f',1),
