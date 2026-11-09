@@ -41,6 +41,8 @@ def main(root:Path):
     native_bootstrap_audit=own/"mobile_core/native_bootstrap_audit.h"
     engine_only_policy=own/"mobile_core/engine_only_startup_policy.h"
     engine_only_root=own/"mobile_core/engine_only_root.h"
+    engine_only_bootstrap_header=own/"mobile_core/engine_only_bootstrap.h"
+    engine_only_bootstrap_source=own/"mobile_core/engine_only_bootstrap.cpp"
     native_workspace=own/"mobile_core/krita_native_workspace.h"
     native_reorder_policy=own/"mobile_core/native_layer_reorder_policy.h"
     native_command_layout=own/"mobile_core/native_command_layout.h"
@@ -72,7 +74,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,startup_policy,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,canvas_resume_observer,standalone_krita_runtime,standalone_krita_documents,native_engine_probe,standalone_engine_pilot,native_startup_policy,native_boot_coordinator,native_bootstrap_audit,engine_only_policy,engine_only_root,native_workspace,native_command_layout,native_reorder_policy,deferred_view_command,document_navigation,surface,switcher,bridge,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+               (shell,session,startup_policy,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,canvas_resume_observer,standalone_krita_runtime,standalone_krita_documents,native_engine_probe,standalone_engine_pilot,native_startup_policy,native_boot_coordinator,native_bootstrap_audit,engine_only_policy,engine_only_root,engine_only_bootstrap_header,engine_only_bootstrap_source,native_workspace,native_command_layout,native_reorder_policy,deferred_view_command,document_navigation,surface,switcher,bridge,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
                 reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
@@ -82,7 +84,7 @@ def main(root:Path):
     # so a future lightweight application host can replace it in one place.
     desktop_dependent=(desktop_adapters,mdi_view_adapter)
     qt_host_components=(session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,surface)
-    mobile_frontend=(engine_only_root,engine_only_policy,native_bootstrap_audit,native_boot_coordinator,native_command_layout,native_workspace,native_reorder_policy,native_startup_policy,canvas_resume_observer,deferred_view_command,document_navigation,shell,bridge,host_services,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,
+    mobile_frontend=(engine_only_root,engine_only_policy,engine_only_bootstrap_header,engine_only_bootstrap_source,native_bootstrap_audit,native_boot_coordinator,native_command_layout,native_workspace,native_reorder_policy,native_startup_policy,canvas_resume_observer,deferred_view_command,document_navigation,shell,bridge,host_services,document_service,native_document_rollback,native_document_path_policy,document_port,view_port,view_guard,
                      command_service,command_port,switcher,brush,color,layers,
                      commands,quick,mdi_identity,pressure_calibration,pressure_settings,
                      reorder,tools,documents,*qt_host_components)
@@ -424,8 +426,7 @@ KisMainWindow * KisView::mainWindow() const''',
         '''#include "KisAndroidDonations.h"''',
         '''#include "KisAndroidDonations.h"
 #include "engine_only_startup_policy.h"
-#include "engine_only_root.h"
-#include "krita_standalone_pilot.h"''',
+#include "engine_only_bootstrap.h"''',
         "Android engine-only application bootstrap headers")
     app=one(app,
         '''    KisPart *kisPart = KisPart::instance();
@@ -448,36 +449,14 @@ KisMainWindow * KisView::mainWindow() const''',
     QSettings engineOnlySettings;
     const auto engineOnlyDecision=MobileEngineOnlyStartupPolicy::begin(
         engineOnlySettings,compatibleEngineOnlyBoot);
-    const bool engineOnlyBoot=
+    bool engineOnlyBoot=
         engineOnlyDecision==MobileEngineOnlyStartupPolicy::Decision::Launch;
-    if(engineOnlyBoot) {
-        // One Android Qt top-level, ZERO KisMainWindow or QMdiArea.
-        // The real KisViewManager/KisCanvas2 is created independently
-        // by the existing proven native engine pilot underneath it.
-        auto *nativeRoot=new MobileEngineOnlyRoot;
-        nativeRoot->setAttribute(Qt::WA_DeleteOnClose,true);
-        nativeRoot->setWindowTitle(
-            QObject::tr("Krita Mobile Engine (experimental)"));
-        nativeRoot->setCentralWidget(new QWidget(nativeRoot));
-        nativeRoot->show();
-        QPointer<MobileEngineOnlyRoot> guardedRoot=nativeRoot;
-        QTimer::singleShot(0,nativeRoot,[guardedRoot]() {
-            if(!guardedRoot)return;
-            bool started=MobileKritaStandalonePilot::launch(
-                guardedRoot.data(),[guardedRoot](bool success) {
-                    QSettings settings;
-                    MobileEngineOnlyStartupPolicy::complete(settings,success);
-                    if(!success)
-                        qWarning() << "Experimental engine-only boot failed;"
-                                   << "next launch restores original Krita";
-                });
-            if(!started) {
-                QSettings settings;
-                MobileEngineOnlyStartupPolicy::complete(settings,false);
-                if(guardedRoot)guardedRoot->close();
-            }
-        });
-        qInfo() << "Experimental engine-only boot: KisMainWindow skipped";
+    if(engineOnlyBoot && !MobileEngineOnlyBootstrap::launch()) {
+        // A synchronous Qt-root failure recovers to desktop in this
+        // same process; asynchronous failures recover next launch.
+        MobileEngineOnlyStartupPolicy::complete(engineOnlySettings,false);
+        engineOnlyBoot=false;
+        qWarning() << "Engine-only root creation failed; starting desktop";
     }
 #else
     const bool engineOnlyBoot=false;
@@ -1042,6 +1021,10 @@ KisMainWindow * KisView::mainWindow() const''',
         engine_only_policy.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/engine_only_root.h").write_text(
         engine_only_root.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/engine_only_bootstrap.h").write_text(
+        engine_only_bootstrap_header.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/engine_only_bootstrap.cpp").write_text(
+        engine_only_bootstrap_source.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/krita_native_workspace.h").write_text(
         native_workspace.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/native_layer_reorder_policy.h").write_text(
@@ -1065,6 +1048,7 @@ KisMainWindow * KisView::mainWindow() const''',
         '''if(ANDROID)
     list(APPEND kritaui_LIB_SRCS
         mobile_native_engine_compile_probe.cpp
+        engine_only_bootstrap.cpp
         KisAndroidDonations.cpp''',
         "real Android kritaui engine compilation gate")
     ui_cmake_file.write_text(ui_cmake,encoding="utf-8")

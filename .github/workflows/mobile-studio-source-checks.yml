@@ -300,7 +300,21 @@ jobs:
           assert 'guard late Android open intent without desktop window' in shell_patch
           assert 'guard late remote document intent without desktop window' in shell_patch
           assert 'if (needsMainWindow && !engineOnlyBoot)' in shell_patch
-          assert 'MobileEngineOnlyStartupPolicy::complete(settings,success)' in shell_patch
+          assert 'MobileEngineOnlyBootstrap::launch()' in shell_patch
+          assert 'engine_only_bootstrap_header=own/"mobile_core/engine_only_bootstrap.h"' in shell_patch
+          assert 'engine_only_bootstrap_source=own/"mobile_core/engine_only_bootstrap.cpp"' in shell_patch
+          assert '(root/"libs/ui/engine_only_bootstrap.cpp").write_text(' in shell_patch
+          assert '(root/"libs/ui/engine_only_bootstrap.h").write_text(' in shell_patch
+          assert 'engine_only_bootstrap.cpp' in shell_patch
+          assert '#include "engine_only_bootstrap.h"' in shell_patch
+          composition=Path("mobile_core/engine_only_bootstrap.cpp").read_text()
+          assert 'MobileEngineOnlyStartupPolicy::complete(settings,success)' in composition
+          assert 'MobileKritaStandalonePilot::launch(' in composition
+          assert 'new MobileEngineOnlyRoot' in composition
+          assert '#include "KisMainWindow.h"' not in composition
+          tiny=Path("mobile_core/engine_only_bootstrap.h").read_text()
+          assert 'class MobileEngineOnlyBootstrap final' in tiny
+          assert '#include "KisMainWindow.h"' not in tiny
           assert 'MobileEngineOnlyStartupPolicy::setEnabled(settings,on)' in native_pilot
           assert 'dynamic_cast<MobileEngineOnlyRoot*>(nativeWindow)' in native_pilot
           assert '_mobileNativeEngineOnlyRoot' in native_pilot

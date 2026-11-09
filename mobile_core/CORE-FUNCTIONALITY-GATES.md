@@ -552,3 +552,18 @@ routed to the native file opener. KRA documents are still saved
 by the existing KisDocument export pipeline. Qt startup-policy tests
 cannot prove actual Android startup stability; the entire path
 requires device testing before any default migration.
+
+
+## Separate Android engine-only application composition unit
+
+After a user device-confirmed V2 has zero KisMainWindow objects and
+zero desktop MDI containers, the engine-only Qt root, native pilot
+creation, and crash-recovery callback are extracted from
+KisApplication.cpp into a dedicated Android-only
+`engine_only_bootstrap.cpp` compiled in kritaui. KisApplication now
+depends on just the small `engine_only_bootstrap.h` API and its
+startup-policy header. Brush, canvas, and document UI headers are no
+longer pulled into the application bootstrap translation unit.
+Synchronous root construction failure falls back to desktop in
+the same run; async painting startup failures still recover on restart.
+V2 remains opt-in until the new composition unit passes device tests.
