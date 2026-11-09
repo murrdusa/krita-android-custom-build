@@ -9,11 +9,24 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QTouchDevice>
+#include <QTouchEvent>
 #include <QtGlobal>
 #include "mobile_core/finger_pressure_calibration.h"
 
 static void require(bool yes,const char *what) {
     if(!yes)qFatal("Finger calibration test failed: %s",what);
+}
+
+static void sendContact(MobileFingerCalibrationPad *pad,
+                        QTouchDevice *device,QEvent::Type type,
+                        qreal diameter,Qt::TouchPointState state)
+{
+    QTouchEvent::TouchPoint point(1);
+    point.setState(state);
+    point.setEllipseDiameters(QSizeF(diameter,diameter));
+    QTouchEvent event(type,device,Qt::NoModifier,state,{point});
+    QApplication::sendEvent(pad,&event);
 }
 
 int main(int argc,char **argv)
@@ -78,7 +91,52 @@ int main(int argc,char **argv)
             qAbs(remax->value()-35.0)<0.01,
             "saved calibration not restored on reopening");
 
-    qInfo() << "PASS: calibration UI defaults, invalid range validation,"
-            << "Save persistence, reopen and absolute pressure endpoints";
+    // Simulate actual finger contact on the calibration pad, not merely
+    // manual spin-box edits: both capture buttons must set the measured
+    // median after the finger is released.
+    MobileFingerPressureCalibrationDialog touchDialog;
+    auto *touchPad=touchDialog.findChild<MobileFingerCalibrationPad*>(
+        QStringLiteral("fingerPressureContactPad"));
+    auto *captureMin=touchDialog.findChild<QPushButton*>(
+        QStringLiteral("fingerCaptureMinimum"));
+    auto *captureMax=touchDialog.findChild<QPushButton*>(
+        QStringLiteral("fingerCaptureMaximum"));
+    auto *touchMin=touchDialog.findChild<QDoubleSpinBox*>(
+        QStringLiteral("fingerPressureMinimum"));
+    auto *touchMax=touchDialog.findChild<QDoubleSpinBox*>(
+        QStringLiteral("fingerPressureMaximum"));
+    require(touchPad && captureMin && captureMax && touchMin && touchMax,
+            "touch calibration controls missing");
+    QTouchDevice screen;
+    screen.setType(QTouchDevice::TouchScreen);
+    captureMin->click();
+    sendContact(touchPad,&screen,QEvent::TouchBegin,9,
+                Qt::TouchPointPressed);
+    sendContact(touchPad,&screen,QEvent::TouchUpdate,10,
+                Qt::TouchPointMoved);
+    sendContact(touchPad,&screen,QEvent::TouchEnd,11,
+                Qt::TouchPointReleased);
+    require(qAbs(touchMin->value()-10.0)<0.01,
+            "minimum touch capture did not save median diameter");
+    captureMax->click();
+    sendContact(touchPad,&screen,QEvent::TouchBegin,34,
+                Qt::TouchPointPressed);
+    sendContact(touchPad,&screen,QEvent::TouchUpdate,35,
+                Qt::TouchPointMoved);
+    sendContact(touchPad,&screen,QEvent::TouchEnd,36,
+                Qt::TouchPointReleased);
+    require(qAbs(touchMax->value()-35.0)<0.01,
+            "maximum touch capture did not save median diameter");
+    captureMin->click();
+    sendContact(touchPad,&screen,QEvent::TouchBegin,0,
+                Qt::TouchPointPressed);
+    sendContact(touchPad,&screen,QEvent::TouchEnd,0,
+                Qt::TouchPointReleased);
+    require(qAbs(touchMin->value()-10.0)<0.01,
+            "missing contact size corrupted captured calibration");
+
+    qInfo() << "PASS: touch-pad median capture, unavailable-area safety,"
+            << "calibration UI defaults, invalid range validation,"
+            << "Save persistence, reopen and full 0–100% pressure endpoints";
     return 0;
 }
