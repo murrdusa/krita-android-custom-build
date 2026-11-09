@@ -26,7 +26,6 @@
 #include "KisDocument.h"
 #include "KisImportExportManager.h"
 #include "KisPart.h"
-#include "KisViewManager.h"
 #include "kis_config.h"
 #include "document_host_port.h"
 #include "view_host_port.h"
@@ -36,10 +35,8 @@ class MobileDocumentService final
 {
 public:
     MobileDocumentService(QSharedPointer<MobileDocumentHostPort> host,
-                          QSharedPointer<MobileViewHostPort> viewHost,
-                          KisViewManager *manager)
-        : m_host(std::move(host)),m_viewHost(std::move(viewHost)),
-          m_manager(manager) {}
+                          QSharedPointer<MobileViewHostPort> viewHost)
+        : m_host(std::move(host)),m_viewHost(std::move(viewHost)) {}
 
     using OpenDocument=MobileViewHostPort::ViewSnapshot;
 
@@ -75,8 +72,8 @@ public:
     bool closeActiveDocument() const
     {
         const auto views=openDocuments();
-        const QPointer<QObject> current=m_manager?
-            QPointer<QObject>(m_manager->document()):QPointer<QObject>();
+        const QPointer<QObject> current=m_viewHost?
+            m_viewHost->currentDocument():QPointer<QObject>();
         return closeDocumentView(
             MobileViewIdentityGuard::safeCloseTarget(views,current));
     }
@@ -137,11 +134,13 @@ public:
     }
     bool saveCurrentDocument(bool saveAs=false) const
     {
-        if(!m_host || !m_host->available() ||
-           !m_manager || !m_manager->document())return false;
+        const QPointer<QObject> current=m_viewHost?
+            m_viewHost->currentDocument():QPointer<QObject>();
+        auto *document=qobject_cast<KisDocument*>(current.data());
+        if(!m_host || !m_host->available() || !document)return false;
         // Native Krita save path retains its format handling,
         // render-completion checks, backups and Android file provider.
-        return m_host->save(m_manager->document(),saveAs);
+        return m_host->save(document,saveAs);
     }
 
     // A deferred UI Save must never silently target a different drawing
@@ -151,31 +150,36 @@ public:
     bool saveDocumentView(const QPointer<QObject> &identity,
                           bool saveAs=false) const
     {
-        if(!m_host || !m_host->available() || !m_manager ||
+        if(!m_host || !m_host->available() ||
            !m_viewHost || !identity)return false;
         // Capture no raw KisView: the provider can replace a view while
         // Qt dispatches a deferred menu callback. A current snapshot
         // must still contain exactly this selected identity and the
         // same live KisDocument currently owned by Krita's manager.
         const auto views=m_viewHost->openViews();
-        if(!MobileViewIdentityGuard::maySave(
-               views,identity,
-               QPointer<QObject>(m_manager->document())))
+        const QPointer<QObject> current=m_viewHost->currentDocument();
+        auto *document=qobject_cast<KisDocument*>(current.data());
+        if(!document || !MobileViewIdentityGuard::maySave(
+               views,identity,current))
             return false;
-        return m_host->save(m_manager->document(),saveAs);
+        return m_host->save(document,saveAs);
     }
     QString activeDocumentTitle() const
     {
-        if(!m_manager || !m_manager->document())return {};
-        const KisDocument *document=m_manager->document();
+        const QPointer<QObject> current=m_viewHost?
+            m_viewHost->currentDocument():QPointer<QObject>();
+        const auto *document=qobject_cast<KisDocument*>(current.data());
+        if(!document)return {};
         const QString path=document->path();
         return path.isEmpty()?QStringLiteral("Untitled"):
             QFileInfo(path).fileName();
     }
     bool documentModified() const
     {
-        return m_manager && m_manager->document() &&
-               m_manager->document()->isModified();
+        const QPointer<QObject> current=m_viewHost?
+            m_viewHost->currentDocument():QPointer<QObject>();
+        const auto *document=qobject_cast<KisDocument*>(current.data());
+        return document && document->isModified();
     }
     bool hasDocument() const
     {
@@ -187,12 +191,12 @@ public:
             }
             return false;
         }
-        return m_manager && m_manager->document();
+        return false;
     }
 
 private:
     QSharedPointer<MobileDocumentHostPort> m_host;
     QSharedPointer<MobileViewHostPort> m_viewHost;
-    KisViewManager *m_manager=nullptr; // Owned by native Krita backend
+
 };
 #endif // Q_OS_ANDROID
