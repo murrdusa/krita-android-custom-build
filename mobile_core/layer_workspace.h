@@ -1396,8 +1396,19 @@ private:
             auto *pen=static_cast<QTabletEvent*>(event);
             updateMouseLayer(pen->globalPos());
             if(type==QEvent::TabletRelease) {
+                // Some Android stylus paths send tablet events with NO
+                // synthesized QToolButton::clicked. Complete a regular
+                // pen tap ourselves; suppress any later mouse duplicate.
+                const KisNodeSP pressed=m_mouseNode;
+                const bool tapped=m_mouseDown && !m_mouseHeld &&
+                                  !m_mouseMoved;
                 m_penTracking=false;
                 finishMouseLayer();
+                if(pressed)suppressSyntheticClick(pressed);
+                if(tapped && pressed) {
+                    if(auto *item=itemForNode(pressed))
+                        tapLayer(pressed,item);
+                }
                 return true;
             }
         }
