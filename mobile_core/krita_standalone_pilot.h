@@ -87,11 +87,16 @@ public:
 
         QObject::connect(newAction,&QAction::triggered,window,
                          [alive,documents]() {
-            if(alive && !documents->createCanvas(
-                       QStringLiteral("Engine test"),512,512,72,true))
-                QMessageBox::warning(
-                    alive,QObject::tr("Engine test"),
-                    QObject::tr("Could not create an independent Krita canvas."));
+            // Native KisView and GL initialization must not reenter
+            // the toolbar event that initiated document creation.
+            if(!alive)return;
+            QTimer::singleShot(0,alive.data(),[alive,documents]() {
+                if(alive && !documents->createCanvas(
+                           QStringLiteral("Engine test"),512,512,72,true))
+                    QMessageBox::warning(
+                        alive.data(),QObject::tr("Engine test"),
+                        QObject::tr("Could not create an independent Krita canvas."));
+            });
         });
         QObject::connect(openAction,&QAction::triggered,window,
                          [alive,documents]() {
