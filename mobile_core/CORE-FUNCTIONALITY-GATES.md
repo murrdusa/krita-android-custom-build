@@ -140,6 +140,15 @@ serialization or brushes.
   now fail safely or use Qt-native document close events.
   These are real-engine source boundaries, still awaiting full Android
   compilation and actual stroke validation.
+- **Compiler coverage gap closed in source.** The independent engine
+  headers used to be copied into Krita's tree but were never included by
+  any built target. `mobile_native_engine_compile_probe.cpp` now imports
+  all the native Krita view/runtime/document interfaces, and
+  `apply_mobile_shell.py` adds it to the Android `kritaui` library
+  source list. The next real Android `kritaui` compile will therefore
+  type-check these engine APIs, exposing compilation problems that
+  static source tests cannot find. This is not a claim that a real
+  compile already passed.
 - The opt-in stationary canvas header was found consuming hundreds of
   pixels of height on a real device. The top dock is now capped at 76
   logical pixels and its title/header widget is height-fixed; a Qt
