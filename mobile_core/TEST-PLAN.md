@@ -1,5 +1,27 @@
 # Mobile Studio — Android painting and mode-switch smoke test
 
+## v1.25 stable source and scale for finger contact pressure
+
+- In More → Finger pressure calibration, test the same light-to-broad
+  finger stroke with **Prefer Android raw touch size** enabled and then
+  disabled. The first stable source of a stroke should remain selected
+  throughout that stroke; a delayed raw sample may not abruptly replace
+  a Qt reading while painting.
+- On a device whose raw Android touch major/minor differs from Qt's
+  ellipse scale, briefly interrupt raw updates. If both sources were
+  available previously, the Qt fallback must be mapped to the learned
+  raw/Qt ratio, not applied at a different absolute diameter.
+- When the raw bridge was selected but no Qt/raw scale pair was ever
+  measured, the brush should temporarily hold its last smoothed pressure
+  rather than jump or inject a false 0% or 100%.
+- Finish and restart the stroke: a new stroke is allowed to select the
+  alternate preferred source. No original Krita tablet, pen, gesture,
+  document or layer code should change.
+- Verify `qt_finger_contact_source.cpp` source-lock, scale alignment,
+  missed-sample and invalid-data tests in Qt CI. Check the selected
+  source using **Copy Mobile Studio diagnostics**.
+- Keep the stationary-canvas experiment opt-in and APK uploads paused.
+
 ## v1.24 Android Back safety and opt-in raw touch gating
 
 - In both normal Mobile Studio and the opt-in stationary-canvas mode,
