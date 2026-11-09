@@ -79,6 +79,12 @@ public:
                                      finalPressure);
                     app->setProperty("_mobileFingerAreaLastUniqueSteps",
                                      stroke.uniqueBins.size());
+                    app->setProperty("_mobileFingerAreaLastRawSamples",
+                                     stroke.rawSamples);
+                    app->setProperty("_mobileFingerAreaLastQtSamples",
+                                     stroke.qtSamples);
+                    app->setProperty("_mobileFingerAreaLastAlignedFallbacks",
+                                     stroke.alignedFallbacks);
                     const QString source=stroke.source.mode==
                         MobileFingerContactSource::AndroidRaw?
                         (stroke.usedCorrectedQt?
@@ -141,8 +147,12 @@ public:
             return stroke.hasSample?stroke.smoothed:originalPressure;
         }
         const qreal diameter=measurement.diameter;
-        if(measurement.correctedQtFallback)
+        if(measurement.correctedQtFallback) {
             stroke.usedCorrectedQt=true;
+            ++stroke.alignedFallbacks;
+        }
+        if(measurement.raw)++stroke.rawSamples;
+        else ++stroke.qtSamples;
 
         if(!stroke.hasSample) {
             // Absolute area calibration. The first dab now reflects the
@@ -218,6 +228,9 @@ private:
         qreal lastTarget=0;
         MobileFingerContactSource::State source;
         bool usedCorrectedQt=false;
+        int rawSamples=0;
+        int qtSamples=0;
+        int alignedFallbacks=0;
         qreal lastDiameter=0;
         qreal minDiameter=0;
         qreal maxDiameter=0;
