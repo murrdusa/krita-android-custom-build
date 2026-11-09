@@ -13,6 +13,7 @@
 #include <QStringList>
 #include "mobile_core/document_host_port.h"
 #include "mobile_core/command_registry_port.h"
+#include "mobile_core/host_services.h"
 
 static void require(bool valid,const char *msg)
 {
@@ -69,6 +70,14 @@ struct FakeCommandRegistry final : MobileCommandRegistryPort
     }
 };
 
+struct FakeViewHost final : MobileViewHostPort
+{
+    QVector<ViewSnapshot> openViews() const override {return {};}
+    QPointer<QObject> currentDocument() const override {return {};}
+    bool activateView(const QPointer<QObject> &) const override {return false;}
+    bool closeView(const QPointer<QObject> &) const override {return false;}
+};
+
 int main(int argc,char **argv)
 {
     QApplication app(argc,argv);
@@ -122,6 +131,31 @@ int main(int argc,char **argv)
     require(calls==1,"host action was not forwarded to the real QAction");
     require(!actions->action(QStringLiteral("invalid_action")),
             "missing native actions should not be invented");
+
+    // Lightweight hosts can wire all three ports and their document
+    // widget without constructing any Krita desktop QMainWindow.
+    auto *root=new QWidget;
+    MobileHostServices services;
+    require(!services.ready(),"empty host incorrectly marked ready");
+    writer->online=true;
+    services.documents=host;
+    services.views=QSharedPointer<FakeViewHost>::create();
+    services.commands=actions;
+    require(!services.ready(),"host without a canvas root marked ready");
+    services.documentRoot=root;
+    require(services.ready(),"independent Qt host port bundle not ready");
+    const MobileHostServices copied=services;
+    require(copied.ready() && copied.documents==services.documents &&
+            copied.views==services.views &&
+            copied.commands==services.commands,
+            "copying a host bundle changed service ownership");
+    delete root;
+    require(!services.ready() && !copied.ready(),
+            "destroyed canvas root remained eligible for mobile startup");
+    writer->online=false;
+    require(!services.ready(),
+            "offline document provider incorrectly marked host ready");
+
     qInfo() << "PASS: host-independent document attach/open/save,"
             << "safe shared callback lifetime, unavailable-host refusal,"
             << "native QAction dispatch and menu registry";
