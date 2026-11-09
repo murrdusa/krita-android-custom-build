@@ -91,6 +91,10 @@ public:
     bool saveCurrentDocument(bool saveAs=false) const {
         return m_documentsService.saveCurrentDocument(saveAs);
     }
+    bool saveDocumentView(const QPointer<QObject> &view,
+                          bool saveAs=false) const {
+        return m_documentsService.saveDocumentView(view,saveAs);
+    }
     QString activeDocumentTitle() const {
         return m_documentsService.activeDocumentTitle();
     }
