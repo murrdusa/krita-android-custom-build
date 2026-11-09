@@ -134,6 +134,7 @@ public:
         auto *layersAction=makeAction("Layers");
         auto *colorAction=makeAction("Color");
         auto *toolsAction=makeAction("Tools");
+        auto *optionsAction=makeAction("Tool Options");
         auto *exitAction=makeAction("Close app");
         QObject::connect(brushesAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleBrushes();});
@@ -143,6 +144,8 @@ public:
                          [workspace]() {workspace->toggleColor();});
         QObject::connect(toolsAction,&QAction::triggered,window,
                          [workspace]() {workspace->chooseTool();});
+        QObject::connect(optionsAction,&QAction::triggered,window,
+                         [workspace]() {workspace->toggleToolOptions();});
         // Avoid an overflow chevron hiding the primary drawing tools.
         // Less-common operations stay in an explicit, labeled menu.
         if(!MobileNativeCommandLayout::install(
@@ -150,7 +153,7 @@ public:
             {canvasesAction,undoAction,redoAction,saveAction},
             {brushesAction,layersAction,colorAction,toolsAction},
             {newAction,openAction,previousAction,nextAction,
-             saveAsAction,closeAction,exitAction})) {
+             saveAsAction,optionsAction,closeAction,exitAction})) {
             qWarning() << "Independent Krita command layout unavailable";
         }
 

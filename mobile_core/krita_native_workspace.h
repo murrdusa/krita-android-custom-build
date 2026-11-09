@@ -16,6 +16,10 @@
 #include <QPointer>
 #include <QTimer>
 #include <QSettings>
+#include <KoCanvasController.h>
+#include <KoToolBase.h>
+#include <KoToolDocker.h>
+#include <KoToolManager.h>
 
 #include "engine_bridge.h"
 #include "brush_workspace.h"
@@ -101,6 +105,53 @@ public:
         }
     }
 
+    // Reuse the same KoToolBase option widgets shown by Krita's
+    // desktop Tool Options docker. They are live engine controls,
+    // not copies or reverse-engineered equivalents. This also exposes
+    // selection, transform, perspective and fill configuration.
+    void toggleToolOptions()
+    {
+        if(!m_host || !m_engine.hasDocument())return;
+        KoToolManager *tools=KoToolManager::instance();
+        if(!tools || !tools->activeCanvasController())return;
+
+        if(!m_toolOptions) {
+            auto *dock=new KoToolDocker(m_host);
+            dock->setObjectName(QStringLiteral("_mobileNativeToolOptions"));
+            dock->setAllowedAreas(Qt::LeftDockWidgetArea |
+                                  Qt::RightDockWidgetArea);
+            dock->setFeatures(QDockWidget::DockWidgetClosable);
+            m_host->addDockWidget(Qt::RightDockWidgetArea,dock);
+            m_toolOptions=dock;
+            // One owner for the option widgets; the active native
+            // tool continues to own their state and lifetime.
+            QObject::connect(tools,&KoToolManager::toolOptionWidgetsChanged,
+                             dock,[this,dock](KoCanvasController *controller,
+                                  const QList<QPointer<QWidget>> &widgets) {
+                if(!m_host || !m_toolOptions)return;
+                auto *manager=KoToolManager::instance();
+                if(!manager || controller!=manager->activeCanvasController())
+                    return;
+                dock->setOptionWidgets(widgets);
+            });
+            checkpoint("Krita native tool options: dock connected");
+        } else {
+            m_toolOptions->setVisible(!m_toolOptions->isVisible());
+        }
+
+        if(!m_toolOptions || !m_toolOptions->isVisible())return;
+        // Restore options when the docker first opens or after changing
+        // documents while it was closed, without restarting a transform
+        // tool or losing its in-progress configuration.
+        if(auto *controller=tools->activeCanvasController()) {
+            if(KoToolBase *tool=tools->toolById(
+                   controller->canvas(),tools->activeToolId())) {
+                m_toolOptions->setOptionWidgets(tool->optionWidgets());
+            }
+        }
+        m_toolOptions->raise();
+    }
+
     void toggleColor()
     {
         if(!m_host || !m_engine.hasDocument()) {
@@ -168,6 +219,7 @@ private:
     MobileEngineBridge m_engine;
     QPointer<QDockWidget> m_brushDock;
     QPointer<QDockWidget> m_layersDock;
+    QPointer<KoToolDocker> m_toolOptions;
     QPointer<KritaMobileBrushWorkspace> m_brush;
     QPointer<KritaMobileLayersPanel> m_layers;
     QPointer<MobileColorWorkspace> m_color;
