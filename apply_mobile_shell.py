@@ -423,8 +423,14 @@ KisMainWindow * KisView::mainWindow() const''',
     QDockWidget *toolbox = createDockWidget(&toolBoxFactory);''',
           '''#ifdef Q_OS_ANDROID
     QSettings nativeBootstrapSettings;
+    // Register a crash-recovery marker BEFORE the desktop constructor
+    // can fail. If this lightweight boot crashes, next launch sees
+    // the pending marker and creates Krita's full fallback UI.
+    const auto nativeBootDecision =
+        MobileNativeStartupPolicy::begin(nativeBootstrapSettings);
+    setProperty("_mobileNativeBootDecision",int(nativeBootDecision));
     const bool mobileNativePreferred =
-        MobileNativeStartupPolicy::mayDeferDesktopUi(nativeBootstrapSettings);
+        nativeBootDecision==MobileNativeStartupPolicy::Decision::Launch;
     setProperty("_mobileNativeDesktopDeferred",mobileNativePreferred);
     qInfo() << "Krita desktop docker creation deferred:"
             << mobileNativePreferred;
@@ -573,8 +579,8 @@ KisMainWindow * KisView::mainWindow() const''',
     // Opt-in Android launch into a distinct Krita host. Still uses
     // Krita's application startup libraries, but no desktop MDI view.
     QTimer::singleShot(0,this,[this]() {
-        QSettings settings;
-        const auto choice=MobileNativeStartupPolicy::begin(settings);
+        const auto choice=static_cast<MobileNativeStartupPolicy::Decision>(
+            property("_mobileNativeBootDecision").toInt());
         if(choice==MobileNativeStartupPolicy::Decision::Skip)return;
         if(choice==MobileNativeStartupPolicy::Decision::RecoverDesktop) {
             qWarning() << "Interrupted independent-host startup recovered";

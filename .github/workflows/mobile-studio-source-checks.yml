@@ -261,7 +261,14 @@ jobs:
           assert 'tablet_standalone_engine_test' in shell_patch
           assert 'tablet_standalone_engine_status' in shell_patch
           assert 'tablet_native_engine_autostart' in shell_patch
-          assert 'MobileNativeStartupPolicy::begin(settings)' in shell_patch
+          assert 'MobileNativeStartupPolicy::begin(nativeBootstrapSettings)' in shell_patch
+          assert 'setProperty("_mobileNativeBootDecision",int(nativeBootDecision))' in shell_patch
+          assert 'property("_mobileNativeBootDecision").toInt()' in shell_patch
+          assert 'MobileNativeStartupPolicy::mayDeferDesktopUi(' in Path("mobile_core/native_startup_policy.h").read_text()
+          assert 'if (!mobileNativePreferred && cfg.toolOptionsInDocker())' in shell_patch
+          assert 'if (!mobileNativePreferred)' in shell_patch
+          assert 'Legacy mobile controller skipped on native startup' in shell_patch
+          assert 'skip compact skin connection without a receiver' in shell_patch
           assert 'MobileNativeStartupPolicy::complete(settings,success)' in shell_patch
           assert 'native_startup_policy=own/"mobile_core/native_startup_policy.h"' in shell_patch
           assert '(root/"libs/ui/native_startup_policy.h").write_text(' in shell_patch
