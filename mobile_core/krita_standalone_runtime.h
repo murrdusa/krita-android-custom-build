@@ -96,6 +96,26 @@ public:
     {
         return m_commands;
     }
+    MobileLightweightCanvasHost *window() const {return m_host.data();}
+    MobileNativeViewStack *documentRoot() const {return m_root.data();}
+
+    bool ownsDocument(KisDocument *document) const
+    {
+        if(!document || !m_root || !m_manager ||
+           !KisPart::instance())return false;
+        bool registered=false;
+        for(const auto &candidate:KisPart::instance()->documents()) {
+            if(candidate==document) {registered=true;break;}
+        }
+        if(!registered)return false;
+        // A registered document may belong to a desktop fallback or a
+        // second Qt window. Validate ownership against native view IDs.
+        for(const auto &view:m_root->openViews()) {
+            if(view.document==document && view.nativeView)return true;
+        }
+        return false;
+    }
+
     KisView *attachDocument(KisDocument *document,
                             MobileKritaNativeSaveHost *saver)
     {
