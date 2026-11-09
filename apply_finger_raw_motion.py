@@ -34,7 +34,10 @@ def main(root):
     // transmit screen coordinates or alter Java/Qt event dispatch.
     public static native void fingerRawContactSample(
         int pointerId, long eventUptimeMs, float majorPixels,
-        float minorPixels, float density, boolean historical);""",
+        float minorPixels, float density, boolean historical);
+    // Reset the previous stroke's size-only ring buffer on finger-down,
+    // pointer-down (multitouch) and cancelled gestures.
+    public static native void fingerRawGestureReset();""",
         "Java native declaration")
     jni.write_text(s,encoding="utf-8")
 
@@ -47,13 +50,26 @@ def main(root):
     private boolean fingerRawBridgeAvailable = true;
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
-        if (haveLibsLoaded && fingerRawBridgeAvailable && event != null
-                && event.getPointerCount() == 1
-                && event.getToolType(0) == MotionEvent.TOOL_TYPE_FINGER) {
+        if (haveLibsLoaded && fingerRawBridgeAvailable && event != null) {
             final int action = event.getActionMasked();
+            // Android reuses pointer IDs from one gesture to the next.
+            // Never allow a new or interrupted gesture to read contact
+            // sizes from a previous finger, or from a multi-finger pan.
             if (action == MotionEvent.ACTION_DOWN ||
-                    action == MotionEvent.ACTION_MOVE ||
-                    action == MotionEvent.ACTION_UP) {
+                    action == MotionEvent.ACTION_POINTER_DOWN ||
+                    action == MotionEvent.ACTION_CANCEL) {
+                try {
+                    JNIWrappers.fingerRawGestureReset();
+                } catch (UnsatisfiedLinkError unavailable) {
+                    fingerRawBridgeAvailable = false;
+                }
+            }
+            if (fingerRawBridgeAvailable &&
+                    event.getPointerCount() == 1 &&
+                    event.getToolType(0) == MotionEvent.TOOL_TYPE_FINGER &&
+                    (action == MotionEvent.ACTION_DOWN ||
+                     action == MotionEvent.ACTION_MOVE ||
+                     action == MotionEvent.ACTION_UP)) {
                 final int id = event.getPointerId(0);
                 final float density = getResources()
                     .getDisplayMetrics().density;
@@ -106,6 +122,11 @@ Java_org_krita_android_JNIWrappers_fingerRawContactSample(
     MobileFingerRawBridge::record(static_cast<int>(pointerId),
         static_cast<quint64>(uptimeMs),major,minor,density,
         historical==JNI_TRUE);
+}
+extern "C" JNIEXPORT void JNICALL
+Java_org_krita_android_JNIWrappers_fingerRawGestureReset(JNIEnv*,jclass)
+{
+    MobileFingerRawBridge::reset();
 }
 #endif
 """
