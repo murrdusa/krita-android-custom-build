@@ -285,7 +285,7 @@ public:
         }
         if(activeCount!=1 || !identityWasCurrent)return false;
         const auto sub=MobileMdiViewIdentity::resolve(m_documents,identity);
-        const auto *view=sub?qobject_cast<KisView*>(sub->widget()):nullptr;
+        auto *view=sub?qobject_cast<KisView*>(sub->widget()):nullptr;
         KisDocument *document=view?view->document():nullptr;
         if(!document || document!=m_manager->document())return false;
         return m_host->save(document,saveAs);
