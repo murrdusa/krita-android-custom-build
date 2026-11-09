@@ -567,3 +567,20 @@ longer pulled into the application bootstrap translation unit.
 Synchronous root construction failure falls back to desktop in
 the same run; async painting startup failures still recover on restart.
 V2 remains opt-in until the new composition unit passes device tests.
+
+
+## Default engine-only Android boot after first Fold 6 confirmation
+
+With V2 verified on device to run with `KisMainWindow: 0` and
+`QMdiArea: 0`, the engine-only mode is now the **default for
+compatible Android launches**. A missing V2 preference means enabled
+(including existing V1 installations); its first successful start
+persists enabled=true. Starting V2 disables the previous native V1
+and compact boot settings so only one Android root can launch.
+Explicit user opt-out sets enabled=false and starts full Krita desktop.
+A failed or interrupted V2 startup also persists enabled=false,
+clears both legacy native launchers, and starts the original full
+desktop on the next launch, with no automatic crash loop; the user
+can manually re-enable V2 in the native menu later.
+Batch, explicit sessions and external file-intent launches are still
+routed to Krita's original startup by the existing compatibility gate.

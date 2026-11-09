@@ -38,12 +38,44 @@ int main(int argc,char **argv)
     QSettings s(ini,QSettings::IniFormat);
     using Policy=MobileEngineOnlyStartupPolicy;
     using Decision=Policy::Decision;
-    check(Policy::begin(s,true)==Decision::Desktop,
-          "fresh installs must boot desktop");
+    check(Policy::enabled(s) &&
+          Policy::begin(s,true)==Decision::Launch,
+          "fresh installs must start independent engine");
+    check(s.value(Policy::pendingKey()).toBool(),
+          "first independent launch must arm crash recovery");
+    Policy::complete(s,true);
+    check(Policy::enabled(s) && s.contains(Policy::key()),
+          "successful default launch must persist V2 preference");
+
+    Policy::setEnabled(s,false);
+    check(!Policy::enabled(s) &&
+          Policy::begin(s,true)==Decision::Desktop,
+          "explicit desktop opt-out must remain respected");
     Policy::setEnabled(s,true);
-    check(Policy::enabled(s),"opt-in not saved");
+    check(Policy::enabled(s),"manual re-enable failed");
     check(!s.value(QStringLiteral("MobileStudio/nativeStartupV1")).toBool(),
           "legacy native startup still enabled");
+    // Upgrade from previous native V1 startup; V2 must take ownership
+    // of the only Android top-level before the legacy host can launch.
+    Policy::setEnabled(s,false);
+    s.setValue(QStringLiteral("MobileStudio/nativeStartupV1"),true);
+    s.setValue(QStringLiteral("MobileStudio/startDirectly"),true);
+    check(Policy::begin(s,true)==Decision::Desktop,
+          "explicit opt-out did not override old native preferences");
+    // An existing V1 install with no engine-only preference migrates
+    // automatically, but only on a compatible normal launch.
+    s.remove(Policy::key());
+    check(Policy::begin(s,false)==Decision::Desktop &&
+          s.value(QStringLiteral("MobileStudio/nativeStartupV1")).toBool() &&
+          !s.value(Policy::pendingKey()).toBool(),
+          "incompatible file intent must not start V2");
+    check(Policy::begin(s,true)==Decision::Launch,
+          "old V1 installation did not migrate to V2 default");
+    check(!s.value(QStringLiteral("MobileStudio/nativeStartupV1")).toBool() &&
+          !s.value(QStringLiteral("MobileStudio/startDirectly")).toBool(),
+          "legacy launchers remained enabled during V2 boot");
+    Policy::complete(s,true);
+    Policy::setEnabled(s,true);
     check(Policy::begin(s,false)==Decision::Desktop &&
           !s.value(Policy::pendingKey()).toBool(),
           "incompatible external launch entered engine-only");
@@ -86,7 +118,8 @@ int main(int argc,char **argv)
           "accepted document close did not close Android root");
     check(!root.hasDrawingHost(),
           "root did not release painting-host ownership on close");
-    qInfo()<<"PASS: engine-only Qt startup preference, interrupted-boot"
-              " recovery and unsaved document close guard";
+    qInfo()<<"PASS: default engine-only startup, legacy V1 migration,"
+              " explicit desktop opt-out, interrupted-boot fallback"
+              " and unsaved document close guard";
     return 0;
 }

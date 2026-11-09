@@ -5,9 +5,10 @@
  * Krita's KisApplication/registries/plugins and KisPart engine remain;
  * only the presentation bootstrap is replaced.
  *
- * Disabled by default and independent of nativeStartupV1. A crash
- * before the first canvas reaches the engine forces desktop recovery
- * on the NEXT process, never a retry loop.
+ * Engine-only is the normal Android startup, unless explicitly
+ * disabled or a previous attempt failed. A crash before the first
+ * canvas is ready forces the original desktop recovery on the NEXT
+ * process and persists that fallback until manually re-enabled.
  */
 #pragma once
 #if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
@@ -29,7 +30,11 @@ public:
     }
     static bool enabled(const QSettings &settings)
     {
-        return settings.value(key(),false).toBool();
+        // New installations and existing V1 installations migrate to
+        // the now device-verified independent engine on first launch.
+        // An explicit false remains authoritative for manual opt-out
+        // or previous failed/crashed startup; never retry indefinitely.
+        return settings.value(key(),true).toBool();
     }
     static void setEnabled(QSettings &settings,bool enabled)
     {
@@ -55,6 +60,13 @@ public:
             complete(settings,false);
             return Decision::RecoverDesktop;
         }
+        // The old native host and compact launcher cannot race V2:
+        // neither should create its own window while we boot the
+        // Krita-independent Qt root.
+        settings.setValue(QStringLiteral("MobileStudio/nativeStartupV1"),false);
+        settings.setValue(QStringLiteral("MobileStudio/nativeStartupPending"),false);
+        settings.setValue(QStringLiteral("MobileStudio/startDirectly"),false);
+        settings.setValue(QStringLiteral("MobileStudio/bootPending"),false);
         settings.setValue(pendingKey(),true);
         settings.sync();
         return Decision::Launch;
@@ -62,11 +74,15 @@ public:
     static void complete(QSettings &settings,bool success)
     {
         settings.setValue(pendingKey(),false);
+        // Persist the result explicitly. After a failed launch this
+        // false overrides our new default and prevents a boot loop.
+        settings.setValue(key(),success);
         if(!success) {
-            settings.setValue(key(),false);
             // On failure, use Krita's complete original desktop shell.
             settings.setValue(QStringLiteral("MobileStudio/nativeStartupV1"),false);
+            settings.setValue(QStringLiteral("MobileStudio/nativeStartupPending"),false);
             settings.setValue(QStringLiteral("MobileStudio/startDirectly"),false);
+            settings.setValue(QStringLiteral("MobileStudio/bootPending"),false);
         }
         settings.sync();
     }
