@@ -32,6 +32,7 @@ def main(root:Path):
     document_service=own/"mobile_core/document_service.h"
     document_port=own/"mobile_core/document_host_port.h"
     view_port=own/"mobile_core/view_host_port.h"
+    view_guard=own/"mobile_core/view_identity_guard.h"
     mdi_view_adapter=own/"mobile_core/mdi_view_host_adapter.h"
     command_port=own/"mobile_core/command_registry_port.h"
     desktop_adapters=own/"mobile_core/desktop_host_adapters.h"
@@ -48,7 +49,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,back_policy,transfer,native_chrome,native_pilot,surface,switcher,bridge,document_service,document_port,view_port,mdi_view_adapter,command_port,desktop_adapters,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+               (shell,session,back_policy,transfer,native_chrome,native_pilot,surface,switcher,bridge,document_service,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
                 reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
@@ -58,7 +59,7 @@ def main(root:Path):
     # so a future lightweight application host can replace it in one place.
     desktop_dependent=(desktop_adapters,mdi_view_adapter)
     qt_host_components=(session,back_policy,transfer,native_chrome,native_pilot,surface)
-    mobile_frontend=(shell,bridge,document_service,document_port,view_port,
+    mobile_frontend=(shell,bridge,document_service,document_port,view_port,view_guard,
                      command_service,command_port,switcher,brush,color,layers,
                      commands,quick,mdi_identity,pressure_calibration,pressure_settings,
                      reorder,tools,documents,*qt_host_components)
@@ -230,6 +231,8 @@ def main(root:Path):
         document_port.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/view_host_port.h").write_text(
         view_port.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/view_identity_guard.h").write_text(
+        view_guard.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/mdi_view_host_adapter.h").write_text(
         mdi_view_adapter.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/command_registry_port.h").write_text(
