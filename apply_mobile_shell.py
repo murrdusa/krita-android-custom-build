@@ -503,6 +503,18 @@ KisMainWindow * KisView::mainWindow() const''',
                 qWarning() << "Engine-only file intent requires native"
                            << " routing; reopen this file through Open:" << fileName;''',
         "guard late Android open intent without desktop window")
+    app=one(app,
+        '''    Q_FOREACH(const QByteArray &message, d->earlyRemoteArguments) {
+        executeRemoteArguments(message, d->mainWindow);
+    }''',
+        '''    Q_FOREACH(const QByteArray &message, d->earlyRemoteArguments) {
+        if (d->mainWindow)
+            executeRemoteArguments(message,d->mainWindow);
+        else
+            qWarning() << "Engine-only remote intent requires native"
+                       << " routing; use the independent Open command";
+    }''',
+        "guard late remote document intent without desktop window")
     appfile.write_text(app,encoding="utf-8")
 
     mainfile=root/"libs/ui/KisMainWindow.cpp"
