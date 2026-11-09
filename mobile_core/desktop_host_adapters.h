@@ -10,6 +10,8 @@
 #ifdef Q_OS_ANDROID
 #include "document_host_port.h"
 #include "command_registry_port.h"
+#include "host_services.h"
+#include "mdi_view_host_adapter.h"
 #include <QPointer>
 #include <QMenuBar>
 #include "KisMainWindow.h"
@@ -73,5 +75,29 @@ public:
 
 private:
     QPointer<KisMainWindow> m_window;
+};
+
+/*
+ * Legacy Android bootstrap lives entirely in this adapter. No other
+ * mobile module needs KisMainWindow or QMdiArea to acquire host ports.
+ * A future independent Qt/Krita host will supply the same bundle.
+ */
+class MobileDesktopEngineBootstrap final
+{
+public:
+    static MobileHostServices create(KisMainWindow *window,
+                                     KisViewManager *manager,
+                                     QMdiArea *documentRoot)
+    {
+        MobileHostServices services;
+        services.documents=QSharedPointer<MobileDocumentHostPort>(
+            new MobileDesktopDocumentHost(window));
+        services.views=QSharedPointer<MobileViewHostPort>(
+            new MobileMdiViewHostAdapter(documentRoot,manager));
+        services.commands=QSharedPointer<MobileCommandRegistryPort>(
+            new MobileDesktopCommandRegistry(window));
+        services.documentRoot=documentRoot;
+        return services;
+    }
 };
 #endif // Q_OS_ANDROID
