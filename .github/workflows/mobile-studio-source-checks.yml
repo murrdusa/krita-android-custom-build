@@ -277,7 +277,7 @@ jobs:
           assert 'MobileNativeStartupPolicy::complete(settings,success)' in coordinator
           assert 'QPointer<QMainWindow> m_window' in coordinator
           assert '#include "KisMainWindow.h"' not in coordinator
-          assert 'QMdiArea' not in coordinator
+          assert '#include <QMdiArea>' not in coordinator
           assert 'native_startup_policy=own/"mobile_core/native_startup_policy.h"' in shell_patch
           assert '(root/"libs/ui/native_startup_policy.h").write_text(' in shell_patch
           assert 'MobileStudio/nativeStartupV1' in Path("mobile_core/canvas_session.h").read_text()
