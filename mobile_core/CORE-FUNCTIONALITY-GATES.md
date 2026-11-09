@@ -97,6 +97,19 @@ serialization or brushes.
   This engine bootstrap remains **unlaunched and not APK-compiled**:
   standalone save/open adapters and real Android GL drawing require
   further implementation and device validation.
+- `krita_standalone_documents.h` now stages the real-engine
+  `MobileDocumentHostPort` implementation for a non-desktop host.
+  Its create/open flow delegates to `KisPart`/`KisDocument::openPath`,
+  rolls back failed views, and retains Krita's autosave-recovery
+  dialog and file import filters. Its Save/Save As uses Krita's
+  render-completion safety dialog, Android-aware `KoFileDialog`,
+  native export filters and `KisDocument::save/saveAs`; it rechecks
+  registered document identity after dialogs and refuses unknown MIME
+  types. The bootstrap bundles the native document, view, and command
+  ports without a `KisMainWindow`. Native view title/dirty metadata
+  now follows Krita's document signals. **This is source-staged only**:
+  neither a standalone Android launch nor real file round trips have
+  been verified.
 - The opt-in stationary canvas header was found consuming hundreds of
   pixels of height on a real device. The top dock is now capped at 76
   logical pixels and its title/header widget is height-fixed; a Qt

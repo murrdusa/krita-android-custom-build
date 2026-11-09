@@ -6,6 +6,7 @@
  */
 #pragma once
 #ifdef Q_OS_ANDROID
+#include <QFileInfo>
 #include <QPointer>
 #include <QTimer>
 #include <QMetaObject>
@@ -59,6 +60,25 @@ public:
             delete view; // KisPart unregisters via KisView destructor.
             return nullptr;
         }
+
+        // Krita emits both title/path and dirty-state changes. Keep
+        // the native document switcher in sync with the actual engine,
+        // without inserting a second document model.
+        QPointer<KisDocument> trackedDocument=document;
+        QPointer<MobileNativeViewStack> trackedStack=stack;
+        auto refresh=[trackedStack,trackedDocument,guarded]() {
+            if(!trackedStack || !trackedDocument || !guarded)return;
+            const QString path=trackedDocument->path();
+            const QString title=path.isEmpty()?
+                QStringLiteral("Untitled"):QFileInfo(path).fileName();
+            trackedStack->updateViewState(guarded,title,
+                                          trackedDocument->isModified());
+        };
+        QObject::connect(document,&KisDocument::sigPathChanged,stack,
+                         [refresh](const QString &) {refresh();});
+        QObject::connect(document,&KisDocument::modified,stack,
+                         [refresh](bool) {refresh();});
+        refresh();
 
         // One native manager activation router per Qt document root.
         // Connections are scoped to the native manager QObject.

@@ -31,6 +31,7 @@ def main(root:Path):
     native_krita_save_host=own/"mobile_core/native_krita_save_host.h"
     native_krita_factory=own/"mobile_core/krita_native_view_factory.h"
     standalone_krita_runtime=own/"mobile_core/krita_standalone_runtime.h"
+    standalone_krita_documents=own/"mobile_core/krita_standalone_documents.h"
     surface=own/"mobile_core/canvas_surface.h"
     switcher=own/"mobile_core/document_switcher.h"
     bridge=own/"mobile_core/engine_bridge.h"
@@ -55,7 +56,7 @@ def main(root:Path):
     tools=own/"mobile_core/tool_browser.h"
     documents=own/"mobile_core/document_workflow.h"
     if not all(p.is_file() for p in
-               (shell,session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,standalone_krita_runtime,surface,switcher,bridge,document_service,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
+               (shell,session,back_policy,transfer,native_chrome,native_pilot,lightweight,native_view_stack,native_krita_save_host,native_krita_factory,standalone_krita_runtime,standalone_krita_documents,surface,switcher,bridge,document_service,document_port,view_port,view_guard,mdi_view_adapter,command_port,desktop_adapters,host_services,mdi_identity,command_service,brush,color,layers,commands,quick,pressure_calibration,pressure_settings,
                 reorder,tools,documents)):
         raise RuntimeError("Missing Mobile Studio source module")
 
@@ -388,6 +389,8 @@ KisMainWindow * KisView::mainWindow() const''',
         native_krita_factory.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/krita_standalone_runtime.h").write_text(
         standalone_krita_runtime.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/krita_standalone_documents.h").write_text(
+        standalone_krita_documents.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/canvas_surface.h").write_text(
         surface.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_switcher.h").write_text(
