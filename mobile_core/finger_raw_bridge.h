@@ -14,6 +14,7 @@
 #include <QMetaObject>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QSettings>
 #include <QThread>
 #include <QVector>
 #include <QtGlobal>
@@ -40,6 +41,29 @@ public:
         QMutexLocker locked(&state.mutex);
         state.samples.clear();
         state.lastPublished=0;
+    }
+
+    // Called from Android's Java touch dispatcher before recording size
+    // samples. Query the same opt-in flag as Krita's brush converter,
+    // caching it briefly to avoid a filesystem/settings lookup per frame.
+    // While the user has not opted in, no raw sample is stored.
+    static bool captureEnabled(quint64 uptimeMs)
+    {
+        struct Gate {
+            QMutex mutex;
+            bool allowed=false;
+            quint64 lastChecked=0;
+        };
+        static Gate gate;
+        QMutexLocker locked(&gate.mutex);
+        if(gate.lastChecked==0 || uptimeMs<gate.lastChecked ||
+           uptimeMs-gate.lastChecked>=200) {
+            gate.allowed=QSettings().value(
+                QStringLiteral("MobileStudio/fingerContactPressureV1"),
+                false).toBool();
+            gate.lastChecked=uptimeMs;
+        }
+        return gate.allowed;
     }
 
     static void record(int pointerId,quint64 uptimeMs,
