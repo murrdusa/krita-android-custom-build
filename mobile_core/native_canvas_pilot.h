@@ -366,6 +366,14 @@ private:
                         .arg(m_chrome.active()),
                     QStringLiteral("Mobile layers dock visible: %1")
                         .arg(m_chrome.sidePanelVisible()),
+                    QStringLiteral("Mobile layers dock location: %1")
+                        .arg(m_chrome.sidePanelAtBottom()?
+                             QStringLiteral("bottom (portrait)"):
+                             QStringLiteral("side (wide)")),
+                    QStringLiteral("Native window: %1 x %2 logical px")
+                        .arg(m_backend->width()).arg(m_backend->height()),
+                    QStringLiteral("Mobile brush dock visible: %1")
+                        .arg(m_chrome.bottomPanelVisible()),
                     QStringLiteral("Mobile color overlay visible: %1")
                         .arg(m_color && m_color->isVisible()),
                     QStringLiteral("Open Krita document views: %1")
