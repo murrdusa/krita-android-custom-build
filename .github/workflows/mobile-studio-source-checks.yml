@@ -65,6 +65,13 @@ jobs:
           assert "MobileMdiViewIdentity::resolve" in document_service
           assert "closeDocumentView(activeView)" in switcher
           assert "activateDocumentView(desiredView)" in switcher
+          assert "selected>=0" in document_service
+          assert "if(candidate>=0)" in document_service
+          mobile_shell = Path("mobile_core/standalone_host.h").read_text()
+          quick_actions = Path("mobile_core/quick_actions.h").read_text()
+          assert "m_engine.closeActiveDocument()" not in mobile_shell
+          assert "closeDocumentView(document.nativeView)" in mobile_shell
+          assert 'id==QStringLiteral("mobile:close")' in quick_actions
           assert "m_transfer.leave()" in Path("mobile_core/canvas_session.h").read_text()
           assert "MobileStudio/fingerContactPressureV1" in Path("mobile_core/standalone_host.h").read_text()
           pressure_settings = Path("mobile_core/finger_pressure_settings.h").read_text()
