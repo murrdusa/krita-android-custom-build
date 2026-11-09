@@ -615,6 +615,8 @@ private:
                     QStringLiteral("unknown");
                 const auto calibration=MobileFingerPressureSettings::read(
                     QSettings());
+                const auto response=MobileFingerPressureSettings::readResponse(
+                    QSettings());
                 const QString report=QStringList({
                     QStringLiteral("Krita Mobile Studio diagnostics v1"),
                     QStringLiteral("Host: embedded Qt widget"),
@@ -646,6 +648,21 @@ private:
                     QStringLiteral("Calibrated finger diameter: %1 to %2 logical px")
                         .arg(calibration.minimum,0,'f',1)
                         .arg(calibration.maximum,0,'f',1),
+                    QStringLiteral("Finger response gamma: %1")
+                        .arg(response.gamma,0,'f',2),
+                    QStringLiteral("Finger stability: %1%")
+                        .arg(response.stability*100.0,0,'f',0),
+                    QStringLiteral("Prefer raw Android contact: %1")
+                        .arg(response.useRawAndroid),
+                    QStringLiteral("Last finger area source: %1")
+                        .arg(qApp->property(
+                            "_mobileFingerAreaLastSource").toString()),
+                    QStringLiteral("Distinct finger contact levels: %1")
+                        .arg(qApp->property(
+                            "_mobileFingerAreaLastUniqueSteps").toInt()),
+                    QStringLiteral("Latest Android raw diameter: %1 logical px")
+                        .arg(qApp->property(
+                            "_mobileFingerRawDiameter").toDouble(),0,'f',1),
                     QStringLiteral("Last finger area data: %1")
                         .arg(fingerSignal),
                     QStringLiteral("Last finger contact diameter range: %1")
