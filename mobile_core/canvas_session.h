@@ -12,7 +12,6 @@
 #include <QKeyEvent>
 #include <QMainWindow>
 #include <QMessageBox>
-#include <QMdiArea>
 #include <QPointer>
 #include <QScopedValueRollback>
 #include <QSignalBlocker>
@@ -32,10 +31,10 @@ class MobileAppController final : public QObject
 {
 public:
     MobileAppController(QMainWindow *backend,
-                        QMdiArea *mdi,
+                        QWidget *documentRoot,
                         const MobileEngineBridge &bridge,
                         QAction *entry)
-        : QObject(backend),m_transfer(backend,mdi),m_backend(backend),
+        : QObject(backend),m_transfer(backend,documentRoot),m_backend(backend),
           m_bridge(bridge),m_entry(entry),
           m_nativeCanvasMode(QSettings().value(
               QStringLiteral("MobileStudio/nativeDockCanvasV1"),
