@@ -9,13 +9,16 @@
 #pragma once
 #ifdef Q_OS_ANDROID
 #include <QAction>
+#include <QClipboard>
 #include <QFrame>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMainWindow>
 #include <QMenu>
 #include <QPointer>
 #include <QSettings>
+#include <QStringList>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -255,11 +258,15 @@ private:
         QMenu menu(anchor?anchor:m_backend.data());
         auto *browser=menu.addAction(i18n("Menus — File, Edit, View and more"));
         QObject::connect(browser,&QAction::triggered,browser,[this]() {
-            if(m_backend)MobileCommandBrowser::open(m_engine,m_backend);
+            QTimer::singleShot(0,&m_refresh,[this]() {
+                if(m_backend)MobileCommandBrowser::open(m_engine,m_backend);
+            });
         });
         auto *tools=menu.addAction(i18n("Tools — Krita registry"));
         QObject::connect(tools,&QAction::triggered,tools,[this]() {
-            if(m_backend)MobileToolBrowser::open(m_engine,m_backend);
+            QTimer::singleShot(0,&m_refresh,[this]() {
+                if(m_backend)MobileToolBrowser::open(m_engine,m_backend);
+            });
         });
         menu.addSeparator();
         auto *nativeMode=menu.addAction(i18n(
@@ -285,9 +292,37 @@ private:
         });
         auto *calibrate=menu.addAction(i18n("Calibrate finger pressure"));
         QObject::connect(calibrate,&QAction::triggered,calibrate,[this]() {
-            if(!m_backend)return;
-            MobileFingerPressureCalibrationDialog dialog(m_backend);
-            dialog.exec();
+            QTimer::singleShot(0,&m_refresh,[this]() {
+                if(!m_backend)return;
+                MobileFingerPressureCalibrationDialog dialog(m_backend);
+                dialog.exec();
+            });
+        });
+        menu.addSeparator();
+        auto *diagnostics=menu.addAction(
+            i18n("Copy stationary canvas diagnostics"));
+        QObject::connect(diagnostics,&QAction::triggered,diagnostics,[this]() {
+            QTimer::singleShot(0,&m_refresh,[this]() {
+                if(!m_backend || !QGuiApplication::clipboard())return;
+                const QString report=QStringList({
+                    QStringLiteral("Krita Mobile Studio stationary canvas v1"),
+                    QStringLiteral("Native central widget unchanged: %1")
+                        .arg(m_chrome.ownsUnmovedCanvas()),
+                    QStringLiteral("Mobile chrome active: %1")
+                        .arg(m_chrome.active()),
+                    QStringLiteral("Mobile layers dock visible: %1")
+                        .arg(m_chrome.sidePanelVisible()),
+                    QStringLiteral("Mobile color overlay visible: %1")
+                        .arg(m_color && m_color->isVisible()),
+                    QStringLiteral("Open Krita document views: %1")
+                        .arg(m_engine.openDocuments().size()),
+                    QStringLiteral("Finger pressure simulation enabled: %1")
+                        .arg(QSettings().value(
+                            QStringLiteral("MobileStudio/fingerContactPressureV1"),
+                            false).toBool())
+                }).join(QLatin1Char('\n'));
+                QGuiApplication::clipboard()->setText(report);
+            });
         });
         const QPoint at=anchor?
             anchor->mapToGlobal(QPoint(0,anchor->height())):
