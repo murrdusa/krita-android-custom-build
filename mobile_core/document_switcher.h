@@ -78,9 +78,14 @@ public:
             auto *item=new QListWidgetItem(i18n("No open canvases"),items);
             item->setFlags(Qt::NoItemFlags);
         }
-        auto *note=new QLabel(i18n(
-            "Tap a canvas to switch. * indicates unsaved changes. "
-            "Close Current uses Krita's Save / Discard / Cancel prompt."),&dialog);
+        auto *note=new QLabel(
+            !activeView && !documents.isEmpty()?
+                i18n("Krita has no unambiguous current canvas. Tap the "
+                     "canvas you want to activate, then reopen this menu "
+                     "to close it safely."):
+                i18n("Tap a canvas to switch. * indicates unsaved changes. "
+                     "Close Current uses Krita's Save / Discard / Cancel prompt."),
+            &dialog);
         note->setWordWrap(true);
         layout->addWidget(note);
         auto *creation=new QHBoxLayout;
