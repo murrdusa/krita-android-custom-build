@@ -23,10 +23,11 @@ static qreal touch(QTouchDevice &device,QEvent::Type type,
                    qreal diameter,ulong timestamp,
                    Qt::TouchPointState state=Qt::TouchPointMoved,
                    int id=1, int count=1,
-                   qreal nativePressure=1.0)
+                   qreal nativePressure=1.0,bool pen=false)
 {
     QTouchEvent::TouchPoint p(id);
     p.setState(state);
+    if(pen)p.setFlags(QTouchEvent::TouchPoint::Pen);
     p.setEllipseDiameters(QSizeF(diameter,diameter));
     p.setPressure(nativePressure);
     QList<QTouchEvent::TouchPoint> points{p};
@@ -102,12 +103,20 @@ int main(int argc,char **argv)
             "unavailable contact size did not fall back");
     touch(device,QEvent::TouchEnd,0,3010,Qt::TouchPointReleased);
 
+    // Even if a device reports a pen through its TouchScreen events,
+    // the Qt Pen designation always preserves its original pressure.
+    require(qAbs(touch(device,QEvent::TouchBegin,25,3070,
+                       Qt::TouchPointPressed,1,1,native,true)-native)<0.00001,
+            "pen-type touch was assigned simulated finger pressure");
+    touch(device,QEvent::TouchEnd,25,3090,
+          Qt::TouchPointReleased,1,1,native,true);
+
     // Multitouch gestures are never assigned simulated pressure.
     require(qAbs(touch(device,QEvent::TouchUpdate,25,3100,
                        Qt::TouchPointMoved,1,2,native)-native)<0.00001,
             "multitouch gesture pressure was overridden");
 
     qInfo() << "PASS: disabled fallback, area growth/shrink, smoothing,"
-            << "duplicate idempotence, missing size and multitouch safety";
+            << "duplicate idempotence, missing size, pen and multitouch safety";
     return 0;
 }
