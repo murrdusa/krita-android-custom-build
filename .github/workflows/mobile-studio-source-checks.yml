@@ -60,6 +60,11 @@ jobs:
           assert 'm_backend->setProperty("_mobileStudioPresentationActive",false)' in transfer
           assert 'm_backend->setProperty("_mobileStudioCanvasTransferred",true)' in transfer
           assert 'property("_mobileStudioPresentationActive").toBool()' in Path("apply_mobile_shell.py").read_text()
+          document_service = Path("mobile_core/document_service.h").read_text()
+          switcher = Path("mobile_core/document_switcher.h").read_text()
+          assert "MobileMdiViewIdentity::resolve" in document_service
+          assert "closeDocumentView(activeView)" in switcher
+          assert "activateDocumentView(desiredView)" in switcher
           assert "m_transfer.leave()" in Path("mobile_core/canvas_session.h").read_text()
           assert "MobileStudio/fingerContactPressureV1" in Path("mobile_core/standalone_host.h").read_text()
           pressure_settings = Path("mobile_core/finger_pressure_settings.h").read_text()
@@ -93,6 +98,16 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: /tmp/krita-canvas-transfer-smoke
+      - name: Build guarded MDI view identity test
+        run: |
+          c++ -std=c++17 -fPIC -I. \
+            tests/qt_mdi_view_identity.cpp \
+            -o /tmp/krita-mdi-identity-test \
+            $(pkg-config --cflags --libs Qt5Widgets)
+      - name: Verify document view identity under reordering and deletion
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /tmp/krita-mdi-identity-test
       - name: Build optional finger pressure mapping test
         run: |
           c++ -std=c++17 -fPIC -I. \
