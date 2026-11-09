@@ -1,5 +1,37 @@
 # Mobile Studio — Android painting and mode-switch smoke test
 
+## v1.21 stationary canvas document and chrome resilience
+
+- In the opt-in stationary canvas mode, switch between two KRA drawings
+  using Canvases. If Krita creates a new tab bar, toolbar or docker after
+  mode entry, those desktop controls should disappear within the
+  periodic chrome check and return to their prior visibility on Back.
+- With all documents closed, the bottom brush and Quick Actions dock
+  should collapse instead of wasting canvas/welcome-screen height.
+  Choose Canvases → New or Open; the same controls should return when
+  Krita reports an open document.
+- Test New, Open, Save, Save As, and Close from Quick Actions. Native
+  dialogs should appear above the canvas, after the touch/click
+  finishes. With two views active/ambiguous, Close must be disabled.
+  With one selected view, save/discard/cancel should target exactly
+  that view. Reorder or close another document before the deferred
+  callback to verify a stale QPointer cannot close a different view.
+- Replace Krita's QMainWindow central widget through a deliberate
+  test-only host recreation. The stationary controller must refuse to
+  overwrite it, restore native toolbars, and reconstruct only its
+  mobile dock controls around the replacement on the next entry.
+- Run the Qt-only native chrome test: 25 iterations, original
+  centralWidget identity, no ParentChange transitions, side dock
+  open/close, empty-document bottom dock collapse/reopen, dynamically
+  created native tabs/toolbars/dockers, and unexpected native canvas
+  replacement.
+- Verify that phone painting, multi-touch gestures, pen pressure and
+  calibrated finger pressure remain unchanged. This Qt smoke test does
+  not verify Android OpenGL/EGL or physical contact-area data.
+- The stationary mode is still opt-in, not the standard mobile
+  presentation. Save disposable test art before turning it on, and
+  disable with a restart if the layout is unstable.
+
 ## v1.20 native retained-canvas UI architecture (disabled prototype)
 
 - Compile the new Qt-only `MobileNativeCanvasChrome` and Android
