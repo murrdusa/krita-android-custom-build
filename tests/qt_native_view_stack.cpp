@@ -43,7 +43,11 @@ int main(int argc,char **argv)
     {
     MobileLightweightCanvasHost host;
     host.resize(440,750);
-    auto *root=new MobileNativeViewStack;
+    auto *root=host.createNativeDocumentRoot();
+    require(root && host.nativeViewPort() && host.retainsOriginalCanvas(),
+            "lightweight application could not create a native view root");
+    require(!host.createNativeDocumentRoot(),
+            "host replaced existing native canvas root");
     auto *doc1=new QObject(&host),*doc2=new QObject(&host);
     auto *a=new QWidget,*b=new QWidget;
     a->setProperty("drawingRevision",17);
@@ -63,13 +67,12 @@ int main(int argc,char **argv)
                               [](){return true;}),
             "adopted one native painting view twice");
     QPointer<QObject> aid=a,bid=b;
-    require(host.installNativeCanvas(root),"could not install document root");
     MobileHostServices services;
     services.documents=QSharedPointer<DummyDocuments>::create();
     services.commands=QSharedPointer<DummyActions>::create();
-    // The port owns only a QPointer back to the QMainWindow-owned
-    // native root and safely rejects callbacks after that root dies.
-    services.views=QSharedPointer<MobileNativeViewPortAdapter>::create(root);
+    // The application-created view port uses a QPointer to its
+    // native document root; a deferred copy can outlive the window.
+    services.views=host.nativeViewPort();
     services.documentRoot=root;
     require(host.attachServices(services),"could not attach view port");
     auto *top=new QWidget,*bottom=new QWidget;

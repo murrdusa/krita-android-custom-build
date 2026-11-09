@@ -13,12 +13,33 @@
 #include <QWidget>
 #include "host_services.h"
 #include "native_canvas_chrome.h"
+#include "native_view_stack.h"
 
 class MobileLightweightCanvasHost final : public QMainWindow
 {
 public:
     explicit MobileLightweightCanvasHost(QWidget *parent=nullptr)
         : QMainWindow(parent),m_mobileChrome(this) {}
+
+    // Build a native multi-document root before engine view creation.
+    // This is the future Krita bootstrap entrypoint, distinct from
+    // adopting an already-existing real engine canvas widget.
+    MobileNativeViewStack *createNativeDocumentRoot()
+    {
+        if(m_canvas || centralWidget())return nullptr;
+        auto *root=new MobileNativeViewStack;
+        if(!installNativeCanvas(root)) {
+            delete root;
+            return nullptr;
+        }
+        m_nativeViewPort=QSharedPointer<MobileNativeViewPortAdapter>::create(root);
+        return root;
+    }
+
+    QSharedPointer<MobileViewHostPort> nativeViewPort() const
+    {
+        return m_nativeViewPort;
+    }
 
     // Adopt a *newly created* painting widget once, before a mobile UI
     // is installed. The host owns that widget for its entire lifetime.
@@ -73,6 +94,7 @@ public:
 
 private:
     QPointer<QWidget> m_canvas;
+    QSharedPointer<MobileViewHostPort> m_nativeViewPort;
     MobileHostServices m_services;
     MobileNativeCanvasChrome m_mobileChrome;
     bool m_uiInstalled=false;

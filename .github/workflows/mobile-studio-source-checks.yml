@@ -166,6 +166,8 @@ jobs:
           assert "bool attachServices(const MobileHostServices &services)" in lightweight
           assert "bool setMobileVisible(bool enabled)" in lightweight
           assert "retainsOriginalCanvas()" in lightweight
+          assert "createNativeDocumentRoot()" in lightweight
+          assert "nativeViewPort()" in lightweight
           native_stack = Path("mobile_core/native_view_stack.h").read_text()
           assert "class MobileNativeViewStack final" in native_stack
           assert "MobileViewHostPort" in native_stack
