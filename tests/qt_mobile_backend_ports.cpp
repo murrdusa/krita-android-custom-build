@@ -8,6 +8,7 @@
 #include <QDebug>
 #include <QMenu>
 #include <QObject>
+#include <QPointer>
 #include <QSharedPointer>
 #include <QStringList>
 #include "mobile_core/document_host_port.h"
