@@ -187,6 +187,15 @@ jobs:
           assert "bool attachServices(const MobileHostServices &services)" in lightweight
           assert "bool setMobileVisible(bool enabled)" in lightweight
           assert "retainsOriginalCanvas()" in lightweight
+          compile_workflow = Path(".github/workflows/build-krita-android.yml").read_text()
+          compile_script = Path("build-in-krita-container.sh").read_text()
+          assert "inputs.mode == 'compile'" in compile_workflow
+          assert "contains(github.event.head_commit.message, '[android-compile]')" in compile_workflow
+          assert 'KRITA_COMPILE_ONLY="$COMPILE_ONLY"' in compile_workflow
+          assert 'if [[ "${KRITA_COMPILE_ONLY:-0}" == "1" ]]' in compile_script
+          assert "cmake --build . --target kritaui" in compile_script
+          assert compile_script.index("cmake --build . --target kritaui") < compile_script.index("cmake --build . --target install")
+          assert "Upload APK artifact when available" in compile_workflow
           assert "createNativeDocumentRoot()" in lightweight
           assert "nativeViewPort()" in lightweight
           assert "void closeEvent(QCloseEvent *event) override" in lightweight

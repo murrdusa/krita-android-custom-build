@@ -65,6 +65,14 @@ cmake \
 else
   echo "## Reusing configured Android CMake build tree"
 fi
+# Shorter feedback loop for independent Krita-engine development.
+# Real Android kritaui compiler only: no Gradle package or APK artifact.
+if [[ "${KRITA_COMPILE_ONLY:-0}" == "1" ]]; then
+  echo "## Compiling real Android kritaui target (no APK packaging)"
+  cmake --build . --target kritaui --parallel "${KRITA_BUILD_JOBS:-2}"
+  echo "## PASS: Native Krita engine sources compiled into kritaui"
+  exit 0
+fi
 cmake --build . --target install --parallel "${KRITA_BUILD_JOBS:-2}"
 cd "$SOURCE"
 python3 build-tools/ci-scripts/build-android-package.py --package-type debug

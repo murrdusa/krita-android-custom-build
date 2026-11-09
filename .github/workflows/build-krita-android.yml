@@ -6,12 +6,13 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Validate patch first; build attempts APK"
+        description: "Validate, compile native UI only, or build APK"
         required: true
         type: choice
         default: validate
         options:
           - validate
+          - compile
           - build
 
 permissions:
@@ -34,7 +35,7 @@ jobs:
           bash -n build-in-krita-container.sh local-build.sh
 
       - name: Reclaim disk space
-        if: ${{ inputs.mode == 'build' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[android-build]')) }}
+        if: ${{ inputs.mode == 'build' || inputs.mode == 'compile' || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[android-build]') || contains(github.event.head_commit.message, '[android-compile]'))) }}
         shell: bash
         run: |
           set -euo pipefail
@@ -71,11 +72,11 @@ jobs:
           touch "$ROOT/persistent/krita/.krita_android_custom_patch_applied"
 
       - name: Validation result (NOT an APK build)
-        if: inputs.mode == 'validate' || (github.event_name == 'push' && !contains(github.event.head_commit.message, '[android-build]'))
+        if: inputs.mode == 'validate' || (github.event_name == 'push' && !contains(github.event.head_commit.message, '[android-build]') && !contains(github.event.head_commit.message, '[android-compile]'))
         run: echo "Patch applied and diff checked. Android compilation has NOT been tested."
 
       - name: Download KDE Android build support
-        if: ${{ inputs.mode == 'build' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[android-build]')) }}
+        if: ${{ inputs.mode == 'build' || inputs.mode == 'compile' || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[android-build]') || contains(github.event.head_commit.message, '[android-compile]'))) }}
         shell: bash
         run: |
           set -euo pipefail
@@ -90,8 +91,8 @@ jobs:
           ./bin/bootstrap-krita-deps.sh --android=arm64-v8a
           df -h /
 
-      - name: Compile Android debug APK in KDE container
-        if: ${{ inputs.mode == 'build' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[android-build]')) }}
+      - name: Compile native Krita UI or debug APK in KDE container
+        if: ${{ inputs.mode == 'build' || inputs.mode == 'compile' || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[android-build]') || contains(github.event.head_commit.message, '[android-compile]'))) }}
         shell: bash
         run: |
           set -euo pipefail
@@ -103,7 +104,13 @@ jobs:
           test -s .container_name
           CONTAINER_NAME="$(head -1 .container_name | tr -d '\r\n')"
           test -n "$CONTAINER_NAME"
-          docker exec -i -u appimage "$CONTAINER_NAME" bash -lc 'bash "$HOME/persistent/krita/build-in-krita-container.sh"'
+          # Native compile mode checks the Krita engine without creating
+          # or automatically uploading an Android APK.
+          COMPILE_ONLY=0
+          if [[ "${{ inputs.mode }}" == "compile" || "${{ contains(github.event.head_commit.message, '[android-compile]') }}" == "true" ]]; then
+            COMPILE_ONLY=1
+          fi
+          docker exec -i -e KRITA_COMPILE_ONLY="$COMPILE_ONLY" -u appimage "$CONTAINER_NAME" bash -lc 'bash "$HOME/persistent/krita/build-in-krita-container.sh"'
 
       - name: Upload APK artifact when available
         if: ${{ always() && (inputs.mode == 'build' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[android-build]'))) }}
