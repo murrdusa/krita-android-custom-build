@@ -1281,6 +1281,9 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
     set(KRITA_APPLICATION_TARGET mobile_studio)
     set(QTANDROID_EXPORTED_TARGET mobile_studio CACHE STRING
         "Android native application target" FORCE)
+    # Parent CMake creates create-apk after add_subdirectory(krita).
+    # CACHE FORCE does not replace an inherited normal-scope variable.
+    set(QTANDROID_EXPORTED_TARGET mobile_studio PARENT_SCOPE)
 else()
     set(krita_SRCS main.cc)
     set(KRITA_APPLICATION_TARGET krita)
