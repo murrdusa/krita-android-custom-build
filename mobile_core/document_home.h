@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
+ * Touch-first Krita document launcher and local project index.
+ * Keep existing native document and provider access behavior.
+ */
 #pragma once
 #ifdef Q_OS_ANDROID
 
@@ -37,6 +43,7 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QScopedPointer>
+#include <QSaveFile>
 #include <QScrollBar>
 #include <QScroller>
 #include <QSet>
@@ -126,14 +133,16 @@ public:
         QJsonObject root;
         root.insert(QStringLiteral("version"),1);
         root.insert(QStringLiteral("entries"),arr);
-        // Atomic write: write to temp then rename
-        const QString tmp=path+QStringLiteral(".tmp");
-        QFile f(tmp);
-        if(!f.open(QIODevice::WriteOnly|QIODevice::Truncate))return;
-        f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
-        f.close();
-        QFile::remove(path);
-        QFile::rename(tmp,path);
+        // QSaveFile commits by atomic replacement; never delete the last
+        // good index before its replacement is durably written.
+        QSaveFile file(path);
+        if(!file.open(QIODevice::WriteOnly))return;
+        const QByteArray bytes=QJsonDocument(root).toJson(QJsonDocument::Compact);
+        if(file.write(bytes)!=bytes.size()) {
+            file.cancelWriting();
+            return;
+        }
+        file.commit();
     }
 
     // Merge incoming entries into existing, dedup by canonical identity.
@@ -813,7 +822,7 @@ private:
             }
             if(m_list->count()>0)
                 m_message->setText(i18n("Updating project list in background…"));
-            startScan(m_lastAccess);
+            startScan();
         }
         if(mode!=AllProjects && m_list->count()==0) {
             auto *empty=new QListWidgetItem(mode==OpenCanvases?
@@ -846,14 +855,15 @@ private:
         }
     }
 
-    void startScan(bool fullAccess)
+    void startScan()
     {
-        m_seen.clear();
+        // Keep identities loaded from the index and Recent. Clearing them
+        // here would duplicate every indexed project during the scan.
         const auto cancel=std::make_shared<std::atomic_bool>(false);
         m_scanCancel=cancel;
         const int generation=++m_scanGeneration;
         QPointer<MobileDocumentHome> home(this);
-        m_scanner.start([home,cancel,generation,fullAccess]() {
+        m_scanner.start([home,cancel,generation]() {
             const auto androidList=[](const char *method) {
                 const auto result=QAndroidJniObject::callStaticObjectMethod(
                     "org/krita/android/MainActivity",method,"()Ljava/lang/String;");
@@ -863,14 +873,10 @@ private:
             for(const auto &volume:androidList("tabletProjectRoots")) {
                 const QString root=volume.toString();
                 if(root.isEmpty())continue;
-                if(fullAccess) {
-                    roots.append(root);
-                } else {
-                    // Default scan: only Downloads.  Documents/Pictures/Krita
-                    // are opt-in via "Add Folder".  This keeps startup fast on
-                    // devices with large shared storage.
-                    roots.append(QDir(root).filePath(QStringLiteral("Download")));
-                }
+                // Always scan Downloads only. Permission lets us read
+                // its KRA files; it must not trigger a full-device scan.
+                // Other folders are indexed only when explicitly linked.
+                roots.append(QDir(root).filePath(QStringLiteral("Download")));
             }
             QSet<QString> seen;
             QVector<Project> batch;
