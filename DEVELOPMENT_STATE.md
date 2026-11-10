@@ -24,10 +24,16 @@
 - Commit `d7b7b85` corrected a concrete menu bug: checked **Clip to layer below** had used `alphaChannelDisabled()` instead of the actual inherit-alpha property; it now reflects the correct layer's clipping state. Removed a duplicate clip command. Added current-document guards to the menu, drag/drop and pinch grouping. Follow-up `3b306fd` keeps the view pointer mutable for Krita ABI compatibility. **PC build PASS** for exact revision `3b306fd`.
 - **Next device regression:** verify clip/unclip affects the intended layer and attaches to the first unclipped layer below, test reordering across clip boundaries and nested folders, check Alpha Lock and inline eye/lock on pen/finger, test Undo/Redo plus KRA save/reopen. Do not infer correctness of clip group/undo behavior from a successful compile. Keep APK uploads paused.
 
+## General drawing access — next functional stage
+
+- Commit `5569eb9` adds **More → Drawing** backed by Krita's native QAction registry. Exposes fill and stroke selection, canvas painting assistants and previews, guides/grids, and snapping controls. Missing/unregistered native actions are omitted rather than simulated. **PC Android build PASS** for this exact commit (2026-11-10 00:22 UTC); device test pending.
+- Commit `6164aac` extends that menu to real Krita clipboard, clear and selection-to-layer operations. Commit `e61b9f7` refreshes the live KoToolDocker options when switching between native canvases. **PC build of both latest changes pending as of this handoff update**; do not mistake the prior `5569eb9` build as their validation.
+- Keep new UI design and the independent painting engine unchanged. Next functional priorities: validate new drawing commands on device after their PC build, complete gaps in the existing Krita tool integrations, then progress to the approved automatic project history subsystem after the core tools/layers gate.
+
 ## Test status
 
 - **Last Fold 6 test: PASS** for separate native APK target at `7cf81bffcf5b84f483d0d92112c13a1e80a9f352`: app launched without grey screen, stylus drawing and pressure worked, KRA save/reopen worked, Android file opening/sharing worked.
-- **Latest locally compiled/packaged Android source revision: `3b306fd4a2da0b296bf853a33a6b0a8eda629e4d`, SUCCESS**, confirmed by WSL watcher in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1) on 2026-11-10 at 00:12 UTC (2026-11-09 local evening). Includes native layer types/masks/blending/alpha lock, the restored compact tile rail and grouping/clipping, and latest safety fixes. **Recent layer features have not yet been verified on Fold 6.**
+- **Latest confirmed locally compiled/packaged Android source revision: `5569eb9d9165fc5075ffcaacac14af4203a5ec56`, SUCCESS**, confirmed by WSL watcher in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1) on 2026-11-10 at 00:22 UTC. Includes all recent layer features and new native Drawing access (fill/stroke/assistants/snapping). Later clipboard and canvas-switch Tool Options commits are **pending**, not yet verified. **Recent layers and drawing tools have not yet been verified on Fold 6.**
 - Doc-only commits may not trigger another APK build. The compiled SHA above is the meaningful source baseline; always read the latest Issue #1 for newer work.
 
 ## Agreed product roadmap
