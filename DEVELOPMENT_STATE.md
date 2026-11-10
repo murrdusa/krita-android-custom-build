@@ -33,7 +33,7 @@
 ## Native tool functionality expansion (2026-11-09 local evening)
 
 - Commit `1ffe7cf` expands **More → Selection** to include select opaque / add / subtract / intersect and selection refinement actions (color range, feather, grow, shrink, border, smooth), only when Krita registers those native actions. It also adds **Drawing → Canvas view** (zoom/fit, canvas rotation, mirror/reset) and **Drawing → Image and layer transforms** (native scale/rotate/mirror/offset/image size commands). **Local WSL Android compile PASS** for this exact commit. UI/device behavior remains unverified; native actions are not reimplemented.
-- Commits `1a3f08b` and `d1ebc20` connect the existing touch-searchable `MobileCommandBrowser` to **More → All Krita Commands** in the independent Android app. It enumerates the available action collection, including non-menu native commands, while preserving Krita's action handlers. The standalone host has no desktop menubar, so the browser's **Other Krita commands** category is the fallback. **Latest browser integration was pending PC build verification at the time of this note.**
+- Commits `1a3f08b` and `d1ebc20` connect the existing touch-searchable `MobileCommandBrowser` to **More → All Krita Commands** in the independent Android app. It enumerates the available action collection, including non-menu native commands, while preserving Krita's action handlers. The standalone host has no desktop menubar, so the browser's **Other Krita commands** category is the fallback. **Local WSL Android compile PASS** for exact integrated revision `d1ebc200723c42d0f2d2314a5c9ac6c57e221892`, reported 2026-11-10 00:56 UTC. Real device behavior pending.
 - Do not modify the pending Fold 6 clipping/drag prototype until the user reports on it. Once general Krita functionality and device regressions stabilize, move to automatic project checkpoint/version history design (the user's most important deferred priority), with atomic files and explicit Discard semantics.
 
 ## Device feedback: layer rail and clipping (2026-11-09 evening)
@@ -46,7 +46,7 @@
 ## Test status
 
 - **Last Fold 6 test: PASS** for separate native APK target at `7cf81bffcf5b84f483d0d92112c13a1e80a9f352`: app launched without grey screen, stylus drawing and pressure worked, KRA save/reopen worked, Android file opening/sharing worked.
-- **Latest locally compiled/packaged Android code revision: `1ffe7cf8c9344c8c2dceb70ba3d3a4d0e2bc0bd6`, SUCCESS**, reported by WSL watcher in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1) at 2026-11-10 00:54 UTC. Includes the previous successful floating layer/drag/clipping improvements and native view/transform/selection command access. The newer searchable command-browser integration may still be compiling; verify the exact revision before claiming its build passed. **Fold 6 verification is still pending.**
+- **Latest locally compiled/packaged Android code revision: `d1ebc200723c42d0f2d2314a5c9ac6c57e221892`, SUCCESS**, reported by WSL watcher in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1) at 2026-11-10 00:56 UTC. Includes the prior floating layer/drag/clipping work, native view/transform/selection actions, and standalone **All Krita Commands** browser integration. **Fold 6 verification is still pending.**
 - Doc-only commits may not trigger another APK build. The compiled SHA above is the meaningful source baseline; always read the latest Issue #1 for newer work.
 
 ## Agreed product roadmap
