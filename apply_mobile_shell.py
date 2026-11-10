@@ -1480,29 +1480,111 @@ install(FILES org.kde.krita.desktop''',
         }
     }
 
+    public static boolean tabletRememberProjectFolder(Intent result) {
+        MainActivity activity = tabletPermissionActivity;
+        if (activity == null || result == null || result.getData() == null) return false;
+        Uri tree = result.getData();
+        if (!DocumentsContract.isTreeUri(tree)) return false;
+        int flags = result.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        if ((flags & Intent.FLAG_GRANT_READ_URI_PERMISSION) == 0) return false;
+        try {
+            activity.getContentResolver().takePersistableUriPermission(tree, flags);
+            return true;
+        } catch (SecurityException denied) {
+            return false;
+        }
+    }
+
+    private static final String[] tabletProjectColumns = {
+        DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+        DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+        DocumentsContract.Document.COLUMN_MIME_TYPE,
+        DocumentsContract.Document.COLUMN_LAST_MODIFIED
+    };
+
+    private static void tabletAppendProject(org.json.JSONArray projects,
+            java.util.Set<String> seen, Uri uri, android.database.Cursor row,
+            String folder) throws org.json.JSONException {
+        String name = row.getString(1);
+        if (name == null) return;
+        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        if (!lower.endsWith(".kra") && !lower.endsWith(".krz") &&
+            !"application/x-krita".equals(row.getString(2))) return;
+        if (!seen.add(uri.getAuthority() + "/" + row.getString(0))) return;
+        org.json.JSONObject item = new org.json.JSONObject();
+        item.put("uri", uri.toString());
+        item.put("name", name);
+        item.put("folder", folder);
+        item.put("modified", row.getLong(3));
+        if ("com.android.externalstorage.documents".equals(uri.getAuthority())) {
+            String id = row.getString(0);
+            int colon = id.indexOf(':');
+            if (colon > 0) {
+                String volume = id.substring(0, colon);
+                java.io.File root = "primary".equals(volume) ?
+                    Environment.getExternalStorageDirectory() : new java.io.File("/storage", volume);
+                item.put("localPath", new java.io.File(root, id.substring(colon + 1)).getPath());
+            }
+        }
+        projects.put(item);
+    }
+
+    private static void tabletScanProjectTree(android.content.ContentResolver resolver,
+            Uri tree, org.json.JSONArray projects, java.util.Set<String> seen) {
+        java.util.ArrayDeque<android.util.Pair<String, String>> folders = new java.util.ArrayDeque<>();
+        java.util.HashSet<String> visited = new java.util.HashSet<>();
+        String rootId = DocumentsContract.getTreeDocumentId(tree);
+        String rootName = tree.getAuthority();
+        Uri root = DocumentsContract.buildDocumentUriUsingTree(tree, rootId);
+        try (android.database.Cursor row = resolver.query(root, tabletProjectColumns, null, null, null)) {
+            if (row != null && row.moveToFirst() && row.getString(1) != null) rootName = row.getString(1);
+        } catch (Exception ignored) {}
+        folders.add(new android.util.Pair<>(rootId, rootName));
+        while (!folders.isEmpty()) {
+            android.util.Pair<String, String> folder = folders.removeFirst();
+            if (!visited.add(folder.first)) continue;
+            Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, folder.first);
+            try (android.database.Cursor rows = resolver.query(children, tabletProjectColumns, null, null, null)) {
+                if (rows == null) continue;
+                while (rows.moveToNext()) {
+                    String id = rows.getString(0);
+                    if (id == null) continue;
+                    if (DocumentsContract.Document.MIME_TYPE_DIR.equals(rows.getString(2))) {
+                        String name = rows.getString(1);
+                        if (!".krita-gallery-trash".equals(name))
+                            folders.add(new android.util.Pair<>(id, folder.second + "/" + name));
+                    } else {
+                        tabletAppendProject(projects, seen,
+                            DocumentsContract.buildDocumentUriUsingTree(tree, id), rows, folder.second);
+                    }
+                }
+            } catch (Exception ignored) {
+                // An unavailable child folder does not invalidate the whole tree.
+            }
+        }
+    }
+
     public static String tabletGrantedProjects() {
         org.json.JSONArray projects = new org.json.JSONArray();
         MainActivity activity = tabletPermissionActivity;
         if (activity == null) return projects.toString();
         android.content.ContentResolver resolver = activity.getContentResolver();
+        java.util.Set<String> seen = new java.util.HashSet<>();
         for (android.content.UriPermission permission : resolver.getPersistedUriPermissions()) {
+            if (!permission.isReadPermission()) continue;
             Uri uri = permission.getUri();
-            if (!permission.isReadPermission() ||
-                !android.provider.DocumentsContract.isDocumentUri(activity, uri)) continue;
-            try (android.database.Cursor row = resolver.query(uri,
-                    new String[]{android.provider.OpenableColumns.DISPLAY_NAME},
-                    null, null, null)) {
-                if (row == null || !row.moveToFirst()) continue;
-                String name = row.getString(0);
-                if (name == null) continue;
-                String lower = name.toLowerCase(java.util.Locale.ROOT);
-                if (!lower.endsWith(".kra") && !lower.endsWith(".krz")) continue;
-                org.json.JSONObject item = new org.json.JSONObject();
-                item.put("uri", uri.toString());
-                item.put("name", name);
-                projects.put(item);
+            try {
+                if (DocumentsContract.isTreeUri(uri) && uri.getPathSegments().size() == 2) {
+                    tabletScanProjectTree(resolver, uri, projects, seen);
+                } else if (DocumentsContract.isDocumentUri(activity, uri)) {
+                    try (android.database.Cursor row = resolver.query(uri, tabletProjectColumns, null, null, null)) {
+                        if (row != null && row.moveToFirst())
+                            tabletAppendProject(projects, seen, uri, row, uri.getAuthority());
+                    }
+                }
             } catch (Exception ignored) {
-                // A provider can remove the file or revoke its grant.
+                // Grants may be stale or the provider may be offline.
             }
         }
         return projects.toString();
@@ -1547,6 +1629,10 @@ install(FILES org.kde.krita.desktop''',
 
     private static final String TAG''',
         "Android SAF embedded KRA thumbnail helper")
+    if "import android.provider.DocumentsContract;" not in activity:
+        activity=one(activity,"import android.net.Uri;",
+            "import android.net.Uri;\nimport android.provider.DocumentsContract;",
+            "Android document tree import")
     activityfile.write_text(activity,encoding="utf-8")
 
     debugManifest=root/"packaging/android/apk/flavors/debug/AndroidManifest.xml"

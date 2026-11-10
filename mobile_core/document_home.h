@@ -16,7 +16,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
-#include <QElapsedTimer>
+#include <QtAndroid>
 #include <QEvent>
 #include <QFile>
 #include <QFileInfo>
@@ -118,13 +118,21 @@ public:
         m_refresh->setMinimumWidth(76);
         tools->addWidget(m_search,1);
         tools->addWidget(m_refresh);
+        m_sort=new QPushButton(this);
+        m_sortByName=QSettings().value(QStringLiteral("MobileStudio/projectSortByName"),false).toBool();
+        updateSortLabel();
+        tools->addWidget(m_sort);
         m_discardDraft=new QPushButton(i18n("Discard…"),this);
         m_discardDraft->setCheckable(true);
         tools->addWidget(m_discardDraft);
         layout->addLayout(tools);
 
-        m_access=new QPushButton(i18n("Allow access to all local projects"),this);
-        layout->addWidget(m_access);
+        auto *locations=new QHBoxLayout;
+        m_access=new QPushButton(i18n("Allow all local files"),this);
+        m_addFolder=new QPushButton(i18n("Add folder…"),this);
+        locations->addWidget(m_access);
+        locations->addWidget(m_addFolder);
+        layout->addLayout(locations);
         m_message=new QLabel(this);
         m_message->setWordWrap(true);
         m_message->setStyleSheet(QStringLiteral("font-size:12px;color:#c3ccd7;"));
@@ -168,6 +176,13 @@ public:
         connect(m_refresh,&QPushButton::clicked,this,[this]() {
             showList(m_mode);
         });
+        connect(m_sort,&QPushButton::clicked,this,[this]() {
+            m_sortByName=!m_sortByName;
+            QSettings().setValue(QStringLiteral("MobileStudio/projectSortByName"),m_sortByName);
+            updateSortLabel();
+            sortProjects();
+        });
+        connect(m_addFolder,&QPushButton::clicked,this,[this]() {addFolder();});
         connect(m_discardDraft,&QPushButton::toggled,this,[this](bool armed) {
             if(m_mode!=RecoveryDrafts)return;
             m_message->setText(armed?i18n("Choose an unopened draft to discard."):
@@ -286,7 +301,36 @@ private:
         QString path;
         QString title;
         qint64 timestamp=0;
+        QString folder;
     };
+
+    void addFolder()
+    {
+        const auto action=QAndroidJniObject::fromString(
+            QStringLiteral("android.intent.action.OPEN_DOCUMENT_TREE"));
+        const QAndroidJniObject intent("android/content/Intent",
+            "(Ljava/lang/String;)V",action.object<jstring>());
+        if(!intent.isValid())return;
+        QPointer<MobileDocumentHome> home(this);
+        QtAndroid::startActivity(intent,0,[home](int,int result,const QAndroidJniObject &data) {
+            if(result!=-1 || !data.isValid())return; // Android Activity.RESULT_OK
+            const bool granted=QAndroidJniObject::callStaticMethod<jboolean>(
+                "org/krita/android/MainActivity","tabletRememberProjectFolder",
+                "(Landroid/content/Intent;)Z",data.object());
+            QMetaObject::invokeMethod(qApp,[home,granted]() {
+                if(!home || !home->isVisible())return;
+                if(granted)home->showList(AllProjects);
+                else QMessageBox::warning(home,i18n("Folder access unavailable"),
+                    i18n("Android could not keep access to this folder. Try a different folder."));
+            },Qt::QueuedConnection);
+        });
+    }
+
+    void updateSortLabel()
+    {
+        m_sort->setText(m_sortByName?i18n("Name"):i18n("Newest"));
+        m_sort->setToolTip(i18n("Switch project sort order"));
+    }
 
     bool draftIsOpen(const QString &path) const
     {
@@ -427,6 +471,8 @@ private:
         m_refresh->setVisible(mode!=OpenCanvases);
         m_lastAccess=hasAllFilesAccess();
         m_access->setVisible(mode==AllProjects && !m_lastAccess);
+        m_addFolder->setVisible(mode==AllProjects);
+        m_sort->setVisible(mode==AllProjects);
         m_list->setViewMode(mode==OpenCanvases?
                             QListView::ListMode:QListView::IconMode);
         m_list->setGridSize(mode==OpenCanvases?QSize():QSize(148,164));
@@ -454,18 +500,17 @@ private:
                     it->m_url.toLocalFile():it->m_url.toString();
                 const QString name=it->m_displayName.isEmpty()?
                     QFileInfo(path).fileName():it->m_displayName;
-                addProject({path,name,0});
+                addProject({path,name,0,{}});
             }
         } else if(mode==RecoveryDrafts) {
             m_message->setText(i18n("Recovered drafts open as unsaved drawings."));
             for(const auto &draft:drafts)
                 addProject({draft.absoluteFilePath(),MobileDraftRecovery::title(draft),
-                            draft.lastModified().toMSecsSinceEpoch()});
+                            draft.lastModified().toMSecsSinceEpoch(),{}});
         } else {
             m_message->setText(m_lastAccess?
                 i18n("Searching accessible storage for Krita projects…"):
-                i18n("Searching common folders. Grant file access to "
-                     "find projects throughout device storage."));
+                i18n("Searching common folders and folders you added…"));
             startScan(m_lastAccess);
         }
         if(mode!=AllProjects && m_list->count()==0) {
@@ -486,7 +531,11 @@ private:
         auto *item=new QListWidgetItem(m_placeholder,project.title,m_list);
         item->setData(Qt::UserRole,project.path);
         item->setData(Qt::UserRole+1,project.timestamp);
-        item->setToolTip(project.path);
+        const QString location=project.folder.isEmpty()?
+            project.path:project.folder;
+        item->setData(Qt::UserRole+2,location);
+        item->setToolTip(location);
+        filterItem(item,m_search->text().trimmed());
         const auto cached=m_cache.constFind(project.path);
         if(cached!=m_cache.cend())item->setIcon(cached.value());
     }
@@ -519,50 +568,52 @@ private:
             }
             QSet<QString> seen;
             QVector<Project> batch;
-            for(const auto &project:androidList("tabletGrantedProjects")) {
-                const auto entry=project.toObject();
-                batch.append({entry.value(QStringLiteral("uri")).toString(),
-                              entry.value(QStringLiteral("name")).toString(),0});
-            }
-            int count=batch.size();
-            QElapsedTimer elapsed;
-            elapsed.start();
-            for(const QString &root:roots) {
-                if(cancel->load() || count>=3000 ||
-                   elapsed.elapsed()>30000)break;
-                if(!QDir(root).exists())continue;
-                QDirIterator it(root,
-                    {QStringLiteral("*.kra"),QStringLiteral("*.krz")},
-                    QDir::Files|QDir::Readable|QDir::NoDotAndDotDot,
-                    QDirIterator::Subdirectories);
-                while(!cancel->load() && it.hasNext() &&
-                      count<3000 && elapsed.elapsed()<=30000) {
+            const auto deliverBatch=[&]() {
+                if(batch.isEmpty())return;
+                auto deliver=std::move(batch);
+                batch.clear();
+                QMetaObject::invokeMethod(qApp,
+                    [home,cancel,generation,deliver]() {
+                        if(home && !cancel->load())
+                            home->appendBatch(generation,deliver);
+                    },Qt::QueuedConnection);
+            };
+            while(!roots.isEmpty() && !cancel->load()) {
+                const QString root=roots.takeLast();
+                QDirIterator it(root,QDir::Dirs|QDir::Files|QDir::Hidden|
+                    QDir::NoDotAndDotDot|QDir::NoSymLinks);
+                while(!cancel->load() && it.hasNext()) {
                     const QString path=it.next();
-                    if(path.contains(QStringLiteral("/.krita-gallery-trash/")) ||
-                       path.contains(QStringLiteral("/Android/data/")) ||
-                       path.contains(QStringLiteral("/Android/obb/")) ||
-                       seen.contains(path))continue;
-                    const QFileInfo info(path);
-                    if(!info.isReadable() || !isKra(path))continue;
-                    seen.insert(path);
-                    batch.append({path,info.fileName(),
-                                  info.lastModified().toMSecsSinceEpoch()});
-                    ++count;
-                    if(batch.size()>=32) {
-                        const auto deliver=batch;
-                        batch.clear();
-                        QMetaObject::invokeMethod(qApp,
-                            [home,cancel,generation,deliver]() {
-                            if(home && !cancel->load())
-                                home->appendBatch(generation,deliver);
-                        },Qt::QueuedConnection);
+                    const QFileInfo info=it.fileInfo();
+                    if(info.isDir()) {
+                        if(info.fileName()!=QStringLiteral(".krita-gallery-trash") &&
+                           !path.endsWith(QStringLiteral("/Android/data")) &&
+                           !path.endsWith(QStringLiteral("/Android/obb")))
+                            roots.append(path);
+                    } else if(info.isReadable() && isKra(path)) {
+                        seen.insert(QDir::cleanPath(path));
+                        batch.append({path,info.fileName(),
+                                      info.lastModified().toMSecsSinceEpoch(),{}});
+                        if(batch.size()>=32)deliverBatch();
                     }
                 }
             }
-            QMetaObject::invokeMethod(qApp,[home,cancel,generation,batch,count]() {
-                if(!home || cancel->load())return;
-                home->appendBatch(generation,batch);
-                home->finishScan(generation,count);
+            deliverBatch();
+            if(cancel->load())return;
+            for(const auto &project:androidList("tabletGrantedProjects")) {
+                if(cancel->load())return;
+                const auto entry=project.toObject();
+                if(seen.contains(QDir::cleanPath(entry.value(QStringLiteral("localPath")).toString())))
+                    continue;
+                batch.append({entry.value(QStringLiteral("uri")).toString(),
+                              entry.value(QStringLiteral("name")).toString(),
+                              qint64(entry.value(QStringLiteral("modified")).toDouble()),
+                              entry.value(QStringLiteral("folder")).toString()});
+                if(batch.size()>=32)deliverBatch();
+            }
+            deliverBatch();
+            QMetaObject::invokeMethod(qApp,[home,cancel,generation]() {
+                if(home && !cancel->load())home->finishScan(generation);
             },Qt::QueuedConnection);
         });
     }
@@ -571,44 +622,47 @@ private:
     {
         if(generation!=m_scanGeneration || m_mode!=AllProjects)return;
         for(const auto &p:projects)addProject(p);
-        filterItems();
         scheduleThumbnails();
     }
 
-    void finishScan(int generation,int count)
+    void finishScan(int generation)
     {
         if(generation!=m_scanGeneration || m_mode!=AllProjects)return;
-        // Sorting after scan avoids rebuilding the visible grid for
-        // every filesystem result, including large document libraries.
+        sortProjects();
+        const int count=m_list->count();
+        m_message->setText(count==0?
+            i18n("No Krita projects found. Add a folder or use Browse Files."):
+            i18np("%1 Krita project found", "%1 Krita projects found",count));
+    }
+
+    void sortProjects()
+    {
         QList<QListWidgetItem*> sorted;
         while(m_list->count())sorted.append(m_list->takeItem(0));
         std::stable_sort(sorted.begin(),sorted.end(),
-            [](QListWidgetItem *a,QListWidgetItem *b) {
-            const qint64 am=a->data(Qt::UserRole+1).toLongLong();
-            const qint64 bm=b->data(Qt::UserRole+1).toLongLong();
-            return am==bm?QString::compare(a->text(),b->text(),
-                    Qt::CaseInsensitive)<0:am>bm;
-        });
+            [this](QListWidgetItem *a,QListWidgetItem *b) {
+                const qint64 am=a->data(Qt::UserRole+1).toLongLong();
+                const qint64 bm=b->data(Qt::UserRole+1).toLongLong();
+                if(!m_sortByName && am!=bm)return am>bm;
+                const int name=QString::localeAwareCompare(a->text().toCaseFolded(),
+                                                            b->text().toCaseFolded());
+                return name==0?am>bm:name<0;
+            });
         for(QListWidgetItem *item:sorted)m_list->addItem(item);
-        m_message->setText(count==0?
-            i18n("No local Krita documents found. Use Browse Files "
-                 "for documents from other providers."):
-            i18np("%1 Krita project found",
-                   "%1 Krita projects found",count));
         filterItems();
-        scheduleThumbnails();
+    }
+
+    void filterItem(QListWidgetItem *item,const QString &query) const
+    {
+        item->setHidden(!query.isEmpty() && m_mode!=OpenCanvases &&
+            !item->text().contains(query,Qt::CaseInsensitive) &&
+            !item->data(Qt::UserRole+2).toString().contains(query,Qt::CaseInsensitive));
     }
 
     void filterItems()
     {
         const QString query=m_search->text().trimmed();
-        for(int i=0;i<m_list->count();++i) {
-            QListWidgetItem *item=m_list->item(i);
-            item->setHidden(!query.isEmpty() && m_mode!=OpenCanvases &&
-                !item->text().contains(query,Qt::CaseInsensitive) &&
-                !item->data(Qt::UserRole).toString().contains(
-                    query,Qt::CaseInsensitive));
-        }
+        for(int i=0;i<m_list->count();++i)filterItem(m_list->item(i),query);
         scheduleThumbnails();
     }
 
@@ -666,11 +720,13 @@ private:
     QListWidget *m_list=nullptr;
     QPushButton *m_recent=nullptr,*m_library=nullptr,*m_open=nullptr,*m_drafts=nullptr;
     QPushButton *m_refresh=nullptr,*m_access=nullptr,*m_discardDraft=nullptr;
+    QPushButton *m_addFolder=nullptr,*m_sort=nullptr;
     QLineEdit *m_search=nullptr;
     QLabel *m_message=nullptr;
     QIcon m_placeholder;
     Mode m_mode=Recent;
     bool m_lastAccess=false;
+    bool m_sortByName=false;
     bool m_thumbnailScheduled=false;
     int m_scanGeneration=0;
     std::shared_ptr<std::atomic_bool> m_scanCancel;

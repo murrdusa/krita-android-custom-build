@@ -70,6 +70,9 @@
 
 ## Test status
 
+- **Project library:** All Projects now scans shared storage without a project-count or duration cutoff. **Add folder…** uses Android's folder picker, keeps the folder grant, and indexes accessible KRA/KRZ files in subfolders. Local and folder-granted copies of the same shared-storage document are merged. Search matches folder names, and All Projects remembers Newest or Name order. Fold 6 check: add a folder with a previously missing drawing, verify nested files appear and open, then restart and check the grant and sort order persist. Android providers that do not expose folder access still use Browse Files.
+
+
 - **Slow finger strokes (WSL Android build PASS at `4e29dd6260b3c0d117f8dd6aca551799e2a025a7`, 114.3 s):** pressure now uses motion to choose its filter speed and holds steady across alternating contact-size steps. Pausing no longer starts a new pressure curve mid-stroke. Paint/Erase/Blend remember the selected native preset ID, with migration from name-only settings. Home → Recover drafts can explicitly discard an unopened draft after confirmation. Fold 6 check: draw very slowly with one finger using a pressure-size brush, vary contact deliberately, pause and resume, compare S Pen, switch duplicate-named presets between modes, and discard an unopened draft.
 
 
