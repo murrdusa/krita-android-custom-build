@@ -191,6 +191,17 @@ public:
             "stroke_selection",
             "stroke_shapes"
         });
+        addDrawingGroup("Brush smoothing",{
+            "set_no_brush_smoothing",
+            "set_simple_brush_smoothing",
+            "set_weighted_brush_smoothing",
+            "set_stabilizer_brush_smoothing",
+            "set_pixel_perfect_smoothing"
+        });
+        addDrawingGroup("Brush symmetry",{
+            "hmirror_action",
+            "vmirror_action"
+        });
         addDrawingGroup("Clipboard and canvas edits",{
             "edit_cut",
             "edit_copy",

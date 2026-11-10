@@ -70,6 +70,8 @@
 
 ## Test status
 
+- **Native brush controls:** More → Drawing now exposes Krita's freehand brush smoothing modes and horizontal/vertical brush symmetry. The controls use the existing tool and paint toolbar actions. Fold 6 check: with Freehand Brush active, switch between Stabilizer and Disabled and verify Tool Options follows. Toggle each symmetry axis, draw mirrored strokes, and switch between canvases to check the axis state follows the document.
+
 - **Last Fold 6 test: PASS** for separate native APK target at `7cf81bffcf5b84f483d0d92112c13a1e80a9f352`: app launched without grey screen, stylus drawing and pressure worked, KRA save/reopen worked, Android file opening/sharing worked.
 - **Latest locally compiled/packaged Android source revision: `630296ab2ac2b9f11bbf6440b9b35b5983577a49`, SUCCESS**, confirmed by the WSL watcher in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1) at 2026-11-10 01:56 UTC. Includes hiding Krita's global selection mask from the layer rail and synchronizing native Transform selection before tool activation. **Actual Transform behavior on Fold 6 still requires device confirmation.**
 - Doc-only commits may not trigger another APK build. The compiled SHA above is the meaningful source baseline; always read the latest Issue #1 for newer work.
