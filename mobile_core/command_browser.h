@@ -20,7 +20,7 @@
 #include <QMenu>
 #include <QPointer>
 #include <QPushButton>
-#include <QScroller>
+#include "touch_scroll.h"
 #include <QSet>
 #include <QSize>
 #include <QString>
@@ -147,11 +147,7 @@ public:
         bar->addWidget(breadcrumb,1);
         layout->addLayout(bar);
         auto *list=new QListWidget(&dialog);
-        list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-        list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        list->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
-        QScroller::grabGesture(list->viewport(),
-                               QScroller::LeftMouseButtonGesture);
+        MobileTouchScroll::configureList(list);
         layout->addWidget(list,1);
         auto *count=new QLabel(&dialog);
         count->setStyleSheet(QStringLiteral("color:#b9ccdc;font-size:12px;"));

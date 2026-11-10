@@ -23,6 +23,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QScroller>
+#include "touch_scroll.h"
 #include <QSettings>
 #include <QSizePolicy>
 #include <QStringList>
@@ -358,6 +359,7 @@ private:
         heading->setStyleSheet(QStringLiteral("font-size:18px;font-weight:600;"));
         layout->addWidget(heading);
         auto *type=new QComboBox(&dlg);
+        MobileTouchScroll::configureCombo(type);
         type->addItem(i18n("Frequently used"),0);
         type->addItem(i18n("All commands and tools"),1);
         type->addItem(i18n("Krita tools"),2);
@@ -367,10 +369,7 @@ private:
         search->setClearButtonEnabled(true);
         layout->addWidget(search);
         auto *list=new QListWidget(&dlg);
-        list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-        list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        list->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
-        QScroller::grabGesture(list->viewport(),QScroller::LeftMouseButtonGesture);
+        MobileTouchScroll::configureList(list);
         layout->addWidget(list,1);
         auto *count=new QLabel(&dlg);
         layout->addWidget(count);

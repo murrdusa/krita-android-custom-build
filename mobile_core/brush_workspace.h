@@ -15,7 +15,7 @@
 #include <QPointer>
 #include <QPalette>
 #include <QPushButton>
-#include <QScroller>
+#include "touch_scroll.h"
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QToolButton>
@@ -23,6 +23,7 @@
 #include <QFrame>
 #include <QTimer>
 #include <QPixmap>
+#include <QImage>
 
 #include "engine_bridge.h"
 #include "kis_canvas_resource_provider.h"
@@ -299,8 +300,10 @@ private:
         {
             if(role==Qt::DecorationRole && index.isValid()) {
                 const auto source=mapToSource(index);
-                return source.sibling(source.row(),KisAbstractResourceModel::Thumbnail)
-                    .data(Qt::DecorationRole);
+                const auto thumbnail=source.sibling(source.row(),KisAbstractResourceModel::Thumbnail)
+                    .data(Qt::DecorationRole).value<QImage>();
+                // QIcon lets the delegate use the tile's icon size on Android.
+                return QIcon(QPixmap::fromImage(thumbnail));
             }
             return QSortFilterProxyModel::data(index,role);
         }
@@ -427,7 +430,8 @@ private:
             "QPushButton{background:#45667e;color:#fff;min-height:46px;"
             "border:1px solid #91bbd6;border-radius:7px;}");
         auto *layout=new QVBoxLayout(&dialog);
-        layout->setContentsMargins(10,10,10,10);
+        layout->setContentsMargins(6,6,6,6);
+        layout->setSpacing(4);
         auto *search=new QLineEdit(&dialog);
         search->setPlaceholderText(i18n("Search every Krita brush preset"));
         search->setClearButtonEnabled(true);
@@ -441,6 +445,7 @@ private:
         category->addItem(i18n("Blending / Smudge"),2);
         if(slot!=2)category->addItem(i18n("Clone"),3);
         category->setCurrentIndex(category->findData(slot));
+        MobileTouchScroll::configureCombo(category);
         layout->addWidget(category);
 
         auto *grid=new QListView(&dialog);
@@ -452,12 +457,16 @@ private:
         grid->setLayoutMode(QListView::Batched);
         grid->setBatchSize(32);
         grid->setUniformItemSizes(true);
-        grid->setGridSize(QSize(110,116));
-        grid->setIconSize(QSize(68,68));
+        const QSize size=window()->size();
+        const int width=qMin(550,qMax(1,size.width()-16));
+        const int gridWidth=qMax(1,width-14);
+        const int columns=qMax(1,gridWidth/82);
+        constexpr int tileHeight=88;
+        grid->setGridSize(QSize(gridWidth/columns,tileHeight));
+        grid->setIconSize(QSize(56,56));
         grid->setWordWrap(true);
-        grid->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-        grid->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
-        QScroller::grabGesture(grid->viewport(),QScroller::LeftMouseButtonGesture);
+        grid->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        MobileTouchScroll::configureList(grid);
         layout->addWidget(grid,1);
 
         auto *close=new QPushButton(i18n("Close"),&dialog);
@@ -488,9 +497,9 @@ private:
             refresh();
             dialog.accept();
         });
-        const QSize size=window()->size();
-        dialog.resize(qMax(300,qMin(570,size.width()-32)),
-                      qMax(340,qMin(720,size.height()-65)));
+        const int rows=qMax(1,(filter->rowCount()+columns-1)/columns);
+        dialog.resize(width,qMin(qMax(1,size.height()-28),
+                                 qMin(670,layout->minimumSize().height()+rows*tileHeight)));
         dialog.exec();
     }
 

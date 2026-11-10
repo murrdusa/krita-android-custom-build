@@ -14,7 +14,7 @@
 #include <QPainter>
 #include <QPushButton>
 #include <QScrollArea>
-#include <QScroller>
+#include "touch_scroll.h"
 #include <QSet>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -144,9 +144,7 @@ public:
         layout->addWidget(search);
         auto *scroll=new QScrollArea(&dialog);
         scroll->setWidgetResizable(true);
-        scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        scroll->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
-        QScroller::grabGesture(scroll->viewport(),QScroller::LeftMouseButtonGesture);
+        MobileTouchScroll::configure(scroll);
         layout->addWidget(scroll,1);
 
         auto *buttons=new QHBoxLayout;

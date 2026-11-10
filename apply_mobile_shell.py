@@ -700,6 +700,8 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
         pressure_calibration.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/finger_pressure_settings.h").write_text(
         pressure_settings.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/touch_scroll.h").write_text(
+        (own/"mobile_core/touch_scroll.h").read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/tool_browser.h").write_text(
         tools.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_workflow.h").write_text(

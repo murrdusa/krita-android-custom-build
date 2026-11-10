@@ -28,7 +28,7 @@
 #include <QScrollArea>
 #include <QSlider>
 #include <QScrollBar>
-#include <QScroller>
+#include "touch_scroll.h"
 #include <QSet>
 #include <QSpinBox>
 #include <QTimer>
@@ -73,11 +73,8 @@ public:
         layout->addWidget(m_tool);
         m_scroll=new QScrollArea(this);
         m_scroll->setWidgetResizable(true);
-        m_scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        m_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
         m_scroll->setMinimumWidth(0);
-        m_scroll->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
-        QScroller::grabGesture(m_scroll->viewport(),QScroller::LeftMouseButtonGesture);
+        MobileTouchScroll::configure(m_scroll);
         layout->addWidget(m_scroll,1);
         auto *gear=new QToolButton(this);
         gear->setIcon(QIcon(QStringLiteral(":/light_configure.svg")));

@@ -21,7 +21,7 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QScrollArea>
-#include <QScroller>
+#include "touch_scroll.h"
 #include <QSizeF>
 #include <QTouchEvent>
 #include <QVBoxLayout>
@@ -275,8 +275,7 @@ public:
         scroll->setObjectName(QStringLiteral("fingerPressureSettingsScroll"));
         scroll->setWidgetResizable(true);
         scroll->setFrameShape(QFrame::NoFrame);
-        scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        QScroller::grabGesture(scroll->viewport(),QScroller::LeftMouseButtonGesture);
+        MobileTouchScroll::configure(scroll);
         auto *body=new QWidget(scroll);
         auto *layout=new QVBoxLayout(body);
         layout->setSpacing(9);

@@ -19,7 +19,7 @@
 #include <QFormLayout>
 #include <QLabel>
 #include <QScrollArea>
-#include <QScroller>
+#include "touch_scroll.h"
 #include <QSpinBox>
 #include <QObject>
 #include <QDockWidget>
@@ -76,7 +76,7 @@ public:
         const QSettings settings;
         m_keepLayers=settings.value(QStringLiteral("MobileStudio/keepLayersOpen"),true).toBool();
         m_keepColor=settings.value(QStringLiteral("MobileStudio/keepColorOpen"),true).toBool();
-        m_showBrushSliders=settings.value(QStringLiteral("MobileStudio/showBrushSliders"),false).toBool();
+        m_showBrushSliders=settings.value(QStringLiteral("MobileStudio/showBrushSliders"),true).toBool();
         qApp->installEventFilter(this);
         auto *contextRefresh=new QTimer(this);
         contextRefresh->setSingleShot(true);
@@ -237,6 +237,10 @@ public:
             dismiss->setMinimumHeight(44);
             dock->setTitleBarWidget(dismiss);
             connect(dismiss,&QPushButton::clicked,dock,&QWidget::hide);
+            if(auto *scroll=qobject_cast<QScrollArea*>(dock->widget())) {
+                QScroller::ungrabGesture(scroll);
+                MobileTouchScroll::configure(scroll);
+            }
             m_toolOptions=dock;
             // One owner for the option widgets; the active native
             // tool continues to own their state and lifetime.
@@ -429,8 +433,7 @@ public:
             auto *scroll=new QScrollArea(&dialog);
             scroll->setWidgetResizable(true);
             scroll->setFrameShape(QFrame::NoFrame);
-            scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-            QScroller::grabGesture(scroll->viewport(),QScroller::LeftMouseButtonGesture);
+            MobileTouchScroll::configure(scroll);
             auto *body=new QWidget(scroll);
             body->setObjectName(QStringLiteral("mobileInputSettingsBody"));
             auto *form=new QFormLayout(body);
@@ -520,6 +523,7 @@ public:
                 const QString setting=QString::fromLatin1(key);
                 combo->setCurrentIndex(qMax(0,combo->findData(
                     settings.value(setting,fallback).toInt())));
+                MobileTouchScroll::configureCombo(combo);
                 form->addRow(label,combo);
                 QObject::connect(combo,QOverload<int>::of(&QComboBox::currentIndexChanged),
                     &dialog,[combo,setting](int) {
@@ -604,33 +608,44 @@ public:
                 "QCheckBox::indicator{width:22px;height:22px;}"
                 "QPushButton{background:#34343a;color:#f4f4f5;"
                 "border:1px solid #55555c;border-radius:8px;min-height:44px;}"));
-            auto *layout=new QVBoxLayout(&dialog);
+            auto *outer=new QVBoxLayout(&dialog);
+            auto *scroll=new QScrollArea(&dialog);
+            scroll->setWidgetResizable(true);
+            scroll->setFrameShape(QFrame::NoFrame);
+            MobileTouchScroll::configure(scroll);
+            auto *body=new QWidget(scroll);
+            auto *layout=new QVBoxLayout(body);
+            scroll->setWidget(body);
+            outer->addWidget(scroll,1);
+            dialog.resize(qMin(400,m_host->width()),qMin(380,m_host->height()));
             auto *description=new QLabel(QObject::tr(
-                "Keep panels open when you touch the canvas"),&dialog);
+                "Keep panels open when you touch the canvas"),body);
             description->setWordWrap(true);
             layout->addWidget(description);
-            auto *layers=new QCheckBox(QObject::tr("Layers"),&dialog);
-            auto *color=new QCheckBox(QObject::tr("Color wheel"),&dialog);
-            auto *brush=new QCheckBox(QObject::tr("Show Size and Opacity at the bottom"),&dialog);
+            auto *layers=new QCheckBox(QObject::tr("Layers"),body);
+            auto *color=new QCheckBox(QObject::tr("Color wheel"),body);
+            auto *brush=new QCheckBox(QObject::tr("Show Size and Opacity at the bottom"),body);
             layers->setChecked(m_keepLayers);
             color->setChecked(m_keepColor);
             brush->setChecked(m_showBrushSliders);
             layout->addWidget(layers);
             layout->addWidget(color);
             layout->addWidget(brush);
-            auto *shortcut=new QComboBox(&dialog);
+            auto *shortcut=new QComboBox(body);
             if(!m_shortcuts.isEmpty()) {
-                layout->addWidget(new QLabel(QObject::tr("Toolbar shortcut"),&dialog));
+                layout->addWidget(new QLabel(QObject::tr("Toolbar shortcut"),body));
                 for(const auto &choice:m_shortcuts)
                     shortcut->addItem(choice.icon,choice.action->text());
                 shortcut->setCurrentIndex(m_shortcutIndex);
+                MobileTouchScroll::configureCombo(shortcut);
                 layout->addWidget(shortcut);
             } else {
                 shortcut->hide();
             }
+            layout->addStretch(1);
             auto *done=new QPushButton(QObject::tr("Done"),&dialog);
             connect(done,&QPushButton::clicked,&dialog,&QDialog::accept);
-            layout->addWidget(done);
+            outer->addWidget(done);
             if(dialog.exec()!=QDialog::Accepted)return;
             m_keepLayers=layers->isChecked();
             m_keepColor=color->isChecked();
@@ -976,7 +991,7 @@ private:
     QPointer<QAction> m_volumeRedo;
     QVector<ToolbarShortcut> m_shortcuts;
     int m_shortcutIndex=0;
-    bool m_keepLayers=true,m_keepColor=true,m_showBrushSliders=false;
+    bool m_keepLayers=true,m_keepColor=true,m_showBrushSliders=true;
     bool m_canvasOnly=false;
 };
 #endif

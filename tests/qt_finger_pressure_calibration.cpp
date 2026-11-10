@@ -64,6 +64,11 @@ int main(int argc,char **argv)
         QStringLiteral("fingerPressureSettingsScroll"));
     require(curve && stability && raw && scroll,
             "response curve / smoothing / raw / scroll controls missing");
+    require(scroll->horizontalScrollBarPolicy()==Qt::ScrollBarAlwaysOff &&
+            scroll->verticalScrollBarPolicy()==Qt::ScrollBarAlwaysOff &&
+            scroll->viewport()->testAttribute(Qt::WA_AcceptTouchEvents) &&
+            QScroller::grabbedGesture(scroll->viewport())!=Qt::GestureType(0),
+            "calibration settings must accept swipes with scrollbars hidden");
     auto *preview=dialog.findChild<MobileFingerResponsePreview*>(
         QStringLiteral("fingerPressureResponsePreview"));
     require(preview && qAbs(preview->gamma()-1.0)<0.001,

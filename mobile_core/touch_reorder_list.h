@@ -31,6 +31,8 @@ public:
         setAutoScroll(true);
         setAutoScrollMargin(30);
         setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         // Touch events synthesize mouse events on Android when raw touch
         // handling is disabled. Stylus input remains handled by Qt.
         viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);

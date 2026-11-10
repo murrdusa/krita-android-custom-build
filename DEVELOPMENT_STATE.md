@@ -4,6 +4,8 @@
 
 ## Resume here
 
+- Settings and tool sheets use native touch scrolling with both scrollbar indicators hidden. Brush presets keep lazy thumbnails, render as size-bounded icons, and use tighter tiles across the picker width. Size and Opacity are shown at the bottom by default when no preference is saved. Fold 6 check: swipe through Input, Calibration and Workspace settings, tap a dropdown choice after scrolling, and verify preset images and slider visibility on a fresh install.
+
 - Preliminary tester defaults: fresh installs enable finger pressure with a 1–10 px contact range, and volume down/up undo/redo for both taps and holds. Saved preferences take precedence. Input and calibration scroll by touch, and calibration puts the capture pad first with a Defaults button. The preset picker opens in the active slot’s category and uses Krita’s resource model to fetch thumbnails as needed. Device check on a clean install: draw with a finger, undo/redo with volume keys, calibrate, and open each picker to check its category, responsiveness and preset selection.
 
 - More → Drawing → Set Clone Source selects a native Clone preset when needed and arms one canvas tap for the source. The next stroke paints normally. The command can be pinned as the toolbar shortcut, and the brush browser has a Clone filter. Deferred Fold 6 check: choose a source, verify the source tap leaves the canvas unchanged, paint on the destination, and repeat after selecting a different source layer.
