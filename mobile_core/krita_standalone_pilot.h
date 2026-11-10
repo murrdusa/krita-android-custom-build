@@ -177,9 +177,7 @@ public:
         canvasOnlyAction->setCheckable(true);
         auto *exitAction=makeAction("Close app");
         QObject::connect(canvasOnlyAction,&QAction::toggled,workspace,
-                         [workspace](bool enabled) {
-            if(enabled)workspace->hidePanels();
-        });
+                         &MobileKritaNativeWorkspace::setCanvasOnly);
         QObject::connect(brushesAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleBrushes(0);});
         QObject::connect(eraserAction,&QAction::triggered,window,

@@ -17,6 +17,7 @@
 #include <QLabel>
 #include <QMouseEvent>
 #include <QResizeEvent>
+#include <QRegion>
 #include <QSize>
 #include <QPainter>
 #include <QPainterPath>
@@ -141,7 +142,7 @@ private:
     QRectF squareRect() const
     {
         const qreal radius=qMin(width(),height())/2.0-11.0;
-        const qreal size=qMax(35.0,(radius-23.0)*1.37);
+        const qreal size=qMax(0.0,(radius-12.0)*qSqrt(2.0));
         const QPointF center=rect().center();
         return QRectF(center.x()-size/2,center.y()-size/2,size,size);
     }
@@ -171,11 +172,31 @@ class MobileColorWorkspace final : public QFrame
 {
 public:
     explicit MobileColorWorkspace(const MobileEngineBridge &engine,
-                                  QWidget *canvasParent)
-        : QFrame(canvasParent),m_engine(engine)
+                                  QWidget *canvasParent,bool wheelOnly=false)
+        : QFrame(canvasParent),m_engine(engine),m_wheelOnly(wheelOnly)
     {
         setObjectName(QStringLiteral("MobileColorWorkspace"));
         setAttribute(Qt::WA_StyledBackground,true);
+        if(m_wheelOnly) {
+            setStyleSheet(QStringLiteral(
+                "QFrame#MobileColorWorkspace{background:#252529;border:0;}"));
+            auto *layout=new QVBoxLayout(this);
+            layout->setContentsMargins(0,0,0,0);
+            m_wheel=new MobileHueWheel(this);
+            m_wheel->setMinimumSize(0,0);
+            layout->addWidget(m_wheel);
+            m_wheel->onChosen=[this](const QColor &color,bool) {
+                setNativeColor(color,false);
+            };
+            if(auto *provider=m_engine.brushResources()) {
+                connect(provider,&KisCanvasResourceProvider::sigFGColorChanged,
+                        this,[this](const KoColor &) {refresh();});
+            }
+            if(canvasParent)canvasParent->installEventFilter(this);
+            updateForViewport();
+            refresh();
+            return;
+        }
         setStyleSheet(
             "QFrame#MobileColorWorkspace{background:#252529;"
             "border:1px solid #48484e;border-radius:13px;}"
@@ -292,6 +313,7 @@ public:
         const QColor foreground=provider->fgColor().toQColor();
         if(!foreground.isValid())return;
         m_wheel->showColor(foreground);
+        if(m_wheelOnly)return;
         const QString colorKey=foreground.name(QColor::HexArgb);
         if(colorKey!=m_lastSwatchColor) {
             m_lastSwatchColor=colorKey;
@@ -394,6 +416,16 @@ private:
     {
         auto *parent=parentWidget();
         if(!parent)return;
+        if(m_wheelOnly) {
+            const int side=qMax(0,qMin(212,qMin(parent->width()-12,
+                parent->height()-m_avoidTop-m_avoidBottom-12)));
+            if(size()!=QSize(side,side)) {
+                setFixedSize(side,side);
+                setMask(QRegion(rect(),QRegion::Ellipse));
+            }
+            move(parent->width()-side-6,parent->height()-m_avoidBottom-side-6);
+            return;
+        }
         // Prefer the requested size, then progressively smaller sizes.
         // When even the smallest wheel cannot fit, keep a swatch visible.
         const int besideLayers=parent->width()-m_avoidRight;
@@ -496,6 +528,7 @@ private:
     bool m_expanded=true,m_wantsExpanded=true,m_dragging=false;
     int m_sizeLevel=1,m_rightInset=7,m_bottomInset=7;
     int m_avoidBottom=0,m_avoidTop=0,m_avoidRight=0;
+    bool m_wheelOnly=false;
     QPoint m_dragStart,m_positionAtStart;
 };
 #endif // Q_OS_ANDROID

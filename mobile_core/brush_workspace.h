@@ -35,8 +35,8 @@
 class KritaMobileBrushWorkspace final : public QFrame {
 public:
     explicit KritaMobileBrushWorkspace(const MobileEngineBridge &engine,
-                                       QWidget *parent)
-        : QFrame(parent),m_engine(engine)
+                                       QWidget *parent,bool slidersOnly=false)
+        : QFrame(parent),m_engine(engine),m_hasSelectedMode(!slidersOnly)
     {
         setObjectName(QStringLiteral("mobileBrushWorkspace"));
         setStyleSheet(
@@ -50,40 +50,42 @@ public:
         auto *root=new QVBoxLayout(this);
         root->setContentsMargins(7,7,7,7);
         root->setSpacing(5);
-        auto *buttons=new QHBoxLayout;
-        buttons->setSpacing(5);
-        const QStringList labels={i18n("Paint"),i18n("Erase"),i18n("Blend")};
-        for(int i=0;i<3;++i) {
-            auto *button=new QToolButton(this);
-            button->setText(labels.at(i));
-            button->setMinimumHeight(42);
-            button->setCheckable(true);
-            button->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
-            m_modes[i]=button;
-            buttons->addWidget(button,1);
-            connect(button,&QToolButton::clicked,this,[this,i]() {
-                if(m_hasSelectedMode && m_slot==i) {
-                    openPresetBrowser(i);
-                } else switchMode(i);
+        if(!slidersOnly) {
+            auto *buttons=new QHBoxLayout;
+            buttons->setSpacing(5);
+            const QStringList labels={i18n("Paint"),i18n("Erase"),i18n("Blend")};
+            for(int i=0;i<3;++i) {
+                auto *button=new QToolButton(this);
+                button->setText(labels.at(i));
+                button->setMinimumHeight(42);
+                button->setCheckable(true);
+                button->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
+                m_modes[i]=button;
+                buttons->addWidget(button,1);
+                connect(button,&QToolButton::clicked,this,[this,i]() {
+                    if(m_hasSelectedMode && m_slot==i) {
+                        openPresetBrowser(i);
+                    } else switchMode(i);
+                });
+            }
+            auto *browse=new QToolButton(this);
+            browse->setText(i18n("Presets"));
+            browse->setMinimumHeight(42);
+            browse->setToolTip(i18n("Search Krita brush presets"));
+            buttons->addWidget(browse,1);
+            connect(browse,&QToolButton::clicked,this,[this]() {
+                openPresetBrowser(m_slot);
             });
-        }
-        auto *browse=new QToolButton(this);
-        browse->setText(i18n("Presets"));
-        browse->setMinimumHeight(42);
-        browse->setToolTip(i18n("Search Krita brush presets"));
-        buttons->addWidget(browse,1);
-        connect(browse,&QToolButton::clicked,this,[this]() {
-            openPresetBrowser(m_slot);
-        });
-        m_detailToggle=new QToolButton(this);
-        m_detailToggle->setToolTip(i18n("Show or hide detailed brush controls"));
-        m_detailToggle->setMinimumSize(36,42);
-        buttons->addWidget(m_detailToggle);
-        connect(m_detailToggle,&QToolButton::clicked,this,[this]() {
-            setDetailsExpanded(!m_detailsExpanded);
-        });
-        root->addLayout(buttons);
+            m_detailToggle=new QToolButton(this);
+            m_detailToggle->setToolTip(i18n("Show or hide detailed brush controls"));
+            m_detailToggle->setMinimumSize(36,42);
+            buttons->addWidget(m_detailToggle);
+            connect(m_detailToggle,&QToolButton::clicked,this,[this]() {
+                setDetailsExpanded(!m_detailsExpanded);
+            });
+            root->addLayout(buttons);
 
+        }
         m_controls=new QWidget(this);
         auto *details=new QVBoxLayout(m_controls);
         details->setContentsMargins(0,0,0,0);
@@ -91,10 +93,12 @@ public:
         auto *controlRow=new QHBoxLayout;
         controlRow->setContentsMargins(0,0,0,0);
         controlRow->setSpacing(6);
-        m_presetName=new QLabel(i18n("Current brush"),this);
-        m_presetName->setToolTip(i18n("Active Krita brush preset"));
-        m_presetName->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Preferred);
-        details->addWidget(m_presetName);
+        if(!slidersOnly) {
+            m_presetName=new QLabel(i18n("Current brush"),this);
+            m_presetName->setToolTip(i18n("Active Krita brush preset"));
+            m_presetName->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Preferred);
+            details->addWidget(m_presetName);
+        }
         m_size=new KisDoubleSliderSpinBox(this);
         m_size->setRange(0.01,KisImageConfig(true).maxBrushSize(),2);
         m_size->setExponentRatio(3.0);
@@ -111,16 +115,13 @@ public:
         m_opacity->setMinimumHeight(43);
         controlRow->addWidget(m_opacity,2);
         details->addLayout(controlRow);
-        m_flow=new KisDoubleSliderSpinBox(this);
-        m_flow->setRange(0,100,0);
-        m_flow->setPrefix(i18n("Flow: "));
-        m_flow->setSuffix(QStringLiteral("%"));
-        m_flow->setSingleStep(5);
-        m_flow->setMinimumHeight(43);
-        details->addWidget(m_flow);
         root->addWidget(m_controls);
-        setDetailsExpanded(QSettings().value(
-            QStringLiteral("MobileStudio/brushDetailsExpanded"),true).toBool());
+        if(slidersOnly) {
+            root->setContentsMargins(2,2,2,2);
+        } else {
+            setDetailsExpanded(QSettings().value(
+                QStringLiteral("MobileStudio/brushDetailsExpanded"),true).toBool());
+        }
 
         connect(m_size,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),
                 this,[this](qreal size) {
@@ -132,17 +133,10 @@ public:
             if(m_syncing)return;
             if(auto *provider=resources())provider->setOpacity(percent/100.0);
         });
-        connect(m_flow,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),
-                this,[this](qreal percent) {
-            if(!m_syncing)
-                if(auto *provider=resources())provider->setFlow(percent/100.0);
-        });
         if(auto *provider=resources()) {
             connect(provider,&KisCanvasResourceProvider::sigPaintOpPresetChanged,
                     this,[this](KisPaintOpPresetSP preset) {
                 if(!preset)return;
-                m_presetName->setText(preset->name().left(26));
-                m_presetName->setToolTip(preset->name());
                 if(!m_internalChange && m_hasSelectedMode &&
                    (m_slot!=2 || isSmudge(preset)))
                     QSettings().setValue(
@@ -162,11 +156,16 @@ public:
 
     bool isActiveMode(int slot) const
     {
-        return m_slot==slot &&
-            m_engine.activeTool()==QStringLiteral("KritaShape/KisToolBrush");
+        if(!m_hasSelectedMode || m_slot!=slot ||
+           m_engine.activeTool()!=QStringLiteral("KritaShape/KisToolBrush"))
+            return false;
+        const QAction *eraser=m_engine.action("erase_action");
+        if(eraser && eraser->isChecked()!=(slot==1))return false;
+        return slot!=2 || (resources() && isSmudge(resources()->currentPreset()));
     }
 
     void activateMode(int slot) { switchMode(slot); }
+    void browsePresets(int slot) { openPresetBrowser(slot); }
 
     void refresh()
     {
@@ -175,12 +174,11 @@ public:
         m_syncing=true;
         m_size->setValue(provider->size());
         m_opacity->setValue(provider->opacity()*100.0);
-        m_flow->setValue(provider->flow()*100.0);
-        if(auto preset=provider->currentPreset()) {
-            m_flow->setVisible(isSmudge(preset) ||
-                preset->paintOp().id()==QStringLiteral("paintbrush"));
-            m_presetName->setText(preset->name().left(26));
-            m_presetName->setToolTip(preset->name());
+        if(m_presetName) {
+            if(auto preset=provider->currentPreset()) {
+                m_presetName->setText(preset->name().left(26));
+                m_presetName->setToolTip(preset->name());
+            }
         }
         m_syncing=false;
         for(int i=0;i<3;++i)
@@ -288,7 +286,7 @@ private:
     void openPresetBrowser(int slot)
     {
         if(!resources())return;
-        QDialog dialog(this);
+        QDialog dialog(window());
         dialog.setWindowTitle(i18n("Krita brush presets"));
         dialog.setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
         dialog.setStyleSheet(
@@ -393,7 +391,7 @@ private:
     QWidget *m_controls=nullptr;
     QToolButton *m_detailToggle=nullptr;
     bool m_detailsExpanded=true;
-    KisDoubleSliderSpinBox *m_size=nullptr,*m_opacity=nullptr,*m_flow=nullptr;
+    KisDoubleSliderSpinBox *m_size=nullptr,*m_opacity=nullptr;
     KisResourceModel *m_model=nullptr;
     QTimer *m_refresh=nullptr;
     bool m_syncing=false,m_internalChange=false,m_hasSelectedMode=true;

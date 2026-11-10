@@ -23,7 +23,6 @@
 #include <QTreeWidget>
 #include <QHeaderView>
 #include <QPushButton>
-#include <QCheckBox>
 #include <QMessageBox>
 #include <QPointer>
 #include <QScrollBar>
@@ -74,7 +73,7 @@ class KritaMobileLayersPanel final : public QFrame
 {
 public:
     KritaMobileLayersPanel(const MobileEngineBridge &engine,
-                           QWidget *parent=nullptr)
+                           QWidget *parent=nullptr,bool compactRail=false)
         : QFrame(parent),m_engine(engine)
     {
         setObjectName(QStringLiteral("MobileStudioLayersPanel"));
@@ -90,35 +89,28 @@ public:
             "QLabel{color:#ecf3fc;font-size:14px;}"
             "QTreeWidget{background:transparent;color:#f4f4f5;"
             "border:0;font-size:14px;}"
-            "QTreeWidget::item{min-height:48px;padding:4px;}"
+            "QTreeWidget::item{min-height:48px;padding:0;}"
+            "QScrollBar:vertical{width:5px;background:transparent;}"
+            "QScrollBar::handle:vertical{background:#71717a;min-height:18px;border-radius:2px;}"
+            "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}"
             "QHeaderView::section{background:#364b5e;color:#e2effa;"
             "font-size:12px;border:0;padding:5px;}"
             "QPushButton{background:#34343a;color:#f4f4f5;"
             "border:1px solid #55555c;border-radius:8px;"
-            "min-height:44px;padding:4px 7px;font-size:13px;}"
+            "min-height:44px;padding:0 4px;font-size:13px;}"
             "QPushButton:pressed{background:#5685a6;}"
-            "QPushButton:disabled{color:#8696a3;background:#303d48;}"
-            "QCheckBox{color:#f0f5fb;font-size:14px;min-height:44px;}"
-            "QCheckBox::indicator{height:21px;width:21px;}");
+            "QPushButton:disabled{color:#8696a3;background:#303d48;}");
         auto *layout=new QVBoxLayout(this);
-        layout->setContentsMargins(4,5,4,5);
-        layout->setSpacing(3);
-        auto *top=new QHBoxLayout;
-        auto *heading=new QLabel(i18n("Layers"),this);
-        heading->setStyleSheet(QStringLiteral("font-size:18px;font-weight:600;"));
-        top->addWidget(heading);
-        top->addStretch(1);
-        m_multi=new QCheckBox(i18n("Multi"),this);
-        top->addWidget(m_multi);
-        auto *close=new QPushButton(QStringLiteral("×"),this);
-        close->setToolTip(i18n("Close layer rail"));
-        close->setFixedWidth(34);
-        top->addWidget(close);
-        connect(close,&QPushButton::clicked,this,[this]() {
-            if(onRequestClose)onRequestClose();
-            else hide();
-        });
-        layout->addLayout(top);
+        layout->setContentsMargins(2,2,2,2);
+        layout->setSpacing(1);
+        if(!compactRail) {
+            auto *close=new QPushButton(i18n("Close Layers"),this);
+            layout->addWidget(close);
+            connect(close,&QPushButton::clicked,this,[this]() {
+                if(onRequestClose)onRequestClose();
+                else hide();
+            });
+        }
 
         m_tree=new QTreeWidget(this);
         // Restore the old overlay's Infinite Painter-like tile rows:
@@ -183,8 +175,8 @@ public:
         m_summary=new QLabel(i18n("Select a layer"),this);
         m_summary->setWordWrap(true);
         m_summary->setAlignment(Qt::AlignCenter);
-        m_summary->setMinimumHeight(34);
-        m_summary->setMaximumHeight(52);
+        m_summary->setMinimumHeight(20);
+        m_summary->setMaximumHeight(36);
         layout->addWidget(m_summary);
 
         // Keep native Undo/Redo accessible while the live panel is open.
@@ -269,9 +261,10 @@ public:
         // rather than adding separate renderers or per-type models.
         // These actions invoke KisNodeManager::createNode(), including
         // Krita's built-in dialogs and undo/redo for each node type.
-        auto *addType=new QPushButton(i18n("+ Add"),this);
+        auto *addType=new QPushButton(QStringLiteral("+"),this);
+        addType->setAccessibleName(i18n("Add layer"));
         addType->setToolTip(i18n("Tap: new paint layer. Hold: all layer and mask types"));
-        layout->insertWidget(1,addType);
+        layout->insertWidget(compactRail?0:1,addType);
         auto *addHold=new QTimer(addType);
         addHold->setSingleShot(true);
         addHold->setInterval(480);
@@ -381,7 +374,6 @@ public:
         // The original overlay's compact rail intentionally had NO
         // persistent duplicate/delete/up/down buttons below the tiles.
         // Their native functionality remains in each tile's action menu.
-        heading->hide();
         hint->hide();
         const auto hideControls=[](QLayout *line) {
             for(int i=0;i<line->count();++i)
@@ -403,14 +395,6 @@ public:
             if(!m)return;
             Q_UNUSED(column);
             tapLayer(node,item);
-        });
-        connect(m_multi,&QCheckBox::toggled,this,[this](bool multi) {
-            if(!multi && m_selected.size()>1) {
-                KisNodeSP node=m_active ? m_active : m_selected.last();
-                m_selected=KisNodeList{node};
-                applySelection();
-            }
-            updateRows();
         });
         reload();
     }
@@ -615,6 +599,9 @@ private:
         flatten->setEnabled(m_engine.canRun("flatten_layer"));
         menu.addSeparator();
         QAction *group=menu.addAction(i18n("Group selection"));
+        const bool selectingMultiple=m_multiImage.toStrongRef()==originalImage;
+        QAction *multi=menu.addAction(selectingMultiple?
+            i18n("Return to single selection"):i18n("Select multiple layers"));
         QAction *ungroup=nullptr;
         if(node->inherits("KisGroupLayer"))
             ungroup=menu.addAction(i18n("Ungroup"));
@@ -691,6 +678,7 @@ private:
         for(int i=0;i<buttons.size();++i)
             grid->addWidget(makeButton(buttons[i].first,buttons[i].second),i/3,i%3);
         sheetLayout->addLayout(grid);
+        sheetLayout->addWidget(makeButton(multi,multi->text()));
         auto *footer=new QHBoxLayout;
         auto *more=new QPushButton(i18n("More…"),&sheet);
         connect(more,&QPushButton::clicked,&sheet,[&sheet]() {sheet.done(2);});
@@ -709,7 +697,13 @@ private:
             m->setNodeOpacity(node,(opacitySlider->value()*255+50)/100);
         if(result==2)chosen=menu.exec(point);
         if(!chosen || !validTarget())return;
-        if(chosen==visibility || chosen==lock) {
+        if(chosen==multi) {
+            m_multiImage=selectingMultiple?KisImageWSP():KisImageWSP(originalImage);
+            m_active=node;
+            m_selected=KisNodeList{node};
+            applySelection();
+            return;
+        } else if(chosen==visibility || chosen==lock) {
             if(chosen==visibility)
                 setLayerProperty(node,KisLayerPropertiesIcons::visible,!node->visible());
             else setLayerProperty(node,KisLayerPropertiesIcons::locked,!node->userLocked());
@@ -1784,12 +1778,12 @@ private:
         // snapshots *every* selected node, so an accidentally retained
         // empty layer triggers "Cannot transform empty layer" even when
         // the newly tapped layer contains paint. Multi-target transforms
-        // remain available through the explicit Multi toggle.
+        // remain available from the layer options.
         //
         // Do not invoke KisToolTransform::slotRestartTransform directly
         // from a layer click: it cancels/restarts a live image stroke,
         // potentially while its asynchronous preview is still running.
-        if(m_multi->isChecked()) {
+        if(m_multiImage.toStrongRef()) {
             if(m_selected.contains(node) && m_selected.size()>1)
                 m_selected.removeAll(node);
             else if(!m_selected.contains(node))
@@ -1843,7 +1837,7 @@ private:
                 frame->setStyleSheet(QStringLiteral(
                     "QFrame#mobileLayerTileRow{background:%1;"
                     "border-left:%2px solid %3;border-radius:5px;}")
-                    .arg(background.name()).arg(clipped?7:4).arg(edge));
+                    .arg(background.name()).arg(clipped?4:1).arg(edge));
             }
             if(QToolButton *thumb=m_rowButtons.value(i).data()) {
                 if(mask) {
@@ -1917,7 +1911,7 @@ private:
         const bool clipped=inheritsAlpha(node);
         const int tileSize=73;
         const int tileHeight=(group||mask)?54:tileSize;
-        const int rowHeight=tileHeight+6;
+        const int rowHeight=tileHeight+3;
         item->setSizeHint(0,QSize(0,rowHeight));
         auto *frame=new QFrame(m_tree);
         frame->setObjectName(QStringLiteral("mobileLayerTileRow"));
@@ -1925,7 +1919,7 @@ private:
         frame->setAttribute(Qt::WA_AcceptTouchEvents,true);
         frame->installEventFilter(this);
         auto *tile=new QToolButton(frame);
-        tile->setGeometry(clipped?8:4,3,tileSize-(clipped?5:0),tileHeight);
+        tile->setGeometry(clipped?7:2,1,tileSize-(clipped?5:0),tileHeight);
         tile->setToolButtonStyle(group||mask?
             Qt::ToolButtonTextOnly:Qt::ToolButtonIconOnly);
         tile->setText(group?QStringLiteral("▣"):
@@ -1956,18 +1950,19 @@ private:
         const int iconX=tile->x()+tile->width()-overlay+1;
         const int count=qobject_cast<KisPaintLayer*>(node.data())?3:2;
         const int gap=qMax(2,(tileHeight-count*overlay)/(count+1));
-        auto addOverlay=[&](int n,const QString &label,
+        auto addOverlay=[&](int n,const QString &icon,
                             const QString &tooltip,
                             const KoID &prop,bool desired) {
             auto *button=new QToolButton(frame);
             button->setGeometry(iconX,
-                3+gap*(n+1)+overlay*n,overlay,overlay);
-            button->setText(label);
+                1+gap*(n+1)+overlay*n,overlay,overlay);
+            button->setIcon(QIcon(icon));
+            button->setIconSize(QSize(16,16));
+            button->setAccessibleName(tooltip);
             button->setToolTip(tooltip);
             button->setStyleSheet(
-                "QToolButton{background:#475b68;color:#f3faff;"
-                "border:1px solid #90a8bb;border-radius:4px;"
-                "font-size:14px;padding:0;}"
+                "QToolButton{background:#34343a;color:#f3faff;"
+                "border:1px solid #66666d;border-radius:4px;padding:0;}"
                 "QToolButton:pressed{background:#387d9c;}");
             QObject::connect(button,&QToolButton::clicked,this,
                              [this,node,prop,desired]() {
@@ -1975,15 +1970,17 @@ private:
                 QTimer::singleShot(0,this,[this]() {reload();});
             });
         };
-        addOverlay(0,node->visible()?QStringLiteral("◉"):QStringLiteral("○"),
+        addOverlay(0,node->visible()?QStringLiteral(":/light_visible.svg"):
+                                    QStringLiteral(":/light_novisible.svg"),
                    i18n("Show or hide this layer"),
                    KisLayerPropertiesIcons::visible,!node->visible());
-        addOverlay(1,node->userLocked()?QStringLiteral("◆"):QStringLiteral("◇"),
+        addOverlay(1,node->userLocked()?QStringLiteral(":/light_layer-locked.svg"):
+                                       QStringLiteral(":/light_layer-unlocked.svg"),
                    i18n("Lock or unlock this layer"),
                    KisLayerPropertiesIcons::locked,!node->userLocked());
         if(auto *paint=qobject_cast<KisPaintLayer*>(node.data())) {
-            addOverlay(2,paint->alphaLocked()?QStringLiteral("α"):
-                                             QStringLiteral("α̸"),
+            addOverlay(2,paint->alphaLocked()?QStringLiteral(":/transparency-locked.svg"):
+                                             QStringLiteral(":/transparency-unlocked.svg"),
                        i18n("Alpha lock: affects ONLY this layer"),
                        KisLayerPropertiesIcons::alphaLocked,
                        !paint->alphaLocked());
@@ -2040,6 +2037,7 @@ private:
         auto *view=m_engine.manager();
         if(!m || !view)return;
         const auto image=view->image().toStrongRef();
+        if(m_multiImage.toStrongRef()!=image)m_multiImage=KisImageWSP();
         if(!image || !image->root()) {
             m_tree->clear();
             m_nodes.clear();
@@ -2087,12 +2085,11 @@ private:
                !m_selected.contains(node))
                 m_selected.append(node);
         }
-        // Unlike the desktop docker, this rail has an explicit Multi
-        // toggle. Do not leave Krita with a native selection containing
+        // Do not leave Krita with a native selection containing
         // hidden/old nodes after an ordinary single-layer tap. Transform
         // reads nodeManager()->selectedNodes() directly; filtering just
         // the visible cards would not protect its image stroke.
-        if(!m_multi->isChecked() && m_active)
+        if(!m_multiImage.toStrongRef() && m_active)
             m_selected=KisNodeList{m_active};
         if(m_selected.isEmpty() && m_active && m_active->parent())
             m_selected.append(m_active);
@@ -2162,7 +2159,7 @@ private:
     MobileEngineBridge m_engine;
     QTreeWidget *m_tree=nullptr;
     QLabel *m_summary=nullptr;
-    QCheckBox *m_multi=nullptr;
+    KisImageWSP m_multiImage;
     QVector<KisNodeSP> m_nodes;
     QVector<QTreeWidgetItem*> m_items; // owned by m_tree
     QVector<QPointer<QFrame>> m_rowFrames;
