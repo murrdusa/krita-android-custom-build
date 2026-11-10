@@ -1142,6 +1142,17 @@ private:
         QTimer::singleShot(100,this,[this]() {waitCompactClipUngroup(0);});
     }
 
+    static bool hasCompactClipStructure(KisNodeSP parent)
+    {
+        if(!parent)return false;
+        for(KisNodeSP child=parent->firstChild();child;
+            child=child->nextSibling()) {
+            if(isCompactClipWrapper(child) || inheritsAlpha(child))
+                return true;
+        }
+        return false;
+    }
+
     void moveCompactLayer(KisNodeSP source,KisNodeSP target,
                           bool insertAbove,bool intoGroup=false)
     {
@@ -1159,6 +1170,23 @@ private:
         // Never move a folder inside its own descendants.
         for(KisNodeSP p=destination;p;p=p->parent())
             if(p==source)return;
+
+        // Plain layer moves do not need the asynchronous clip wrapper
+        // teardown/rebuild. Use the same native undoable image stroke
+        // as Up/Down, only regroup when a clipping run is involved.
+        if(!hasCompactClipStructure(oldParent) &&
+           !hasCompactClipStructure(destination) &&
+           !inheritsAlpha(source)) {
+            KisNodeSP below=intoGroup?destination->lastChild():
+                (insertAbove?target:target->prevSibling());
+            if(below==source && source->parent()==destination)return;
+            if(!m_engine.selectLayer(source))return;
+            runNativeLayerStroke(image,
+                new KisImageLayerMoveCommand(
+                    image,source,destination,below,true),
+                QStringLiteral("Native drag reorder"));
+            return;
+        }
         auto onFlattened=[this,source,target,destination,
                           intoGroup,insertAbove]() {
             auto *nodes=manager();
