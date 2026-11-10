@@ -358,8 +358,7 @@ private:
         auto *heading=new QLabel(i18n("Add a Quick Action"),&dlg);
         heading->setStyleSheet(QStringLiteral("font-size:18px;font-weight:600;"));
         layout->addWidget(heading);
-        auto *type=new QComboBox(&dlg);
-        MobileTouchScroll::configureCombo(type);
+        auto *type=new MobileTouchComboBox(&dlg);
         type->addItem(i18n("Frequently used"),0);
         type->addItem(i18n("All commands and tools"),1);
         type->addItem(i18n("Krita tools"),2);

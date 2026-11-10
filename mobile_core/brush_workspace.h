@@ -418,7 +418,7 @@ private:
         if(!resources())return;
         QDialog dialog(window());
         dialog.setWindowTitle(i18n("Krita brush presets"));
-        dialog.setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
+        dialog.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
         dialog.setStyleSheet(
             "QDialog{background:#28333f;color:#edf6ff;}"
             "QLabel{color:#edf6ff;font-size:14px;}"
@@ -436,7 +436,7 @@ private:
         search->setPlaceholderText(i18n("Search every Krita brush preset"));
         search->setClearButtonEnabled(true);
         layout->addWidget(search);
-        auto *category=new QComboBox(&dialog);
+        auto *category=new MobileTouchComboBox(&dialog);
         category->addItem(slot==2?i18n("All compatible brushes"):i18n("All brushes"),-1);
         if(slot!=2) {
             category->addItem(i18n("Painting"),0);
@@ -445,7 +445,6 @@ private:
         category->addItem(i18n("Blending / Smudge"),2);
         if(slot!=2)category->addItem(i18n("Clone"),3);
         category->setCurrentIndex(category->findData(slot));
-        MobileTouchScroll::configureCombo(category);
         layout->addWidget(category);
 
         auto *grid=new QListView(&dialog);

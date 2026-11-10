@@ -512,7 +512,7 @@ public:
             });
             const auto addVolume=[&](const QString &label,const char *key,
                                      int fallback) {
-                auto *combo=new QComboBox(body);
+                auto *combo=new MobileTouchComboBox(body);
                 combo->addItem(QObject::tr("Normal volume / Disabled"),0);
                 combo->addItem(QObject::tr("Undo"),1);
                 combo->addItem(QObject::tr("Redo"),2);
@@ -523,7 +523,6 @@ public:
                 const QString setting=QString::fromLatin1(key);
                 combo->setCurrentIndex(qMax(0,combo->findData(
                     settings.value(setting,fallback).toInt())));
-                MobileTouchScroll::configureCombo(combo);
                 form->addRow(label,combo);
                 QObject::connect(combo,QOverload<int>::of(&QComboBox::currentIndexChanged),
                     &dialog,[combo,setting](int) {
@@ -631,13 +630,12 @@ public:
             layout->addWidget(layers);
             layout->addWidget(color);
             layout->addWidget(brush);
-            auto *shortcut=new QComboBox(body);
+            auto *shortcut=new MobileTouchComboBox(body);
             if(!m_shortcuts.isEmpty()) {
                 layout->addWidget(new QLabel(QObject::tr("Toolbar shortcut"),body));
                 for(const auto &choice:m_shortcuts)
                     shortcut->addItem(choice.icon,choice.action->text());
                 shortcut->setCurrentIndex(m_shortcutIndex);
-                MobileTouchScroll::configureCombo(shortcut);
                 layout->addWidget(shortcut);
             } else {
                 shortcut->hide();
