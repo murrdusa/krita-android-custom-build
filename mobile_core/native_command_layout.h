@@ -9,6 +9,7 @@
 #pragma once
 #if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
 #include <QAction>
+#include <QFontMetrics>
 #include <QList>
 #include <QMainWindow>
 #include <QMenu>
@@ -85,9 +86,15 @@ public:
         host->addToolBar(Qt::TopToolBarArea,documents);
         host->addToolBar(Qt::BottomToolBarArea,workspace);
         for(QToolBar *bar:{documents,workspace}) {
+            bar->setStyleSheet(QStringLiteral("QToolBar{spacing:2px;}"));
             for(QAction *action:bar->actions()) {
-                if(QWidget *button=bar->widgetForAction(action))
+                if(auto *button=qobject_cast<QToolButton*>(bar->widgetForAction(action))) {
                     button->setMinimumHeight(44);
+                    const int padding=button->menu()?16:6;
+                    const int textWidth=button->fontMetrics().horizontalAdvance(
+                        button->text());
+                    button->setFixedWidth(qMax(44,textWidth+padding));
+                }
             }
         }
         if(canvasOnly) {

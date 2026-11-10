@@ -102,6 +102,15 @@ int main(int argc,char **argv)
            primary->isVisible() && secondary->isVisible() &&
            canvas->height()==normalHeight,
            "Show Controls did not restore the command bars");
+    host.resize(320,420);
+    QApplication::processEvents();
+    for(QToolBar *bar:{primary,secondary}) {
+        for(QAction *action:bar->actions()) {
+            QWidget *button=bar->widgetForAction(action);
+            verify(button && button->isVisible() && button->height()>=44,
+                   "a primary touch target overflowed at 320 px");
+        }
+    }
     verify(!MobileNativeCommandLayout::install(
         &host,{&save},{&brushes},{&exit}),
         "duplicate chrome installation was accepted");
