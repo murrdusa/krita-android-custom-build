@@ -364,11 +364,12 @@ public:
                 return;
             }
             if(QMessageBox::question(this,i18n("All Krita documents"),
-                i18n("Android requires optional All files access to search "
-                     "for Krita documents throughout shared storage, "
-                     "including Downloads. This does not grant access to "
-                     "other apps' private folders. You can revoke it in "
-                     "Android settings. Open permission settings?"))
+                i18n("Android's optional All files access allows reading "
+                     "shared storage. For fast project browsing, the app "
+                     "automatically scans only Downloads. Use Folders to "
+                     "add other locations. Access does not include other "
+                     "apps' private folders and can be revoked in Android "
+                     "settings. Open permission settings?"))
                 !=QMessageBox::Yes)return;
             QAndroidJniObject::callStaticMethod<void>(
                 "org/krita/android/MainActivity",
@@ -830,8 +831,12 @@ private:
             const bool needsScan=forceScan || last<=0 || last>now ||
                                   now-last>10LL*60*1000;
             if(needsScan) {
-                if(m_list->count()>0)
+                if(m_list->count()>0) {
                     m_message->setText(i18n("Updating saved projects in background…"));
+                    // Retain newly opened Recent files even if a long scan
+                    // is canceled when the user switches away from Home.
+                    persistIndex();
+                }
                 startScan();
             } else {
                 const int count=m_list->count();
