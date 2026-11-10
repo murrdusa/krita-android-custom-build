@@ -418,13 +418,15 @@ public:
     void refreshFromEngine()
     {
         if(!isVisible() || m_reorderPending || m_clipBusy ||
-           m_mouseNode || !m_touches.isEmpty())return;
+           m_clipPropertyPending || m_mouseNode ||
+           !m_touches.isEmpty())return;
         if(engineSignature()!=m_signature)reload();
         else updateVisibleLayerThumbnails();
     }
     void refreshNow() {
         if(!m_reorderPending && !m_clipBusy &&
-           !m_mouseNode && m_touches.isEmpty())reload();
+           !m_clipPropertyPending && !m_mouseNode &&
+           m_touches.isEmpty())reload();
     }
 
 private:
@@ -435,7 +437,8 @@ private:
     // that API treats "move up one" as a self-anchor and returns false.
     void reorderNode(KisNodeSP node,bool towardTop)
     {
-        if(m_reorderPending || !node)return;
+        if(m_reorderPending || m_clipBusy || m_clipPropertyPending ||
+           !node)return;
         auto *view=m_engine.manager();
         auto *nodes=manager();
         if(!view || !nodes)return;
@@ -876,7 +879,7 @@ private:
     {
         auto *view=m_engine.manager();
         const KisImageSP image=view?view->image().toStrongRef():KisImageSP();
-        if(m_clipBusy || m_reorderPending ||
+        if(m_clipBusy || m_clipPropertyPending || m_reorderPending ||
            !inImage(node,image) || !node->inherits("KisLayer") ||
            node->inherits("KisGroupLayer") || inheritsAlpha(node)==on)
             return;
@@ -903,7 +906,43 @@ private:
         }
         if(!setLayerProperty(node,KisLayerPropertiesIcons::inheritAlpha,on))
             return;
-        beginCompactClipRebuild(parent,node);
+        // Property edits are undoable Krita image strokes. Starting a
+        // node-tree regroup while that stroke is still pending can
+        // observe the OLD inherit-alpha value and silently leave the
+        // layer outside its intended clipping group.
+        m_clipPropertyPending=true;
+        m_clipPropertyImage=image;
+        QTimer::singleShot(0,this,[this,node,parent,on]() {
+            waitCompactClipProperty(node,parent,on,0);
+        });
+    }
+
+    void waitCompactClipProperty(KisNodeSP node,KisNodeSP parent,
+                                 bool expected,int attempt)
+    {
+        if(!m_clipPropertyPending)return;
+        auto *vm=m_engine.manager();
+        if(!vm || vm->image().toStrongRef()!=m_clipPropertyImage ||
+           !inImage(node,m_clipPropertyImage) ||
+           !inImage(parent,m_clipPropertyImage)) {
+            m_clipPropertyPending=false;
+            m_clipPropertyImage.clear();
+            return;
+        }
+        if(inheritsAlpha(node)==expected) {
+            m_clipPropertyPending=false;
+            m_clipPropertyImage.clear();
+            beginCompactClipRebuild(parent,node);
+        } else if(attempt<40) {
+            QTimer::singleShot(50,this,[this,node,parent,expected,attempt]() {
+                waitCompactClipProperty(node,parent,expected,attempt+1);
+            });
+        } else {
+            qWarning() << "Mobile Studio: inherit-alpha edit did not settle";
+            m_clipPropertyPending=false;
+            m_clipPropertyImage.clear();
+            reload();
+        }
     }
 
     void finishCompactClipRebuild()
@@ -1095,8 +1134,8 @@ private:
         auto *m=manager();
         auto *vm=m_engine.manager();
         const KisImageSP image=vm?vm->image().toStrongRef():KisImageSP();
-        if(m_clipBusy || m_reorderPending || !m || !vm ||
-           !inImage(source,image) || !inImage(target,image) ||
+        if(m_clipBusy || m_clipPropertyPending || m_reorderPending ||
+           !m || !vm || !inImage(source,image) || !inImage(target,image) ||
            source==target)return;
         KisNodeSP oldParent=logicalParent(source);
         KisNodeSP destination=intoGroup?target:logicalParent(target);
@@ -1294,7 +1333,8 @@ private:
 
     bool handleNativeLayerTouch(QObject *watched,QEvent *event)
     {
-        if(!m_tree || m_clipBusy || m_reorderPending)return false;
+        if(!m_tree || m_clipBusy || m_clipPropertyPending ||
+           m_reorderPending)return false;
         const QEvent::Type type=event->type();
         if(type!=QEvent::TouchBegin && type!=QEvent::TouchUpdate &&
            type!=QEvent::TouchEnd && type!=QEvent::TouchCancel)
@@ -1429,7 +1469,7 @@ private:
     {
         if(handleNativeLayerTouch(watched,event))return true;
         const QEvent::Type type=event->type();
-        if(m_clipBusy || m_reorderPending)
+        if(m_clipBusy || m_clipPropertyPending || m_reorderPending)
             return QFrame::eventFilter(watched,event);
         auto *tile=qobject_cast<QToolButton*>(watched);
         auto *frame=qobject_cast<QFrame*>(watched);
@@ -1736,7 +1776,7 @@ private:
 
     void reload()
     {
-        if(m_reorderPending || m_clipBusy ||
+        if(m_reorderPending || m_clipBusy || m_clipPropertyPending ||
            m_mouseNode || !m_touches.isEmpty())return;
         auto *m=manager();
         auto *view=m_engine.manager();
@@ -1828,6 +1868,8 @@ private:
     KisNodeList m_selected;
     KisNodeSP m_active;
     bool m_clipBusy=false;
+    bool m_clipPropertyPending=false;
+    KisImageSP m_clipPropertyImage;
     KisImageSP m_clipImage;
     QList<KisNodeSP> m_clipParents;
     KisNodeSP m_clipRestoreActive;
