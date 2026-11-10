@@ -32,6 +32,7 @@
 #include "host_services.h"
 #include "krita_standalone_runtime.h"
 #include "native_krita_save_host.h"
+#include "saved_version_archive.h"
 
 class MobileKritaStandaloneDocuments final : public MobileDocumentHostPort
 {
@@ -189,8 +190,13 @@ private:
             guardedDocument->save(true,{});
         if(saved && guardedDocument)
             guardedDocument->waitForSavingToComplete();
-        if(saved && guardedDocument && !guardedDocument->isModified())
+        if(saved && guardedDocument && !guardedDocument->isModified()) {
             rememberPath(target);
+            // Do not delay painting or interfere with Krita's native Save.
+            // Archive only completed filesystem KRA saves; unsaved/SAF
+            // checkpoints need a separate native export transaction.
+            MobileSavedVersionArchive::enqueueAfterSave(target);
+        }
         return saved && guardedDocument &&
                m_runtime && m_runtime->ownsDocument(guardedDocument);
     }
