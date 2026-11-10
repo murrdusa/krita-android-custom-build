@@ -70,6 +70,8 @@
 
 ## Test status
 
+- **Contextual Tool Bar:** Installed tools display a compact horizontal strip when active, except Freehand Brush, which covers Paint, Erase, and Blend. The strip follows the current canvas, exposes curated native settings for common tools, and discovers labeled controls for other tools. The gear opens complete native Tool Options. Assistants now starts with the Guide Type control in the strip. The strip uses the same native actions and widgets as the full panel, so no second settings state or transform implementation exists. Fold 6 check: switch among Wand, Transform, Fill, Gradient, Move, Crop, Shapes and Assistants. Scroll the strip, change a setting from each surface, switch canvases and verify the controls rebind, and check Paint and Canvas Only hide it.
+
 - **Toolbar shortcut:** More → Workspace Settings can assign the top shortcut to Canvases, Tool Options, Fit, Flip View, painting assistants, Save As, or Canvas Only when those actions are registered. Canvases remains in More → Documents. The chosen action persists and uses Krita's real action state.
 - **Export Copy:** More → Documents → Export Copy uses Krita's native export filters and rejects the open drawing's path as the export destination. Fold 6 check: export PNG from an edited KRA, verify the PNG opens, then save and reopen the original KRA with its layers.
 

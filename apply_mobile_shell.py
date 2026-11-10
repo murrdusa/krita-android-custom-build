@@ -1158,6 +1158,9 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
         native_reorder_policy.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/native_command_layout.h").write_text(
         native_command_layout.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/context_tool_bar.h").write_text(
+        (own/"mobile_core/context_tool_bar.h").read_text(encoding="utf-8"),
+        encoding="utf-8")
     (root/"libs/ui/deferred_view_command.h").write_text(
         deferred_view_command.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_navigation.h").write_text(

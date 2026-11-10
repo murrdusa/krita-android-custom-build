@@ -36,6 +36,7 @@
 #include "command_browser.h"
 #include "lightweight_canvas_host.h"
 #include "native_command_layout.h"
+#include "context_tool_bar.h"
 
 class MobileKritaNativeWorkspace final : public QObject
 {
@@ -57,6 +58,18 @@ public:
         m_keepColor=settings.value(QStringLiteral("MobileStudio/keepColorOpen"),true).toBool();
         m_showBrushSliders=settings.value(QStringLiteral("MobileStudio/showBrushSliders"),false).toBool();
         qApp->installEventFilter(this);
+        auto *contextRefresh=new QTimer(this);
+        contextRefresh->setSingleShot(true);
+        connect(contextRefresh,&QTimer::timeout,this,
+                [this]() {syncContextToolBar();});
+        if(auto *tools=KoToolManager::instance()) {
+            connect(tools,&KoToolManager::toolOptionWidgetsChanged,contextRefresh,
+                    [tools,contextRefresh](KoCanvasController *controller,
+                                            const QList<QPointer<QWidget>> &) {
+                if(controller==tools->activeCanvasController())
+                    contextRefresh->start(0);
+            });
+        }
         // The factory installs the native activation router as each
         // document is attached. Refresh after, not before, that turn.
         if(auto *root=host ? dynamic_cast<MobileNativeViewStack*>(
@@ -328,6 +341,7 @@ public:
             return;
         }
         updateBrushSliders();
+        syncContextToolBar();
         // Switching between native canvases changes the active tool's
         // KoCanvasController. Rebind the existing Tool Options dock to
         // that canvas immediately instead of leaving stale controls.
@@ -344,13 +358,17 @@ public:
         if(m_brush)m_brush->hide();
         if(m_toolOptions)m_toolOptions->hide();
         if(m_color)m_color->hide();
+        if(m_contextToolBar)m_contextToolBar->hide();
     }
 
     void setCanvasOnly(bool enabled)
     {
         m_canvasOnly=enabled;
         if(enabled)hidePanels();
-        else updateBrushSliders();
+        else {
+            updateBrushSliders();
+            syncContextToolBar();
+        }
     }
 
 protected:
@@ -380,6 +398,48 @@ protected:
     }
 
 private:
+    void syncContextToolBar()
+    {
+        QWidget *canvas=m_host ? m_host->nativeCanvas() : nullptr;
+        auto *tools=KoToolManager::instance();
+        auto *controller=tools ? tools->activeCanvasController() : nullptr;
+        const QString id=tools ? tools->activeToolId() : QString();
+        if(!canvas || !m_host->nativeViewPort() ||
+           !m_host->nativeViewPort()->currentDocument() || m_canvasOnly ||
+           !controller || id.isEmpty() || id==QStringLiteral("KritaShape/KisToolBrush")) {
+            if(m_contextToolBar && !m_contextToolBar->isHidden()) {
+                m_contextToolBar->hide();
+                placeDrawingOverlays();
+            }
+            return;
+        }
+        auto *tool=tools->toolById(controller->canvas(),id);
+        if(!tool)return;
+        if(!m_contextToolBar) {
+            m_contextToolBar=new MobileContextToolBar(canvas);
+            m_contextToolBar->chooseTool=[this]() {chooseTool();};
+            m_contextToolBar->openOptions=[this]() {toggleToolOptions();};
+        }
+        QString label=id;
+        for(const auto &entry:m_engine.tools()) {
+            if(entry.id==id && !entry.label.isEmpty()) {
+                label=entry.label;
+                break;
+            }
+        }
+        m_contextToolBar->setTool(id,label,tool->optionWidgets(),m_engine);
+        m_contextToolBar->show();
+        placeDrawingOverlays();
+        m_contextToolBar->raise();
+    }
+
+    int overlayTop(QWidget *canvas) const
+    {
+        if(m_contextToolBar && !m_contextToolBar->isHidden())
+            return m_contextToolBar->geometry().bottom()+6;
+        return MobileNativeCommandLayout::panelTopInset(canvas);
+    }
+
     void syncToolbarShortcut()
     {
         if(!m_shortcutSlot || m_shortcuts.isEmpty())return;
@@ -424,7 +484,7 @@ private:
         QWidget *canvas=m_layers->parentWidget();
         if(canvas->width()<140 || canvas->height()<180)return;
         const int inset=5;
-        const int top=MobileNativeCommandLayout::panelTopInset(canvas);
+        const int top=overlayTop(canvas);
         const int bottom=m_brush && m_brush->isVisible() ?
             m_brush->y() : canvas->height();
         const int panelHeight=qMin(bottom-top-inset,m_layers->contentHeight());
@@ -436,7 +496,12 @@ private:
         QWidget *canvas=m_host ? m_host->nativeCanvas() : nullptr;
         if(!canvas)return;
         const int inset=5;
-        const int top=MobileNativeCommandLayout::panelTopInset(canvas);
+        if(m_contextToolBar && !m_contextToolBar->isHidden()) {
+            const int toolbarWidth=qMin(760,qMax(0,canvas->width()-2*inset));
+            m_contextToolBar->setGeometry((canvas->width()-toolbarWidth)/2,
+                MobileNativeCommandLayout::panelTopInset(canvas),toolbarWidth,58);
+        }
+        const int top=overlayTop(canvas);
         const int width=canvas->width()-2*inset;
         const int height=canvas->height()-top-inset;
         if(width<=0 || height<=0)return;
@@ -507,6 +572,7 @@ private:
     QPointer<KritaMobileBrushWorkspace> m_brush;
     QPointer<KritaMobileLayersPanel> m_layers;
     QPointer<MobileColorWorkspace> m_color;
+    QPointer<MobileContextToolBar> m_contextToolBar;
     QPointer<QAction> m_shortcutSlot;
     QVector<ToolbarShortcut> m_shortcuts;
     int m_shortcutIndex=0;

@@ -237,9 +237,8 @@ public:
         if(result!=QDialog::Accepted || !engine.hasDocument())return false;
         if(requested.action && requested.action->isEnabled()) {
             requested.action->trigger();
-        } else if(!requested.tool.isEmpty() && engine.selectTool(requested.tool)) {
-            // Assistants expose their native guide picker immediately.
-            return offerOptions && requested.tool==QStringLiteral("KisAssistantTool");
+        } else if(!requested.tool.isEmpty()) {
+            engine.selectTool(requested.tool);
         }
         return false;
     }
