@@ -20,6 +20,7 @@
 #include <QLabel>
 #include <QMenu>
 #include <QMetaObject>
+#include <QMetaEnum>
 #include <QDebug>
 #include <QPointer>
 #include <QPushButton>
@@ -100,14 +101,15 @@ public:
 
     void setTool(const QString &id,const QString &label,
                  const QList<QPointer<QWidget>> &options,
-                 const MobileEngineBridge &engine)
+                 const MobileEngineBridge &engine,QObject *nativeTool)
     {
-        if(m_id==id && m_options==options) {
+        if(m_id==id && m_options==options && m_nativeTool==nativeTool) {
             refreshControls();
             return;
         }
         m_id=id;
         m_options=options;
+        m_nativeTool=nativeTool;
         ++m_generation;
         m_refresh.clear();
         m_used.clear();
@@ -176,6 +178,27 @@ public:
             // can differ in this independent, main-window-free host.
             // Call exactly the same native slots as the working gear panel.
             addTransformModeMenu();
+            const auto modeOption=[this](const char *name,const QString &label) {
+                QPointer<QWidget> source=findOption(name);
+                const int before=m_row->count();
+                addOption(source,label);
+                if(m_row->count()==before)return;
+                QPointer<QWidget> control=m_row->itemAt(before)->widget();
+                m_refresh.append([this,source,control]() {
+                    if(control)control->setVisible(optionAvailable(source));
+                });
+            };
+            modeOption("translateXBox",QObject::tr("X"));
+            modeOption("translateYBox",QObject::tr("Y"));
+            modeOption("scaleXBox",QObject::tr("Width %"));
+            modeOption("scaleYBox",QObject::tr("Height %"));
+            modeOption("densityBox",QObject::tr("Grid"));
+            modeOption("liquifySizeSlider",QObject::tr("Size"));
+            modeOption("liquifyAmountSlider",QObject::tr("Strength"));
+            modeOption("liquifyFlowSlider",QObject::tr("Speed"));
+            modeOption("liquifyReverseDirectionChk",QObject::tr("Reverse"));
+            modeOption("chkShowControlPoints",QObject::tr("Mesh points"));
+            modeOption("chkSymmetricalHandles",QObject::tr("Symmetric"));
             if(auto *box=qobject_cast<QDialogButtonBox*>(findOption("buttonBox"))) {
                 addOption(box->button(QDialogButtonBox::Apply),QObject::tr("Apply"));
                 addOption(box->button(QDialogButtonBox::Reset),QObject::tr("Reset"));
@@ -392,20 +415,26 @@ private:
 
     void addTransformModeMenu()
     {
-        struct ModeSpec {const char *buttonName;const char *slot;QString label;};
+        struct ModeSpec {
+            const char *buttonName;
+            const char *slot;
+            QString label;
+            const char *mode;
+        };
         struct Choice {
             QString label;
             QPointer<QAbstractButton> button;
             QPointer<QObject> config;
             QByteArray slot;
+            int mode=-1;
         };
         const std::initializer_list<ModeSpec> specs={
-            {"freeTransformButton","slotSetFreeTransformModeButtonClicked",QObject::tr("Free")},
-            {"perspectiveTransformButton","slotSetPerspectiveModeButtonClicked",QObject::tr("Perspective")},
-            {"warpButton","slotSetWarpModeButtonClicked",QObject::tr("Warp")},
-            {"cageButton","slotSetCageModeButtonClicked",QObject::tr("Cage")},
-            {"liquifyButton","slotSetLiquifyModeButtonClicked",QObject::tr("Liquify")},
-            {"meshButton","slotSetMeshModeButtonClicked",QObject::tr("Mesh")}
+            {"freeTransformButton","slotSetFreeTransformModeButtonClicked",QObject::tr("Free"),"FreeTransformMode"},
+            {"perspectiveTransformButton","slotSetPerspectiveModeButtonClicked",QObject::tr("Perspective"),"PerspectiveTransformMode"},
+            {"warpButton","slotSetWarpModeButtonClicked",QObject::tr("Warp"),"WarpTransformMode"},
+            {"cageButton","slotSetCageModeButtonClicked",QObject::tr("Cage"),"CageTransformMode"},
+            {"liquifyButton","slotSetLiquifyModeButtonClicked",QObject::tr("Liquify"),"LiquifyTransformMode"},
+            {"meshButton","slotSetMeshModeButtonClicked",QObject::tr("Mesh"),"MeshTransformMode"}
         };
         QList<Choice> choices;
         for(const auto &spec:specs) {
@@ -419,7 +448,11 @@ private:
             for(QObject *owner=button;owner;owner=owner->parent()) {
                 if(owner->metaObject()->indexOfMethod(signature.constData())<0)
                     continue;
-                choices.append({spec.label,button,owner,slot});
+                const int enumIndex=m_nativeTool?
+                    m_nativeTool->metaObject()->indexOfEnumerator("TransformToolMode"):-1;
+                const int mode=enumIndex<0?-1:
+                    m_nativeTool->metaObject()->enumerator(enumIndex).keyToValue(spec.mode);
+                choices.append({spec.label,button,owner,slot,mode});
                 m_used.insert(button);
                 break;
             }
@@ -435,7 +468,8 @@ private:
                 auto *item=menu.addAction(choice.label);
                 item->setData(i);
                 item->setCheckable(true);
-                item->setChecked(choice.button && choice.button->isChecked());
+                item->setChecked(m_nativeTool && choice.mode>=0 &&
+                    m_nativeTool->property("transformMode").toInt()==choice.mode);
                 item->setEnabled(choice.config && optionAvailable(choice.button));
             }
             auto *picked=menu.exec(control->mapToGlobal(QPoint(0,control->height())));
@@ -450,14 +484,15 @@ private:
                 if(generation!=m_generation ||
                    m_id!=QStringLiteral("KisToolTransform") ||
                    !choice.config || !choice.button ||
-                   !choice.button->isEnabled())return;
+                   !choice.button->isEnabled()) {
+                    qWarning() << "Mobile Transform Mode: request dropped"
+                               << choice.label << "generation" << generation << m_generation;
+                    return;
+                }
 
-                // Native Tool Options clicks *first* check the exclusive
-                // mode button, *then* emit clicked(true). Calling only the
-                // downstream slot leaves the previous Free radio checked,
-                // so the next UI refresh can immediately show Free again.
-                // setChecked does not emit clicked(), avoiding a duplicate
-                // transform reset while retaining the genuine UI state.
+                // Preserve native exclusive-button state and dispatch one
+                // reset signal. The label and diagnostic read the tool's
+                // actual TransformToolMode property after dispatch.
                 choice.button->setChecked(true);
                 const bool invoked=QMetaObject::invokeMethod(
                     choice.config.data(),choice.slot.constData(),
@@ -472,12 +507,17 @@ private:
                     // A later native transaction refresh can still change
                     // the selection. Log that rather than claiming the
                     // transform succeeded solely from invokeMethod(true).
-                    QTimer::singleShot(350,this,[this,choice]() {
+                    const QPointer<QObject> tool=m_nativeTool;
+                    QTimer::singleShot(350,this,[this,choice,tool]() {
                         if(m_id!=QStringLiteral("KisToolTransform") ||
-                           !choice.button)return;
-                        if(!choice.button->isChecked())
-                            qWarning() << "Mobile Transform Mode: native option reverted"
-                                       << choice.label;
+                           !tool || tool!=m_nativeTool)return;
+                        const int actual=tool->property("transformMode").toInt();
+                        qInfo() << "Mobile Transform Mode: verified native state"
+                                << "tool" << tool.data() << "options" << choice.config.data()
+                                << "requested" << choice.mode << "actual" << actual;
+                        if(actual!=choice.mode)
+                            qWarning() << "Mobile Transform Mode: native tool mode mismatch"
+                                       << choice.label << actual;
                     });
                 }
                 refreshControls();
@@ -488,7 +528,8 @@ private:
             QString active;
             for(const auto &choice:choices) {
                 enabled|=choice.config && optionAvailable(choice.button);
-                if(choice.button && choice.button->isChecked())
+                if(m_nativeTool && choice.mode>=0 &&
+                   m_nativeTool->property("transformMode").toInt()==choice.mode)
                     active=choice.label;
             }
             control->setEnabled(enabled);
@@ -722,6 +763,7 @@ private:
     }
 
     QString m_id;
+    QPointer<QObject> m_nativeTool;
     QList<QPointer<QWidget>> m_options;
     QList<std::function<void()>> m_refresh;
     QSet<QWidget*> m_used;

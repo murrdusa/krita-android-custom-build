@@ -142,13 +142,15 @@ private:
             if(!selected && root->currentWidget())return;
             // The canvas resource provider and active brush must first
             // refer to the CURRENT view, not the previously selected tab.
-            if(manager->canvasBase()!=(selected?selected->canvasBase():nullptr))
-                manager->setCurrentView(selected);
+            const bool changedView=
+                manager->canvasBase()!=(selected?selected->canvasBase():nullptr);
+            if(changedView)manager->setCurrentView(selected);
             if(selected) {
                 // Native guiLoadingFinished() only fires once on
                 // desktop Krita. Never re-bootstrap on each tab switch.
-                if(!selected->property(
-                       "_mobileStudioKritaCanvasBootstrapped").toBool()) {
+                const bool firstBootstrap=!selected->property(
+                    "_mobileStudioKritaCanvasBootstrapped").toBool();
+                if(firstBootstrap) {
                     const bool bootstrapped=QMetaObject::invokeMethod(
                         selected->canvasBase(),"bootstrapFinished",
                         Qt::DirectConnection);
@@ -159,7 +161,15 @@ private:
                         qWarning() << "Mobile Studio: canvas bootstrap"
                                    << "method unavailable";
                 }
-                KoToolManager::instance()->initializeCurrentToolForCanvas();
+                // WindowActivate/Expose also fire when a popup closes.
+                // A full reconnect deactivates Transform (committing its
+                // stroke) and activates it again in Free mode. Repaint an
+                // unchanged canvas without restarting the current tool.
+                if(changedView || firstBootstrap) {
+                    qInfo() << "Mobile canvas tool initialization"
+                            << selected.data() << "changed view" << changedView;
+                    KoToolManager::instance()->initializeCurrentToolForCanvas();
+                }
                 // Android can show the native QWidget before its
                 // QWindow/GL surface receives the first Expose event.
                 // Force a real engine projection/GL paint when activated,

@@ -711,7 +711,7 @@ private:
                 break;
             }
         }
-        m_contextToolBar->setTool(id,label,tool->optionWidgets(),m_engine);
+        m_contextToolBar->setTool(id,label,tool->optionWidgets(),m_engine,tool);
         m_contextToolBar->show();
         placeDrawingOverlays();
         m_contextToolBar->raise();
