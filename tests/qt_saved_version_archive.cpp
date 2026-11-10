@@ -118,7 +118,55 @@ int main(int argc,char **argv)
             MobileDraftRecovery::title(drafts.first())==QStringLiteral("a_b") &&
             !MobileDraftRecovery::isDraft(source),
             "draft listing exposed staging or external files");
+    // Android SAF folder grant (tree URI) vs direct Browse Files (document URI)
+    const QString docUri=QStringLiteral(
+        "content://com.android.externalstorage.documents/document/primary%3ADrawings%2Fart.kra");
+    const QString treeUri1=QStringLiteral(
+        "content://com.android.externalstorage.documents/tree/primary%3ADrawings/document/primary%3ADrawings%2Fart.kra");
+    const QString treeUri2=QStringLiteral(
+        "content://com.android.externalstorage.documents/tree/primary%3A/document/primary%3ADrawings%2Fart.kra");
+    require(MobileSavedVersionArchive::canonicalIdentity(treeUri1)==docUri,
+            "treeUri1 must normalize to canonical document URI");
+    require(MobileSavedVersionArchive::canonicalIdentity(treeUri2)==docUri,
+            "treeUri2 must normalize to canonical document URI");
+    require(MobileSavedVersionArchive::canonicalIdentity(docUri)==docUri,
+            "direct docUri must remain canonical identity");
+    const QString docFolder=MobileSavedVersionArchive::folderFor(docUri,store);
+    const QString treeFolder1=MobileSavedVersionArchive::folderFor(treeUri1,store);
+    const QString treeFolder2=MobileSavedVersionArchive::folderFor(treeUri2,store);
+    require(!docFolder.isEmpty(), "document version folder must not be empty");
+    require(docFolder==treeFolder1 && docFolder==treeFolder2,
+            "SAF tree grants and direct document access must share the same version history");
+    const QString otherDocUri=QStringLiteral(
+        "content://com.android.externalstorage.documents/document/primary%3ADrawings%2Fother.kra");
+    require(MobileSavedVersionArchive::folderFor(otherDocUri,store)!=docFolder,
+            "distinct documents in the same provider must have separate version histories");
+
+    // Existing version folder preservation: migrate legacy folder created with raw tree URI hash
+    const QString legacyStore=QDir(temp.path()).filePath(QStringLiteral("legacy-store"));
+    const QString legacyDigest=QString::fromLatin1(QCryptographicHash::hash(
+        treeUri1.toUtf8(),QCryptographicHash::Sha256).toHex());
+    const QString legacyFolder=QDir(legacyStore).filePath(legacyDigest);
+    require(QDir().mkpath(legacyFolder),"failed to create test legacy folder");
+    const QString legacyKra=QDir(legacyFolder).filePath(
+        QStringLiteral("20261110T000000000-00000000000000000000000000000001.kra"));
+    save(legacyKra,initial);
+    save(legacyKra+QStringLiteral(".sha256"),
+         QCryptographicHash::hash(initial,QCryptographicHash::Sha256).toHex());
+    const QString canonicalMigratedFolder=MobileSavedVersionArchive::folderFor(treeUri1,legacyStore);
+    require(QDir(canonicalMigratedFolder).exists(),
+            "migrated canonical folder must exist");
+    require(!QDir(legacyFolder).exists(),
+            "legacy folder should be cleaned up after migration");
+    const auto migratedDocVersions=MobileSavedVersionArchive::list(docUri,legacyStore);
+    require(migratedDocVersions.size()==1 && load(migratedDocVersions.first().path)==initial,
+            "migrated version must be accessible via direct document URI");
+    const auto migratedTreeVersions=MobileSavedVersionArchive::list(treeUri1,legacyStore);
+    require(migratedTreeVersions.size()==1 &&
+            migratedTreeVersions.first().path==migratedDocVersions.first().path,
+            "migrated version must match across tree and document listing");
+
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
-               " provider identity and original-file preservation";
+               " provider identity, SAF tree normalization and legacy migration";
     return 0;
 }

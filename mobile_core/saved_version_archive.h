@@ -32,19 +32,50 @@ public:
     static constexpr int maxVersions() {return 12;}
     static constexpr qint64 maxBytes() {return 512LL*1024*1024;}
 
-    static QString folderFor(const QString &source,
-                             const QString &rootOverride=QString())
+    static bool isProviderUri(const QString &source)
+    {
+        return source.startsWith(QStringLiteral("content://"),Qt::CaseInsensitive);
+    }
+
+    // Normalizes file and provider identities so that different access methods
+    // (such as Android SAF folder tree grants vs direct document URIs) map to
+    // the same underlying document and project version history.
+    static QString canonicalIdentity(const QString &source)
     {
         if(source.isEmpty())return {};
-        QString identity=source;
         if(!isProviderUri(source)) {
             const QFileInfo file(source);
             if(file.suffix().compare(QStringLiteral("kra"),Qt::CaseInsensitive)!=0)
                 return {};
             const QString canonical=file.canonicalFilePath();
-            identity=QDir::cleanPath(canonical.isEmpty()?
+            return QDir::cleanPath(canonical.isEmpty()?
                                     file.absoluteFilePath():canonical);
         }
+        constexpr int schemeLength=10; // "content://"
+        const int slash=source.indexOf(QLatin1Char('/'),schemeLength);
+        if(slash==-1)return source;
+        const QString authority=source.mid(schemeLength,slash-schemeLength).toLower();
+        const QString path=source.mid(slash);
+        // Android DocumentsContract: tree document URIs have the form:
+        // /tree/<treeDocumentId>/document/<documentId>
+        // Direct document URIs have the form:
+        // /document/<documentId>
+        // Both refer to the exact same underlying document (authority + documentId).
+        if(path.startsWith(QStringLiteral("/tree/"))) {
+            const int docIndex=path.indexOf(QStringLiteral("/document/"),6);
+            if(docIndex!=-1) {
+                return QStringLiteral("content://")+authority+path.mid(docIndex);
+            }
+        }
+        return QStringLiteral("content://")+authority+path;
+    }
+
+    static QString folderFor(const QString &source,
+                             const QString &rootOverride=QString())
+    {
+        if(source.isEmpty())return {};
+        const QString identity=canonicalIdentity(source);
+        if(identity.isEmpty())return {};
         const QString base=rootOverride.isEmpty()?
             QDir(QStandardPaths::writableLocation(
                 QStandardPaths::AppDataLocation))
@@ -52,7 +83,16 @@ public:
         if(base.isEmpty())return {};
         const QString digest=QString::fromLatin1(QCryptographicHash::hash(
             identity.toUtf8(),QCryptographicHash::Sha256).toHex());
-        return QDir(base).filePath(digest);
+        const QString canonicalFolder=QDir(base).filePath(digest);
+        if(source!=identity) {
+            const QString legacyDigest=QString::fromLatin1(QCryptographicHash::hash(
+                source.toUtf8(),QCryptographicHash::Sha256).toHex());
+            const QString legacyFolder=QDir(base).filePath(legacyDigest);
+            if(legacyFolder!=canonicalFolder && QDir(legacyFolder).exists()) {
+                migrateFolder(legacyFolder,canonicalFolder);
+            }
+        }
+        return canonicalFolder;
     }
 
     static QVector<Version> list(const QString &source,
@@ -181,11 +221,6 @@ public:
     }
 
 private:
-    static bool isProviderUri(const QString &source)
-    {
-        return source.startsWith(QStringLiteral("content://"),Qt::CaseInsensitive);
-    }
-
     static QString recoveryDirectory()
     {
         const QString base=QStandardPaths::writableLocation(
@@ -196,8 +231,33 @@ private:
 
     static QMutex &lock()
     {
-        static QMutex mutex;
+        static QMutex mutex(QMutex::Recursive);
         return mutex;
+    }
+
+    static void migrateFolder(const QString &from, const QString &to)
+    {
+        if(from.isEmpty() || to.isEmpty() || from==to)return;
+        QMutexLocker guard(&lock());
+        const QDir fromDir(from);
+        if(!fromDir.exists())return;
+
+        if(!QDir(to).exists()) {
+            if(QDir().rename(from,to))return;
+        }
+
+        if(!QDir().mkpath(to))return;
+        const auto entries=fromDir.entryInfoList(QDir::Files|QDir::Readable|QDir::Hidden);
+        for(const QFileInfo &entry:entries) {
+            const QString targetPath=QDir(to).filePath(entry.fileName());
+            if(!QFile::exists(targetPath)) {
+                QFile::rename(entry.absoluteFilePath(),targetPath);
+            } else {
+                QFile::remove(entry.absoluteFilePath());
+            }
+        }
+        fromDir.rmdir(from);
+        prune(to);
     }
 
     static QVector<Version> scan(const QString &folder)

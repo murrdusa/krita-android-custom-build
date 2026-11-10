@@ -259,9 +259,13 @@ public:
                 for(const auto &entry:m_engine.openDocuments()) {
                     const auto *doc=qobject_cast<KisDocument*>(
                         entry.document.data());
-                    if(doc && (doc->path()==path ||
-                               doc->property("_mobileDraftPath").toString()==path) &&
-                       m_engine.activateDocumentView(entry.nativeView)) {
+                    const QString docPath=doc?doc->path():QString();
+                    const bool sameDoc=doc && (docPath==path ||
+                        (!docPath.isEmpty() &&
+                         MobileSavedVersionArchive::canonicalIdentity(docPath)==
+                         MobileSavedVersionArchive::canonicalIdentity(path)) ||
+                        doc->property("_mobileDraftPath").toString()==path);
+                    if(sameDoc && m_engine.activateDocumentView(entry.nativeView)) {
                         hide();
                         return;
                     }

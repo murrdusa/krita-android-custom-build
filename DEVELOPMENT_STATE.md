@@ -5,9 +5,10 @@
 ## Resume here
 
 - Start from GitHub `main` with a clean checkout. The WSL2 watcher already runs in `/home/pokem/krita-tablet-customizations`. Its `.build-watcher/status.json` and `.build-watcher/logs/` are the authoritative local results when Issue #1 still shows an older revision. Match the exact source SHA. Push one batch to trigger the watcher and leave APK publishing paused.
-- Home, linked Android folders, and saved versions are in `mobile_core/document_home.h`. `apply_mobile_shell.py` generates the Java Storage Access Framework bridge. Home now invalidates stale thumbnails when modification times change or Refresh is tapped, and drops thumbnail results from a previous view.
+- Home, linked Android folders, and saved versions are in `mobile_core/document_home.h` and `mobile_core/saved_version_archive.h`. `MobileSavedVersionArchive::canonicalIdentity` normalizes Android SAF tree grants and direct document URIs to one canonical project identity, ensuring both access methods share identical version histories. Existing version folders created with legacy tree-URI hashes are automatically migrated without losing snapshots.
+- Home also activates the open canvas if an identical document is tapped across different SAF access representations, avoiding redundant opens.
 - The latest Fold 6 batch still needs a device pass. Prioritize compact Transform Free → Perspective → Warp, slow finger strokes with pressure on/off, adding a missing-project folder, restoring a closed project's history, and background recovery of two dirty canvases.
-- Next code task if device feedback is unavailable: keep one saved-version identity when the same Android document is opened via a tree grant or directly through Browse Files. Preserve existing version folders and verify with the Qt archive test. The native engine already backs filters, tiling, gradients, patterns, and painting assistants. Keep new UI changes touch-first and use existing Krita operations.
+- Next code task if device feedback is unavailable: continue with next logical version-history improvement (debounced periodic background checkpoints for dirty canvases while drawing, before system process death). Keep new UI changes touch-first and use existing Krita operations.
 
 ## Verified milestones
 
