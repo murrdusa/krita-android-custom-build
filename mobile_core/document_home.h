@@ -10,7 +10,9 @@
 
 #include <QAbstractItemView>
 #include <QAndroidJniObject>
+#include <QAndroidJniEnvironment>
 #include <QApplication>
+#include <QBuffer>
 #include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
@@ -22,6 +24,7 @@
 #include <QHash>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QImageReader>
 #include <QImage>
 #include <QLabel>
 #include <QLineEdit>
@@ -29,9 +32,11 @@
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QPainter>
+#include <QPixmap>
 #include <QPointer>
 #include <QPushButton>
 #include <QScopedPointer>
+#include <QScrollBar>
 #include <QScroller>
 #include <QSet>
 #include <QSharedPointer>
@@ -268,13 +273,50 @@ private:
         return QIcon(pix);
     }
 
+    static QImage decodePreview(const QByteArray &bytes)
+    {
+        if(bytes.isEmpty() || bytes.size()>8*1024*1024)return {};
+        QBuffer buffer;
+        buffer.setData(bytes);
+        if(!buffer.open(QIODevice::ReadOnly))return {};
+        QImageReader reader(&buffer,"png");
+        const QSize original=reader.size();
+        if(!original.isValid() || original.width()>8192 ||
+           original.height()>8192)return {};
+        reader.setScaledSize(original.scaled(124,124,Qt::KeepAspectRatio));
+        return reader.read();
+    }
+
     static QImage preview(const QString &path)
     {
-        // Providers use content:// URIs. Never pass them to QFile/KoStore;
-        // they require a separate Android provider stream implementation.
-        if(path.startsWith(QStringLiteral("content:"),Qt::CaseInsensitive))
-            return {};
-        if(!isKra(path) || !QFileInfo(path).isReadable())return {};
+        if(path.startsWith(QStringLiteral("content:"),Qt::CaseInsensitive)) {
+            // Only Android's ContentResolver can access documents opened
+            // with SAF. Read just the small embedded KRA PNG preview.
+            const QAndroidJniObject uri=QAndroidJniObject::fromString(path);
+            const auto data=QAndroidJniObject::callStaticObjectMethod(
+                "org/krita/android/MainActivity","tabletKraPreview",
+                "(Ljava/lang/String;)[B",uri.object<jstring>());
+            if(!data.isValid())return {};
+            QAndroidJniEnvironment env;
+            const jbyteArray array=data.object<jbyteArray>();
+            const jsize size=env->GetArrayLength(array);
+            if(size<=0 || size>8*1024*1024)return {};
+            QByteArray bytes(size,Qt::Uninitialized);
+            env->GetByteArrayRegion(array,0,size,
+                                    reinterpret_cast<jbyte*>(bytes.data()));
+            return decodePreview(bytes);
+        }
+        if(!QFileInfo(path).isReadable())return {};
+        if(!isKra(path)) {
+            // Imported PNG/JPEG drawings are also part of Krita's recent
+            // history. Read them with the native Qt image decoder.
+            QImageReader reader(path);
+            const QSize size=reader.size();
+            if(!size.isValid() || size.width()>8192 || size.height()>8192)
+                return {};
+            reader.setScaledSize(size.scaled(124,124,Qt::KeepAspectRatio));
+            return reader.read();
+        }
         QScopedPointer<KoStore> store(KoStore::createStore(path,KoStore::Read));
         if(!store || store->bad())return {};
         for(const QString &part:{QStringLiteral("preview.png"),
@@ -287,11 +329,8 @@ private:
             }
             const QByteArray bytes=store->read(size);
             store->close();
-            QImage image=QImage::fromData(bytes,"PNG");
-            if(!image.isNull() && image.width()<8192 &&
-               image.height()<8192)
-                return image.scaled(124,124,Qt::KeepAspectRatio,
-                                    Qt::SmoothTransformation);
+            const QImage image=decodePreview(bytes);
+            if(!image.isNull())return image;
         }
         return {};
     }
@@ -312,7 +351,9 @@ private:
         m_list->setIconSize(QSize(124,124));
         m_list->clear();
         m_views.clear();
+        m_seen.clear();
         m_pending.clear();
+        m_attempted.clear();
         if(m_scanCancel)m_scanCancel->store(true);
         if(mode==OpenCanvases) {
             m_message->setText(i18n("Switch between open drawings"));
@@ -329,7 +370,6 @@ private:
                 if(it->m_url.isEmpty())continue;
                 const QString path=it->m_url.isLocalFile()?
                     it->m_url.toLocalFile():it->m_url.toString();
-                if(!isKra(path))continue;
                 const QString name=it->m_displayName.isEmpty()?
                     QFileInfo(path).fileName():it->m_displayName;
                 addProject({path,name,0});
