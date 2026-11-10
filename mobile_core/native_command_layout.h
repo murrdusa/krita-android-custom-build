@@ -135,6 +135,9 @@ private:
             auto *button=new QToolButton(frame);
             button->setDefaultAction(action);
             button->setAccessibleName(action->text());
+            QObject::connect(action,&QAction::changed,button,[action,button]() {
+                button->setAccessibleName(action->text());
+            });
             button->setIconSize(QSize(23,23));
             if(action->icon().isNull()) {
                 button->setToolButtonStyle(Qt::ToolButtonTextOnly);

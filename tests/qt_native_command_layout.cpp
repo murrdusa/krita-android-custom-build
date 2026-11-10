@@ -29,11 +29,13 @@ int main(int argc,char **argv)
     host.setCentralWidget(canvas);
 
     QAction canvases(QObject::tr("Canvases"),&host);
+    QAction home(QObject::tr("Home"),&host);
     QAction undo(QObject::tr("Undo"),&host);
     QAction redo(QObject::tr("Redo"),&host);
     QAction save(QObject::tr("Save"),&host);
     QAction brushes(QObject::tr("Brushes"),&host);
     QAction eraser(QObject::tr("Eraser"),&host);
+    QAction blend(QObject::tr("Blend"),&host);
     QAction layers(QObject::tr("Layers"),&host);
     QAction color(QObject::tr("Color"),&host);
     QAction tools(QObject::tr("Tools"),&host);
@@ -44,7 +46,7 @@ int main(int argc,char **argv)
     canvasOnly.setCheckable(true);
     QPixmap icon(20,20);
     icon.fill(Qt::white);
-    for(QAction *action:{&canvases,&undo,&redo,&save,&brushes,&eraser,
+    for(QAction *action:{&home,&canvases,&undo,&redo,&save,&brushes,&eraser,&blend,
                          &layers,&color,&tools})
         action->setIcon(QIcon(icon));
     int brushed=0;
@@ -55,8 +57,8 @@ int main(int argc,char **argv)
                      [&opened]() { ++opened; });
 
     verify(MobileNativeCommandLayout::install(
-        &host,{&canvases,&undo,&redo,&save},
-        {&brushes,&eraser,&color,&layers,&tools},
+        &host,{&home,&canvases,&undo,&redo,&save},
+        {&brushes,&eraser,&blend,&color,&layers,&tools},
         {&newCanvas,&open,&exit,&canvasOnly},&canvasOnly),
         "could not install command chrome");
     auto *primary=host.findChild<QFrame*>(
@@ -78,6 +80,12 @@ int main(int argc,char **argv)
     verify(hasButton(primary,&canvases) && hasButton(primary,&save) &&
            !hasButton(primary,&brushes),
            "document actions leaked into the workspace controls");
+    canvases.setText(QObject::tr("Tool Options"));
+    for(auto *button:primary->findChildren<QToolButton*>()) {
+        if(button->defaultAction()==&canvases)
+            verify(button->accessibleName()==canvases.text(),
+                   "reassigned toolbar shortcut kept its previous label");
+    }
     verify(hasButton(secondary,&brushes) && hasButton(secondary,&eraser) &&
            hasButton(secondary,&layers) &&
            hasButton(secondary,&color) && hasButton(secondary,&tools),

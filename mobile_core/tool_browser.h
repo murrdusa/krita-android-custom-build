@@ -83,9 +83,9 @@ public:
             {"KisToolCrop",i18n("Crop")}
         });
         addGroup(i18n("Edit"),{},{
-            {"krita_filter_colorbalance",i18n("Color balance"),""},
-            {"krita_filter_perchannel",i18n("Curves"),""},
-            {"krita_filter_gaussian blur",i18n("Blur"),""}
+            {"krita_filter_colorbalance",i18n("Color balance"),"preferences-desktop-color"},
+            {"krita_filter_perchannel",i18n("Curves"),"filter-color-curves"},
+            {"krita_filter_gaussian blur",i18n("Blur"),"filterLayer"}
         });
         addGroup(i18n("Shapes"),{
             {"KritaShape/KisToolLine",i18n("Line")},
@@ -102,11 +102,11 @@ public:
             {"view_show_guides",i18n("Guides"),"view-grid"}
         });
         addGroup(i18n("Canvas"),{},{
-            {"zoom_to_fit",i18n("Fit"),"zoom-fit-best"},
+            {"zoom_to_fit",i18n("Fit"),"zoom-fit"},
             {"mirror_canvas",i18n("Flip view"),"mirror-view"},
             {"wrap_around_mode",i18n("Wrap"),"wraparound"},
             {"canvassize",i18n("Canvas size"),"tool_crop"},
-            {"imagesize",i18n("Resize image"),"transform-scale"}
+            {"imagesize",i18n("Resize image"),"zoom-fit"}
         });
 
         for(const auto &tool:available) {

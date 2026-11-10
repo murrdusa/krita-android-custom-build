@@ -12,6 +12,7 @@
 #ifdef Q_OS_ANDROID
 #include <QApplication>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialog>
 #include <QObject>
 #include <QDockWidget>
@@ -39,6 +40,12 @@
 class MobileKritaNativeWorkspace final : public QObject
 {
 public:
+    struct ToolbarShortcut {
+        QString id;
+        QPointer<QAction> action;
+        QIcon icon;
+    };
+
     explicit MobileKritaNativeWorkspace(
         MobileLightweightCanvasHost *host,
         const MobileHostServices &services,KisViewManager *manager)
@@ -230,6 +237,27 @@ public:
         });
     }
 
+    void configureToolbarShortcut(QAction *slot,const QVector<ToolbarShortcut> &choices)
+    {
+        m_shortcutSlot=slot;
+        for(const auto &choice:choices) {
+            if(!choice.action)continue;
+            m_shortcuts.append(choice);
+            connect(choice.action,&QAction::changed,this,
+                    [this]() {syncToolbarShortcut();});
+        }
+        if(m_shortcuts.isEmpty())return;
+        const QString saved=QSettings().value(
+            QStringLiteral("MobileStudio/toolbarShortcut")).toString();
+        for(int i=0;i<m_shortcuts.size();++i)
+            if(m_shortcuts.at(i).id==saved)m_shortcutIndex=i;
+        connect(slot,&QAction::triggered,this,[this]() {
+            const auto target=m_shortcuts.at(m_shortcutIndex).action;
+            if(target && target->isEnabled())target->trigger();
+        });
+        syncToolbarShortcut();
+    }
+
     void openSettings()
     {
         if(!m_host)return;
@@ -239,7 +267,10 @@ public:
             dialog.setWindowTitle(QObject::tr("Workspace Settings"));
             dialog.setStyleSheet(QStringLiteral(
                 "QDialog{background:#252529;color:#f4f4f5;}"
-                "QLabel,QCheckBox{color:#f4f4f5;}"
+                "QLabel,QCheckBox,QComboBox{color:#f4f4f5;}"
+                "QComboBox{background:#34343a;border:1px solid #55555c;"
+                "border-radius:8px;padding:4px;min-height:44px;}"
+                "QComboBox QAbstractItemView{background:#34343a;color:#f4f4f5;}"
                 "QCheckBox{min-height:44px;}"
                 "QCheckBox::indicator{width:22px;height:22px;}"
                 "QPushButton{background:#34343a;color:#f4f4f5;"
@@ -258,6 +289,16 @@ public:
             layout->addWidget(layers);
             layout->addWidget(color);
             layout->addWidget(brush);
+            auto *shortcut=new QComboBox(&dialog);
+            if(!m_shortcuts.isEmpty()) {
+                layout->addWidget(new QLabel(QObject::tr("Toolbar shortcut"),&dialog));
+                for(const auto &choice:m_shortcuts)
+                    shortcut->addItem(choice.icon,choice.action->text());
+                shortcut->setCurrentIndex(m_shortcutIndex);
+                layout->addWidget(shortcut);
+            } else {
+                shortcut->hide();
+            }
             auto *done=new QPushButton(QObject::tr("Done"),&dialog);
             connect(done,&QPushButton::clicked,&dialog,&QDialog::accept);
             layout->addWidget(done);
@@ -269,6 +310,12 @@ public:
             settings.setValue(QStringLiteral("MobileStudio/keepLayersOpen"),m_keepLayers);
             settings.setValue(QStringLiteral("MobileStudio/keepColorOpen"),m_keepColor);
             settings.setValue(QStringLiteral("MobileStudio/showBrushSliders"),m_showBrushSliders);
+            if(shortcut->currentIndex()>=0) {
+                m_shortcutIndex=shortcut->currentIndex();
+                settings.setValue(QStringLiteral("MobileStudio/toolbarShortcut"),
+                                  m_shortcuts.at(m_shortcutIndex).id);
+                syncToolbarShortcut();
+            }
             updateBrushSliders();
         });
     }
@@ -333,6 +380,22 @@ protected:
     }
 
 private:
+    void syncToolbarShortcut()
+    {
+        if(!m_shortcutSlot || m_shortcuts.isEmpty())return;
+        const auto &choice=m_shortcuts.at(m_shortcutIndex);
+        if(!choice.action) {
+            m_shortcutSlot->setEnabled(false);
+            return;
+        }
+        m_shortcutSlot->setText(choice.action->text());
+        m_shortcutSlot->setToolTip(choice.action->text());
+        m_shortcutSlot->setIcon(choice.icon);
+        m_shortcutSlot->setEnabled(choice.action->isEnabled());
+        m_shortcutSlot->setCheckable(choice.action->isCheckable());
+        m_shortcutSlot->setChecked(choice.action->isChecked());
+    }
+
     bool ensureBrushControls()
     {
         if(m_brush)return true;
@@ -444,6 +507,9 @@ private:
     QPointer<KritaMobileBrushWorkspace> m_brush;
     QPointer<KritaMobileLayersPanel> m_layers;
     QPointer<MobileColorWorkspace> m_color;
+    QPointer<QAction> m_shortcutSlot;
+    QVector<ToolbarShortcut> m_shortcuts;
+    int m_shortcutIndex=0;
     bool m_keepLayers=true,m_keepColor=true,m_showBrushSliders=false;
     bool m_canvasOnly=false;
 };

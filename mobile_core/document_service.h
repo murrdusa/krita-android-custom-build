@@ -177,20 +177,16 @@ public:
     bool saveDocumentView(const QPointer<QObject> &identity,
                           bool saveAs=false) const
     {
-        if(!m_host || !m_host->available() ||
-           !m_viewHost || !identity)return false;
-        // Capture no raw KisView: the provider can replace a view while
-        // Qt dispatches a deferred menu callback. A current snapshot
-        // must still contain exactly this selected identity and the
-        // same live KisDocument currently owned by Krita's manager.
-        const auto views=m_viewHost->openViews();
-        const QPointer<QObject> current=m_viewHost->currentDocument();
-        auto *document=qobject_cast<KisDocument*>(current.data());
-        if(!document || !MobileViewIdentityGuard::maySave(
-               views,identity,current))
-            return false;
-        return m_host->save(document,saveAs);
+        auto *document=documentForView(identity);
+        return document && m_host->save(document,saveAs);
     }
+
+    bool exportDocumentView(const QPointer<QObject> &identity) const
+    {
+        auto *document=documentForView(identity);
+        return document && m_host->exportCopy(document);
+    }
+
     QString activeDocumentTitle() const
     {
         const QPointer<QObject> current=m_viewHost?
@@ -222,6 +218,22 @@ public:
     }
 
 private:
+    KisDocument *documentForView(const QPointer<QObject> &identity) const
+    {
+        if(!m_host || !m_host->available() ||
+           !m_viewHost || !identity)return nullptr;
+        // Capture no raw KisView: the provider can replace a view while
+        // Qt dispatches a deferred menu callback. A current snapshot
+        // must still contain exactly this selected identity and the
+        // same live KisDocument currently owned by Krita's manager.
+        const auto views=m_viewHost->openViews();
+        const QPointer<QObject> current=m_viewHost->currentDocument();
+        auto *document=qobject_cast<KisDocument*>(current.data());
+        if(!document || !MobileViewIdentityGuard::maySave(
+               views,identity,current))
+            return nullptr;
+        return document;
+    }
     QSharedPointer<MobileDocumentHostPort> m_host;
     QSharedPointer<MobileViewHostPort> m_viewHost;
 

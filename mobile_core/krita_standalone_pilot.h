@@ -130,12 +130,14 @@ public:
         auto *openAction=makeAction("Open");
         auto *canvasesAction=makeAction("Canvases");
         auto *homeAction=makeAction("Home");
+        auto *shortcutSlot=makeAction("Canvases");
         auto *previousAction=makeAction("Previous canvas");
         auto *nextAction=makeAction("Next canvas");
         auto *undoAction=makeAction("Undo");
         auto *redoAction=makeAction("Redo");
         auto *saveAction=makeAction("Save");
         auto *saveAsAction=makeAction("Save As");
+        auto *exportAction=makeAction("Export Copy…");
         auto *closeAction=makeAction("Close view");
         auto *brushesAction=makeAction("Paint");
         auto *eraserAction=makeAction("Erase");
@@ -146,9 +148,11 @@ public:
         auto *optionsAction=makeAction("Tool Options");
         auto *commandsAction=makeAction("All Krita Commands");
         auto *settingsAction=makeAction("Workspace Settings");
-        const auto setStudioIcon=[](QAction *action,const char *name) {
-            action->setIcon(QIcon(QStringLiteral(":/light_%1.svg")
-                                  .arg(QString::fromLatin1(name))));
+        const auto studioIcon=[](const char *name) {
+            return QIcon(QStringLiteral(":/light_%1.svg").arg(QString::fromLatin1(name)));
+        };
+        const auto setStudioIcon=[&studioIcon](QAction *action,const char *name) {
+            action->setIcon(studioIcon(name));
         };
         setStudioIcon(canvasesAction,"folder-documents");
         setStudioIcon(homeAction,"go-home");
@@ -178,6 +182,16 @@ public:
         }
         auto *canvasOnlyAction=makeAction("Canvas Only");
         canvasOnlyAction->setCheckable(true);
+        workspace->configureToolbarShortcut(shortcutSlot,{
+            {QStringLiteral("canvases"),canvasesAction,studioIcon("folder-documents")},
+            {QStringLiteral("options"),optionsAction,studioIcon("configure")},
+            {QStringLiteral("fit"),nativeBridge.action("zoom_to_fit"),studioIcon("zoom-fit")},
+            {QStringLiteral("mirror"),nativeBridge.action("mirror_canvas"),studioIcon("mirror-view")},
+            {QStringLiteral("assistants"),nativeBridge.action("view_toggle_painting_assistants"),
+             studioIcon("krita_tool_assistant")},
+            {QStringLiteral("save-as"),saveAsAction,studioIcon("document-save-as")},
+            {QStringLiteral("canvas-only"),canvasOnlyAction,studioIcon("view-fullscreen")}
+        });
         auto *exitAction=makeAction("Close app");
         QObject::connect(canvasOnlyAction,&QAction::toggled,workspace,
                          &MobileKritaNativeWorkspace::setCanvasOnly);
@@ -316,9 +330,9 @@ public:
             "offsetlayer"
         });
         auto *documentMenu=new QMenu(QObject::tr("Documents"),window);
-        documentMenu->addActions({newAction,openAction,saveAsAction});
+        documentMenu->addActions({newAction,openAction,saveAsAction,exportAction});
         documentMenu->addSeparator();
-        documentMenu->addActions({previousAction,nextAction,closeAction});
+        documentMenu->addActions({canvasesAction,previousAction,nextAction,closeAction});
         QList<QAction*> moreActions{
             documentMenu->menuAction(),optionsAction,canvasOnlyAction
         };
@@ -335,7 +349,7 @@ public:
         // Less-common operations stay in an explicit, labeled menu.
         if(!MobileNativeCommandLayout::install(
             window,
-            {homeAction,canvasesAction,undoAction,redoAction,saveAction},
+            {homeAction,shortcutSlot,undoAction,redoAction,saveAction},
             {brushesAction,eraserAction,blendBrushAction,
              colorAction,layersAction,toolsAction},
             moreActions,canvasOnlyAction)) {
@@ -426,6 +440,12 @@ public:
                     const QPointer<QObject> &selected) {
                 if(alive && !documents->saveDocumentView(selected,true))
                     qWarning() << "Independent Krita Save As canceled or rejected";
+            });
+        });
+        QObject::connect(exportAction,&QAction::triggered,window,
+                         [documents,deferViewCommand]() {
+            deferViewCommand([documents](const QPointer<QObject> &selected) {
+                documents->exportDocumentView(selected);
             });
         });
         QObject::connect(closeAction,&QAction::triggered,window,

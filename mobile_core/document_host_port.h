@@ -23,5 +23,6 @@ public:
     virtual bool attachNewDocument(KisDocument *document) const = 0;
     virtual bool openFile(const QString &path) const = 0;
     virtual bool save(KisDocument *document,bool saveAs) const = 0;
+    virtual bool exportCopy(KisDocument *) const {return false;}
 };
 #endif // Q_OS_ANDROID

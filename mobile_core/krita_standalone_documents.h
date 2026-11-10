@@ -12,6 +12,7 @@
 #ifdef Q_OS_ANDROID
 #include <QFile>
 #include <QFileInfo>
+#include <QMessageBox>
 #include <QPointer>
 #include <QScopedValueRollback>
 #include <QSharedPointer>
@@ -98,6 +99,17 @@ public:
 
     bool save(KisDocument *document,bool saveAs) const override
     {
+        return writeDocument(document,saveAs,false);
+    }
+
+    bool exportCopy(KisDocument *document) const override
+    {
+        return writeDocument(document,true,true);
+    }
+
+private:
+    bool writeDocument(KisDocument *document,bool saveAs,bool exporting) const
+    {
         if(!available() || m_saving || !document ||
            !m_runtime->ownsDocument(document))return false;
         const QScopedValueRollback<bool> transaction(m_saving,true);
@@ -128,8 +140,10 @@ public:
         if(choosePath) {
             KoFileDialog dialog(m_runtime->window(),
                                 KoFileDialog::SaveFile,
-                                QStringLiteral("MobileStudioNativeSaveAs"));
-            dialog.setCaption(QObject::tr("Save drawing"));
+                                exporting?QStringLiteral("MobileStudioExportCopy"):
+                                          QStringLiteral("MobileStudioNativeSaveAs"));
+            dialog.setCaption(exporting?QObject::tr("Export a copy"):
+                                        QObject::tr("Save drawing"));
             const QString proposed=
                 MobileNativeDocumentPathPolicy::saveDialogStartPath(
                     currentPath,
@@ -156,6 +170,18 @@ public:
         if(!guardedDocument || !m_runtime ||
            !m_runtime->ownsDocument(guardedDocument) ||
            target.isEmpty() || targetMime.isEmpty())return false;
+        if(exporting) {
+            const QString canonical=QFileInfo(target).canonicalFilePath();
+            if(target==currentPath ||
+               (!canonical.isEmpty() && canonical==QFileInfo(currentPath).canonicalFilePath())) {
+                QMessageBox::warning(m_runtime->window(),QObject::tr("Export a copy"),
+                    QObject::tr("Choose a different file from the open drawing."));
+                return false;
+            }
+            const bool started=guardedDocument->exportDocument(target,targetMime,false,true);
+            if(started && guardedDocument)guardedDocument->waitForSavingToComplete();
+            return started && guardedDocument;
+        }
         // Let KisDocument apply platform SAF providers, backups,
         // native file format conversion, and asynchronous completion.
         const bool saved=choosePath?
@@ -169,7 +195,6 @@ public:
                m_runtime && m_runtime->ownsDocument(guardedDocument);
     }
 
-private:
     static void rememberPath(const QString &path)
     {
         if(path.isEmpty())return;
