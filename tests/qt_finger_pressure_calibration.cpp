@@ -72,8 +72,8 @@ int main(int argc,char **argv)
             "incorrect default response settings");
     auto *save=buttons->button(QDialogButtonBox::Save);
     require(save && save->isEnabled(),"default calibration is invalid");
-    require(qAbs(minimum->value()-8.0)<0.01 &&
-            qAbs(maximum->value()-24.0)<0.01,
+    require(qAbs(minimum->value()-1.0)<0.01 &&
+            qAbs(maximum->value()-10.0)<0.01,
             "incorrect default min/max calibration");
 
     minimum->setValue(35.0);

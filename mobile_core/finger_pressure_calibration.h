@@ -21,6 +21,7 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QScrollArea>
+#include <QScroller>
 #include <QSizeF>
 #include <QTouchEvent>
 #include <QVBoxLayout>
@@ -257,25 +258,33 @@ public:
         : QDialog(parent)
     {
         setWindowTitle(tr("Calibrate finger pressure"));
-        setMinimumWidth(310);
+        setMinimumWidth(280);
+        setStyleSheet(QStringLiteral(
+            "QPushButton,QDoubleSpinBox,QCheckBox{min-height:44px;}"
+            "QDoubleSpinBox{padding-left:8px;padding-right:40px;}"
+            "QDoubleSpinBox::up-button,QDoubleSpinBox::down-button{width:38px;}"
+            "QSlider{min-height:44px;}"
+            "QSlider::groove:horizontal{height:6px;background:#647180;border-radius:3px;}"
+            "QSlider::handle:horizontal{width:26px;margin:-10px 0;"
+            "background:#58a8d1;border-radius:13px;}"
+            "QCheckBox{spacing:9px;}"
+            "QCheckBox::indicator{width:22px;height:22px;}"));
         auto *outer=new QVBoxLayout(this);
         outer->setContentsMargins(7,7,7,7);
         auto *scroll=new QScrollArea(this);
         scroll->setObjectName(QStringLiteral("fingerPressureSettingsScroll"));
         scroll->setWidgetResizable(true);
         scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        QScroller::grabGesture(scroll->viewport(),QScroller::LeftMouseButtonGesture);
         auto *body=new QWidget(scroll);
         auto *layout=new QVBoxLayout(body);
         layout->setSpacing(9);
         outer->addWidget(scroll,1);
 
         auto *description=new QLabel(tr(
-            "Calibrate small and large contacts for 0–100% pressure. "
-            "Adjust response: below 1.0 emphasizes light contact, "
-            "above 1.0 emphasizes broad contact. Higher Stability "
-            "keeps slow strokes steadier. Lower Stability reacts faster. "
-            "Capture a medium contact to fit the curve automatically. "
-            "Some brushes make no mark at 0%."),this);
+            "Capture light and firm contacts to set the pressure range, "
+            "or enter the values below."),this);
         description->setWordWrap(true);
         layout->addWidget(description);
 
@@ -350,6 +359,8 @@ public:
                 [updateControls](int){updateControls();});
         updateControls();
 
+        auto *calibration=new QVBoxLayout;
+        layout->insertLayout(1,calibration);
         auto *capture=new QHBoxLayout;
         auto *captureMin=new QPushButton(tr("Capture minimum"),this);
         auto *captureMax=new QPushButton(tr("Capture maximum"),this);
@@ -359,19 +370,19 @@ public:
         captureMax->setMinimumHeight(45);
         capture->addWidget(captureMin);
         capture->addWidget(captureMax);
-        layout->addLayout(capture);
+        calibration->addLayout(capture);
         auto *captureMedium=new QPushButton(
-            tr("Capture medium contact — fit 50% pressure"),this);
+            tr("Capture medium contact (50%)"),this);
         captureMedium->setObjectName(
             QStringLiteral("fingerCaptureMedium"));
         captureMedium->setMinimumHeight(42);
-        layout->addWidget(captureMedium);
+        calibration->addWidget(captureMedium);
 
         m_instruction=new QLabel(tr(
             "Select a calibration button, then touch the pad below. "
             "You can also edit the numbers manually."),this);
         m_instruction->setWordWrap(true);
-        layout->addWidget(m_instruction);
+        calibration->addWidget(m_instruction);
 
         m_pad=new MobileFingerCalibrationPad(this);
         m_pad->setPreferRaw(m_useRaw->isChecked());
@@ -385,11 +396,11 @@ public:
         padText->setAttribute(Qt::WA_TransparentForMouseEvents,true);
         padText->setAlignment(Qt::AlignCenter);
         padLayout->addWidget(padText);
-        layout->addWidget(m_pad);
+        calibration->addWidget(m_pad);
 
         m_observed=new QLabel(tr("Contact reading: none yet"),this);
         m_observed->setWordWrap(true);
-        layout->addWidget(m_observed);
+        calibration->addWidget(m_observed);
         m_levels=new QLabel(tr(
             "Sensor levels: no readings yet. Touch and vary your "
             "finger contact on the pad."),this);
@@ -402,6 +413,14 @@ public:
 
         auto *buttons=new QDialogButtonBox(
             QDialogButtonBox::Save|QDialogButtonBox::Cancel,this);
+        auto *defaults=buttons->addButton(tr("Defaults"),QDialogButtonBox::ResetRole);
+        connect(defaults,&QPushButton::clicked,this,[this]() {
+            m_min->setValue(MobileFingerPressureSettings::defaultMin());
+            m_max->setValue(MobileFingerPressureSettings::defaultMax());
+            m_curve->setValue(qRound(MobileFingerPressureSettings::defaultCurve()*100));
+            m_stability->setValue(qRound(MobileFingerPressureSettings::defaultStability()*100));
+            m_useRaw->setChecked(true);
+        });
         layout->addStretch(1);
         scroll->setWidget(body);
         outer->addWidget(buttons);

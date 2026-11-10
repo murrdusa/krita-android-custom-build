@@ -182,7 +182,7 @@ Java_org_krita_android_JNIWrappers_volumeKeyAction(
                      QStringLiteral("TabletUi/volumeUpShort"))
         : (longPress?QStringLiteral("TabletUi/volumeDownLong"):
                      QStringLiteral("TabletUi/volumeDownShort"));
-    const int fallback=up?(longPress?3:2):(longPress?4:1);
+    const int fallback=up?2:1;
     return qBound(0,settings.value(key,fallback).toInt(),6);
 }
 

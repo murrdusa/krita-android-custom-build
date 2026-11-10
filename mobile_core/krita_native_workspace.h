@@ -19,6 +19,7 @@
 #include <QFormLayout>
 #include <QLabel>
 #include <QScrollArea>
+#include <QScroller>
 #include <QSpinBox>
 #include <QObject>
 #include <QDockWidget>
@@ -415,6 +416,8 @@ public:
                 "QDialog,QScrollArea,QWidget#mobileInputSettingsBody{"
                 "background:#252529;color:#f4f4f5;}"
                 "QLabel,QCheckBox{color:#f4f4f5;}"
+                "QCheckBox{min-height:44px;spacing:9px;}"
+                "QCheckBox::indicator{width:22px;height:22px;}"
                 "QComboBox,QSpinBox{color:#172530;background:#eef3f7;"
                 "border:1px solid #8f9ca6;border-radius:6px;"
                 "min-height:42px;padding:3px;}"
@@ -426,6 +429,8 @@ public:
             auto *scroll=new QScrollArea(&dialog);
             scroll->setWidgetResizable(true);
             scroll->setFrameShape(QFrame::NoFrame);
+            scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+            QScroller::grabGesture(scroll->viewport(),QScroller::LeftMouseButtonGesture);
             auto *body=new QWidget(scroll);
             body->setObjectName(QStringLiteral("mobileInputSettingsBody"));
             auto *form=new QFormLayout(body);
@@ -439,16 +444,15 @@ public:
                 "Finger contact area controls brush pressure"),body);
             finger->setObjectName(QStringLiteral("mobileFingerPressureEnabled"));
             finger->setChecked(settings.value(QString::fromLatin1(
-                MobileFingerPressureSettings::enabledKey()),false).toBool());
+                MobileFingerPressureSettings::enabledKey()),
+                MobileFingerPressureSettings::defaultEnabled()).toBool());
             form->addRow(finger);
             QObject::connect(finger,&QCheckBox::toggled,&dialog,[](bool enabled) {
                 QSettings().setValue(QString::fromLatin1(
                     MobileFingerPressureSettings::enabledKey()),enabled);
             });
             auto *pressureInfo=new QLabel(QObject::tr(
-                "Optional. Single-finger painting only; S Pen pressure and "
-                "two-finger navigation are unchanged. Contact size is "
-                "an approximation, not measured force."),body);
+                "Finger contact size estimates pressure for single-finger painting."),body);
             pressureInfo->setWordWrap(true);
             form->addRow(pressureInfo);
             auto *calibrate=new QPushButton(QObject::tr(
@@ -527,9 +531,9 @@ public:
             addVolume(QObject::tr("Volume up / tap"),
                 "TabletUi/volumeUpShort",2);
             addVolume(QObject::tr("Volume down / hold"),
-                "TabletUi/volumeDownLong",4);
+                "TabletUi/volumeDownLong",1);
             addVolume(QObject::tr("Volume up / hold"),
-                "TabletUi/volumeUpLong",3);
+                "TabletUi/volumeUpLong",2);
             auto *holdMs=new QSpinBox(body);
             holdMs->setRange(80,1000);
             holdMs->setSuffix(QObject::tr(" ms"));

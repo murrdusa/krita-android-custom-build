@@ -153,7 +153,7 @@ Java_org_krita_android_JNIWrappers_fingerRawCaptureEnabled(
     ko.write_text(s,encoding="utf-8")
     (root/"libs/flake/finger_raw_bridge.h").write_text(
         header.read_text(encoding="utf-8"),encoding="utf-8")
-    print("Installed opt-in Android MotionEvent major/minor history bridge")
+    print("Installed Android MotionEvent major/minor history bridge")
 
 
 if __name__=="__main__":

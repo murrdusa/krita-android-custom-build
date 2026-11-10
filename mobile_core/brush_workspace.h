@@ -10,7 +10,8 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
-#include <QListWidget>
+#include <QListView>
+#include <QSortFilterProxyModel>
 #include <QPointer>
 #include <QPalette>
 #include <QPushButton>
@@ -239,23 +240,90 @@ private:
         QSettings().setValue(
             QStringLiteral("MobileStudio/brushDetailsExpanded"),expanded);
     }
+    static bool inCategory(const QString &name,const QString &engine,int slot)
+    {
+        const bool clone=engine==QStringLiteral("duplicate");
+        if(slot==3)return clone;
+        const QString lower=name.toLower();
+        const bool eraser=lower.contains(QStringLiteral("erase")) ||
+                          lower.contains(QStringLiteral("rubber"));
+        const bool smudge=engine==QStringLiteral("colorsmudge");
+        const bool blend=smudge || lower.contains(QStringLiteral("blend")) ||
+            lower.contains(QStringLiteral("smudge")) ||
+            lower.contains(QStringLiteral("blur")) ||
+            lower.contains(QStringLiteral("mixing"));
+        if(slot==1)return eraser;
+        if(slot==2)return smudge && !eraser;
+        return !eraser && !blend && !clone;
+    }
+
     static bool inCategory(const KisPaintOpPresetSP &preset,int slot)
     {
-        if(!preset)return false;
-        if(slot==3)return preset->paintOp().id()==QStringLiteral("duplicate");
-        const QString name=preset->name().toLower();
-        const bool eraser=name.contains(QStringLiteral("erase")) ||
-            name.contains(QStringLiteral("eraser")) ||
-            name.contains(QStringLiteral("rubber"));
-        const bool blend=name.contains(QStringLiteral("blend")) ||
-            name.contains(QStringLiteral("smudge")) ||
-            name.contains(QStringLiteral("blur")) ||
-            name.contains(QStringLiteral("mixing")) ||
-            preset->paintOp().id()==QStringLiteral("colorsmudge");
-        if(slot==1)return eraser;
-        if(slot==2)return isSmudge(preset) && !eraser;
-        return !eraser && !blend;
+        return preset && inCategory(preset->name(),preset->paintOp().id(),slot);
     }
+
+    static QString presetEngine(KisResourceModel *source,int row)
+    {
+        const auto index=source->index(row,0);
+        const QString engine=index.data(Qt::UserRole+KisAbstractResourceModel::MetaData)
+            .toMap().value(QStringLiteral("paintopid")).toString();
+        if(!engine.isEmpty())return engine;
+        // Presets indexed before paintop metadata was stored still work.
+        const auto preset=source->resourceForIndex(index).dynamicCast<KisPaintOpPreset>();
+        return preset?preset->paintOp().id():QString();
+    }
+
+    class PresetFilter final : public QSortFilterProxyModel
+    {
+    public:
+        PresetFilter(KisResourceModel *source,int slot,QObject *parent)
+            : QSortFilterProxyModel(parent),m_source(source),m_category(slot),
+              m_smudgeOnly(slot==2)
+        {
+            setSourceModel(source);
+        }
+
+        void setCategory(int category)
+        {
+            m_category=category;
+            invalidateFilter();
+        }
+
+        void setSearch(const QString &search)
+        {
+            m_search=search.trimmed();
+            invalidateFilter();
+        }
+
+        QVariant data(const QModelIndex &index,int role) const override
+        {
+            if(role==Qt::DecorationRole && index.isValid()) {
+                const auto source=mapToSource(index);
+                return source.sibling(source.row(),KisAbstractResourceModel::Thumbnail)
+                    .data(Qt::DecorationRole);
+            }
+            return QSortFilterProxyModel::data(index,role);
+        }
+
+    protected:
+        bool filterAcceptsRow(int row,const QModelIndex &parent) const override
+        {
+            const QString name=m_source->index(row,KisAbstractResourceModel::Name,parent)
+                .data().toString();
+            if(!name.contains(m_search,Qt::CaseInsensitive))return false;
+            if(m_category<0 && !m_smudgeOnly)return true;
+            const QString engine=presetEngine(m_source,row);
+            return (!m_smudgeOnly || engine==QStringLiteral("colorsmudge")) &&
+                (m_category<0 || inCategory(name,engine,m_category));
+        }
+
+    private:
+        KisResourceModel *m_source;
+        int m_category;
+        bool m_smudgeOnly;
+        QString m_search;
+    };
+
     KisCanvasResourceProvider *resources() const
     {
         return m_engine.brushResources();
@@ -288,10 +356,11 @@ private:
                 if(preset && preset->valid() && preset->name()==name)return preset;
             }
         }
-        for(int i=0;i<src->rowCount() && i<3000;++i) {
+        for(int i=0;i<src->rowCount();++i) {
+            if(src->index(i,KisAbstractResourceModel::Name).data().toString()!=name)continue;
             auto preset=src->resourceForIndex(src->index(i,0))
                            .dynamicCast<KisPaintOpPreset>();
-            if(preset && preset->valid() && preset->name()==name)
+            if(preset && preset->valid())
                 return preset;
         }
         return {};
@@ -299,10 +368,12 @@ private:
     KisPaintOpPresetSP firstPresetFor(int slot)
     {
         auto *src=model();
-        for(int i=0;i<src->rowCount() && i<3000;++i) {
+        for(int i=0;i<src->rowCount();++i) {
+            const QString name=src->index(i,KisAbstractResourceModel::Name).data().toString();
+            if(!inCategory(name,presetEngine(src,i),slot))continue;
             auto preset=src->resourceForIndex(src->index(i,0))
                            .dynamicCast<KisPaintOpPreset>();
-            if(preset && preset->valid() && inCategory(preset,slot))
+            if(preset && preset->valid())
                 return preset;
         }
         return KisPaintOpPresetSP();
@@ -351,7 +422,7 @@ private:
             "QLineEdit,QComboBox{background:#34485b;color:#fff;"
             "border:1px solid #7e9eb4;border-radius:7px;"
             "min-height:44px;padding:4px;}"
-            "QListWidget{background:#263443;color:white;"
+            "QListView{background:#263443;color:white;"
             "border:1px solid #617f94;}"
             "QPushButton{background:#45667e;color:#fff;min-height:46px;"
             "border:1px solid #91bbd6;border-radius:7px;}");
@@ -362,78 +433,61 @@ private:
         search->setClearButtonEnabled(true);
         layout->addWidget(search);
         auto *category=new QComboBox(&dialog);
-        category->addItem(i18n("All brushes"),-1);
-        category->addItem(i18n("Painting"),0);
-        category->addItem(i18n("Erasers"),1);
+        category->addItem(slot==2?i18n("All compatible brushes"):i18n("All brushes"),-1);
+        if(slot!=2) {
+            category->addItem(i18n("Painting"),0);
+            category->addItem(i18n("Erasers"),1);
+        }
         category->addItem(i18n("Blending / Smudge"),2);
-        category->addItem(i18n("Clone"),3);
-        category->setCurrentIndex(slot==2?3:0);
-        category->setVisible(slot!=2);
+        if(slot!=2)category->addItem(i18n("Clone"),3);
+        category->setCurrentIndex(category->findData(slot));
         layout->addWidget(category);
-        auto *grid=new QListWidget(&dialog);
+
+        auto *grid=new QListView(&dialog);
         grid->setViewMode(QListView::IconMode);
         grid->setFlow(QListView::LeftToRight);
         grid->setWrapping(true);
         grid->setResizeMode(QListView::Adjust);
         grid->setMovement(QListView::Static);
+        grid->setLayoutMode(QListView::Batched);
+        grid->setBatchSize(32);
+        grid->setUniformItemSizes(true);
         grid->setGridSize(QSize(110,116));
         grid->setIconSize(QSize(68,68));
         grid->setWordWrap(true);
         grid->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-        grid->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
         grid->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
-        QScroller::grabGesture(grid->viewport(),
-                               QScroller::LeftMouseButtonGesture);
+        QScroller::grabGesture(grid->viewport(),QScroller::LeftMouseButtonGesture);
         layout->addWidget(grid,1);
+
         auto *close=new QPushButton(i18n("Close"),&dialog);
         layout->addWidget(close);
         connect(close,&QPushButton::clicked,&dialog,&QDialog::reject);
-        QList<KisPaintOpPresetSP> presets;
-        // Filter native brush resources. Do not maintain an independent
-        // preset catalog, duplicate assets or rewrite the paint engine.
-        auto refill=[this,grid,search,category,&presets,slot]() {
-            grid->clear();presets.clear();
-            const QString term=search->text().trimmed();
-            const int mode=category->currentData().toInt();
-            auto *src=model();
-            for(int i=0;i<src->rowCount() && i<3000;++i) {
-                KisPaintOpPresetSP p=src->resourceForIndex(src->index(i,0))
-                                     .dynamicCast<KisPaintOpPreset>();
-                if(!p || !p->valid() ||
-                   (slot==2 && !isSmudge(p)) ||
-                   (mode>=0 && !inCategory(p,mode)) ||
-                   (!term.isEmpty() &&
-                    !p->name().contains(term,Qt::CaseInsensitive)))continue;
-                int idx=presets.size();
-                presets.append(p);
-                auto *item=new QListWidgetItem(
-                    QIcon(QPixmap::fromImage(p->image())),p->name(),grid);
-                item->setData(Qt::UserRole,idx);
-                item->setToolTip(p->name());
-            }
-        };
-        connect(search,&QLineEdit::textChanged,&dialog,
-                [refill](const QString &){refill();});
+        auto *source=model();
+        auto *filter=new PresetFilter(source,slot,&dialog);
+        grid->setModel(filter);
+        grid->setModelColumn(KisAbstractResourceModel::Name);
+        connect(search,&QLineEdit::textChanged,filter,&PresetFilter::setSearch);
         connect(category,QOverload<int>::of(&QComboBox::currentIndexChanged),
-                &dialog,[refill](int){refill();});
-        connect(grid,&QListWidget::itemClicked,&dialog,
-                [this,&dialog,&presets,slot](QListWidgetItem *item) {
-            if(!item)return;
-            const int index=item->data(Qt::UserRole).toInt();
-            if(index<0 || index>=presets.size())return;
-            auto preset=presets.at(index);
-            if(!preset)return;
+                &dialog,[filter,category](int) {
+            filter->setCategory(category->currentData().toInt());
+        });
+        connect(grid,&QListView::clicked,&dialog,
+                [this,&dialog,source,filter,slot](const QModelIndex &index) {
+            const auto selected=filter->mapToSource(index);
+            if(!selected.isValid())return;
+            const auto preset=source->resourceForIndex(selected.sibling(selected.row(),0))
+                .dynamicCast<KisPaintOpPreset>();
+            if(!preset || !preset->valid() || (slot==2 && !isSmudge(preset)))return;
             m_engine.freehandBrush();
             setNativePreset(preset);
-            // Keep selected category (Paint/Erase/Blend), independent of
-            // which filter the user used to locate this native preset.
             setEraser(slot==1);
-            m_slot=slot;m_hasSelectedMode=true;
+            m_slot=slot;
+            m_hasSelectedMode=true;
             rememberPreset(slot,preset);
             refresh();
             dialog.accept();
         });
-        refill();
         const QSize size=window()->size();
         dialog.resize(qMax(300,qMin(570,size.width()-32)),
                       qMax(340,qMin(720,size.height()-65)));

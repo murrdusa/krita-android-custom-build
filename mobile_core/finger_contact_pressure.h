@@ -3,7 +3,7 @@
  *
  * Android finger-contact-area pressure proxy.
  * Krita's tablet events are not changed. This code only runs for a
- * single touchscreen contact when explicitly enabled in Mobile Studio.
+ * single touchscreen contact when enabled in Mobile Studio.
  *
  * Contact area is NOT a calibrated measure of force. Android devices can
  * omit ellipse dimensions or report noisy sizes. Never synthesize pen
@@ -113,7 +113,7 @@ public:
             // a pressure jump half-way through the painted line.
             QSettings settings;
             stroke.enabled=settings.value(
-                QString::fromLatin1(settingKey()),false).toBool();
+                QString::fromLatin1(settingKey()),MobileFingerPressureSettings::defaultEnabled()).toBool();
             stroke.range=MobileFingerPressureSettings::read(settings);
             stroke.response=MobileFingerPressureSettings::readResponse(settings);
         }

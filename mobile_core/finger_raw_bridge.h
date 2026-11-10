@@ -19,6 +19,7 @@
 #include <QVector>
 #include <QtGlobal>
 #include <cmath>
+#include "finger_pressure_settings.h"
 
 class MobileFingerRawBridge final
 {
@@ -44,9 +45,8 @@ public:
     }
 
     // Called from Android's Java touch dispatcher before recording size
-    // samples. Query the same opt-in flag as Krita's brush converter,
+    // samples. Query the same setting as Krita's brush converter,
     // caching it briefly to avoid a filesystem/settings lookup per frame.
-    // While the user has not opted in, no raw sample is stored.
     static bool captureEnabled(quint64 uptimeMs)
     {
         struct Gate {
@@ -59,8 +59,8 @@ public:
         if(gate.lastChecked==0 || uptimeMs<gate.lastChecked ||
            uptimeMs-gate.lastChecked>=200) {
             gate.allowed=QSettings().value(
-                QStringLiteral("MobileStudio/fingerContactPressureV1"),
-                false).toBool();
+                QString::fromLatin1(MobileFingerPressureSettings::enabledKey()),
+                MobileFingerPressureSettings::defaultEnabled()).toBool();
             gate.lastChecked=uptimeMs;
         }
         return gate.allowed;

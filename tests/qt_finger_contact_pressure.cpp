@@ -1,5 +1,5 @@
 /*
- * Qt5-only test for the opt-in Android finger-contact pressure prototype.
+ * Qt5-only test for Android finger-contact pressure.
  * Compiles on Linux without Krita or Android. Synthetic single-finger
  * TouchPoints only; actual device contact-area support must be verified.
  */
@@ -59,7 +59,12 @@ int main(int argc,char **argv)
     QTouchDevice device;
     device.setType(QTouchDevice::TouchScreen);
 
-    // Disabled default: exactly Krita's normal pressure behavior.
+    require(qAbs(touch(device,QEvent::TouchBegin,5.5,10,
+                       Qt::TouchPointPressed)-0.5)<0.0001,
+            "fresh install should map 5.5 px to half pressure");
+    touch(device,QEvent::TouchEnd,5.5,20,Qt::TouchPointReleased);
+
+    // Explicit opt-out preserves Krita's normal pressure behavior.
     setting.setValue(key,false);
     const qreal native=0.83;
     require(qAbs(touch(device,QEvent::TouchBegin,15,100,
@@ -215,8 +220,8 @@ int main(int argc,char **argv)
     require(MobileFingerPressureSettings::validRange(
                 fallback.minimum,fallback.maximum),
             "invalid calibration was accepted");
-    require(qAbs(fallback.minimum-8.0)<0.001 &&
-            qAbs(fallback.maximum-24.0)<0.001,
+    require(qAbs(fallback.minimum-1.0)<0.001 &&
+            qAbs(fallback.maximum-10.0)<0.001,
             "invalid calibration did not use safe defaults");
     setting.setValue(minKey,8.0);
     setting.setValue(maxKey,24.0);

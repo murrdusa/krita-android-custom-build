@@ -33,8 +33,9 @@ public:
     }
     static constexpr qreal defaultCurve() {return 1.0;}
     static constexpr qreal defaultStability() {return 0.5;}
-    static constexpr qreal defaultMin() {return 8.0;}
-    static constexpr qreal defaultMax() {return 24.0;}
+    static constexpr bool defaultEnabled() {return true;}
+    static constexpr qreal defaultMin() {return 1.0;}
+    static constexpr qreal defaultMax() {return 10.0;}
     // Give brushes the full Krita pressure domain. Brush presets can
     // still apply their own pressure floor, opacity and size curves.
     static constexpr qreal minPressure() {return 0.0;}

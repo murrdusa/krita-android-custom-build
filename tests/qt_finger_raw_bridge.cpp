@@ -25,16 +25,18 @@ int main(int argc,char **argv)
     QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,
                        temp.path());
     QSettings settings;
+    require(MobileFingerRawBridge::captureEnabled(750),
+            "fresh installs should capture contact size");
     settings.setValue(QStringLiteral("MobileStudio/fingerContactPressureV1"),
                       false);
     require(!MobileFingerRawBridge::captureEnabled(1000),
-            "raw Android touch sampling enabled without user opt-in");
+            "raw Android touch sampling continued after explicit opt-out");
     settings.setValue(QStringLiteral("MobileStudio/fingerContactPressureV1"),
                       true);
     require(!MobileFingerRawBridge::captureEnabled(1050),
             "cached raw sampling flag ignored its rate limit");
     require(MobileFingerRawBridge::captureEnabled(1220),
-            "raw input did not activate after user enabled the experiment");
+            "raw input did not activate after the user re-enabled it");
     settings.setValue(QStringLiteral("MobileStudio/fingerContactPressureV1"),
                       false);
     require(!MobileFingerRawBridge::captureEnabled(1450),
@@ -82,7 +84,7 @@ int main(int argc,char **argv)
             "raw buffer retained old contacts after its bounded window");
     require(MobileFingerRawBridge::nearest(4,3192,&sample),
             "recent Android historical samples not matched");
-    qInfo() << "PASS: opt-in raw capture gate, gesture and multitouch resets, density-adjusted"
+    qInfo() << "PASS: raw capture defaults and settings gate, gesture and multitouch resets, density-adjusted"
             << "raw touch size, pointer identity, historical matching,"
             << "stale/invalid sample rejection and bounded history";
     return 0;
