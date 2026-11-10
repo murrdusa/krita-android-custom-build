@@ -1582,7 +1582,7 @@ private:
         // handles, without changing finger-touch or inline controls.
         if(type==QEvent::MouseButtonPress && widget &&
            (widget==m_tree->viewport() ||
-            (index>=0 && frame))) {
+            (index>=0 && (frame || m_rowButtons.contains(tile))))) {
             auto *mouse=static_cast<QMouseEvent*>(event);
             const QPoint global=mouse->globalPos();
             auto *hit=qobject_cast<QToolButton*>(QApplication::widgetAt(global));
@@ -1593,7 +1593,10 @@ private:
                 const int row=m_nodes.indexOf(node);
                 if(row>=0 && m_rowButtons.value(row)) {
                     armMouseLayer(node,m_rowButtons.value(row),global);
-                    return true;
+                    // Preserve QToolButton::pressed/clicked for regular
+                    // taps, while consuming a bare viewport/row press
+                    // which has no button to finish the gesture.
+                    if(widget==m_tree->viewport() || frame)return true;
                 }
             }
         }
