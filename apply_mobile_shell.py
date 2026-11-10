@@ -1230,6 +1230,14 @@ install(FILES org.kde.krita.desktop''',
                     f"Studio Measure {variable}")
     measure_file.write_text(measure,encoding="utf-8")
 
+    dyna_file=root/"plugins/tools/tool_dyna/kis_tool_dyna.cpp"
+    dyna=dyna_file.read_text(encoding="utf-8")
+    for variable,name in (("m_massSPBox","mobileDynaMass"),("m_dragSPBox","mobileDynaDrag")):
+        anchor=f"{variable} = new KisDoubleSliderSpinBox(optionsWidget);"
+        dyna=one(dyna,anchor,anchor+f'\n    {variable}->setObjectName("{name}");',
+                 f"Studio Dynamic Brush {variable}")
+    dyna_file.write_text(dyna,encoding="utf-8")
+
     transform_dir=root/"plugins/tools/tool_transform2"
     transform_header=transform_dir/"kis_tool_transform.h"
     transform=transform_header.read_text(encoding="utf-8")

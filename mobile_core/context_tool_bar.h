@@ -258,6 +258,56 @@ public:
             named("checkBoxSelectionAsBoundary",QObject::tr("Selection boundary"));
             addSectionChoices("sectionReference",QObject::tr("Reference"),
                 {QObject::tr("Current layer"),QObject::tr("All layers"),QObject::tr("Color labels")});
+        } else if(id==QStringLiteral("ToolReferenceImages")) {
+            addNamedChoices(QObject::tr("Add reference"),{
+                {"bnAddReferenceImage",QObject::tr("From file")},
+                {"bnPasteReferenceImage",QObject::tr("From clipboard")},
+                {"bnAddReferenceImageFromCurrentLayer",QObject::tr("From active layer")},
+                {"bnAddReferenceImageFromVisible",QObject::tr("From visible layers")}
+            });
+            named("opacitySlider",QObject::tr("Opacity"));
+            named("saturationSlider",QObject::tr("Saturation"));
+            named("chkKeepAspectRatio",QObject::tr("Lock ratio"));
+            named("bnDeleteSelectedImages",QObject::tr("Remove"));
+            addNamedChoices(QObject::tr("Reference set"),{
+                {"bnLoad",QObject::tr("Load set")},
+                {"bnSave",QObject::tr("Save set")}
+            });
+            nativeMenu(QObject::tr("Arrange"),{
+                {"object_order_front",QObject::tr("Bring to front")},
+                {"object_order_back",QObject::tr("Send to back")},
+                {"object_transform_rotate_90_cw",QObject::tr("Rotate right")},
+                {"object_transform_rotate_90_ccw",QObject::tr("Rotate left")},
+                {"object_transform_mirror_horizontally",QObject::tr("Flip H")},
+                {"object_transform_mirror_vertically",QObject::tr("Flip V")},
+                {"object_transform_reset",QObject::tr("Reset transform")}
+            });
+        } else if(id==QStringLiteral("KritaShape/KisToolLazyBrush")) {
+            named("btnUpdate",QObject::tr("Update colorize"));
+            named("chkAutoUpdates",QObject::tr("Auto update"));
+            named("chkShowKeyStrokes",QObject::tr("Strokes"));
+            named("chkShowOutput",QObject::tr("Output"));
+            named("chkUseEdgeDetection",QObject::tr("Detect edges"));
+            named("intEdgeDetectionSize",QObject::tr("Edge size"));
+            named("intRadius",QObject::tr("Gap"));
+            named("intCleanUp",QObject::tr("Clean up"));
+        } else if(id==QStringLiteral("KritaShape/KisToolKnife")) {
+            addStripChoices(qobject_cast<KisOptionButtonStrip*>(
+                findOption("optionButtonStripToolMode")),QObject::tr("Gutter"),
+                {QObject::tr("Add"),QObject::tr("Remove")});
+            addNamedChoices(QObject::tr("Gap"),{
+                {"thickGapWidthRadioButton",QObject::tr("Thick")},
+                {"thinGapWidthRadioButton",QObject::tr("Thin")},
+                {"specialGapWidthRadioButton",QObject::tr("Custom")},
+                {"automaticGapWidthRadioButton",QObject::tr("Automatic")}
+            });
+            named("unitsCombobox",QObject::tr("Units"));
+            named("thickGapWidth",QObject::tr("Thick width"));
+            named("thinGapWidth",QObject::tr("Thin width"));
+            named("customGapWidth",QObject::tr("Custom width"));
+        } else if(id==QStringLiteral("KritaShape/KisToolDyna")) {
+            named("mobileDynaMass",QObject::tr("Mass"));
+            named("mobileDynaDrag",QObject::tr("Drag"));
         } else if(id==QStringLiteral("KritaShape/KisToolSmartPatch")) {
             named("accuracySlider",QObject::tr("Accuracy"));
             named("patchRadius",QObject::tr("Radius"));
@@ -651,7 +701,13 @@ private:
                            const QStringList &labels)
     {
         auto *section=qobject_cast<KisOptionCollectionWidgetWithHeader*>(findOption(name));
-        auto *strip=section?qobject_cast<KisOptionButtonStrip*>(section->primaryWidget()):nullptr;
+        addStripChoices(section?qobject_cast<KisOptionButtonStrip*>(section->primaryWidget()):nullptr,
+                        label,labels);
+    }
+
+    void addStripChoices(KisOptionButtonStrip *strip,const QString &label,
+                         const QStringList &labels)
+    {
         if(!strip)return;
         const auto buttons=strip->buttons();
         if(buttons.size()!=labels.size())return;

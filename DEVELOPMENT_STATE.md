@@ -4,6 +4,9 @@
 
 ## Resume here
 
+- The contextual tool strip now exposes native Reference Images import, arrangement and appearance controls, Colorize Mask preview and edge settings, Knife gutter controls, and Dynamic Brush mass and drag. Keep these in the deferred Fold 6 batch with the existing layer and drawing-tool changes.
+
+
 - The next device pass can cover the whole drawing-tool batch together. Polygon, Polyline, Bézier and anchored selection tools have native Finish and Cancel buttons. The strip now exposes Enclose and Fill settings and patterns, Smart Patch accuracy and radius, live Measure values and units, Magnetic Selection controls, selection edge settings, crop position and expansion, and Multibrush copies, axes and spacing. The previous layer selection and mask controls are part of the same pending Fold 6 pass.
 
 
