@@ -334,7 +334,7 @@ private:
                            const QStringList &labels)
     {
         auto *section=qobject_cast<KisOptionCollectionWidgetWithHeader*>(findOption(name));
-        auto *strip=section?section->primaryWidgetAs<KisOptionButtonStrip>():nullptr;
+        auto *strip=section?qobject_cast<KisOptionButtonStrip*>(section->primaryWidget()):nullptr;
         if(!strip)return;
         const auto buttons=strip->buttons();
         if(buttons.size()!=labels.size())return;
