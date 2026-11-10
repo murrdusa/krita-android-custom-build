@@ -43,6 +43,12 @@
 - Clipping: `320f0d9` waits for the native inherit-alpha property stroke to apply before rearranging hidden Krita wrapper groups. `d0b33cd` resolves/displays the nearest unclipped target in the menu; `e2f2a59` allows a normal group to be clipped as one composite. **All included in verified WSL compilation `2dc4981`, on-device behavior not yet checked.**
 - Next disposable-art test: open Layers and confirm it overlays the canvas without reducing painting width; hold-drag paint layers up/down with finger AND pen; drag across a group without accidentally nesting; create painted transparent base, clip two painted layers above, reorder their positions, and verify they follow the nearest unclipped base; try a group as base and group as clipped layer; then Undo/Redo and KRA save/reopen. Do not promote clipping behavior to verified until this passes. APK auto-publishing stays off.
 
+## Fold 6 layer feedback and stylus drag fix (November 9 local evening)
+
+- **Device confirmed:** the compact layer system now works with finger input. Preserve existing clipping, grouping, native undo behavior, and the floating rail. The user wants the UI design refined later, not during current functional development.
+- **Remaining issue:** S Pen hold-drag reordering did not work even though finger drag did. Commit `081db9e` keeps the layer engine/reorder implementation unchanged and routes TabletPress from the entire row/viewport to the correct layer, avoids null-thumbnail rejection, tracks tablet moves across widgets, and prevents synthesized mouse releases from ending a live stylus drag. It also supports mouse-only input on the viewport as a fallback. **Check the PC build status for this exact SHA before saying compiled.** Device test of stylus still pending.
+- Other newer general Krita drawing/selection features are awaiting user feedback. Do not infer on-device results from PC compile.
+
 ## Test status
 
 - **Last Fold 6 test: PASS** for separate native APK target at `7cf81bffcf5b84f483d0d92112c13a1e80a9f352`: app launched without grey screen, stylus drawing and pressure worked, KRA save/reopen worked, Android file opening/sharing worked.
@@ -55,7 +61,7 @@ Read [PRODUCT-ROADMAP.md](PRODUCT-ROADMAP.md) for approved preservation goals an
 
 ## Next work — prioritize functional development, not more architecture churn
 
-1. **Next device gate:** use the known built floating-layer source revision `2dc4981` (or later build containing it) on Fold 6 and check: non-docking floating rail, finger and S Pen drag reorder, nearest unclipped clipping base / whole group, group insertion, Alpha Lock, Undo/Redo and KRA round-trip. User is already testing and will report; do not request repeated checklists. Any reported failure takes precedence over adding new layer polish. Keep APK upload paused.
+1. **Next device gate:** finger-controlled layer system is confirmed working on Fold 6. Test only the **S Pen hold-and-drag** fix introduced in `081db9e` (after its PC build succeeds), then let the user report other tools independently. Keep clipping/reorder logic and floating rail unchanged until a specific regression is reported. UI redesign and APK uploading remain paused.
 2. **Do not** spend more time on desktop startup fallback infrastructure, rebuilding Krita's paint engine, redoing the main interface, or unused desktop dependency trimming unless it blocks functionality or meaningfully improves build/runtime speed. The shipped Android target may still link Krita desktop-oriented classes in `kritaui`; that does **not** mean the original desktop application is running.
 3. PC watcher automatically compiles commits to `main`, publishes exact revision result in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1) and `local/android-wsl-build`. Never use GitHub Actions to compile when PC is available. Work on independent tasks while it runs; inspect failure issues for exact errors. APK publishing is opt-in only, currently paused.
 4. Ask for a short Fold 6 test checklist only when there is a meaningful device-only risk, new capability, or user-observable change. Keep controls finger- and pen-friendly with large targets and touch scrolling, but defer significant UI redesign until functionality is near complete.
