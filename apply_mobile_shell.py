@@ -1444,6 +1444,50 @@ install(FILES org.kde.krita.desktop''',
             }
             if (fileUri != null) {''',
         "Android single Share URI extraction")
+    # SAF URIs are not filesystem paths. Extract only Krita's embedded
+    # preview PNG from a document stream, instead of asking the desktop
+    # welcome page to open the entire project for a thumbnail.
+    activity=one(activity,
+        "    private static final String TAG",
+        r'''    public static byte[] tabletKraPreview(String location) {
+        MainActivity activity=tabletPermissionActivity;
+        if(activity==null || location==null ||
+           !location.startsWith("content://"))return null;
+        try(java.io.InputStream input=activity.getContentResolver()
+                .openInputStream(Uri.parse(location))) {
+            if(input==null)return null;
+            try(java.util.zip.ZipInputStream zip=new java.util.zip.ZipInputStream(
+                    new java.io.BufferedInputStream(input,32768))) {
+                for(int entries=0;entries<96;++entries) {
+                    java.util.zip.ZipEntry entry=zip.getNextEntry();
+                    if(entry==null)return null;
+                    String name=entry.getName();
+                    if("preview.png".equals(name) ||
+                       "Thumbnails/thumbnail.png".equals(name)) {
+                        java.io.ByteArrayOutputStream preview=
+                            new java.io.ByteArrayOutputStream(32768);
+                        byte[] buffer=new byte[16384];
+                        int length;
+                        while((length=zip.read(buffer))!=-1) {
+                            if(preview.size()+length>8*1024*1024)return null;
+                            preview.write(buffer,0,length);
+                        }
+                        return preview.toByteArray();
+                    }
+                    // Do not decompress huge merged-image entries just to
+                    // reach a later thumbnail. Preview is normally early.
+                    if(entry.getSize()>24L*1024*1024)return null;
+                    zip.closeEntry();
+                }
+            }
+        }catch(Exception ignored) {
+            // URI access can be revoked or providers can expose bad ZIPs.
+        }
+        return null;
+    }
+
+    private static final String TAG''',
+        "Android SAF embedded KRA thumbnail helper")
     activityfile.write_text(activity,encoding="utf-8")
 
     debugManifest=root/"packaging/android/apk/flavors/debug/AndroidManifest.xml"
