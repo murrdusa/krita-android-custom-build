@@ -1946,13 +1946,50 @@ private:
                 if(item->isExpanded())expanded.insert(m_nodes[i].data());
 
         const KisNodeList native=m->selectedNodes();
-        m_active=view->activeNode();
+        const KisNodeSP engineActive=view->activeNode();
+        const KisNodeSP previousActive=m_active;
+        m_active=engineActive;
+        // The global selection is a real KisSelectionMask under the
+        // image root, but Krita's normal docker deliberately hides it.
+        // If it became active during selection editing, restore the
+        // last visible user layer instead of transforming that mask.
+        if(!m_active || KisNodeManager::isNodeHidden(m_active,true)) {
+            m_active.clear();
+            if(inImage(previousActive,image) &&
+               !KisNodeManager::isNodeHidden(previousActive,true))
+                m_active=previousActive;
+            if(!m_active) {
+                for(KisNodeSP node=image->root()->lastChild();node;
+                    node=node->prevSibling()) {
+                    if(node->inherits("KisLayer") &&
+                       !isCompactClipWrapper(node) &&
+                       !KisNodeManager::isNodeHidden(node,true)) {
+                        m_active=node;
+                        break;
+                    }
+                }
+            }
+        }
         m_selected.clear();
-        for(auto node:native)
-            if(node && node->parent() && !m_selected.contains(node))
+        for(const KisNodeSP &node:native) {
+            if(inImage(node,image) &&
+               !KisNodeManager::isNodeHidden(node,true) &&
+               !m_selected.contains(node))
                 m_selected.append(node);
+        }
+        // Unlike the desktop docker, this rail has an explicit Multi
+        // toggle. Do not leave Krita with a native selection containing
+        // hidden/old nodes after an ordinary single-layer tap. Transform
+        // reads nodeManager()->selectedNodes() directly; filtering just
+        // the visible cards would not protect its image stroke.
+        if(!m_multi->isChecked() && m_active)
+            m_selected=KisNodeList{m_active};
         if(m_selected.isEmpty() && m_active && m_active->parent())
             m_selected.append(m_active);
+        if(m_active && m_active!=engineActive)
+            m->slotUiActivatedNode(m_active);
+        if(native!=m_selected)
+            m->slotSetSelectedNodes(m_selected);
 
         m_tree->clear();
         m_nodes.clear();m_items.clear();
