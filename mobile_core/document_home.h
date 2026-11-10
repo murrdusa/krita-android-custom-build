@@ -14,6 +14,9 @@
 #include <QApplication>
 #include <QBuffer>
 #include <QDateTime>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QMenu>
 #include <QDir>
 #include <QDirIterator>
 #include <QtAndroid>
@@ -58,6 +61,7 @@
 
 #include "document_workflow.h"
 #include "mobile_draft_recovery.h"
+#include "saved_version_archive.h"
 
 class MobileDocumentHome final : public QFrame
 {
@@ -122,6 +126,9 @@ public:
         m_sortByName=QSettings().value(QStringLiteral("MobileStudio/projectSortByName"),false).toBool();
         updateSortLabel();
         tools->addWidget(m_sort);
+        m_versions=new QPushButton(i18n("Versions…"),this);
+        m_versions->setCheckable(true);
+        tools->addWidget(m_versions);
         m_discardDraft=new QPushButton(i18n("Discard…"),this);
         m_discardDraft->setCheckable(true);
         tools->addWidget(m_discardDraft);
@@ -129,7 +136,12 @@ public:
 
         auto *locations=new QHBoxLayout;
         m_access=new QPushButton(i18n("Allow all local files"),this);
-        m_addFolder=new QPushButton(i18n("Add folder…"),this);
+        m_addFolder=new QPushButton(i18n("Folders…"),this);
+        auto *folderMenu=new QMenu(m_addFolder);
+        folderMenu->setStyleSheet(QStringLiteral("QMenu::item{min-height:30px;padding:8px 14px;}"));
+        auto *addFolderAction=folderMenu->addAction(i18n("Add folder…"));
+        auto *removeFolderAction=folderMenu->addAction(i18n("Remove linked folder…"));
+        m_addFolder->setMenu(folderMenu);
         locations->addWidget(m_access);
         locations->addWidget(m_addFolder);
         layout->addLayout(locations);
@@ -137,6 +149,10 @@ public:
         m_message->setWordWrap(true);
         m_message->setStyleSheet(QStringLiteral("font-size:12px;color:#c3ccd7;"));
         layout->addWidget(m_message);
+        m_versionPrompt=new QLabel(i18n("Tap a project to see its saved versions."),this);
+        m_versionPrompt->setWordWrap(true);
+        m_versionPrompt->hide();
+        layout->addWidget(m_versionPrompt);
 
         m_list=new QListWidget(this);
         m_list->setViewMode(QListView::IconMode);
@@ -182,7 +198,16 @@ public:
             updateSortLabel();
             sortProjects();
         });
-        connect(m_addFolder,&QPushButton::clicked,this,[this]() {addFolder();});
+        connect(addFolderAction,&QAction::triggered,this,[this]() {
+            QTimer::singleShot(0,this,[this]() {addFolder();});
+        });
+        connect(removeFolderAction,&QAction::triggered,this,[this]() {
+            QTimer::singleShot(0,this,[this]() {removeFolder();});
+        });
+        connect(m_versions,&QPushButton::toggled,this,[this](bool armed) {
+            m_message->setVisible(!armed);
+            m_versionPrompt->setVisible(armed);
+        });
         connect(m_discardDraft,&QPushButton::toggled,this,[this](bool armed) {
             if(m_mode!=RecoveryDrafts)return;
             m_message->setText(armed?i18n("Choose an unopened draft to discard."):
@@ -216,6 +241,13 @@ public:
                 return;
             }
             const QString path=item->data(Qt::UserRole).toString();
+            if(m_versions->isChecked()) {
+                m_versions->setChecked(false);
+                QTimer::singleShot(0,this,[this,path]() {
+                    if(isVisible())showSavedVersions(path);
+                });
+                return;
+            }
             if(m_mode==RecoveryDrafts && m_discardDraft->isChecked()) {
                 m_discardDraft->setChecked(false);
                 QTimer::singleShot(0,this,[this,path]() {discardDraft(path);});
@@ -285,6 +317,58 @@ public:
                m_files->openFile(draft.absoluteFilePath());
     }
 
+    void showSavedVersions(const QString &path)
+    {
+        if(m_restoringVersion || !m_files)return;
+        const auto versions=MobileSavedVersionArchive::list(path);
+        if(versions.isEmpty()) {
+            QMessageBox::information(window(),i18n("Saved versions"),
+                i18n("Completed KRA saves will appear here."));
+            return;
+        }
+        QDialog dialog(window());
+        dialog.setWindowTitle(i18n("Saved versions"));
+        dialog.setMinimumWidth(300);
+        auto *layout=new QVBoxLayout(&dialog);
+        auto *explanation=new QLabel(i18n(
+            "Open a saved copy as a new canvas. Use Save As to keep it."),&dialog);
+        explanation->setWordWrap(true);
+        layout->addWidget(explanation);
+        auto *list=new QListWidget(&dialog);
+        list->setStyleSheet(QStringLiteral("QListWidget::item{min-height:44px;padding:5px;}"));
+        QScroller::grabGesture(list->viewport(),QScroller::LeftMouseButtonGesture);
+        for(const auto &version:versions) {
+            new QListWidgetItem(i18n("%1  •  %2 MB",
+                version.createdUtc.toLocalTime().toString(QStringLiteral("yyyy-MM-dd  HH:mm")),
+                QString::number(version.bytes/(1024.0*1024.0),'f',1)),list);
+        }
+        list->setCurrentRow(0);
+        layout->addWidget(list,1);
+        auto *buttons=new QDialogButtonBox(
+            QDialogButtonBox::Open|QDialogButtonBox::Cancel,&dialog);
+        buttons->setStyleSheet(QStringLiteral("QPushButton{min-height:44px;}"));
+        connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);
+        connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
+        layout->addWidget(buttons);
+        if(dialog.exec()!=QDialog::Accepted || list->currentRow()<0)return;
+
+        m_restoringVersion=true;
+        const auto version=versions.at(list->currentRow());
+        QPointer<MobileDocumentHome> home(this);
+        QThreadPool::globalInstance()->start([home,version]() {
+            const QString copy=MobileSavedVersionArchive::materializeRecovery(version);
+            QMetaObject::invokeMethod(qApp,[home,copy]() {
+                const bool opened=home && !copy.isEmpty() && home->m_files->openFile(copy);
+                if(!copy.isEmpty())QFile::remove(copy);
+                if(!home)return;
+                home->m_restoringVersion=false;
+                if(opened)home->hide();
+                else QMessageBox::warning(home->window(),i18n("Saved versions"),
+                    i18n("Could not open that saved copy."));
+            },Qt::QueuedConnection);
+        });
+    }
+
 protected:
     bool eventFilter(QObject *watched,QEvent *event) override
     {
@@ -324,6 +408,55 @@ private:
                     i18n("Android could not keep access to this folder. Try a different folder."));
             },Qt::QueuedConnection);
         });
+    }
+
+    void removeFolder()
+    {
+        const auto grants=QAndroidJniObject::callStaticObjectMethod(
+            "org/krita/android/MainActivity","tabletProjectFolders","()Ljava/lang/String;");
+        const auto folders=QJsonDocument::fromJson(grants.toString().toUtf8()).array();
+        if(folders.isEmpty()) {
+            QMessageBox::information(this,i18n("Linked folders"),
+                i18n("No folders have been linked."));
+            return;
+        }
+        QDialog dialog(this);
+        dialog.setWindowTitle(i18n("Remove linked folder"));
+        auto *layout=new QVBoxLayout(&dialog);
+        auto *list=new QListWidget(&dialog);
+        list->setStyleSheet(QStringLiteral("QListWidget::item{min-height:44px;padding:5px;}"));
+        QScroller::grabGesture(list->viewport(),QScroller::LeftMouseButtonGesture);
+        for(const auto &folder:folders) {
+            const auto entry=folder.toObject();
+            auto *item=new QListWidgetItem(entry.value(QStringLiteral("name")).toString(),list);
+            item->setData(Qt::UserRole,entry.value(QStringLiteral("uri")).toString());
+        }
+        list->setCurrentRow(0);
+        layout->addWidget(list);
+        auto *buttons=new QDialogButtonBox(QDialogButtonBox::Cancel,&dialog);
+        auto *remove=buttons->addButton(i18n("Remove link"),QDialogButtonBox::AcceptRole);
+        buttons->setStyleSheet(QStringLiteral("QPushButton{min-height:44px;}"));
+        connect(remove,&QPushButton::clicked,&dialog,&QDialog::accept);
+        connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
+        layout->addWidget(buttons);
+        if(dialog.exec()!=QDialog::Accepted || !list->currentItem())return;
+
+        const QString path=list->currentItem()->data(Qt::UserRole).toString();
+        for(const auto &entry:m_engine.openDocuments()) {
+            const auto *doc=qobject_cast<KisDocument*>(entry.document.data());
+            if(doc && doc->path().startsWith(path+QLatin1Char('/'))) {
+                QMessageBox::information(this,i18n("Folder has an open drawing"),
+                    i18n("Close drawings opened from this folder before removing its link."));
+                return;
+            }
+        }
+        const auto uri=QAndroidJniObject::fromString(path);
+        const bool removed=QAndroidJniObject::callStaticMethod<jboolean>(
+            "org/krita/android/MainActivity","tabletForgetProjectFolder",
+            "(Ljava/lang/String;)Z",uri.object<jstring>());
+        if(removed)showList(AllProjects);
+        else QMessageBox::warning(this,i18n("Linked folders"),
+            i18n("Android could not remove that folder link."));
     }
 
     void updateSortLabel()
@@ -465,6 +598,8 @@ private:
         const auto drafts=MobileDraftRecovery::list();
         m_drafts->setChecked(mode==RecoveryDrafts);
         m_drafts->setVisible(mode==RecoveryDrafts || !drafts.isEmpty());
+        m_versions->setChecked(false);
+        m_versions->setVisible(mode==Recent || mode==AllProjects);
         m_discardDraft->setChecked(false);
         m_discardDraft->setVisible(mode==RecoveryDrafts && !drafts.isEmpty());
         m_search->setVisible(mode!=OpenCanvases);
@@ -720,13 +855,14 @@ private:
     QListWidget *m_list=nullptr;
     QPushButton *m_recent=nullptr,*m_library=nullptr,*m_open=nullptr,*m_drafts=nullptr;
     QPushButton *m_refresh=nullptr,*m_access=nullptr,*m_discardDraft=nullptr;
-    QPushButton *m_addFolder=nullptr,*m_sort=nullptr;
+    QPushButton *m_addFolder=nullptr,*m_sort=nullptr,*m_versions=nullptr;
     QLineEdit *m_search=nullptr;
-    QLabel *m_message=nullptr;
+    QLabel *m_message=nullptr,*m_versionPrompt=nullptr;
     QIcon m_placeholder;
     Mode m_mode=Recent;
     bool m_lastAccess=false;
     bool m_sortByName=false;
+    bool m_restoringVersion=false;
     bool m_thumbnailScheduled=false;
     int m_scanGeneration=0;
     std::shared_ptr<std::atomic_bool> m_scanCancel;

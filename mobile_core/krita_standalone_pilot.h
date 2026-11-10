@@ -12,8 +12,6 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QMap>
-#include <QFile>
-#include <QFileInfo>
 #include <QIcon>
 #include <QLabel>
 #include <QListWidget>
@@ -41,7 +39,6 @@
 #include "krita_engine_session.h"
 #include "krita_native_workspace.h"
 #include "native_command_layout.h"
-#include "saved_version_archive.h"
 #include <filter/kis_filter.h>
 #include <filter/kis_filter_registry.h>
 
@@ -466,86 +463,13 @@ public:
             });
         });
 
-        // Open historical KRA snapshots only as disposable recovered COPIES.
-        // Neither the user's original file nor an archived version can be
-        // overwritten by Save from this dialog.
         QObject::connect(versionsAction,&QAction::triggered,window,
-                         [alive,views=services.views,files=services.documents]() {
-            if(!alive || !views || !files)return;
-            QTimer::singleShot(0,alive.data(),[alive,views,files]() {
-                if(!alive || !views)return;
-                auto *doc=qobject_cast<KisDocument*>(
-                    views->currentDocument().data());
-                if(!doc)return;
-                const QString path=doc->path();
-                const auto versions=MobileSavedVersionArchive::list(path);
-                if(versions.isEmpty()) {
-                    QMessageBox::information(alive.data(),
-                        QObject::tr("Saved versions"),
-                        QObject::tr("No saved versions for this drawing yet. "
-                            "Completed KRA saves appear here. "
-                            "Unsaved drafts are available from Home."));
-                    return;
-                }
-                QDialog dialog(alive.data());
-                dialog.setWindowTitle(QObject::tr("Saved versions"));
-                dialog.setMinimumWidth(300);
-                dialog.setStyleSheet(QStringLiteral(
-                    "QDialog,QListWidget{background:#252529;color:#f4f4f5;}"
-                    "QListWidget::item{min-height:44px;padding:5px;}"
-                    "QListWidget::item:selected{background:#536278;}"
-                    "QLabel{color:#f4f4f5;}"
-                    "QPushButton{min-height:44px;background:#34343a;"
-                    "color:#f4f4f5;border:1px solid #55555c;}"));
-                auto *layout=new QVBoxLayout(&dialog);
-                auto *explanation=new QLabel(QObject::tr(
-                    "Open an earlier saved copy. The original and "
-                    "history remain unchanged. Use Save As to keep "
-                    "a restored version."),&dialog);
-                explanation->setWordWrap(true);
-                layout->addWidget(explanation);
-                auto *list=new QListWidget(&dialog);
-                for(const auto &version:versions) {
-                    const QString title=QObject::tr("%1  •  %2 MB").arg(
-                        version.createdUtc.toLocalTime().toString(
-                            QStringLiteral("yyyy-MM-dd  HH:mm")),
-                        QString::number(version.bytes/(1024.0*1024.0),'f',1));
-                    auto *item=new QListWidgetItem(title,list);
-                    item->setData(Qt::UserRole,version.path);
-                }
-                list->setCurrentRow(0);
-                layout->addWidget(list,1);
-                auto *buttons=new QDialogButtonBox(
-                    QDialogButtonBox::Open|QDialogButtonBox::Cancel,&dialog);
-                QObject::connect(buttons,&QDialogButtonBox::accepted,
-                                 &dialog,&QDialog::accept);
-                QObject::connect(buttons,&QDialogButtonBox::rejected,
-                                 &dialog,&QDialog::reject);
-                QObject::connect(list,&QListWidget::itemDoubleClicked,
-                                 &dialog,&QDialog::accept);
-                layout->addWidget(buttons);
-                if(dialog.exec()!=QDialog::Accepted || !list->currentItem())
-                    return;
-                const QString selected=list->currentItem()->data(
-                    Qt::UserRole).toString();
-                MobileSavedVersionArchive::Version chosen;
-                bool found=false;
-                for(const auto &entry:versions) {
-                    if(entry.path==selected) {
-                        chosen=entry;
-                        found=true;
-                        break;
-                    }
-                }
-                if(!found)return;
-                const QString recovered=
-                    MobileSavedVersionArchive::materializeRecovery(chosen);
-                const bool opened=!recovered.isEmpty() && files->openFile(recovered);
-                if(!recovered.isEmpty())QFile::remove(recovered);
-                if(!opened && alive)
-                    QMessageBox::warning(alive.data(),QObject::tr("Saved versions"),
-                        QObject::tr("Could not open that saved copy."));
-            });
+                         [alive,home,views=services.views]() {
+            if(!alive || !views)return;
+            const auto *doc=qobject_cast<KisDocument*>(views->currentDocument().data());
+            if(!doc)return;
+            const QString path=doc->path();
+            QTimer::singleShot(0,home,[home,path]() {home->showSavedVersions(path);});
         });
 
         QObject::connect(closeAction,&QAction::triggered,window,

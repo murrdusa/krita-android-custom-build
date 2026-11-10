@@ -955,6 +955,50 @@ install(FILES org.kde.krita.desktop''',
         }
     }
 
+    private static boolean tabletIsFolderGrant(Uri uri) {
+        return DocumentsContract.isTreeUri(uri) && uri.getPathSegments().size() == 2;
+    }
+
+    public static String tabletProjectFolders() {
+        org.json.JSONArray folders = new org.json.JSONArray();
+        MainActivity activity = tabletPermissionActivity;
+        if (activity == null) return folders.toString();
+        for (android.content.UriPermission grant : activity.getContentResolver().getPersistedUriPermissions()) {
+            Uri uri = grant.getUri();
+            if (!grant.isReadPermission() || !tabletIsFolderGrant(uri)) continue;
+            try {
+                org.json.JSONObject folder = new org.json.JSONObject();
+                folder.put("uri", uri.toString());
+                folder.put("name", DocumentsContract.getTreeDocumentId(uri) + "  (" + uri.getAuthority() + ")");
+                folders.put(folder);
+            } catch (Exception ignored) {
+                // Stale grant.
+            }
+        }
+        return folders.toString();
+    }
+
+    public static boolean tabletForgetProjectFolder(String location) {
+        MainActivity activity = tabletPermissionActivity;
+        if (activity == null || location == null) return false;
+        Uri tree = Uri.parse(location);
+        if (!tabletIsFolderGrant(tree)) return false;
+        android.content.ContentResolver resolver = activity.getContentResolver();
+        for (android.content.UriPermission grant : resolver.getPersistedUriPermissions()) {
+            if (!tree.equals(grant.getUri())) continue;
+            int flags = 0;
+            if (grant.isReadPermission()) flags |= Intent.FLAG_GRANT_READ_URI_PERMISSION;
+            if (grant.isWritePermission()) flags |= Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+            try {
+                resolver.releasePersistableUriPermission(tree, flags);
+                return true;
+            } catch (SecurityException denied) {
+                return false;
+            }
+        }
+        return false;
+    }
+
     private static final String[] tabletProjectColumns = {
         DocumentsContract.Document.COLUMN_DOCUMENT_ID,
         DocumentsContract.Document.COLUMN_DISPLAY_NAME,
@@ -1034,7 +1078,7 @@ install(FILES org.kde.krita.desktop''',
             if (!permission.isReadPermission()) continue;
             Uri uri = permission.getUri();
             try {
-                if (DocumentsContract.isTreeUri(uri) && uri.getPathSegments().size() == 2) {
+                if (tabletIsFolderGrant(uri)) {
                     tabletScanProjectTree(resolver, uri, projects, seen);
                 } else if (DocumentsContract.isDocumentUri(activity, uri)) {
                     try (android.database.Cursor row = resolver.query(uri, tabletProjectColumns, null, null, null)) {

@@ -70,6 +70,9 @@
 
 ## Test status
 
+- **Home recovery and folder management:** Recent and All Projects can browse and restore saved versions without opening the original canvas. The same picker serves the drawing menu and copies large snapshots off the UI thread. All Projects → Folders adds or removes Android folder grants. Removing a link leaves project files intact and is blocked while a drawing from that link is open. Fold 6 check: restore a closed project version from Home, verify Save As, and remove/re-add a folder containing a nested KRA.
+
+
 - **Drawing resource controls (WSL Android build PASS at `750995ea86139dd6e0ac97d445c42e1e746e1c4b`, 106.7 s):** the Gradient and Fill strips now open touch dialogs for Krita's native gradients and patterns. Gradients keep their native editor. Patterns can be generated from the current canvas using Krita's native From Canvas controls. More → Drawing also exposes both pickers and the native Brush Editor, which can be pinned as the toolbar shortcut. Assistants expose available density, vertical, subdivision and guide-file controls in the strip. Fold 6 check: choose and edit a gradient, fill with a saved and a canvas-derived pattern, open Brush Editor, and import/export a set of guides.
 
 
