@@ -466,9 +466,19 @@ private:
                     qWarning() << "Mobile Transform Mode: native slot failed"
                                << choice.slot << choice.label;
                 } else {
-                    qInfo() << "Mobile Transform Mode: switched via native options"
+                    qInfo() << "Mobile Transform Mode: native options slot invoked"
                             << choice.label << "checked"
                             << choice.button->isChecked();
+                    // A later native transaction refresh can still change
+                    // the selection. Log that rather than claiming the
+                    // transform succeeded solely from invokeMethod(true).
+                    QTimer::singleShot(350,this,[this,choice]() {
+                        if(m_id!=QStringLiteral("KisToolTransform") ||
+                           !choice.button)return;
+                        if(!choice.button->isChecked())
+                            qWarning() << "Mobile Transform Mode: native option reverted"
+                                       << choice.label;
+                    });
                 }
                 refreshControls();
             });
