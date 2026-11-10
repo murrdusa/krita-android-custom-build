@@ -881,13 +881,32 @@ private:
             // the metadata and invalidate a stale thumbnail, rather than
             // duplicating the tile or retaining its old preview forever.
             auto *item=found.value();
+            const QString existingPath=item->data(Qt::UserRole).toString();
             const qint64 previous=item->data(Qt::UserRole+1).toLongLong();
-            if(project.timestamp>previous) {
-                const QString existingPath=item->data(Qt::UserRole).toString();
-                item->setData(Qt::UserRole+1,project.timestamp);
+            const bool refreshedPath=existingPath!=project.path;
+            const bool modified=project.timestamp>previous;
+            // An index record may carry an older SAF tree/direct URI for
+            // this same canonical document. Replace it with the most
+            // recently discovered usable location (Recent or current scan),
+            // otherwise the tile can keep opening a stale provider grant.
+            // Do not change the canonical key or any version-history files.
+            if(refreshedPath) {
+                item->setData(Qt::UserRole,project.path);
+                const QString location=project.folder.isEmpty()?
+                    project.path:project.folder;
+                item->setData(Qt::UserRole+2,location);
+                item->setToolTip(location);
                 m_cache.remove(existingPath);
+                m_pending.remove(existingPath);
                 m_attempted.remove(existingPath);
+            }
+            if(modified)
+                item->setData(Qt::UserRole+1,project.timestamp);
+            if(refreshedPath || modified) {
+                m_cache.remove(project.path);
+                m_attempted.remove(project.path);
                 item->setIcon(m_placeholder);
+                filterItem(item,m_search->text().trimmed());
                 scheduleThumbnails();
             }
             return;
