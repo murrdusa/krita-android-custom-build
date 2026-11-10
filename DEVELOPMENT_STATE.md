@@ -70,7 +70,9 @@
 
 ## Test status
 
-- **Native text formatting:** Text → Format opens Krita's registered Text Properties panel as a floating Studio overlay. It starts from the current selection's formatting, and it follows the active text canvas. If the QML panel fails to load, the native Edit Text command remains available. Fold 6 check: format selected text, switch canvases and tools, and verify the saved KRA retains the changes.
+- **Compact native tool strip (Nov 10):** `6fca2a7` keeps Deselect, tolerance, combine and other common settings directly reachable, consolidates secondary selection commands in **More** and transform flip/rotate in **Adjust** while preserving native Krita handlers. `84eba8c` resets horizontal scroll to the first control on tool/canvas option changes. **Exact WSL Android APK build PASS `84eba8c820a8aeb71d41e4f762e3deedb44bb8fe`** (watcher Issue #1, 2026-11-10 05:41 UTC). Fold 6 test: change Wand tolerance and verify it in gear; use More → Invert, Transform → Adjust → Flip H, and switch between long tool strips to confirm scroll resets. These changes are not yet device-tested.
+
+- **Native text formatting (exact WSL Android APK build PASS at `4ac5e855ed3d7baf52309afcd047ec6a6ed59032`):** Text → Format opens Krita's registered Text Properties panel as a floating Studio overlay. It starts from the current selection's formatting, and it follows the active text canvas. If the QML panel fails to load, the native Edit Text command remains available. Fold 6 check: format selected text, switch canvases and tools, and verify the saved KRA retains the changes.
 
 - **Standalone polish and text:** Contextual controls keep their measured width and scroll horizontally, with short labels and the tool and gear pinned. Bottom brush sliders use contrasting text and backgrounds. SVG Text no longer assumes a desktop main window on activation and exposes native Edit Text and Glyphs. All Krita Commands starts with Studio's own menus and omits desktop docker, toolbar, status-bar, and duplicate Canvas Only controls. Fold 6 check: activate Text, create and edit text on a disposable canvas, save/reopen KRA, and swipe the full Wand and Transform strips in both widths.
 
@@ -93,7 +95,7 @@
 - **Native brush controls:** More → Drawing now exposes Krita's freehand brush smoothing modes and horizontal/vertical brush symmetry. The controls use the existing tool and paint toolbar actions. Fold 6 check: with Freehand Brush active, switch between Stabilizer and Disabled and verify Tool Options follows. Toggle each symmetry axis, draw mirrored strokes, and switch between canvases to check the axis state follows the document.
 
 - **Last Fold 6 test: PASS** for separate native APK target at `7cf81bffcf5b84f483d0d92112c13a1e80a9f352`: app launched without grey screen, stylus drawing and pressure worked, KRA save/reopen worked, Android file opening/sharing worked.
-- **Latest locally compiled/packaged Android source revision: `630296ab2ac2b9f11bbf6440b9b35b5983577a49`, SUCCESS**, confirmed by the WSL watcher in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1) at 2026-11-10 01:56 UTC. Includes hiding Krita's global selection mask from the layer rail and synchronizing native Transform selection before tool activation. **Actual Transform behavior on Fold 6 still requires device confirmation.**
+- **Latest locally compiled/packaged Android source revision: `84eba8c820a8aeb71d41e4f762e3deedb44bb8fe`, SUCCESS**, confirmed by the WSL watcher in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1) at 2026-11-10 05:41 UTC. Includes native text controls and compact tool menus. **Actual Transform behavior, text editing, and the new menus on Fold 6 still require device confirmation.**
 - Doc-only commits may not trigger another APK build. The compiled SHA above is the meaningful source baseline; always read the latest Issue #1 for newer work.
 
 ## Agreed product roadmap
