@@ -21,7 +21,7 @@
 - The user confirmed the previous batch works on the Fold 6. This follow-up highlights the active Paint, Erase, or Blend mode and hides both scrollbars on the Studio canvas. Transform and Move now toggle layer membership on tap. Transform retargets an untouched preview and asks for Apply or Reset when edits are pending. Returning to a single-layer tool keeps the active layer. Layer options → Group layers opens a checklist before creating a native group.
 
 
-**Current Android source build:** `15b4051e17d1bb3c65ba372be944650e091454b1` compiled and packaged on WSL in 124.2 seconds. Focused toolbar and canvas-resume checks passed. Fold 6 testing is deferred for one larger batch.
+**Current Android source build:** `9d20ae6ff109a4fff831a3b57ca59fbb76c226dd` compiled and packaged on WSL in 112.9 seconds. Four focused Qt checks passed, covering finger pressure, calibration, raw touch input, and the native command layout. Fresh-install behavior and preset opening time still need a device check.
 
 - **Follow-up integration:** compact numeric editors now emit the native editing-finished signal after setting a value, so Warp/Liquify edits are recorded by Krita's transform history.
 - **Home preview safety:** thumbnail PNGs now publish atomically, changed file timestamps invalidate cache even when moving backwards, and a decode started before a scan/save updates the tile cannot replace that tile's new preview.
