@@ -1187,6 +1187,9 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
         surface.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_switcher.h").write_text(
         switcher.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/document_home.h").write_text(
+        (own/"mobile_core/document_home.h").read_text(encoding="utf-8"),
+        encoding="utf-8")
     (root/"libs/ui/engine_bridge.h").write_text(
         bridge.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_service.h").write_text(

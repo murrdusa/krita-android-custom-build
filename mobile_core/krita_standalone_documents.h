@@ -20,6 +20,7 @@
 
 #include <KoFileDialog.h>
 #include <KisMimeDatabase.h>
+#include <KisRecentFilesManager.h>
 #include "KisDocument.h"
 #include "KisImportExportManager.h"
 #include "KisPart.h"
@@ -91,6 +92,7 @@ public:
                 });
             return false;
         }
+        rememberPath(path);
         return true;
     }
 
@@ -161,11 +163,21 @@ public:
             guardedDocument->save(true,{});
         if(saved && guardedDocument)
             guardedDocument->waitForSavingToComplete();
+        if(saved && guardedDocument && !guardedDocument->isModified())
+            rememberPath(target);
         return saved && guardedDocument &&
                m_runtime && m_runtime->ownsDocument(guardedDocument);
     }
 
 private:
+    static void rememberPath(const QString &path)
+    {
+        if(path.isEmpty())return;
+        const QUrl url=path.startsWith(QStringLiteral("content:"))?
+            QUrl(path):QUrl::fromLocalFile(path);
+        KisRecentFilesManager::instance()->add(url);
+    }
+
     static bool isRegistered(KisDocument *document)
     {
         if(!document || !KisPart::instance())return false;

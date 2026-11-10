@@ -23,6 +23,7 @@
 #include <QWidget>
 
 #include "document_service.h"
+#include "document_home.h"
 #include "android_document_intents.h"
 #include "deferred_view_command.h"
 #include "document_navigation.h"
@@ -128,6 +129,7 @@ public:
         auto *newAction=makeAction("New");
         auto *openAction=makeAction("Open");
         auto *canvasesAction=makeAction("Canvases");
+        auto *homeAction=makeAction("Home");
         auto *previousAction=makeAction("Previous canvas");
         auto *nextAction=makeAction("Next canvas");
         auto *undoAction=makeAction("Undo");
@@ -149,6 +151,7 @@ public:
                                   .arg(QString::fromLatin1(name))));
         };
         setStudioIcon(canvasesAction,"folder-documents");
+        setStudioIcon(homeAction,"go-home");
         setStudioIcon(undoAction,"edit-undo");
         setStudioIcon(redoAction,"edit-redo");
         setStudioIcon(saveAction,"document-save");
@@ -332,13 +335,14 @@ public:
         // Less-common operations stay in an explicit, labeled menu.
         if(!MobileNativeCommandLayout::install(
             window,
-            {canvasesAction,undoAction,redoAction,saveAction},
+            {homeAction,canvasesAction,undoAction,redoAction,saveAction},
             {brushesAction,eraserAction,blendBrushAction,
              colorAction,layersAction,toolsAction},
             moreActions,canvasOnlyAction)) {
             qWarning() << "Independent Krita command layout unavailable";
         }
 
+        auto *home=new MobileDocumentHome(nativeBridge,services.documents,window);
         QObject::connect(newAction,&QAction::triggered,window,
                          [alive,nativeBridge]() {
             // New canvas now uses the same configurable native document
@@ -432,6 +436,17 @@ public:
                     qWarning() << "Independent Krita close canceled or rejected";
             });
         });
+        QObject::connect(homeAction,&QAction::triggered,window,
+                         [alive,home,documents,deferViewCommand]() {
+            if(!alive)return;
+            if(documents->openDocuments().isEmpty()) {
+                home->showHome();
+                return;
+            }
+            deferViewCommand([home,documents](const QPointer<QObject> &selected) {
+                if(documents->closeDocumentView(selected))home->showHome();
+            });
+        });
 
         // Close uses the existing Krita Save/Discard/Cancel transaction.
         QPointer<QWidget> topLevel=nativeWindow;
@@ -451,61 +466,64 @@ public:
             });
         });
 
-        // The real KisCanvas2 must become visible before Qt initializes
-        // brush resources and its OpenGL context. Both the initial canvas
-        // and later documents use the same native KisPart engine path.
-        stage("Showing native drawing canvas");
+        // Re-expose the first real canvas only after Krita has attached
+        // and activated it. Home can precede that by any amount of time.
+        const auto firstCanvas=[alive,stage]() {
+            if(!alive || !alive->nativeViewPort()->currentDocument() ||
+               alive->property("_mobileFirstCanvasAttached").toBool())return;
+            alive->setProperty("_mobileFirstCanvasAttached",true);
+            alive->suppressNativeStatusChrome();
+            stage("First native Krita canvas ready",false);
+            if(!alive->property("_mobileNativeEngineOnlyRoot").toBool())return;
+            QTimer::singleShot(0,alive.data(),[alive]() {
+                if(!alive || !alive->isVisible() ||
+                   !alive->nativeViewPort()->currentDocument())return;
+                alive->hide();
+                QTimer::singleShot(50,alive.data(),[alive]() {
+                    if(!alive)return;
+                    alive->show();
+                    alive->raise();
+                    alive->suppressNativeStatusChrome();
+                    if(QWidget *canvas=alive->nativeCanvas())canvas->update();
+                });
+            });
+        };
+        if(auto *stack=qobject_cast<QStackedWidget*>(window->nativeCanvas())) {
+            QObject::connect(stack,&QStackedWidget::currentChanged,window,
+                             [alive,home,firstCanvas](int) {
+                if(!alive)return;
+                const bool wasHome=home->isVisible();
+                QTimer::singleShot(0,alive.data(),[alive,home,firstCanvas,wasHome]() {
+                    if(!alive)return;
+                    if(alive->nativeViewPort()->currentDocument()) {
+                        if(wasHome)home->hide();
+                        firstCanvas();
+                    } else if(alive->nativeViewPort()->openViews().isEmpty()) {
+                        home->showHome();
+                    }
+                });
+            });
+        }
+
+        stage("Showing native Studio window");
         window->show();
         window->raise();
         window->suppressNativeStatusChrome();
         QTimer::singleShot(0,window,
-                           [alive,documents,stage,firstCanvasReady,
+                           [alive,home,stage,firstCanvas,firstCanvasReady,
                             desktopNative,intentHost=services.documents]() {
             if(!alive)return;
-            stage("Creating first native Krita document and view");
-            // Cold-start Android file intents open before a blank document
-            // is created. Shares/reopens do not accumulate untitled tabs.
             const int opened=MobileAndroidDocumentIntents::attachAndOpen(
                 alive.data(),intentHost);
-            if(opened==0 && !documents->createCanvas(
-                       QStringLiteral("Untitled"),512,512,72,true)) {
-                stage("Krita refused first native document creation");
-                if(firstCanvasReady)firstCanvasReady(false);
-                qCritical() << "Mobile Studio: first document creation failed";
-                return;
+            if(opened==0) {
+                home->showHome();
+                stage("Document Home ready",false);
+            } else {
+                firstCanvas();
             }
-            // KisStatusBar::setView() attaches the zoom control once
-            // the first native canvas is active; keep footer hidden.
-            alive->suppressNativeStatusChrome();
-            stage("First native Krita canvas ready",false);
             if(auto *desktop=qobject_cast<QMainWindow*>(desktopNative.data()))
                 MobileNativeBootstrapAudit::record(desktop);
             if(firstCanvasReady)firstCanvasReady(true);
-            // The Qt Android top-level was exposed before its first
-            // QOpenGLWidget existed. On some phones that leaves the
-            // initial SurfaceView composition grey until the Activity
-            // is backgrounded/restored. An update() or GL projection
-            // refresh alone did not resolve it on the Galaxy Z Fold.
-            // Re-expose this ONE already-initialized top-level once,
-            // after the first document has attached, to follow the
-            // same native surface lifecycle as the proven resume path.
-            // No retry timer, no alternate UI mode, no extra window.
-            if(alive->property("_mobileNativeEngineOnlyRoot").toBool()) {
-                QPointer<MobileLightweightCanvasHost> direct=alive;
-                QTimer::singleShot(0,alive.data(),[direct]() {
-                    if(!direct || !direct->isVisible())return;
-                    qInfo() << "Mobile Studio: first document native surface refresh";
-                    direct->hide();
-                    QTimer::singleShot(50,direct.data(),[direct]() {
-                        if(!direct)return;
-                        direct->show();
-                        direct->raise();
-                        direct->suppressNativeStatusChrome();
-                        if(QWidget *canvas=direct->nativeCanvas())
-                            canvas->update();
-                    });
-                });
-            }
         });
         return true;
     }
