@@ -7,7 +7,7 @@
 - The user confirmed the previous batch works on the Fold 6. This follow-up highlights the active Paint, Erase, or Blend mode and hides both scrollbars on the Studio canvas. Transform and Move now toggle layer membership on tap. Transform retargets an untouched preview and asks for Apply or Reset when edits are pending. Returning to a single-layer tool keeps the active layer. Layer options → Group layers opens a checklist before creating a native group.
 
 
-**Current Android source build:** `e71e69311498d09d548dd624a5c302659786d762` compiled and packaged on WSL in 116.5 seconds. Focused Qt resume, native command layout, Save/Close, SAF archive identity and Home cache checks passed. The compact Transform and Home changes await the Fold 6 checklist below.
+**Current Android source build:** `b9906104b0a6734572d297d898d1e2d428922555` compiled and packaged on WSL in 114.8 seconds. The toolbar and layer-order Qt checks passed. The contextual layer workflow awaits a Fold 6 check.
 
 - **Follow-up integration:** compact numeric editors now emit the native editing-finished signal after setting a value, so Warp/Liquify edits are recorded by Krita's transform history.
 - **Home preview safety:** thumbnail PNGs now publish atomically, changed file timestamps invalidate cache even when moving backwards, and a decode started before a scan/save updates the tile cannot replace that tile's new preview.
@@ -150,7 +150,7 @@
 - **Native brush controls:** More → Drawing now exposes Krita's freehand brush smoothing modes and horizontal/vertical brush symmetry. The controls use the existing tool and paint toolbar actions. Fold 6 check: with Freehand Brush active, switch between Stabilizer and Disabled and verify Tool Options follows. Toggle each symmetry axis, draw mirrored strokes, and switch between canvases to check the axis state follows the document.
 
 - **Last Fold 6 test: PASS** for separate native APK target at `7cf81bffcf5b84f483d0d92112c13a1e80a9f352`: app launched without grey screen, stylus drawing and pressure worked, KRA save/reopen worked, Android file opening/sharing worked.
-- **Latest locally compiled and packaged Android source revision: `e71e69311498d09d548dd624a5c302659786d762`, SUCCESS.** The earlier lifecycle-only build at `c9d7b5e` also passed. Use the WSL watcher result for the exact SHA.
+- **Latest locally compiled and packaged Android source revision: `b9906104b0a6734572d297d898d1e2d428922555`, SUCCESS.** The earlier lifecycle-only build at `c9d7b5e` also passed. Use the WSL watcher result for the exact SHA.
 - Doc-only commits may not trigger another APK build. The compiled SHA above is the meaningful source baseline; always read the latest Issue #1 for newer work.
 
 ## Agreed product roadmap
