@@ -1411,8 +1411,8 @@ install(FILES org.kde.krita.desktop''',
     pinchfile=root/"libs/ui/input/kis_input_manager.cpp"
     pinch_source=pinchfile.read_text(encoding="utf-8")
     pinch_source=one(pinch_source,
-        "#include <KisMainWindow.h>\\n".replace("\\\\n","\\n"),
-        '#include <KisMainWindow.h>\\n#include "krita_android_runtime.h"\\n'.replace("\\\\n","\\n"),
+        "#include <KisMainWindow.h>\n",
+        '#include <KisMainWindow.h>\n#include "krita_android_runtime.h"\n',
         "standalone quick pinch include")
     pinch_source=one(pinch_source,
         """                KisMainWindow *window = KisPart::instance()->currentMainwindow();
