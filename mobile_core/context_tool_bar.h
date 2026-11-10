@@ -20,6 +20,7 @@
 #include <QLabel>
 #include <QMenu>
 #include <QMetaObject>
+#include <QDebug>
 #include <QPointer>
 #include <QPushButton>
 #include <QScrollArea>
@@ -443,11 +444,32 @@ private:
             if(index<0 || index>=choices.size())return;
             const Choice choice=choices.at(index);
             QTimer::singleShot(0,this,[this,generation,choice]() {
-                if(generation!=m_generation || !isVisible() ||
-                   !choice.config || !optionAvailable(choice.button))return;
-                QMetaObject::invokeMethod(choice.config.data(),
-                    choice.slot.constData(),Qt::DirectConnection,
-                    Q_ARG(bool,true));
+                // QMenu may briefly hide the floating bar while Android
+                // transfers focus. Visibility is NOT proof that the native
+                // Transform tool was deactivated, and was dropping taps.
+                if(generation!=m_generation ||
+                   m_id!=QStringLiteral("KisToolTransform") ||
+                   !choice.config || !choice.button ||
+                   !choice.button->isEnabled())return;
+
+                // Native Tool Options clicks *first* check the exclusive
+                // mode button, *then* emit clicked(true). Calling only the
+                // downstream slot leaves the previous Free radio checked,
+                // so the next UI refresh can immediately show Free again.
+                // setChecked does not emit clicked(), avoiding a duplicate
+                // transform reset while retaining the genuine UI state.
+                choice.button->setChecked(true);
+                const bool invoked=QMetaObject::invokeMethod(
+                    choice.config.data(),choice.slot.constData(),
+                    Qt::DirectConnection,Q_ARG(bool,true));
+                if(!invoked) {
+                    qWarning() << "Mobile Transform Mode: native slot failed"
+                               << choice.slot << choice.label;
+                } else {
+                    qInfo() << "Mobile Transform Mode: switched via native options"
+                            << choice.label << "checked"
+                            << choice.button->isChecked();
+                }
                 refreshControls();
             });
         });
