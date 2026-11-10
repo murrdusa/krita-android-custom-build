@@ -40,10 +40,10 @@ public:
     {
         setObjectName(QStringLiteral("mobileBrushWorkspace"));
         setStyleSheet(
-            "QFrame#mobileBrushWorkspace{background:rgba(32,42,53,235);"
-            "border:1px solid #627e95;border-radius:10px;}"
-            "QToolButton{background:#40566b;color:#f4f7fa;"
-            "border:1px solid #7895aa;border-radius:7px;padding:5px;"
+            "QFrame#mobileBrushWorkspace{background:#252529;"
+            "border:1px solid #48484e;border-radius:13px;}"
+            "QToolButton{background:#34343a;color:#f4f4f5;"
+            "border:1px solid #55555c;border-radius:8px;padding:5px;"
             "font-size:13px;}"
             "QToolButton:checked{background:#276b8b;border:2px solid #a5d9f0;}"
             "QLabel{color:#e9f4fd;}");

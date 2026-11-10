@@ -9,7 +9,10 @@
 #include <QAction>
 #include <QApplication>
 #include <QDebug>
+#include <QIcon>
 #include <QMenu>
+#include <QPainter>
+#include <QPixmap>
 #include <QPointer>
 #include <QSharedPointer>
 #include <QSettings>
@@ -138,6 +141,35 @@ public:
         auto *toolsAction=makeAction("Tools");
         auto *optionsAction=makeAction("Tool Options");
         auto *commandsAction=makeAction("All Krita Commands");
+        const auto setStudioIcon=[](QAction *action,const char *name) {
+            action->setIcon(QIcon(QStringLiteral(":/light_%1.svg")
+                                  .arg(QString::fromLatin1(name))));
+        };
+        setStudioIcon(canvasesAction,"folder-documents");
+        setStudioIcon(undoAction,"edit-undo");
+        setStudioIcon(redoAction,"edit-redo");
+        setStudioIcon(saveAction,"document-save");
+        setStudioIcon(brushesAction,"krita_tool_freehand");
+        setStudioIcon(layersAction,"all-layers");
+        setStudioIcon(toolsAction,"tools-wizard");
+        auto *eraserAction=nativeBridge.action("erase_action");
+        if(eraserAction)setStudioIcon(eraserAction,"draw-eraser");
+        if(auto *provider=nativeBridge.brushResources()) {
+            const auto updateSwatch=[colorAction](const KoColor &foreground) {
+                QPixmap swatch(46,46);
+                swatch.fill(Qt::transparent);
+                QPainter paint(&swatch);
+                paint.setRenderHint(QPainter::Antialiasing);
+                paint.setPen(QPen(QColor(QStringLiteral("#e2e2e7")),2));
+                paint.setBrush(foreground.toQColor());
+                paint.drawEllipse(QRectF(4,4,38,38));
+                paint.end();
+                colorAction->setIcon(QIcon(swatch));
+            };
+            updateSwatch(provider->fgColor());
+            QObject::connect(provider,&KisCanvasResourceProvider::sigFGColorChanged,
+                             colorAction,updateSwatch);
+        }
         auto *canvasOnlyAction=makeAction("Canvas Only");
         canvasOnlyAction->setCheckable(true);
         auto *exitAction=makeAction("Close app");
@@ -293,7 +325,7 @@ public:
         if(!MobileNativeCommandLayout::install(
             window,
             {canvasesAction,undoAction,redoAction,saveAction},
-            {brushesAction,layersAction,colorAction,toolsAction},
+            {brushesAction,eraserAction,colorAction,layersAction,toolsAction},
             moreActions,canvasOnlyAction)) {
             qWarning() << "Independent Krita command layout unavailable";
         }

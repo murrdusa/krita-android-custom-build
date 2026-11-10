@@ -177,11 +177,11 @@ public:
         setObjectName(QStringLiteral("MobileColorWorkspace"));
         setAttribute(Qt::WA_StyledBackground,true);
         setStyleSheet(
-            "QFrame#MobileColorWorkspace{background:#27394a;"
-            "border:1px solid #7e9eb5;border-radius:10px;}"
-            "QToolButton,QPushButton{border:1px solid #7899b2;"
+            "QFrame#MobileColorWorkspace{background:#252529;"
+            "border:1px solid #48484e;border-radius:13px;}"
+            "QToolButton,QPushButton{border:1px solid #55555c;"
             "border-radius:6px;min-height:34px;padding:3px;"
-            "background:#435c72;color:#f4f9ff;}"
+            "background:#34343a;color:#f4f4f5;}"
             "QLabel{color:#eef5fb;font-size:12px;}");
         auto *root=new QVBoxLayout(this);
         root->setContentsMargins(6,6,6,6);
@@ -198,7 +198,7 @@ public:
             setExpanded(!m_expanded);
         });
         m_resize=new QToolButton(this);
-        m_resize->setText(QStringLiteral("⤢"));
+        m_resize->setText(i18n("Size"));
         m_resize->setToolTip(i18n("Cycle color wheel size"));
         m_resize->setMinimumWidth(32);
         top->addWidget(m_resize);
@@ -210,7 +210,7 @@ public:
         });
 
         m_move=new QToolButton(this);
-        m_move->setText(QStringLiteral("✥"));
+        m_move->setText(i18n("Drag"));
         m_move->setToolTip(i18n(
             "Drag to reposition; double-tap to return to bottom right"));
         m_move->setMinimumWidth(32);
@@ -242,7 +242,7 @@ public:
         bottom->setSpacing(2);
         for(int i=0;i<8;++i) {
             auto *swatch=new QToolButton(m_contents);
-            swatch->setMinimumSize(22,28);
+            swatch->setMinimumSize(18,28);
             swatch->setMaximumHeight(32);
             swatch->setToolTip(i18n("Recent color"));
             bottom->addWidget(swatch,1);
@@ -305,6 +305,13 @@ public:
         }
     }
     bool expanded() const {return m_expanded;}
+    void setOverlayClearance(int top,int right)
+    {
+        if(m_avoidTop==top && m_avoidRight==right)return;
+        m_avoidTop=top;
+        m_avoidRight=right;
+        updateForViewport();
+    }
     // Reserve space for narrow-screen bottom sheets without changing
     // the user's preferred color wheel size or expanded state.
     void avoidBottom(int pixels)
@@ -356,10 +363,9 @@ protected:
                 if(!parent)return true;
                 const QPoint target=m_positionAtStart+
                     mouse->globalPos()-m_dragStart;
-                const int x=qBound(0,target.x(),
-                                   qMax(0,parent->width()-width()));
-                const int y=qBound(0,target.y(),
-                                   qMax(0,parent->height()-height()));
+                const int x=qBound(0,target.x(),rightmostPosition());
+                const int y=qBound(topmostPosition(),target.y(),
+                    qMax(0,parent->height()-height()-m_avoidBottom));
                 move(x,y);
                 m_rightInset=qMax(0,parent->width()-width()-x);
                 m_bottomInset=qMax(0,parent->height()-height()-y);
@@ -379,7 +385,7 @@ private:
     static QSize colorPanelSize(int level)
     {
         switch(level) {
-        case 0:return QSize(212,303);
+        case 0:return QSize(192,285);
         case 2:return QSize(292,394);
         default:return QSize(238,330);
         }
@@ -390,14 +396,16 @@ private:
         if(!parent)return;
         // Prefer the requested size, then progressively smaller sizes.
         // When even the smallest wheel cannot fit, keep a swatch visible.
+        const int besideLayers=parent->width()-m_avoidRight;
+        const int availableWidth=besideLayers>=colorPanelSize(0).width()+6 ?
+            besideLayers : parent->width();
+        const int availableHeight=qMax(0,parent->height()-m_avoidBottom-m_avoidTop);
         int level=m_sizeLevel;
         while(level>0 &&
-              (colorPanelSize(level).width()+8>parent->width() ||
-               colorPanelSize(level).height()+8>
-                   qMax(0,parent->height()-m_avoidBottom)))
+              (colorPanelSize(level).width()+6>availableWidth ||
+               colorPanelSize(level).height()+8>availableHeight))
             --level;
-        const int availableHeight=qMax(0,parent->height()-m_avoidBottom);
-        const bool fits=colorPanelSize(level).width()+8<=parent->width() &&
+        const bool fits=colorPanelSize(level).width()+6<=availableWidth &&
                         colorPanelSize(level).height()+8<=availableHeight;
         const bool showWheel=m_wantsExpanded && fits;
         m_expanded=showWheel;
@@ -415,11 +423,19 @@ private:
         if(!parent)return;
         if(m_dragging)return;
         const int x=qBound(0,parent->width()-width()-m_rightInset,
-                           qMax(0,parent->width()-width()));
+                           rightmostPosition());
         const int availableHeight=qMax(0,parent->height()-m_avoidBottom);
-        const int y=qBound(0,availableHeight-height()-m_bottomInset,
+        const int y=qBound(topmostPosition(),availableHeight-height()-m_bottomInset,
                            qMax(0,availableHeight-height()));
         move(x,y);
+    }
+    int rightmostPosition() const
+    {
+        return qMax(0,parentWidget()->width()-width()-m_avoidRight);
+    }
+    int topmostPosition() const
+    {
+        return qMin(m_avoidTop,qMax(0,parentWidget()->height()-height()-m_avoidBottom));
     }
     void savePosition()
     {
@@ -479,7 +495,7 @@ private:
     QString m_lastSwatchColor;
     bool m_expanded=true,m_wantsExpanded=true,m_dragging=false;
     int m_sizeLevel=1,m_rightInset=7,m_bottomInset=7;
-    int m_avoidBottom=0;
+    int m_avoidBottom=0,m_avoidTop=0,m_avoidRight=0;
     QPoint m_dragStart,m_positionAtStart;
 };
 #endif // Q_OS_ANDROID

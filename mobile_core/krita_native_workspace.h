@@ -30,6 +30,7 @@
 #include "tool_browser.h"
 #include "command_browser.h"
 #include "lightweight_canvas_host.h"
+#include "native_command_layout.h"
 
 class MobileKritaNativeWorkspace final : public QObject
 {
@@ -49,6 +50,8 @@ public:
                              [this](int) {
                 QTimer::singleShot(0,this,[this]() {
                     refresh();
+                    placeLayerOverlay();
+                    placeDrawingOverlays();
                     raiseOverlays();
                 });
             });
@@ -272,11 +275,12 @@ private:
         if(canvas->width()<140 || canvas->height()<180)return;
         const int inset=5;
         const int panelWidth=qMin(124,qMax(110,canvas->width()-2*inset));
-        const int panelHeight=qMin(canvas->height()-2*inset,
+        const int top=MobileNativeCommandLayout::panelTopInset(canvas);
+        const int panelHeight=qMin(canvas->height()-top-inset,
                                    qMax(240,(canvas->height()*4)/5));
         m_layers->setGeometry(
-            canvas->width()-panelWidth-inset,inset,
-            panelWidth,panelHeight);
+            canvas->width()-panelWidth-inset,top,
+            panelWidth,qMax(0,panelHeight));
     }
 
     void placeDrawingOverlays()
@@ -284,8 +288,9 @@ private:
         QWidget *canvas=m_host ? m_host->nativeCanvas() : nullptr;
         if(!canvas)return;
         const int inset=5;
+        const int top=MobileNativeCommandLayout::panelTopInset(canvas);
         const int width=canvas->width()-2*inset;
-        const int height=canvas->height()-2*inset;
+        const int height=canvas->height()-top-inset;
         if(width<=0 || height<=0)return;
         if(m_brush) {
             const int panelHeight=qMin(height,m_brush->sizeHint().height());
@@ -296,9 +301,11 @@ private:
             const int besideLayers=width-129;
             const int available=m_layers && m_layers->isVisible() &&
                 besideLayers>=240 ? besideLayers : width;
-            m_toolOptions->setGeometry(inset,inset,qMin(340,available),
+            m_toolOptions->setGeometry(inset,top,qMin(340,available),
                                        qMin(440,height));
         }
+        if(m_color)m_color->setOverlayClearance(
+            top,m_layers && m_layers->isVisible() ? m_layers->width()+10 : 0);
     }
 
     void raiseOverlays()

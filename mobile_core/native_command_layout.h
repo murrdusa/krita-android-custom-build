@@ -1,22 +1,20 @@
 /*
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Compact command chrome for the independent Krita engine host.
- * Real QAction objects are shared with the already-working native
- * document, tool and workspace callbacks. Never duplicate commands
- * or move the existing paint canvas.
+ * Floating touch controls for the independent Krita engine host.
  */
 #pragma once
 #if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
 #include <QAction>
-#include <QFontMetrics>
-#include <QList>
+#include <QEvent>
+#include <QFrame>
+#include <QHBoxLayout>
 #include <QMainWindow>
 #include <QMenu>
-#include <QToolBar>
+#include <QStackedWidget>
 #include <QToolButton>
 
-class MobileNativeCommandLayout final
+class MobileNativeCommandLayout final : public QObject
 {
 public:
     static bool install(QMainWindow *host,
@@ -25,101 +23,150 @@ public:
                         const QList<QAction*> &moreActions,
                         QAction *canvasOnly=nullptr)
     {
-        if(!host || !host->centralWidget() ||
-           host->findChild<QToolBar*>(
-               QStringLiteral("_mobileNativeDocumentBar"),
-               Qt::FindDirectChildrenOnly))
-            return false;
-
-        // Each visible row has only a handful of touch targets.
-        // In particular, Brushes/Layers/Color/Tools must not be
-        // hidden by QToolBar's tiny right-edge overflow chevron.
-        auto *documents=new QToolBar(host);
-        documents->setObjectName(
-            QStringLiteral("_mobileNativeDocumentBar"));
-        documents->setMovable(false);
-        documents->setFloatable(false);
-        documents->setToolButtonStyle(Qt::ToolButtonTextOnly);
-
-        auto *workspace=new QToolBar(host);
-        workspace->setObjectName(
-            QStringLiteral("_mobileNativeWorkspaceBar"));
-        workspace->setMovable(false);
-        workspace->setFloatable(false);
-        workspace->setToolButtonStyle(Qt::ToolButtonTextOnly);
-
-        for(QAction *action:documentActions)
-            if(action)documents->addAction(action);
-        for(QAction *action:workspaceActions)
-            if(action)workspace->addAction(action);
-
-        auto *moreButton=new QToolButton(documents);
-        moreButton->setObjectName(
-            QStringLiteral("_mobileNativeMoreButton"));
-        moreButton->setText(QObject::tr("More"));
-        moreButton->setPopupMode(QToolButton::InstantPopup);
-        moreButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
-        moreButton->setMinimumHeight(44);
-        auto *menu=new QMenu(moreButton);
-        // Android's system palette can paint popup menu labels white
-        // against a white background. Explicitly style both regular
-        // items and submenus; no hover should be needed to read text.
+        QWidget *canvas=host ? host->centralWidget() : nullptr;
+        if(!canvas || panel(canvas,"_mobileNativeDocumentBar"))return false;
+        auto *layout=new MobileNativeCommandLayout(canvas);
+        layout->m_documents=makePanel(canvas,"_mobileNativeDocumentBar",
+                                      documentActions);
+        layout->m_workspace=makePanel(canvas,"_mobileNativeWorkspaceBar",
+                                      workspaceActions);
+        auto *more=new QToolButton(layout->m_documents);
+        more->setObjectName(QStringLiteral("_mobileNativeMoreButton"));
+        more->setText(QStringLiteral("..."));
+        more->setAccessibleName(QObject::tr("More"));
+        more->setToolTip(QObject::tr("More"));
+        more->setFixedSize(44,44);
+        more->setPopupMode(QToolButton::InstantPopup);
+        auto *menu=new QMenu(more);
         const QString popupStyle=QStringLiteral(
-            "QMenu{background-color:#283746;color:#f3f7fc;"
-            "border:1px solid #6f90a8;padding:3px;}"
-            "QMenu::item{background:transparent;color:#f3f7fc;"
-            "padding:11px 17px;min-height:37px;}"
-            "QMenu::item:selected{background:#356c8e;color:#ffffff;}"
-            "QMenu::item:disabled{color:#a6b3c1;}"
-            "QMenu::separator{height:1px;background:#526a80;"
-            "margin:5px 8px;}");
+            "QMenu{background:#252529;color:#f4f4f5;"
+            "border:1px solid #55555c;padding:4px;}"
+            "QMenu::item{color:#f4f4f5;padding:11px 17px;min-height:26px;}"
+            "QMenu::item:selected{background:#45454f;}"
+            "QMenu::item:disabled{color:#9a9aa2;}"
+            "QMenu::separator{height:1px;background:#55555c;margin:4px 8px;}");
         menu->setStyleSheet(popupStyle);
         for(QAction *action:moreActions) {
             if(!action)continue;
-            if(QMenu *submenu=action->menu())
-                submenu->setStyleSheet(popupStyle);
+            if(QMenu *submenu=action->menu())submenu->setStyleSheet(popupStyle);
             menu->addAction(action);
         }
-        moreButton->setMenu(menu);
-        documents->addWidget(moreButton);
+        more->setMenu(menu);
+        layout->m_documents->layout()->addWidget(more);
 
-        host->addToolBar(Qt::TopToolBarArea,documents);
-        host->addToolBar(Qt::BottomToolBarArea,workspace);
-        for(QToolBar *bar:{documents,workspace}) {
-            bar->setStyleSheet(QStringLiteral("QToolBar{spacing:2px;}"));
-            for(QAction *action:bar->actions()) {
-                if(auto *button=qobject_cast<QToolButton*>(bar->widgetForAction(action))) {
-                    button->setMinimumHeight(44);
-                    const int padding=button->menu()?16:6;
-                    const int textWidth=button->fontMetrics().horizontalAdvance(
-                        button->text());
-                    button->setFixedWidth(qMax(44,textWidth+padding));
-                }
-            }
-        }
         if(canvasOnly) {
-            auto *restore=new QToolButton(host->centralWidget());
+            auto *restore=new QToolButton(canvas);
+            layout->m_restore=restore;
             restore->setObjectName(QStringLiteral("_mobileNativeRestoreControls"));
             restore->setText(QObject::tr("Show Controls"));
             restore->setMinimumSize(110,44);
             restore->setStyleSheet(QStringLiteral(
-                "QToolButton{background:#283746;color:#f3f7fc;"
-                "border:1px solid #6f90a8;border-radius:6px;padding:5px;}"));
-            restore->move(5,5);
+                "QToolButton{background:#252529;color:#f4f4f5;"
+                "border:1px solid #55555c;border-radius:10px;padding:5px;}"));
+            restore->adjustSize();
+            restore->move(6,6);
             restore->hide();
             QObject::connect(restore,&QToolButton::clicked,canvasOnly,
                              [canvasOnly]() { canvasOnly->setChecked(false); });
-            QObject::connect(canvasOnly,&QAction::toggled,restore,
-                             [documents,workspace,restore](bool enabled) {
-                documents->setVisible(!enabled);
-                workspace->setVisible(!enabled);
+            QObject::connect(canvasOnly,&QAction::toggled,layout,
+                             [layout,restore](bool enabled) {
+                layout->m_documents->setVisible(!enabled);
+                layout->m_workspace->setVisible(!enabled);
                 restore->setVisible(enabled);
-                if(enabled)restore->raise();
+                layout->position();
             });
         }
-        return host->centralWidget() &&
-               documents->parentWidget()==host &&
-               workspace->parentWidget()==host;
+
+        canvas->installEventFilter(layout);
+        layout->m_documents->show();
+        layout->m_workspace->show();
+        if(auto *stack=qobject_cast<QStackedWidget*>(canvas))
+            QObject::connect(stack,&QStackedWidget::currentChanged,layout,
+                             [layout](int) { layout->position(); });
+        layout->position();
+        return true;
     }
+
+    static int panelTopInset(QWidget *canvas)
+    {
+        int inset=6;
+        for(const char *name:{"_mobileNativeDocumentBar","_mobileNativeWorkspaceBar"}) {
+            if(auto *bar=panel(canvas,name); bar && !bar->isHidden())
+                inset=qMax(inset,bar->geometry().bottom()+7);
+        }
+        return inset;
+    }
+
+protected:
+    bool eventFilter(QObject *watched,QEvent *event) override
+    {
+        if(watched==parent() &&
+           (event->type()==QEvent::Resize || event->type()==QEvent::Show))
+            position();
+        return false;
+    }
+
+private:
+    explicit MobileNativeCommandLayout(QWidget *canvas) : QObject(canvas) {}
+
+    static QFrame *panel(QWidget *canvas,const char *name)
+    {
+        return canvas->findChild<QFrame*>(QString::fromLatin1(name),
+                                          Qt::FindDirectChildrenOnly);
+    }
+
+    static QFrame *makePanel(QWidget *canvas,const char *name,
+                             const QList<QAction*> &actions)
+    {
+        auto *frame=new QFrame(canvas);
+        frame->setObjectName(QString::fromLatin1(name));
+        frame->setStyleSheet(QStringLiteral(
+            "QFrame{background:#252529;border:1px solid #48484e;border-radius:13px;}"
+            "QToolButton{background:transparent;color:#f4f4f5;border:0;"
+            "border-radius:8px;padding:0;}"
+            "QToolButton:pressed,QToolButton:checked{background:#484850;}"
+            "QToolButton:disabled{color:#9a9aa2;}"
+            "QToolButton::menu-indicator{image:none;width:0;}"));
+        auto *row=new QHBoxLayout(frame);
+        row->setContentsMargins(3,3,3,3);
+        row->setSpacing(1);
+        for(QAction *action:actions) {
+            if(!action)continue;
+            auto *button=new QToolButton(frame);
+            button->setDefaultAction(action);
+            button->setAccessibleName(action->text());
+            button->setIconSize(QSize(23,23));
+            if(action->icon().isNull()) {
+                button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+                button->setFixedSize(qMax(44,button->fontMetrics()
+                    .horizontalAdvance(action->text())+6),44);
+            } else {
+                button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+                button->setFixedSize(44,44);
+            }
+            row->addWidget(button);
+        }
+        return frame;
+    }
+
+    void position()
+    {
+        auto *canvas=static_cast<QWidget*>(parent());
+        m_workspace->adjustSize();
+        m_documents->adjustSize();
+        const int edge=6;
+        const bool fits=canvas->width()>=m_workspace->width()+
+                                        m_documents->width()+3*edge;
+        m_workspace->move(edge,edge);
+        m_documents->move(qMax(edge,canvas->width()-m_documents->width()-edge),
+                          fits ? edge : m_workspace->geometry().bottom()+edge+1);
+        m_workspace->raise();
+        m_documents->raise();
+        if(m_restore)m_restore->raise();
+    }
+
+    QFrame *m_documents=nullptr;
+    QFrame *m_workspace=nullptr;
+    QToolButton *m_restore=nullptr;
 };
 #endif

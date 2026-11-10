@@ -70,6 +70,8 @@
 
 ## Test status
 
+- **Floating Studio controls:** The drawing and document commands now sit in compact icon groups over the canvas. They share a row on wider layouts and stack on narrow screens. A live foreground swatch opens Color, and the eraser button toggles Krita's native erase mode. Layers and Color use a neutral dark palette, and Color moves beside the Layers rail when space permits. Fold 6 check: fold/unfold with panels open, verify icon contrast and live swatch updates, toggle erase while painting, and check Color's Size and Drag controls with Layers visible.
+
 - **Touch workspace batch:** Brushes and native Tool Options now float over the canvas, as Layers and Color already did. Brushes, Color, and Tool Options open one at a time. The Tools chooser puts the current tool first and opens its native options directly. More groups document actions, puts Canvas View one level closer, and adds Canvas Only with a Show Controls button. Fold 6 check in folded/unfolded and landscape layouts: switch among panels with Layers open, adjust brush size/opacity, verify Tool Options follows tools and canvases, then enter and leave Canvas Only during a drawing. Check that panels preserve canvas geometry and remain reachable with finger and S Pen.
 
 - **Native brush controls:** More → Drawing now exposes Krita's freehand brush smoothing modes and horizontal/vertical brush symmetry. The controls use the existing tool and paint toolbar actions. Fold 6 check: with Freehand Brush active, switch between Stabilizer and Disabled and verify Tool Options follows. Toggle each symmetry axis, draw mirrored strokes, and switch between canvases to check the axis state follows the document.

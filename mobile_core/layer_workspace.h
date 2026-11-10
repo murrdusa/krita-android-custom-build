@@ -81,16 +81,16 @@ public:
         setMaximumWidth(166);
         setSizePolicy(QSizePolicy::Preferred,QSizePolicy::Expanding);
         setStyleSheet(
-            "QFrame#MobileStudioLayersPanel{background:#27333f;"
-            "border-left:2px solid #7599b4;}"
+            "QFrame#MobileStudioLayersPanel{background:#252529;"
+            "border:1px solid #48484e;border-radius:13px;}"
             "QLabel{color:#ecf3fc;font-size:14px;}"
-            "QTreeWidget{background:#2e3e4e;color:#f0f5fb;"
-            "border:1px solid #718b9f;font-size:14px;}"
+            "QTreeWidget{background:transparent;color:#f4f4f5;"
+            "border:0;font-size:14px;}"
             "QTreeWidget::item{min-height:48px;padding:4px;}"
             "QHeaderView::section{background:#364b5e;color:#e2effa;"
             "font-size:12px;border:0;padding:5px;}"
-            "QPushButton{background:#435e74;color:#f6fbff;"
-            "border:1px solid #729bb6;border-radius:7px;"
+            "QPushButton{background:#34343a;color:#f4f4f5;"
+            "border:1px solid #55555c;border-radius:8px;"
             "min-height:44px;padding:4px 7px;font-size:13px;}"
             "QPushButton:pressed{background:#5685a6;}"
             "QPushButton:disabled{color:#8696a3;background:#303d48;}"
