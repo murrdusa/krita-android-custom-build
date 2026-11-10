@@ -8,6 +8,24 @@ Decision recorded: 2026-11-09. **Planning only; do not implement these additions
 - Prioritize actual useful functionality over interface polish now; later design a compact, efficient UI for finger and stylus on the Galaxy Z Fold.
 - Avoid rewriting brush engines, the KRA format, layer rendering, animation engines or color management. The engine should remain a functional superset wherever practical.
 
+## Current user-selected focus (2026-11-10)
+
+The user explicitly selected the following nine areas for **particular emphasis**. These are priorities for choosing and scoping work, **not a request to implement all features immediately**. Continue the autonomous, fast-iteration workflow in `AGENTS.md`; protect working painting, pressure, document recovery, and native engine integration. The list is **not a strict ranking**:
+
+1. **Selections and Transform:** correct native modes, selection operations, and multi-layer transforms; prioritize regressions verified on the Fold 6.
+2. **Layers, clipping, and masks:** stable grouping, intuitive nearest-base clipping, native mask types, reordering, and undoable changes.
+3. **Remaining Krita drawing tools:** usable native fill, gradients, shapes, assistants, cloning, stabilization, and tool options.
+4. **Automatic version history and recovery:** prioritize complete document safety, background/crash checkpoints, intentional discard, and recoverable previous versions.
+5. **Home and project library:** fast, persistent project discovery, complete Recent integration, cached thumbnails, Android storage grants, and reliable opening.
+6. **Brushes and input:** preserve S Pen/finger parity, contact-area pressure, gesture settings, brush modes, and volume-key shortcuts.
+7. **Performance and stability:** cross-cutting requirement at every phase—avoid regressions, reduce build/runtime friction, and address measured bottlenecks.
+8. **Final mobile UI redesign:** compact, discoverable Fold-first touch UI, **after** core functionality is stable; make necessary accessibility/reliability fixes sooner.
+9. **Interactive fill tolerance:** selected advanced convenience to tackle after the underlying native fill/selection behavior and UI foundations are stable.
+
+**Not rejected:** Dedicated perspective assistants/modes, animation exposure, and optional conveniences remain in the existing backlog. They are not the current focus unless required for a selected feature. Do not remove their underlying Krita functionality.
+
+**Execution order:** Follow the agreed sequence below (native selections/transforms → layers/masks → drawing tools → complete version history → final mobile UI → interactive fill), but fix Home, brush/input, and performance defects alongside whichever stage they block. The high priority for version history is a safety priority, not permission to destabilize working documents. Use brief, batched on-device tests only when the PC build cannot establish behavior.
+
 ## Three Infinite Painter-related requests that materially matter
 
 1. **Project version history — highest priority of the three; a core document-safety requirement.**
