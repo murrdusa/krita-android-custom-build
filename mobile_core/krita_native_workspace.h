@@ -12,6 +12,7 @@
 #ifdef Q_OS_ANDROID
 #include <QObject>
 #include <QDockWidget>
+#include <QEvent>
 #include <QMainWindow>
 #include <QPointer>
 #include <QTimer>
@@ -83,25 +84,30 @@ public:
     void toggleLayers()
     {
         if(!m_host || !m_engine.hasDocument())return;
-        if(!m_layersDock) {
-            checkpoint("Layers: creating");
-            auto *dock=new QDockWidget(QObject::tr("Krita layers"),m_host);
-            dock->setObjectName(QStringLiteral("_mobileNativeLayersDock"));
-            dock->setAllowedAreas(Qt::LeftDockWidgetArea|
-                                  Qt::RightDockWidgetArea);
-            dock->setFeatures(QDockWidget::DockWidgetClosable);
-            m_layers=new KritaMobileLayersPanel(m_engine,dock);
+        QWidget *canvas=m_host->nativeCanvas();
+        if(!canvas)return;
+        if(!m_layers) {
+            checkpoint("Layers: creating canvas overlay");
+            // Docking the layer rail resized Krita's actual viewport.
+            // A clipped child overlay leaves the native canvas geometry
+            // unchanged, just like the existing floating color panel.
+            m_layerCanvas=canvas;
+            canvas->installEventFilter(this);
+            m_layers=new KritaMobileLayersPanel(m_engine,canvas);
+            m_layers->setObjectName(
+                QStringLiteral("_mobileNativeFloatingLayers"));
+            m_layers->setFixedWidth(124);
             m_layers->onRequestClose=[this]() {
-                if(m_layersDock)m_layersDock->hide();
+                if(m_layers)m_layers->hide();
             };
-            dock->setWidget(m_layers);
-            m_host->addDockWidget(Qt::RightDockWidgetArea,dock);
-            m_layersDock=dock;
-            checkpoint("Layers: ready");
-        } else m_layersDock->setVisible(!m_layersDock->isVisible());
-        if(m_layersDock && m_layersDock->isVisible()) {
+            placeLayerOverlay();
+            checkpoint("Layers: floating overlay ready");
+        }
+        else m_layers->setVisible(!m_layers->isVisible());
+        if(m_layers && m_layers->isVisible()) {
+            placeLayerOverlay();
             m_layers->refreshNow();
-            m_layersDock->raise();
+            m_layers->raise();
         }
     }
 
@@ -226,7 +232,33 @@ public:
         }
     }
 
+protected:
+    bool eventFilter(QObject *watched,QEvent *event) override
+    {
+        if(watched==m_layerCanvas &&
+           (event->type()==QEvent::Resize ||
+            event->type()==QEvent::Show)) {
+            placeLayerOverlay();
+        }
+        return QObject::eventFilter(watched,event);
+    }
+
 private:
+    void placeLayerOverlay()
+    {
+        if(!m_layers || !m_layerCanvas)return;
+        QWidget *canvas=m_layerCanvas.data();
+        if(canvas->width()<140 || canvas->height()<180)return;
+        const int inset=5;
+        const int panelWidth=qMin(124,qMax(110,canvas->width()-2*inset));
+        const int panelHeight=qMin(canvas->height()-2*inset,
+                                   qMax(240,(canvas->height()*4)/5));
+        m_layers->setGeometry(
+            canvas->width()-panelWidth-inset,inset,
+            panelWidth,panelHeight);
+        if(m_layers->isVisible())m_layers->raise();
+    }
+
     void syncActiveToolOptions()
     {
         if(!m_toolOptions || !m_toolOptions->isVisible())return;
@@ -249,7 +281,7 @@ private:
     QPointer<MobileLightweightCanvasHost> m_host;
     MobileEngineBridge m_engine;
     QPointer<QDockWidget> m_brushDock;
-    QPointer<QDockWidget> m_layersDock;
+    QPointer<QWidget> m_layerCanvas;
     QPointer<KoToolDocker> m_toolOptions;
     QPointer<KritaMobileBrushWorkspace> m_brush;
     QPointer<KritaMobileLayersPanel> m_layers;
