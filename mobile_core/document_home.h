@@ -333,7 +333,7 @@ public:
                 [this]() {showList(RecoveryDrafts);});
         connect(m_refresh,&QPushButton::clicked,this,[this]() {
             m_cache.clear();
-            showList(m_mode);
+            showList(m_mode,true); // explicit Refresh always scans
         });
         connect(m_sort,&QPushButton::clicked,this,[this]() {
             m_sortByName=!m_sortByName;
@@ -360,7 +360,7 @@ public:
                 [this](const QString &) {filterItems();});
         connect(m_access,&QPushButton::clicked,this,[this]() {
             if(hasAllFilesAccess()) {
-                showList(AllProjects);
+                showList(AllProjects,true);
                 return;
             }
             if(QMessageBox::question(this,i18n("All Krita documents"),
@@ -424,7 +424,7 @@ public:
                 this,[this](Qt::ApplicationState state) {
             if(state==Qt::ApplicationActive && isVisible() &&
                m_mode==AllProjects && hasAllFilesAccess()!=m_lastAccess)
-                showList(AllProjects);
+                showList(AllProjects,true);
         });
         parent->installEventFilter(this);
         hide();
@@ -550,7 +550,7 @@ private:
                 "(Landroid/content/Intent;)Z",data.object());
             QMetaObject::invokeMethod(qApp,[home,granted]() {
                 if(!home || !home->isVisible())return;
-                if(granted)home->showList(AllProjects);
+                if(granted)home->showList(AllProjects,true);
                 else QMessageBox::warning(home,i18n("Folder access unavailable"),
                     i18n("Android could not keep access to this folder. Try a different folder."));
             },Qt::QueuedConnection);
@@ -601,7 +601,7 @@ private:
         const bool removed=QAndroidJniObject::callStaticMethod<jboolean>(
             "org/krita/android/MainActivity","tabletForgetProjectFolder",
             "(Ljava/lang/String;)Z",uri.object<jstring>());
-        if(removed)showList(AllProjects);
+        if(removed)showList(AllProjects,true);
         else QMessageBox::warning(this,i18n("Linked folders"),
             i18n("Android could not remove that folder link."));
     }
@@ -736,7 +736,7 @@ private:
         return {};
     }
 
-    void showList(Mode mode)
+    void showList(Mode mode,bool forceScan=false)
     {
         m_mode=mode;
         m_recent->setChecked(mode==Recent);
@@ -820,9 +820,28 @@ private:
                     addProject({p,name,mod,{}});
                 }
             }
-            if(m_list->count()>0)
-                m_message->setText(i18n("Updating project list in background…"));
-            startScan();
+            // The index is the default fast path. Only scan Downloads
+            // when the catalog is missing/stale, the user refreshes, or
+            // a storage/folder permission changed. Recent stays visible
+            // even when it lives outside the scan roots.
+            const qint64 now=QDateTime::currentMSecsSinceEpoch();
+            const qint64 last=QSettings().value(
+                QStringLiteral("MobileStudio/projectIndexLastScanMs"),0).toLongLong();
+            const bool needsScan=forceScan || last<=0 || last>now ||
+                                  now-last>10LL*60*1000;
+            if(needsScan) {
+                if(m_list->count()>0)
+                    m_message->setText(i18n("Updating saved projects in background…"));
+                startScan();
+            } else {
+                const int count=m_list->count();
+                m_message->setText(count==0?
+                    i18n("No indexed Krita projects. Tap Refresh to search Downloads."):
+                    i18np("%1 indexed Krita project", "%1 indexed Krita projects",count));
+                // New recent entries are remembered immediately rather than
+                // waiting for a full scan to finish.
+                persistIndex();
+            }
         }
         if(mode!=AllProjects && m_list->count()==0) {
             auto *empty=new QListWidgetItem(mode==OpenCanvases?
@@ -960,6 +979,24 @@ private:
         scheduleThumbnails();
     }
 
+    void persistIndex()
+    {
+        QVector<MobileProjectIndexEntry> entries;
+        entries.reserve(m_list->count());
+        for(int i=0;i<m_list->count();++i) {
+            const auto *item=m_list->item(i);
+            if(!item || item->data(Qt::UserRole).toString().isEmpty())continue;
+            MobileProjectIndexEntry entry;
+            entry.path=item->data(Qt::UserRole).toString();
+            entry.title=item->text();
+            entry.modified=item->data(Qt::UserRole+1).toLongLong();
+            entry.source=QStringLiteral("index");
+            entries.append(entry);
+        }
+        // The pool serializes index writes; no need to block the touch UI.
+        m_scanner.start([entries]() {MobileProjectIndex::save(entries);});
+    }
+
     void finishScan(int generation)
     {
         if(generation!=m_scanGeneration || m_mode!=AllProjects)return;
@@ -968,22 +1005,10 @@ private:
         m_message->setText(count==0?
             i18n("No Krita projects found. Add a folder or use Browse Files."):
             i18np("%1 Krita project found", "%1 Krita projects found",count));
-        // Persist the discovered set so the next launch can show it instantly.
-        QVector<MobileProjectIndexEntry> entries;
-        entries.reserve(count);
-        for(int i=0;i<count;++i) {
-            const auto *item=m_list->item(i);
-            MobileProjectIndexEntry e;
-            e.path=item->data(Qt::UserRole).toString();
-            e.title=item->text();
-            e.modified=item->data(Qt::UserRole+1).toLongLong();
-            e.source=QStringLiteral("scan");
-            entries.append(e);
-        }
-        // Run the index save on the scanner pool so it doesn't block the UI.
-        m_scanner.start([entries]() {
-            MobileProjectIndex::save(entries);
-        });
+        QSettings().setValue(
+            QStringLiteral("MobileStudio/projectIndexLastScanMs"),
+            QDateTime::currentMSecsSinceEpoch());
+        persistIndex();
     }
 
     void sortProjects()
@@ -1040,27 +1065,20 @@ private:
             const QString path=item->data(Qt::UserRole).toString();
             if(path.isEmpty() || m_pending.contains(path) ||
                m_attempted.contains(path) || m_cache.contains(path))continue;
-            // Try the persistent on-disk thumbnail first (fast, no KoStore open).
             const qint64 modified=item->data(Qt::UserRole+1).toLongLong();
-            {
-                const QImage cached=MobileProjectIndex::loadThumb(path,modified);
-                if(!cached.isNull()) {
-                    const QIcon icon(QPixmap::fromImage(cached));
-                    m_cache.insert(path,{icon,modified});
-                    item->setIcon(icon);
-                    m_attempted.insert(path);
-                    continue;
-                }
-            }
             m_pending.insert(path);
             --budget;
             QPointer<MobileDocumentHome> home(this);
             const quint64 generation=m_previewGeneration;
             m_thumbnails.start([home,path,modified,generation]() {
-                const QImage image=preview(path);
-                // Persist to disk so future sessions don't need to re-open the archive.
-                if(!image.isNull())
-                    MobileProjectIndex::saveThumb(path,modified,image);
+                // Even cached PNG decoding belongs off the touch/UI thread.
+                QImage image=MobileProjectIndex::loadThumb(path,modified);
+                if(image.isNull()) {
+                    image=preview(path);
+                    // Persist to disk so next launch avoids opening KRA.
+                    if(!image.isNull())
+                        MobileProjectIndex::saveThumb(path,modified,image);
+                }
                 QMetaObject::invokeMethod(qApp,[home,path,image,modified,generation]() {
                     if(!home || generation!=home->m_previewGeneration)return;
                     home->m_pending.remove(path);
