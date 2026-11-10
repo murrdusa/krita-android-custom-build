@@ -27,6 +27,7 @@
 #include "layer_workspace.h"
 #include "color_workspace.h"
 #include "tool_browser.h"
+#include "command_browser.h"
 #include "lightweight_canvas_host.h"
 
 class MobileKritaNativeWorkspace final : public QObject
@@ -214,6 +215,18 @@ public:
                 MobileToolBrowser::open(m_engine,host);
                 checkpoint("Tool chooser: closed");
             }
+        });
+    }
+
+    void browseCommands()
+    {
+        if(!m_host || !m_engine.hasDocument())return;
+        QPointer<MobileLightweightCanvasHost> host=m_host;
+        // The native More popup must close before the modeless-to-modal
+        // transition; the browser dispatches only currently enabled
+        // Krita QActions, not synthetic keyboard shortcuts.
+        QTimer::singleShot(0,this,[this,host]() {
+            if(host)MobileCommandBrowser::open(m_engine,host.data());
         });
     }
 
