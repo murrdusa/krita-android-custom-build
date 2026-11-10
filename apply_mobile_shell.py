@@ -1571,6 +1571,48 @@ install(FILES org.kde.krita.desktop''',
         // This initializes the docker to an empty entry;''',
         "initialize standalone text formatting without changing the selection")
     text_observer_file.write_text(text_observer,encoding="utf-8")
+    transform_dir=root/"plugins/tools/tool_transform2"
+    transform_header=transform_dir/"kis_tool_transform.h"
+    transform=transform_header.read_text(encoding="utf-8")
+    transform=one(transform,"#include <QPointer>","#include <QPointer>\n#include <optional>",
+                  "pending Transform mode include")
+    transform=one(transform,"    KisStrokeId m_strokeId;",
+                  "    KisStrokeId m_strokeId;\n    std::optional<ToolTransformArgs::TransformMode> m_pendingTransformMode;",
+                  "pending Transform mode field")
+    transform_header.write_text(transform,encoding="utf-8")
+
+    transform_source=transform_dir/"kis_tool_transform.cc"
+    transform=transform_source.read_text(encoding="utf-8")
+    transform=one(transform,"    if( mode != m_currentArgs.mode() ) {",
+        "    if (m_optionsWidget && (mode != m_currentArgs.mode() || m_pendingTransformMode)) {",
+        "allow replacing a queued Transform mode")
+    transform=one(transform,
+        "    ToolTransformArgs *config = m_transaction.currentConfig();\n    const ToolTransformArgs::TransformMode previousMode",
+        """    // Initial stroke setup runs on the image worker. Its result would
+    // replace any mode written before the transaction has arrived.
+    if (m_strokeId && m_transaction.rootNodes().isEmpty()) {
+        m_pendingTransformMode = mode;
+        return;
+    }
+    ToolTransformArgs *config = m_transaction.currentConfig();
+    const ToolTransformArgs::TransformMode previousMode""",
+        "defer Transform mode changes while the stroke starts")
+    transform=one(transform,"    initGuiAfterTransformMode();\n\n    if (m_transaction.hasInvisibleNodes())",
+        """    initGuiAfterTransformMode();
+
+    const auto requestedMode = m_pendingTransformMode;
+    m_pendingTransformMode.reset();
+    if (requestedMode && *requestedMode != m_currentArgs.mode()) {
+        slotResetTransform(*requestedMode);
+    }
+
+    if (m_transaction.hasInvisibleNodes())""",
+        "apply latest mode to the initialized Transform stroke")
+    for method in ("endStroke","cancelStroke"):
+        anchor=f"void KisToolTransform::{method}()\n{{"
+        transform=one(transform,anchor,anchor+"\n    m_pendingTransformMode.reset();",
+                      f"clear queued Transform mode on {method}")
+    transform_source.write_text(transform,encoding="utf-8")
     print(f"Installed independent Mobile Studio app; XMLGUI checksum {digest}")
 
 if __name__=="__main__":
