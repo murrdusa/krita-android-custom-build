@@ -586,8 +586,9 @@ private:
                        i18n("Clip (no base below)"));
         inheritAlpha->setCheckable(true);
         inheritAlpha->setChecked(clipped);
-        inheritAlpha->setEnabled(layer &&
-            !node->inherits("KisGroupLayer") && (clipped || clipBase));
+        // Krita's KisGroupLayer also supports alpha inheritance:
+        // its combined children are clipped as a single unit.
+        inheritAlpha->setEnabled(layer && (clipped || clipBase));
         QAction *properties=menu.addAction(i18n("Layer properties"));
         menu.addSeparator();
         QAction *duplicate=menu.addAction(i18n("Duplicate"));
@@ -906,7 +907,7 @@ private:
         const KisImageSP image=view?view->image().toStrongRef():KisImageSP();
         if(m_clipBusy || m_clipPropertyPending || m_reorderPending ||
            !inImage(node,image) || !node->inherits("KisLayer") ||
-           node->inherits("KisGroupLayer") || inheritsAlpha(node)==on)
+           isCompactClipWrapper(node) || inheritsAlpha(node)==on)
             return;
         KisNodeSP parent=logicalParent(node);
         if(!parent || !manager())return;
