@@ -70,6 +70,9 @@
 
 ## Test status
 
+- **Drawing resource controls:** the Gradient and Fill strips now open touch dialogs for Krita's native gradients and patterns. Gradients keep their native editor. Patterns can be generated from the current canvas using Krita's native From Canvas controls. More → Drawing also exposes both pickers and the native Brush Editor, which can be pinned as the toolbar shortcut. Assistants expose available density, vertical, subdivision and guide-file controls in the strip. Fold 6 check: choose and edit a gradient, fill with a saved and a canvas-derived pattern, open Brush Editor, and import/export a set of guides.
+
+
 - **Filters, seamless tiling, and desktop cleanup (WSL Android build PASS at `e5010002f857ef2dff88aeb65c838a348290fc9e`, 125.2 s):** More → Filters groups registered Krita effects and exposes native previews, reapply and filter masks where supported. Canvas View → Seamless Tiling exposes Krita's wrap toggle and axis controls. The Android source generator no longer injects the old embedded Studio pilot into KisMainWindow or copies its obsolete adapters. The live standalone entry replaces the compile-only probe. Krita's shared engine/UI library remains linked. Fold 6 check: preview and cancel Gaussian Blur, apply and undo Levels, create a filter mask, then paint across a wrapped canvas edge.
 
 

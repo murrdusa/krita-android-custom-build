@@ -155,6 +155,8 @@ public:
         workspace->configureToolbarShortcut(shortcutSlot,{
             {QStringLiteral("canvases"),canvasesAction,studioIcon("folder-documents")},
             {QStringLiteral("options"),optionsAction,studioIcon("configure")},
+            {QStringLiteral("brush-editor"),nativeBridge.action("show_brush_editor"),
+             studioIcon("paintop_settings_02")},
             {QStringLiteral("fit"),nativeBridge.action("zoom_to_fit"),studioIcon("zoom-fit")},
             {QStringLiteral("mirror"),nativeBridge.action("mirror_canvas"),studioIcon("mirror-view")},
             {QStringLiteral("assistants"),nativeBridge.action("view_toggle_painting_assistants"),
@@ -226,6 +228,17 @@ public:
             "stroke_selection",
             "stroke_shapes"
         });
+        auto *fillResourcesMenu=new QMenu(QObject::tr("Gradients and Patterns"),drawingMenu);
+        for(bool gradient:{true,false}) {
+            auto *action=fillResourcesMenu->addAction(
+                gradient?QObject::tr("Choose gradient…"):QObject::tr("Choose pattern…"));
+            QObject::connect(action,&QAction::triggered,workspace,[workspace,gradient]() {
+                workspace->chooseFillResource(gradient);
+            });
+        }
+        drawingMenu->addMenu(fillResourcesMenu);
+        if(auto *editor=nativeBridge.action("show_brush_editor"))
+            drawingMenu->addAction(editor);
         addDrawingGroup("Brush smoothing",{
             "set_no_brush_smoothing",
             "set_simple_brush_smoothing",

@@ -94,6 +94,7 @@ public:
     std::function<void()> chooseTool;
     std::function<void()> openOptions;
     std::function<void()> openTextFormatting;
+    std::function<void(bool)> chooseFillResource;
 
     void setTool(const QString &id,const QString &label,
                  const QList<QPointer<QWidget>> &options,
@@ -137,6 +138,13 @@ public:
                 if(auto *action=engine.action(entry.name))
                     choices.append({entry.label,action});
             addActionMenu(caption,choices);
+        };
+        const auto addFillResource=[this](bool gradient) {
+            if(!chooseFillResource)return;
+            auto *control=button(gradient?QObject::tr("Gradient"):QObject::tr("Pattern"));
+            connect(control,&QToolButton::clicked,this,[this,gradient]() {
+                chooseFillResource(gradient);
+            });
         };
         if(id.startsWith(QStringLiteral("KisToolSelect"))) {
             addSectionChoices("sectionAction",QObject::tr("Combine"),{
@@ -183,16 +191,19 @@ public:
                 {QObject::tr("Selection"),QObject::tr("Contiguous"),QObject::tr("Similar color")});
             addSectionChoices("sectionFillWith",QObject::tr("Source"),
                 {QObject::tr("Foreground"),QObject::tr("Background"),QObject::tr("Pattern")});
+            addFillResource(false);
             named("sliderThreshold",QObject::tr("Tol."));
             named("sliderCloseGap",QObject::tr("Gap"));
             addSectionChoices("sectionReference",QObject::tr("Reference"),
                 {QObject::tr("Current layer"),QObject::tr("All layers"),QObject::tr("Color labels")});
             named("checkBoxAntiAlias",QObject::tr("Anti-alias"));
         } else if(id==QStringLiteral("KritaFill/KisToolGradient")) {
+            addFillResource(true);
             named("shape_combo",QObject::tr("Shape"));
             named("repeat_combo",QObject::tr("Repeat"));
             named("reverse_check",QObject::tr("Reverse"));
             named("dither_check",QObject::tr("Dither"));
+            named("threshold_slider",QObject::tr("Anti-alias"));
         } else if(id==QStringLiteral("KritaTransform/KisToolMove")) {
             addNamedChoices(QObject::tr("Move target"),{
                 {"radioSelectedLayer",QObject::tr("Selected layer")},
@@ -209,6 +220,13 @@ public:
         } else if(id==QStringLiteral("KisAssistantTool")) {
             named("availableAssistantsComboBox",QObject::tr("Guide type"));
             named("localAssistantCheckbox",QObject::tr("Local"));
+            named("twoPointUseVerticalCheckbox",QObject::tr("Vertical"));
+            named("twoPointDensitySpinbox",QObject::tr("Density"));
+            named("subdivisionsSpinbox",QObject::tr("Divisions"));
+            addNamedChoices(QObject::tr("Guide files"),{
+                {"loadAssistantButton",QObject::tr("Import guides")},
+                {"saveAssistantButton",QObject::tr("Export guides")}
+            });
             native("view_toggle_painting_assistants",QObject::tr("Guides"));
             native("view_toggle_assistant_previews",QObject::tr("Preview"));
         } else if(id==QStringLiteral("KritaSelected/KisToolColorSampler")) {
