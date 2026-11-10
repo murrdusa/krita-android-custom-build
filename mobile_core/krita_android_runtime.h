@@ -16,5 +16,8 @@ public:
     enum class Result { Started, Failed };
     static Result launch(KisApplication &app,
                          const KisApplicationArguments &args);
+    // Called by Krita's existing quick-pinch recognizer, including on
+    // the independent host which does not have a KisMainWindow.
+    static void resetCanvasView();
 };
 #endif
