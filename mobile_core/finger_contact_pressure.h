@@ -1,7 +1,7 @@
 /*
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Experimental Android finger-contact-area pressure proxy (v1).
+ * Android finger-contact-area pressure proxy.
  * Krita's tablet events are not changed. This code only runs for a
  * single touchscreen contact when explicitly enabled in Mobile Studio.
  *
@@ -99,10 +99,10 @@ public:
         }
 
         const ulong eventTime=event->timestamp();
-        const bool timedOut=stroke.active && eventTime>stroke.lastTimestamp &&
-                            eventTime-stroke.lastTimestamp>500;
+        const bool pressed=event->type()==QEvent::TouchBegin ||
+                           point.state()==Qt::TouchPointPressed;
         if(!stroke.active || stroke.pointId!=point.id() ||
-           point.state()==Qt::TouchPointPressed || timedOut) {
+           (pressed && eventTime!=stroke.lastTimestamp)) {
             stroke=Stroke{};
             stroke.active=true;
             stroke.pointId=point.id();
@@ -159,7 +159,8 @@ public:
             // actual finger contact size rather than a fixed 52% baseline.
             stroke.smoothed=MobileFingerPressureSettings::mapDiameter(
                 diameter,stroke.range,stroke.response.gamma);
-            stroke.lastTarget=stroke.smoothed;
+            stroke.filtered=stroke.smoothed;
+            stroke.lastPosition=point.screenPos();
             stroke.previousRaw=stroke.smoothed;
             stroke.lastRaw=stroke.smoothed;
             stroke.lastDiameter=diameter;
@@ -181,10 +182,14 @@ public:
         if(eventTime==stroke.lastSampleTime &&
            qAbs(diameter-stroke.lastDiameter)<0.001)
             return stroke.smoothed;
-        const qreal elapsed=qBound(qreal(4.0),
-            eventTime>stroke.lastSampleTime?
-                qreal(eventTime-stroke.lastSampleTime):qreal(16.0),
-            qreal(50.0));
+        const qreal interval=eventTime>stroke.lastSampleTime?
+            qreal(eventTime-stroke.lastSampleTime):qreal(16.0);
+        const qreal elapsed=qBound(qreal(4.0),interval,qreal(32.0));
+        const QPointF position=point.screenPos();
+        const QPointF delta=position-stroke.lastPosition;
+        const qreal speed=std::hypot(delta.x(),delta.y())/qMax(qreal(4.0),interval);
+        stroke.speed+=(speed-stroke.speed)*(-std::expm1(-elapsed/30.0));
+        stroke.lastPosition=position;
         stroke.lastSampleTime=eventTime;
         stroke.lastDiameter=diameter;
         stroke.minDiameter=qMin(stroke.minDiameter,diameter);
@@ -196,22 +201,23 @@ public:
             qMin(qMax(stroke.previousRaw,stroke.lastRaw),raw));
         stroke.previousRaw=stroke.lastRaw;
         stroke.lastRaw=raw;
-        const qreal motion=qAbs(target-stroke.lastTarget);
-        if(motion<0.06)
-            stroke.noise=qBound(qreal(0.002),
-                stroke.noise*0.9+motion*0.1,qreal(0.04));
-        else
-            stroke.noise=qMax(qreal(0.002),stroke.noise*0.98);
-        stroke.lastTarget=target;
-        const qreal error=target-stroke.smoothed;
-        const qreal alpha=MobileFingerPressureSettings::adaptiveAlpha(
-            error,stroke.noise,stroke.response.stability,elapsed);
-        // Limit how far adjacent samples can move even when quantized
-        // contact sizes make the adaptive filter see a large change.
-        const qreal maxStep=elapsed*(0.009-0.006*stroke.response.stability);
-        stroke.smoothed+=qBound(-maxStep,error*alpha,maxStep);
-        if((target==0.0 || target==1.0) &&
-           qAbs(target-stroke.smoothed)<0.002)
+        // Contact-size steps usually come from rolling skin at low speeds.
+        // Let motion, rather than a large sensor jump, shorten the filter.
+        const qreal stability=stroke.response.stability;
+        const qreal moving=qBound(qreal(0.0),(stroke.speed-0.04)/0.24,qreal(1.0));
+        const qreal slowTime=105.0+150.0*stability;
+        const qreal fastTime=18.0+36.0*stability;
+        const qreal time=slowTime+(fastTime-slowTime)*moving;
+        const qreal alpha=-std::expm1(-elapsed/time);
+        stroke.filtered+=(target-stroke.filtered)*alpha;
+
+        // Hysteresis holds the painted width steady between sensor levels.
+        // Deliberate sustained changes still pass through the slow filter.
+        const qreal error=stroke.filtered-stroke.smoothed;
+        const qreal band=(0.010+0.020*stability)*(1.0-moving);
+        const qreal maxStep=elapsed*(0.002+0.005*moving);
+        stroke.smoothed+=qBound(-maxStep,error-qBound(-band,error,band),maxStep);
+        if((target==0.0 || target==1.0) && qAbs(target-stroke.filtered)<0.002)
             stroke.smoothed=target;
         return stroke.smoothed;
     }
@@ -229,8 +235,9 @@ private:
             MobileFingerPressureSettings::defaultMax()};
         MobileFingerPressureSettings::Response response;
         QSet<int> uniqueBins;
-        qreal noise=0.006;
-        qreal lastTarget=0;
+        qreal filtered=0;
+        qreal speed=0;
+        QPointF lastPosition;
         qreal previousRaw=0;
         qreal lastRaw=0;
         MobileFingerContactSource::State source;

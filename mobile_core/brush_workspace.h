@@ -150,11 +150,8 @@ public:
             connect(provider,&KisCanvasResourceProvider::sigPaintOpPresetChanged,
                     this,[this](KisPaintOpPresetSP preset) {
                 if(!preset)return;
-                if(!m_internalChange && m_hasSelectedMode &&
-                   (m_slot!=2 || isSmudge(preset)))
-                    QSettings().setValue(
-                        QStringLiteral("MobilePilot/brushSlot%1").arg(m_slot),
-                        preset->name());
+                if(!m_internalChange && isActiveMode(m_slot))
+                    rememberPreset(m_slot,preset);
                 refresh();
             });
         }
@@ -238,17 +235,36 @@ private:
         if(!m_model)m_model=new KisResourceModel(ResourceType::PaintOpPresets,this);
         return m_model;
     }
-    KisPaintOpPresetSP findPreset(const QString &name)
+    static void rememberPreset(int slot,const KisPaintOpPresetSP &preset)
     {
-        if(name.isEmpty())return KisPaintOpPresetSP();
+        QSettings settings;
+        const QString key=QStringLiteral("MobilePilot/brushSlot%1").arg(slot);
+        settings.setValue(key,preset->name());
+        settings.setValue(key+QStringLiteral("ResourceId"),preset->resourceId());
+    }
+
+    KisPaintOpPresetSP findPreset(int slot)
+    {
+        const QSettings settings;
+        const QString key=QStringLiteral("MobilePilot/brushSlot%1").arg(slot);
+        const QString name=settings.value(key).toString();
+        if(name.isEmpty())return {};
         auto *src=model();
+        const int id=settings.value(key+QStringLiteral("ResourceId"),-1).toInt();
+        if(id>=0) {
+            const auto index=src->indexForResourceId(id);
+            if(index.isValid()) {
+                auto preset=src->resourceForIndex(index).dynamicCast<KisPaintOpPreset>();
+                if(preset && preset->valid() && preset->name()==name)return preset;
+            }
+        }
         for(int i=0;i<src->rowCount() && i<3000;++i) {
             auto preset=src->resourceForIndex(src->index(i,0))
                            .dynamicCast<KisPaintOpPreset>();
             if(preset && preset->valid() && preset->name()==name)
                 return preset;
         }
-        return KisPaintOpPresetSP();
+        return {};
     }
     KisPaintOpPresetSP firstPresetFor(int slot)
     {
@@ -277,9 +293,7 @@ private:
         if(!resources() || slot<0 || slot>2)return;
         // Changing presets never replaces Krita's tool or input manager.
         m_engine.freehandBrush();
-        const QString name=QSettings().value(
-            QStringLiteral("MobilePilot/brushSlot%1").arg(slot)).toString();
-        KisPaintOpPresetSP preset=findPreset(name);
+        KisPaintOpPresetSP preset=findPreset(slot);
         if(slot==2 && !isSmudge(preset))preset.clear();
         // Never restore a cached eraser or blender as the Paint preset.
         // An unsaved mode receives a matching native Krita preset.
@@ -292,8 +306,7 @@ private:
         setEraser(slot==1);
         m_slot=slot;
         m_hasSelectedMode=true;
-        if(preset)QSettings().setValue(
-            QStringLiteral("MobilePilot/brushSlot%1").arg(slot),preset->name());
+        if(preset)rememberPreset(slot,preset);
         refresh();
     }
     void openPresetBrowser(int slot)
@@ -385,9 +398,7 @@ private:
             // which filter the user used to locate this native preset.
             setEraser(slot==1);
             m_slot=slot;m_hasSelectedMode=true;
-            QSettings().setValue(
-                QStringLiteral("MobilePilot/brushSlot%1").arg(slot),
-                preset->name());
+            rememberPreset(slot,preset);
             refresh();
             dialog.accept();
         });

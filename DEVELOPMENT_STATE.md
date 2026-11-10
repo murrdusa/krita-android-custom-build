@@ -70,6 +70,9 @@
 
 ## Test status
 
+- **Slow finger strokes:** pressure now uses motion to choose its filter speed and holds steady across alternating contact-size steps. Pausing no longer starts a new pressure curve mid-stroke. Paint/Erase/Blend remember the selected native preset ID, with migration from name-only settings. Home → Recover drafts can explicitly discard an unopened draft after confirmation. Fold 6 check: draw very slowly with one finger using a pressure-size brush, vary contact deliberately, pause and resume, compare S Pen, switch duplicate-named presets between modes, and discard an unopened draft.
+
+
 - **Document safety and history (WSL Android build PASS at `967637ea32a5627b3e1546744aa9d6b6c479e037`, 114.5 s):** Studio now waits for Krita's successful write signal before reporting Save or Export complete. A failed Close → Save leaves the canvas open. Saved versions include native KRA saves through readable Android document providers, keyed by URI. Opening a saved version creates an unsaved canvas that requires Save As. Background and periodic draft passes now advance through all dirty open canvases one at a time. Fold 6 check: save two edits to a picker-opened KRA, restore an earlier version and Save As, verify a failed provider write cannot close the canvas, and force-stop after backgrounding with multiple dirty canvases.
 
 

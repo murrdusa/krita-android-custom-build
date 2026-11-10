@@ -18,6 +18,7 @@
 #include <QDirIterator>
 #include <QElapsedTimer>
 #include <QEvent>
+#include <QFile>
 #include <QFileInfo>
 #include <QFrame>
 #include <QGuiApplication>
@@ -117,6 +118,9 @@ public:
         m_refresh->setMinimumWidth(76);
         tools->addWidget(m_search,1);
         tools->addWidget(m_refresh);
+        m_discardDraft=new QPushButton(i18n("Discard…"),this);
+        m_discardDraft->setCheckable(true);
+        tools->addWidget(m_discardDraft);
         layout->addLayout(tools);
 
         m_access=new QPushButton(i18n("Allow access to all local projects"),this);
@@ -164,6 +168,11 @@ public:
         connect(m_refresh,&QPushButton::clicked,this,[this]() {
             showList(m_mode);
         });
+        connect(m_discardDraft,&QPushButton::toggled,this,[this](bool armed) {
+            if(m_mode!=RecoveryDrafts)return;
+            m_message->setText(armed?i18n("Choose an unopened draft to discard."):
+                i18n("Recovered drafts open as unsaved drawings."));
+        });
         connect(m_search,&QLineEdit::textChanged,this,
                 [this](const QString &) {filterItems();});
         connect(m_access,&QPushButton::clicked,this,[this]() {
@@ -192,6 +201,11 @@ public:
                 return;
             }
             const QString path=item->data(Qt::UserRole).toString();
+            if(m_mode==RecoveryDrafts && m_discardDraft->isChecked()) {
+                m_discardDraft->setChecked(false);
+                QTimer::singleShot(0,this,[this,path]() {discardDraft(path);});
+                return;
+            }
             QTimer::singleShot(0,this,[this,path]() {
                 if(!isVisible() || !m_files || path.isEmpty())return;
                 for(const auto &entry:m_engine.openDocuments()) {
@@ -273,6 +287,40 @@ private:
         QString title;
         qint64 timestamp=0;
     };
+
+    bool draftIsOpen(const QString &path) const
+    {
+        for(const auto &entry:m_engine.openDocuments()) {
+            if(entry.document &&
+               entry.document->property("_mobileDraftPath").toString()==path)
+                return true;
+        }
+        return false;
+    }
+
+    void discardDraft(const QString &path)
+    {
+        if(!isVisible() || m_mode!=RecoveryDrafts ||
+           !MobileDraftRecovery::isDraft(path))return;
+        if(draftIsOpen(path)) {
+            QMessageBox::information(this,i18n("Draft is open"),
+                i18n("Close the drawing without saving to discard its draft."));
+            return;
+        }
+        if(QMessageBox::question(this,i18n("Discard draft?"),
+            i18n("Discard the unsaved changes in %1?",
+                 MobileDraftRecovery::title(QFileInfo(path))),
+            QMessageBox::Discard|QMessageBox::Cancel,QMessageBox::Cancel)
+                !=QMessageBox::Discard)return;
+        if(draftIsOpen(path) || !MobileDraftRecovery::isDraft(path))return;
+        if(!QFile::remove(path)) {
+            QMessageBox::warning(this,i18n("Could not discard draft"),
+                i18n("The recovery file could not be removed."));
+            return;
+        }
+        m_cache.remove(path);
+        showList(RecoveryDrafts);
+    }
 
     static bool isKra(const QString &path)
     {
@@ -373,6 +421,8 @@ private:
         const auto drafts=MobileDraftRecovery::list();
         m_drafts->setChecked(mode==RecoveryDrafts);
         m_drafts->setVisible(mode==RecoveryDrafts || !drafts.isEmpty());
+        m_discardDraft->setChecked(false);
+        m_discardDraft->setVisible(mode==RecoveryDrafts && !drafts.isEmpty());
         m_search->setVisible(mode!=OpenCanvases);
         m_refresh->setVisible(mode!=OpenCanvases);
         m_lastAccess=hasAllFilesAccess();
@@ -615,7 +665,7 @@ private:
     QSharedPointer<MobileDocumentHostPort> m_files;
     QListWidget *m_list=nullptr;
     QPushButton *m_recent=nullptr,*m_library=nullptr,*m_open=nullptr,*m_drafts=nullptr;
-    QPushButton *m_refresh=nullptr,*m_access=nullptr;
+    QPushButton *m_refresh=nullptr,*m_access=nullptr,*m_discardDraft=nullptr;
     QLineEdit *m_search=nullptr;
     QLabel *m_message=nullptr;
     QIcon m_placeholder;

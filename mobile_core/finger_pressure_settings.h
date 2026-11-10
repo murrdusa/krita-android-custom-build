@@ -93,18 +93,4 @@ public:
         return std::pow(normalized,gamma);
     }
 
-    // Adaptive filter coefficient, adjusted for the touch sample interval:
-    // fast genuine changes react quickly while small jitter is damped.
-    static qreal adaptiveAlpha(qreal difference,qreal noise,
-                               qreal stability,qreal deltaMs) {
-        const qreal level=qBound(qreal(0.0),stability,qreal(1.0));
-        const qreal magnitude=qAbs(difference);
-        const qreal threshold=qMax(qreal(0.004),noise*(1.5+level));
-        const qreal motion=qBound(qreal(0.0),
-            (magnitude-threshold)/qreal(0.22),qreal(1.0));
-        const qreal quiet=0.36-0.27*level;
-        const qreal base=quiet+(0.82-quiet)*motion;
-        const qreal frames=qBound(qreal(0.25),deltaMs/16.0,qreal(3.0));
-        return qBound(qreal(0.01),1.0-std::pow(1.0-base,frames),qreal(0.98));
-    }
 };

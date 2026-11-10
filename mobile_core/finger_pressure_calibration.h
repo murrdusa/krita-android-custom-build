@@ -273,7 +273,7 @@ public:
             "Calibrate small and large contacts for 0–100% pressure. "
             "Adjust response: below 1.0 emphasizes light contact, "
             "above 1.0 emphasizes broad contact. Higher Stability "
-            "reduces jitter; lower Stability reacts faster. "
+            "keeps slow strokes steadier. Lower Stability reacts faster. "
             "Capture a medium contact to fit the curve automatically. "
             "Some brushes make no mark at 0%."),this);
         description->setWordWrap(true);

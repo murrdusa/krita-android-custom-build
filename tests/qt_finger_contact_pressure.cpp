@@ -23,10 +23,11 @@ static qreal touch(QTouchDevice &device,QEvent::Type type,
                    qreal diameter,ulong timestamp,
                    Qt::TouchPointState state=Qt::TouchPointMoved,
                    int id=1, int count=1,
-                   qreal nativePressure=1.0,bool pen=false)
+                   qreal nativePressure=1.0,bool pen=false,qreal speed=0.35)
 {
     QTouchEvent::TouchPoint p(id);
     p.setState(state);
+    p.setScreenPos(QPointF(timestamp*speed,0.0));
     if(pen)p.setFlags(QTouchEvent::TouchPoint::Pen);
     p.setEllipseDiameters(QSizeF(diameter,diameter));
     p.setPressure(nativePressure);
@@ -144,15 +145,6 @@ int main(int argc,char **argv)
     require(qAbs(firmCurve-0.25)<0.0001,
             "firm gamma 2.0 did not emphasize large contacts");
     touch(device,QEvent::TouchEnd,16,960,Qt::TouchPointReleased);
-    const qreal fast=MobileFingerPressureSettings::adaptiveAlpha(
-        0.05,0.004,0.0,16);
-    const qreal stable=MobileFingerPressureSettings::adaptiveAlpha(
-        0.05,0.004,1.0,16);
-    require(fast>stable && stable>0,
-            "stability slider does not reduce jitter response");
-    require(MobileFingerPressureSettings::adaptiveAlpha(
-        0.9,0.004,1.0,16)>stable,
-            "adaptive smoothing did not react to large contact changes");
     setting.setValue(curveKey,1.0);
     setting.setValue(stabilityKey,0.5);
 
@@ -162,6 +154,24 @@ int main(int argc,char **argv)
             qAbs(touch(device,QEvent::TouchUpdate,16,986)-steady)<0.0001,
             "one-frame contact spike changed brush pressure");
     touch(device,QEvent::TouchEnd,16,994,Qt::TouchPointReleased);
+
+    const auto slowSample=[&](QEvent::Type type,qreal diameter,ulong time,
+                              Qt::TouchPointState state=Qt::TouchPointMoved) {
+        return touch(device,type,diameter,time,state,1,1,1.0,false,0.02);
+    };
+    const qreal slowStart=slowSample(QEvent::TouchBegin,16,3000,Qt::TouchPointPressed);
+    for(int i=1;i<=60;++i) {
+        const qreal width=slowSample(QEvent::TouchUpdate,i%2?12:20,3000+8*i);
+        require(qAbs(width-slowStart)<0.035,
+                "slow stroke follows alternating contact-size steps");
+    }
+    const qreal afterPause=slowSample(QEvent::TouchUpdate,24,4200);
+    require(qAbs(afterPause-slowStart)<0.04,"pause reset pressure mid-stroke");
+    qreal held=afterPause;
+    for(int i=1;i<=60;++i)
+        held=slowSample(QEvent::TouchUpdate,24,4200+10*i);
+    require(held>slowStart+0.35,"slow stroke ignored a sustained pressure change");
+    slowSample(QEvent::TouchEnd,24,4810,Qt::TouchPointReleased);
 
     // Restore the normal test range.
     setting.setValue(minKey,8.0);
