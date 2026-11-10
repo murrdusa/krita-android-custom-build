@@ -158,12 +158,57 @@ public:
             if(QAction *action=nativeBridge.action(name))
                 selectionMenu->addAction(action);
         }
+        // General drawing commands unavailable in the trimmed mobile
+        // toolbar remain usable through Krita's real QAction registry.
+        // A selected operation stays owned by Krita (including document
+        // validation, undo and tool-specific prompts); no painting logic
+        // or second command history is implemented here.
+        auto *drawingMenu=new QMenu(QObject::tr("Drawing"),window);
+        const auto addDrawingGroup=[&nativeBridge,drawingMenu](
+            const char *heading,std::initializer_list<const char*> ids) {
+            auto *group=new QMenu(QObject::tr(heading),drawingMenu);
+            for(const char *id:ids) {
+                if(QAction *native=nativeBridge.action(id))
+                    group->addAction(native);
+            }
+            if(group->isEmpty())delete group;
+            else drawingMenu->addMenu(group);
+        };
+        addDrawingGroup("Fill and stroke",{
+            "fill_selection_foreground_color",
+            "fill_selection_background_color",
+            "fill_selection_pattern",
+            "stroke_selection",
+            "stroke_shapes"
+        });
+        addDrawingGroup("Assistants and guides",{
+            "view_toggle_painting_assistants",
+            "view_toggle_assistant_previews",
+            "view_show_guides",
+            "view_lock_guides",
+            "view_grid",
+            "view_pixel_grid"
+        });
+        addDrawingGroup("Snap to",{
+            "view_snap_to_guides",
+            "view_snap_to_grid",
+            "view_snap_to_pixel",
+            "view_snap_orthogonal",
+            "view_snap_node",
+            "view_snap_extension",
+            "view_snap_intersection",
+            "view_snap_bounding_box",
+            "view_snap_image_bounds",
+            "view_snap_image_center"
+        });
         QList<QAction*> moreActions{
             newAction,openAction,previousAction,nextAction,
             saveAsAction,optionsAction
         };
         if(!selectionMenu->isEmpty())
             moreActions.append(selectionMenu->menuAction());
+        if(!drawingMenu->isEmpty())
+            moreActions.append(drawingMenu->menuAction());
         moreActions.append(closeAction);
         moreActions.append(exitAction);
         // Avoid an overflow chevron hiding the primary drawing tools.
