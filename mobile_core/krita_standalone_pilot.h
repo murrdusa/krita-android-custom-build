@@ -137,6 +137,7 @@ public:
         auto *colorAction=makeAction("Color");
         auto *toolsAction=makeAction("Tools");
         auto *optionsAction=makeAction("Tool Options");
+        auto *commandsAction=makeAction("All Krita Commands");
         auto *exitAction=makeAction("Close app");
         QObject::connect(brushesAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleBrushes();});
@@ -148,6 +149,8 @@ public:
                          [workspace]() {workspace->chooseTool();});
         QObject::connect(optionsAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleToolOptions();});
+        QObject::connect(commandsAction,&QAction::triggered,window,
+                         [workspace]() {workspace->browseCommands();});
         // Krita's selection manager already provides these native,
         // undoable actions. Expose them directly rather than inventing
         // mobile selection commands or simulating keyboard shortcuts.
@@ -252,7 +255,7 @@ public:
         });
         QList<QAction*> moreActions{
             newAction,openAction,previousAction,nextAction,
-            saveAsAction,optionsAction
+            saveAsAction,optionsAction,commandsAction
         };
         if(!selectionMenu->isEmpty())
             moreActions.append(selectionMenu->menuAction());
