@@ -781,7 +781,11 @@ private:
             if(!parent || depth>20 || count>=500)return;
             for(KisNodeSP n=parent->lastChild();n && count<500;
                 n=n->prevSibling()) {
-                if(n->inherits("KisReferenceImagesLayer"))continue;
+                // Krita's standard layer docker hides the root-level
+                // global selection mask. It is the canvas selection,
+                // not another paintable user layer.
+                if(n->inherits("KisReferenceImagesLayer") ||
+                   KisNodeManager::isNodeHidden(n,true))continue;
                 ++count;
                 key+=n->uuid().toString()+QLatin1Char('|')+n->name()+
                     QLatin1Char('|')+QString::number(n->visible())+
@@ -827,7 +831,9 @@ private:
     {
         KisNodeList result;
         for(const auto &node:m_selected)
-            if(node && node->parent() && !result.contains(node))
+            if(node && node->parent() &&
+               !KisNodeManager::isNodeHidden(node,true) &&
+               !result.contains(node))
                 result.append(node);
         return result;
     }
@@ -1956,7 +1962,12 @@ private:
         visit=[&](KisNodeSP parent,QTreeWidgetItem *parentItem,int depth) {
             if(!parent || depth>20 || m_nodes.size()>=500)return;
             for(KisNodeSP node=parent->lastChild();node;node=node->prevSibling()) {
-                if(node->inherits("KisReferenceImagesLayer"))continue;
+                // Match Krita's normal layer docker: a top-level
+                // selection mask belongs to the canvas selection.
+                // User-created selection masks *within* a layer stay
+                // visible, with the MASK badge and type label.
+                if(node->inherits("KisReferenceImagesLayer") ||
+                   KisNodeManager::isNodeHidden(node,true))continue;
                 if(isCompactClipWrapper(node)) {
                     // Krita keeps this real group for alpha inheritance,
                     // but Compact UI shows its children directly instead.
