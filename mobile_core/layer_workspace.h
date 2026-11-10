@@ -1173,8 +1173,11 @@ private:
         if(!target || target==source)return;
         const QRect rect=m_tree->visualItemRect(targetItem);
         const bool insertAbove=inView.y()<rect.center().y();
+        // Reordering onto a group is the common case. Reserve a narrow
+        // far-right drop zone for deliberately nesting INSIDE it;
+        // dropping over the thumbnail should reorder as usual.
         const bool intoGroup=target->inherits("KisGroupLayer") &&
-                             inView.x()>rect.center().x();
+                             inView.x()>rect.right()-20;
         moveCompactLayer(source,target,insertAbove,intoGroup);
     }
 
@@ -1486,7 +1489,10 @@ private:
             updateMouseLayer(mouse->globalPos());
             if(type==QEvent::MouseButtonRelease && m_mouseHeld) {
                 finishMouseLayer();
-                return true; // No synthetic click after a reorder.
+                // Let the original QToolButton see the release to
+                // clear its pressed state. finishMouseLayer suppresses
+                // any delayed synthetic clicked() during a drag.
+                return false;
             }
         }
         // Every part of a thumbnail row is a drag handle, not just
