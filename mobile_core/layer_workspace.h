@@ -1557,6 +1557,11 @@ private:
         if(m_penTracking && (type==QEvent::MouseButtonPress ||
                              type==QEvent::MouseMove ||
                              type==QEvent::MouseButtonRelease)) {
+            // Some Android devices send tablet press/release but only
+            // mouse move updates. Consume the duplicate for widget
+            // click handling, while keeping the drag position current.
+            if(type==QEvent::MouseMove)
+                updateMouseLayer(static_cast<QMouseEvent*>(event)->globalPos());
             event->accept();
             return true;
         }
@@ -1621,6 +1626,10 @@ private:
                 const KisNodeSP pressed=m_mouseNode;
                 const bool tapped=m_mouseDown && !m_mouseHeld &&
                                   !m_mouseMoved;
+                // If Qt synthesized a button press before delivering
+                // TabletPress, its matching mouse release was consumed
+                // above. Clear the thumbnail's visual down state.
+                if(m_mouseTile)m_mouseTile->setDown(false);
                 m_penTracking=false;
                 finishMouseLayer();
                 if(pressed)suppressSyntheticClick(pressed);
