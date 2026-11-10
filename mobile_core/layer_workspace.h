@@ -1518,8 +1518,48 @@ private:
             return QFrame::eventFilter(watched,event);
         auto *tile=qobject_cast<QToolButton*>(watched);
         auto *frame=qobject_cast<QFrame*>(watched);
+        auto *widget=qobject_cast<QWidget*>(watched);
         int index=tile?m_rowButtons.indexOf(tile):-1;
         if(index<0 && frame)index=m_rowFrames.indexOf(frame);
+
+        // Android's S Pen can start on the tree viewport or the row
+        // frame instead of the thumbnail button. A null 'tile' used to
+        // make armMouseLayer() reject the press entirely. Resolve the
+        // row from the native tablet coordinates, but do not hijack
+        // the separate eye/lock/alpha controls.
+        if(type==QEvent::TabletPress) {
+            auto *pen=static_cast<QTabletEvent*>(event);
+            const QPoint global=pen->globalPos();
+            auto *hit=qobject_cast<QToolButton*>(QApplication::widgetAt(global));
+            const bool rowHit=widget && m_tree &&
+                (widget==m_tree->viewport() ||
+                 m_tree->isAncestorOf(widget));
+            const bool inlineControl=hit && m_tree->isAncestorOf(hit) &&
+                !m_rowButtons.contains(hit);
+            if(rowHit && !inlineControl) {
+                KisNodeSP node=nodeAtScreen(global);
+                const int row=m_nodes.indexOf(node);
+                if(row>=0 && m_rowButtons.value(row)) {
+                    m_penTracking=true;
+                    armMouseLayer(node,m_rowButtons.value(row),global);
+                    if(m_mouseDown) {
+                        event->accept();
+                        return true;
+                    }
+                    m_penTracking=false;
+                }
+            }
+        }
+        // While a real tablet stream owns the press, ignore Android's
+        // synthesized mouse duplicate. Only TabletRelease ends the
+        // gesture, preventing an early button-release signal from
+        // cancelling the stylus hold-to-drag.
+        if(m_penTracking && (type==QEvent::MouseButtonPress ||
+                             type==QEvent::MouseMove ||
+                             type==QEvent::MouseButtonRelease)) {
+            event->accept();
+            return true;
+        }
         // Native Android input may retarget mouse-move/release events
         // as the pen/finger crosses other layer widgets. The temporary
         // application event filter installed at press must follow the
@@ -1537,28 +1577,33 @@ private:
                 return false;
             }
         }
-        // Every part of a thumbnail row is a drag handle, not just
-        // the small image button. Keep inline eye/lock buttons separate.
-        if(frame && index>=0 && type==QEvent::MouseButtonPress) {
+        // Android may emit a synthesized mouse-only pen stream on the
+        // viewport. Treat both the row frame and the viewport as drag
+        // handles, without changing finger-touch or inline controls.
+        if(type==QEvent::MouseButtonPress && widget &&
+           (widget==m_tree->viewport() ||
+            (index>=0 && frame))) {
             auto *mouse=static_cast<QMouseEvent*>(event);
-            if(mouse->button()==Qt::LeftButton) {
-                armMouseLayer(m_nodes.value(index),
-                              m_rowButtons.value(index),mouse->globalPos());
-                return true;
+            const QPoint global=mouse->globalPos();
+            auto *hit=qobject_cast<QToolButton*>(QApplication::widgetAt(global));
+            const bool inlineControl=hit && m_tree->isAncestorOf(hit) &&
+                !m_rowButtons.contains(hit);
+            if(mouse->button()==Qt::LeftButton && !inlineControl) {
+                KisNodeSP node=nodeAtScreen(global);
+                const int row=m_nodes.indexOf(node);
+                if(row>=0 && m_rowButtons.value(row)) {
+                    armMouseLayer(node,m_rowButtons.value(row),global);
+                    return true;
+                }
             }
         }
-        if(frame && index>=0 && type==QEvent::MouseButtonRelease &&
+        if((frame || widget==m_tree->viewport()) &&
+           type==QEvent::MouseButtonRelease &&
            m_mouseDown && !m_mouseHeld) {
             const KisNodeSP pressed=m_mouseNode;
             finishMouseLayer();
             if(auto *item=itemForNode(pressed))
                 tapLayer(pressed,item);
-            return true;
-        }
-        if(index>=0 && type==QEvent::TabletPress) {
-            auto *pen=static_cast<QTabletEvent*>(event);
-            m_penTracking=true;
-            armMouseLayer(m_nodes.value(index),tile,pen->globalPos());
             return true;
         }
         if(m_penTracking && m_mouseNode &&
@@ -1736,7 +1781,9 @@ private:
             armMouseLayer(node,tile,QCursor::pos());
         });
         QObject::connect(tile,&QToolButton::released,this,[this,node]() {
-            if(m_mouseNode==node)finishMouseLayer();
+            // The pen's native TabletRelease, not Qt's synthetic mouse
+            // button release, must complete the stylus drag.
+            if(m_mouseNode==node && !m_penTracking)finishMouseLayer();
         });
         QObject::connect(tile,&QToolButton::clicked,this,[this,node,item]() {
             if(m_suppressedClickNode==node &&
