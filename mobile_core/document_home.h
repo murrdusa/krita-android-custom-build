@@ -73,7 +73,7 @@ public:
             "min-height:44px;padding:4px;}"
             "QPushButton:checked,QListWidget::item:selected{background:#505061;}"
             "QListWidget{background:#29292e;color:#f4f4f5;border:0;}"
-            "QListWidget::item{padding:5px;}"
+            "QListWidget::item{min-height:44px;padding:5px;}"
             "QLineEdit{background:#34343a;color:#f4f4f5;"
             "border:1px solid #777;border-radius:7px;min-height:40px;"
             "padding:4px 10px;}"));
@@ -301,7 +301,7 @@ private:
             const jbyteArray array=data.object<jbyteArray>();
             const jsize size=env->GetArrayLength(array);
             if(size<=0 || size>8*1024*1024)return {};
-            QByteArray bytes(size,Qt::Uninitialized);
+            QByteArray bytes(size,'\0');
             env->GetByteArrayRegion(array,0,size,
                                     reinterpret_cast<jbyte*>(bytes.data()));
             return decodePreview(bytes);
