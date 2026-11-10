@@ -80,6 +80,13 @@ public:
             delete document;
             return false;
         }
+        const bool draft=MobileDraftRecovery::isDraft(path);
+        if(draft) {
+            document->setProperty("_mobileDraftPath",path);
+            document->resetPath();
+            document->setRecovered(true);
+            document->setModified(true);
+        }
 
         KisPart::instance()->addDocument(document);
         QPointer<KisDocument> guardedDocument=document;
@@ -94,7 +101,7 @@ public:
                 });
             return false;
         }
-        rememberPath(path);
+        if(!draft)rememberPath(path);
         return true;
     }
 

@@ -633,7 +633,7 @@ public:
             if(!alive)return;
             const int opened=MobileAndroidDocumentIntents::attachAndOpen(
                 alive.data(),intentHost);
-            if(opened==0) {
+            if(opened==0 && !home->restoreSingleDraft()) {
                 home->showHome();
                 stage("Document Home ready",false);
             } else {

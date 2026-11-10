@@ -13,6 +13,7 @@
 #include <QThread>
 #include <QDebug>
 #include "mobile_core/saved_version_archive.h"
+#include "mobile_core/mobile_draft_recovery.h"
 
 static void require(bool pass,const char *reason)
 {
@@ -99,6 +100,17 @@ int main(int argc,char **argv)
     save(unsupported,"not-a-valid-zip");
     require(!MobileSavedVersionArchive::snapshot(unsupported,store),
             "non-KRA bytes were archived");
+    qputenv("XDG_DATA_HOME",temp.path().toUtf8());
+    const QString draft=MobileDraftRecovery::allocate(QStringLiteral("a/b"));
+    require(!draft.isEmpty() && draft!=MobileDraftRecovery::allocate(QStringLiteral("a/b")),
+            "draft paths must be private and unique");
+    save(draft,QByteArray::fromHex("504b0304")+"draft");
+    save(draft+QStringLiteral(".pending.kra"),"incomplete");
+    const auto drafts=MobileDraftRecovery::list();
+    require(drafts.size()==1 && drafts.first().absoluteFilePath()==draft &&
+            MobileDraftRecovery::title(drafts.first())==QStringLiteral("a_b") &&
+            !MobileDraftRecovery::isDraft(source),
+            "draft listing exposed staging or external files");
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
                " SAF rejection and original-file preservation";
     return 0;

@@ -23,6 +23,7 @@ GENERATED=("libs/ui/tablet_compact_skin.h","libs/ui/mobile_shell.h",
            "libs/ui/document_workflow.h",
            "libs/ui/document_switcher.h",
            "libs/ui/document_home.h",
+           "libs/ui/mobile_draft_recovery.h",
            "build-in-krita-container.sh")
 
 def sha(path):

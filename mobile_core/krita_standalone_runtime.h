@@ -8,18 +8,24 @@
 #pragma once
 #ifdef Q_OS_ANDROID
 #include <QAction>
+#include <QFileInfo>
+#include <QGuiApplication>
 #include <QMenu>
 #include <QPointer>
 #include <QSharedPointer>
 #include <QToolButton>
+#include <QTimer>
 #include <kactioncollection.h>
 #include <KoToolFactoryBase.h>
 #include <KoToolRegistry.h>
+#include <KoDocumentInfo.h>
 #include "KisPart.h"
+#include "KisDocument.h"
 #include "KisView.h"
 #include "KisViewManager.h"
 #include "lightweight_canvas_host.h"
 #include "krita_native_view_factory.h"
+#include "mobile_draft_recovery.h"
 
 class MobileStandaloneKritaActions final : public MobileCommandRegistryPort
 {
@@ -88,6 +94,14 @@ public:
         runtime->m_actions->addAssociatedWidget(host);
         runtime->m_commands=QSharedPointer<MobileStandaloneKritaActions>::create(
             runtime->m_actions,host);
+        auto *draftTimer=new QTimer(runtime);
+        QObject::connect(draftTimer,&QTimer::timeout,runtime,
+                         [runtime]() {runtime->checkpointDrafts();});
+        draftTimer->start(30000);
+        QObject::connect(qGuiApp,&QGuiApplication::applicationStateChanged,runtime,
+                         [runtime](Qt::ApplicationState state) {
+            if(state!=Qt::ApplicationActive)runtime->checkpointDrafts();
+        });
         return runtime;
     }
 
@@ -146,11 +160,35 @@ public:
             if(registered==document) {inPart=true;break;}
         }
         if(!inPart)return nullptr;
+        if(document->property("_mobileDraftPath").toString().isEmpty()) {
+            const QString title=document->path().isEmpty()?
+                document->documentInfo()->aboutInfo(QStringLiteral("title")):
+                QFileInfo(document->path()).completeBaseName();
+            document->setProperty("_mobileDraftPath",
+                                  MobileDraftRecovery::allocate(title));
+        }
         return MobileKritaNativeViewFactory::attach(
             document,m_manager,m_root,saver);
     }
 
 private:
+    void checkpointDrafts()
+    {
+        if(!m_root)return;
+        const auto views=m_root->openViews();
+        for(const auto &view:views) {
+            auto *document=qobject_cast<KisDocument*>(view.document.data());
+            if(document && document->isSaving())return;
+        }
+        for(const auto &view:views) {
+            auto *document=qobject_cast<KisDocument*>(view.document.data());
+            if(!document || !document->isModified() ||
+               document->property("_mobileDraftPath").toString().isEmpty())continue;
+            QMetaObject::invokeMethod(document,"slotAutoSave",Qt::DirectConnection);
+            if(document->isSaving())break;
+        }
+    }
+
     MobileKritaStandaloneRuntime(MobileLightweightCanvasHost *host,
                                  MobileNativeViewStack *root)
         : QObject(host),m_host(host),m_root(root)

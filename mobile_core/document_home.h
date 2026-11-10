@@ -41,6 +41,7 @@
 #include <QSet>
 #include <QSharedPointer>
 #include <QStandardPaths>
+#include <QSettings>
 #include <QThreadPool>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -52,6 +53,7 @@
 #include <memory>
 
 #include "document_workflow.h"
+#include "mobile_draft_recovery.h"
 
 class MobileDocumentHome final : public QFrame
 {
@@ -100,6 +102,9 @@ public:
             tabs->addWidget(button);
         }
         layout->addLayout(tabs);
+        m_drafts=new QPushButton(i18n("Recover drafts"),this);
+        m_drafts->setCheckable(true);
+        layout->addWidget(m_drafts);
 
         auto *tools=new QHBoxLayout;
         m_search=new QLineEdit(this);
@@ -151,6 +156,8 @@ public:
                 [this]() {showList(AllProjects);});
         connect(m_open,&QPushButton::clicked,this,
                 [this]() {showList(OpenCanvases);});
+        connect(m_drafts,&QPushButton::clicked,this,
+                [this]() {showList(RecoveryDrafts);});
         connect(m_refresh,&QPushButton::clicked,this,[this]() {
             showList(m_mode);
         });
@@ -187,7 +194,8 @@ public:
                 for(const auto &entry:m_engine.openDocuments()) {
                     const auto *doc=qobject_cast<KisDocument*>(
                         entry.document.data());
-                    if(doc && doc->path()==path &&
+                    if(doc && (doc->path()==path ||
+                               doc->property("_mobileDraftPath").toString()==path) &&
                        m_engine.activateDocumentView(entry.nativeView)) {
                         hide();
                         return;
@@ -220,11 +228,29 @@ public:
 
     void showHome()
     {
-        showList(Recent);
+        showList(MobileDraftRecovery::list().isEmpty()?Recent:RecoveryDrafts);
         setGeometry(parentWidget()->rect());
         show();
         raise();
         scheduleThumbnails();
+    }
+
+    bool restoreSingleDraft()
+    {
+        const auto drafts=MobileDraftRecovery::list();
+        if(drafts.size()!=1 || !m_files)return false;
+        const auto &draft=drafts.first();
+        const QString attempt=draft.fileName()+QLatin1Char(':')+
+            QString::number(draft.lastModified().toMSecsSinceEpoch());
+        const QString key=QStringLiteral("MobileStudio/lastAutomaticDraft");
+        QSettings settings;
+        if(settings.value(key).toString()==attempt)return false;
+        // Persist before opening. If a damaged draft terminates the app,
+        // the next launch still reaches Home and offers manual recovery.
+        settings.setValue(key,attempt);
+        settings.sync();
+        return settings.status()==QSettings::NoError &&
+               m_files->openFile(draft.absoluteFilePath());
     }
 
 protected:
@@ -238,7 +264,7 @@ protected:
     }
 
 private:
-    enum Mode {Recent,AllProjects,OpenCanvases};
+    enum Mode {Recent,AllProjects,OpenCanvases,RecoveryDrafts};
     struct Project {
         QString path;
         QString title;
@@ -341,6 +367,9 @@ private:
         m_recent->setChecked(mode==Recent);
         m_library->setChecked(mode==AllProjects);
         m_open->setChecked(mode==OpenCanvases);
+        const auto drafts=MobileDraftRecovery::list();
+        m_drafts->setChecked(mode==RecoveryDrafts);
+        m_drafts->setVisible(mode==RecoveryDrafts || !drafts.isEmpty());
         m_search->setVisible(mode!=OpenCanvases);
         m_refresh->setVisible(mode!=OpenCanvases);
         m_lastAccess=hasAllFilesAccess();
@@ -374,6 +403,11 @@ private:
                     QFileInfo(path).fileName():it->m_displayName;
                 addProject({path,name,0});
             }
+        } else if(mode==RecoveryDrafts) {
+            m_message->setText(i18n("Recovered drafts open as unsaved drawings."));
+            for(const auto &draft:drafts)
+                addProject({draft.absoluteFilePath(),MobileDraftRecovery::title(draft),
+                            draft.lastModified().toMSecsSinceEpoch()});
         } else {
             m_message->setText(m_lastAccess?
                 i18n("Searching accessible storage for Krita projects…"):
@@ -383,7 +417,8 @@ private:
         }
         if(mode!=AllProjects && m_list->count()==0) {
             auto *empty=new QListWidgetItem(mode==OpenCanvases?
-                i18n("No open canvases"):i18n("No recent Krita drawings"),
+                i18n("No open canvases"):mode==RecoveryDrafts?
+                i18n("No recoverable drafts"):i18n("No recent Krita drawings"),
                 m_list);
             empty->setFlags(Qt::NoItemFlags);
         }
@@ -559,7 +594,7 @@ private:
     MobileEngineBridge m_engine;
     QSharedPointer<MobileDocumentHostPort> m_files;
     QListWidget *m_list=nullptr;
-    QPushButton *m_recent=nullptr,*m_library=nullptr,*m_open=nullptr;
+    QPushButton *m_recent=nullptr,*m_library=nullptr,*m_open=nullptr,*m_drafts=nullptr;
     QPushButton *m_refresh=nullptr,*m_access=nullptr;
     QLineEdit *m_search=nullptr;
     QLabel *m_message=nullptr;

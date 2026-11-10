@@ -1196,6 +1196,9 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
     (root/"libs/ui/document_home.h").write_text(
         (own/"mobile_core/document_home.h").read_text(encoding="utf-8"),
         encoding="utf-8")
+    (root/"libs/ui/mobile_draft_recovery.h").write_text(
+        (own/"mobile_core/mobile_draft_recovery.h").read_text(encoding="utf-8"),
+        encoding="utf-8")
     (root/"libs/ui/engine_bridge.h").write_text(
         bridge.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_service.h").write_text(
@@ -1613,6 +1616,50 @@ install(FILES org.kde.krita.desktop''',
         transform=one(transform,anchor,anchor+"\n    m_pendingTransformMode.reset();",
                       f"clear queued Transform mode on {method}")
     transform_source.write_text(transform,encoding="utf-8")
+    draft_document_file=root/"libs/ui/KisDocument.cpp"
+    draft_document=draft_document_file.read_text(encoding="utf-8")
+    draft_document=one(draft_document,"#include <QFileInfo>",
+        "#include <QFileInfo>\n#include <cstdio>","draft atomic rename include")
+    draft_document=one(draft_document,
+        "    if (!d->modified || !d->modifiedAfterAutosave) return;\n    const QString autoSaveFileName = generateAutoSaveFileName(localFilePath());",
+        """    if (!d->modified || !d->modifiedAfterAutosave) return;
+    const QString draftPath = property("_mobileDraftPath").toString();
+    const QString autoSaveFileName = draftPath.isEmpty()
+        ? generateAutoSaveFileName(localFilePath())
+        : draftPath + QStringLiteral(".pending.kra");""",
+        "write Studio autosave to a private staging file")
+    draft_document=one(draft_document,
+        "    Q_UNUSED(job);\n    Q_UNUSED(warningMessage);\n\n    const QString fileName = QFileInfo(job.filePath).fileName();",
+        """    Q_UNUSED(warningMessage);
+
+    const QString draftPath = property("_mobileDraftPath").toString();
+    if (!draftPath.isEmpty() && job.filePath == draftPath + QStringLiteral(".pending.kra")) {
+        if (!status.isOk() ||
+            std::rename(QFile::encodeName(job.filePath).constData(),
+                        QFile::encodeName(draftPath).constData()) != 0) {
+            QFile::remove(job.filePath);
+            d->modifiedAfterAutosave = true;
+            if (status.isOk()) {
+                setEmergencyAutoSaveInterval();
+                qWarning() << "Could not commit Studio draft";
+                return;
+            }
+        }
+    }
+
+    const QString fileName = QFileInfo(job.filePath).fileName();""",
+        "atomically publish a completed private draft")
+    draft_document=one(draft_document,
+        "    // Eliminate any auto-save file\n    QString asf = generateAutoSaveFileName(autosaveBaseName);",
+        """    const QString draftPath = property("_mobileDraftPath").toString();
+    if (!draftPath.isEmpty()) {
+        QFile::remove(draftPath);
+        QFile::remove(draftPath + QStringLiteral(".pending.kra"));
+    }
+    // Eliminate any auto-save file
+    QString asf = generateAutoSaveFileName(autosaveBaseName);""",
+        "clear private draft on native Save or Discard")
+    draft_document_file.write_text(draft_document,encoding="utf-8")
     print(f"Installed independent Mobile Studio app; XMLGUI checksum {digest}")
 
 if __name__=="__main__":
