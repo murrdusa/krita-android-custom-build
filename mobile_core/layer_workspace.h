@@ -1646,11 +1646,17 @@ private:
     void tapLayer(KisNodeSP node,QTreeWidgetItem *item)
     {
         if(!node || !item || !manager())return;
-        const QString activeTool=KoToolManager::instance()->activeToolId();
-        const bool multiTool=(activeTool==QStringLiteral("KisToolTransform") ||
-            activeTool==QStringLiteral("KritaTransform/KisToolMove")) &&
-            node->inherits("KisLayer");
-        if(m_multi->isChecked() || multiTool) {
+        // Selecting a layer while Transform/Move is active must not
+        // silently extend the previous selection. Krita's transform
+        // snapshots *every* selected node, so an accidentally retained
+        // empty layer triggers "Cannot transform empty layer" even when
+        // the newly tapped layer contains paint. Multi-target transforms
+        // remain available through the explicit Multi toggle.
+        //
+        // Do not invoke KisToolTransform::slotRestartTransform directly
+        // from a layer click: it cancels/restarts a live image stroke,
+        // potentially while its asynchronous preview is still running.
+        if(m_multi->isChecked()) {
             if(m_selected.contains(node) && m_selected.size()>1)
                 m_selected.removeAll(node);
             else if(!m_selected.contains(node))
@@ -1658,16 +1664,6 @@ private:
             if(!m_selected.contains(m_active) || !m_active)
                 m_active=m_selected.last();
             applySelection();
-            if(multiTool && activeTool==QStringLiteral("KisToolTransform")) {
-                // Krita needs its native preview refreshed when the list of
-                // layers targeted by Transform changes.
-                QPointer<KoToolBase> tool=KoToolManager::instance()->toolById(
-                    m_engine.manager()->canvasBase(),activeTool);
-                QTimer::singleShot(0,this,[tool]() {
-                    if(tool)QMetaObject::invokeMethod(
-                        tool.data(),"slotRestartTransform",Qt::DirectConnection);
-                });
-            }
         } else if(m_active==node && m_selected.size()==1 &&
                   m_selected.contains(node)) {
             showLayerActions(node,item);
