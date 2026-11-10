@@ -1403,6 +1403,30 @@ install(FILES org.kde.krita.desktop''',
         "Android Share single-document intent filter")
     manifestfile.write_text(manifest,encoding="utf-8")
 
+    # The older quick-pinch recognizer still runs in Krita's input manager,
+    # but its view-reset callback only searched for a desktop KisMainWindow.
+    # Keep the exact gesture thresholds and native desktop behavior, while
+    # routing reset to the standalone view manager when no desktop window
+    # exists. Input events remain owned by Krita's existing recognizer.
+    pinchfile=root/"libs/ui/input/kis_input_manager.cpp"
+    pinch_source=pinchfile.read_text(encoding="utf-8")
+    pinch_source=one(pinch_source,
+        "#include <KisMainWindow.h>\\n".replace("\\\\n","\\n"),
+        '#include <KisMainWindow.h>\\n#include "krita_android_runtime.h"\\n'.replace("\\\\n","\\n"),
+        "standalone quick pinch include")
+    pinch_source=one(pinch_source,
+        """                KisMainWindow *window = KisPart::instance()->currentMainwindow();
+                if (!window) return;
+                QAction *rotation = window->actionCollection()->action(""",
+        """                KisMainWindow *window = KisPart::instance()->currentMainwindow();
+                if (!window) {
+                    MobileKritaAndroidRuntime::resetCanvasView();
+                    return;
+                }
+                QAction *rotation = window->actionCollection()->action(""",
+        "standalone quick pinch reset")
+    pinchfile.write_text(pinch_source,encoding="utf-8")
+
     # Preserve MainActivity's native Qt/JNI intent delivery; only widen
     # URI extraction to include Android's single-file Share operation.
     activityfile=root/"packaging/android/apk/src/org/krita/android/MainActivity.java"
