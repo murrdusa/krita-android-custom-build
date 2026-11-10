@@ -7,9 +7,12 @@
  */
 #include "krita_android_runtime.h"
 #ifdef Q_OS_ANDROID
+#include <QApplication>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QMetaObject>
+#include <QSettings>
+#include <jni.h>
 #include "KisApplication.h"
 #include "KisApplicationArguments.h"
 #include "KisAndroidDonations.h"
@@ -20,6 +23,7 @@
 #include "kis_spin_box_unit_manager.h"
 #include "krita_application_entry.h"
 #include "android_document_intents.h"
+#include "krita_native_workspace.h"
 #include <config-qt-patches-present.h>
 
 MobileKritaAndroidRuntime::Result MobileKritaAndroidRuntime::launch(
@@ -110,5 +114,71 @@ MobileKritaAndroidRuntime::Result MobileKritaAndroidRuntime::launch(
     app.verifyMetatypeRegistration();
     qInfo() << "Mobile Studio: independent Android startup ready";
     return Result::Started;
+}
+
+namespace {
+void dispatchMobileVolume(int code)
+{
+    if(code<=0 || code>6)return;
+    auto *app=QCoreApplication::instance();
+    if(!app)return;
+    // Android's Java callback is on the Activity UI thread. The real
+    // Krita document, view and QAction must be touched on Qt's thread.
+    QMetaObject::invokeMethod(app,[code]() {
+        for(QWidget *window:QApplication::topLevelWidgets()) {
+            if(!window)continue;
+            auto *object=window->findChild<QObject*>(
+                QStringLiteral("_mobileNativeEngineWorkspaces"));
+            if(auto *workspace=dynamic_cast<MobileKritaNativeWorkspace*>(object)) {
+                workspace->dispatchVolumeAction(code);
+                return;
+            }
+        }
+    },Qt::QueuedConnection);
+}
+}
+
+// The original Android Java MainActivity already recognizes volume short
+// and long presses. Its former JNI callback targeted KisMainWindow, which
+// Mobile Studio intentionally does not instantiate. Provide callbacks in
+// the actual independent app library and reuse existing standalone actions.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_org_krita_android_JNIWrappers_volumeMappingEnabled(JNIEnv*,jclass)
+{
+    return QSettings().value(QStringLiteral("TabletUi/volumeKeys"),true)
+        .toBool()?JNI_TRUE:JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_krita_android_JNIWrappers_volumeUndoRedo(JNIEnv*,jclass,jboolean redo)
+{
+    dispatchMobileVolume(redo?2:1);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_org_krita_android_JNIWrappers_volumeKeyAction(
+    JNIEnv*,jclass,jboolean up,jboolean longPress)
+{
+    const QSettings settings;
+    const QString key=up
+        ? (longPress?QStringLiteral("TabletUi/volumeUpLong"):
+                     QStringLiteral("TabletUi/volumeUpShort"))
+        : (longPress?QStringLiteral("TabletUi/volumeDownLong"):
+                     QStringLiteral("TabletUi/volumeDownShort"));
+    const int fallback=up?(longPress?3:2):(longPress?4:1);
+    return qBound(0,settings.value(key,fallback).toInt(),6);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_org_krita_android_JNIWrappers_volumeLongPressMs(JNIEnv*,jclass)
+{
+    return qBound(80,QSettings().value(
+        QStringLiteral("TabletUi/volumeLongMs"),150).toInt(),1000);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_krita_android_JNIWrappers_volumeExecute(JNIEnv*,jclass,jint code)
+{
+    dispatchMobileVolume(code);
 }
 #endif
