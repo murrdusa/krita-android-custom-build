@@ -101,6 +101,7 @@ public:
                 if(m_layers)m_layers->hide();
             };
             placeLayerOverlay();
+            m_layers->show();
             checkpoint("Layers: floating overlay ready");
         }
         else m_layers->setVisible(!m_layers->isVisible());
