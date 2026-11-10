@@ -198,16 +198,16 @@ public:
         const QString dir=thumbDir();
         QDir().mkpath(dir);
         const QString tp=thumbPath(path);
-        image.save(tp,"PNG");
-        // Stamp mtime so stale detection works
-        if(modified>0) {
-            const QDateTime dt=QDateTime::fromMSecsSinceEpoch(modified);
-            QFile f(tp);
-            if(f.open(QIODevice::ReadWrite)) {
-                f.setFileTime(dt,QFileDevice::FileModificationTime);
-                f.close();
-            }
+        QSaveFile output(tp);
+        if(!output.open(QIODevice::WriteOnly))return;
+        if(!image.save(&output,"PNG") || !output.flush()) {
+            output.cancelWriting();
+            return;
         }
+        if(modified>0)
+            output.setFileTime(QDateTime::fromMSecsSinceEpoch(modified),
+                               QFileDevice::FileModificationTime);
+        output.commit();
     }
 };
 
@@ -885,7 +885,7 @@ private:
             const QString existingPath=item->data(Qt::UserRole).toString();
             const qint64 previous=item->data(Qt::UserRole+1).toLongLong();
             const bool refreshedPath=existingPath!=project.path;
-            const bool modified=project.timestamp>previous;
+            const bool modified=project.timestamp>0 && project.timestamp!=previous;
             // An index record may carry an older SAF tree/direct URI for
             // this same canonical document. Replace it with the most
             // recently discovered usable location (Recent or current scan),
@@ -1148,6 +1148,15 @@ private:
                 QMetaObject::invokeMethod(qApp,[home,path,image,modified,generation]() {
                     if(!home || generation!=home->m_previewGeneration)return;
                     home->m_pending.remove(path);
+                    const QString canonical=MobileSavedVersionArchive::canonicalIdentity(path);
+                    auto *current=home->m_projectItems.value(canonical.isEmpty()?path:canonical);
+                    if(!current || current->data(Qt::UserRole).toString()!=path ||
+                       current->data(Qt::UserRole+1).toLongLong()!=modified) {
+                        // A scan or save replaced this project while decoding.
+                        // Let the current revision request its own preview.
+                        home->scheduleThumbnails();
+                        return;
+                    }
                     home->m_attempted.insert(path);
                     if(!image.isNull()) {
                         if(home->m_cache.size()>=96)home->m_cache.erase(

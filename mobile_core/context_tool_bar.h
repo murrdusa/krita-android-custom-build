@@ -698,7 +698,10 @@ private:
             layout->addWidget(buttons);
             if(dialog.exec()==QDialog::Accepted && alive &&
                generation==alive->m_generation && alive->isVisible() &&
-               alive->optionAvailable(native))native->setValue(editor->value());
+               alive->optionAvailable(native)) {
+                native->setValue(editor->value());
+                if(native)Q_EMIT native->editingFinished();
+            }
         });
         m_refresh.append([this,control,label,native]() {
             control->setEnabled(optionAvailable(native));

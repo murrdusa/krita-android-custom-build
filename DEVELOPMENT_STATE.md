@@ -4,7 +4,9 @@
 
 ## Resume here
 
-- **Current lifecycle fix:** returning from any popup called `initializeCurrentToolForCanvas()` unconditionally in `krita_native_view_factory.h`. Krita implements that call as deactivate/activate; Transform deactivate commits its stroke and activate starts Free mode. Studio now reconnects only on a real canvas change or first bootstrap, while ordinary Show/Expose/WindowActivate only repaint. The compact Mode label and delayed logs now read the native tool's `transformMode` property, rather than treating a checked button as proof. This is a source-traced reset fix, still awaiting the Fold 6 gate.
+- **Follow-up integration:** compact numeric editors now emit the native editing-finished signal after setting a value, so Warp/Liquify edits are recorded by Krita's transform history.
+- **Home preview safety:** thumbnail PNGs now publish atomically, changed file timestamps invalidate cache even when moving backwards, and a decode started before a scan/save updates the tile cannot replace that tile's new preview.
+- **Current lifecycle fix:** returning from any popup called `initializeCurrentToolForCanvas()` unconditionally in `krita_native_view_factory.h`. Krita implements that call as deactivate/activate; Transform deactivate commits its stroke and activate starts Free mode. Studio now reconnects only on a real canvas change or first bootstrap, while ordinary Show/Expose/WindowActivate only repaint. The compact Mode label and delayed logs now read the native tool's `transformMode` property, rather than treating a checked button as proof. Exact source revision `c9d7b5e1147e327e773ae503ae3685328ac4922c` compiled and packaged on WSL in 111.5 seconds. This is a source-traced reset fix, still awaiting the Fold 6 gate.
 - **Transform settings batch:** the strip exposes native X/Y, width/height, Warp grid density, Liquify size/strength/speed/reverse, and Mesh point/handle controls only while their native widgets are available. No separate transform state was introduced.
 
 
