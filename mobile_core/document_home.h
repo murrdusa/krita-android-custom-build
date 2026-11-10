@@ -19,6 +19,7 @@
 #include <QMenu>
 #include <QDir>
 #include <QDirIterator>
+#include <QElapsedTimer>
 #include <QtAndroid>
 #include <QEvent>
 #include <QFile>
@@ -844,7 +845,7 @@ private:
                     // is canceled when the user switches away from Home.
                     persistIndex();
                 }
-                startScan();
+                startScan(forceScan);
             } else {
                 const int count=m_list->count();
                 m_message->setText(count==0?
@@ -928,15 +929,23 @@ private:
         }
     }
 
-    void startScan()
+    void startScan(bool fullScan)
     {
         // Keep identities loaded from the index and Recent. Clearing them
         // here would duplicate every indexed project during the scan.
         const auto cancel=std::make_shared<std::atomic_bool>(false);
         m_scanCancel=cancel;
         const int generation=++m_scanGeneration;
+        m_scanDiscoveredCount=0;
         QPointer<MobileDocumentHome> home(this);
-        m_scanner.start([home,cancel,generation]() {
+        m_scanner.start([home,cancel,generation,fullScan]() {
+            // A normal Home visit should never spend an unbounded time
+            // indexing nested Downloads. An explicit Refresh still offers
+            // a complete scan without changing already indexed projects.
+            QElapsedTimer timer;
+            timer.start();
+            const qint64 automaticLimitMs=12000;
+            bool truncated=false;
             const auto androidList=[](const char *method) {
                 const auto result=QAndroidJniObject::callStaticObjectMethod(
                     "org/krita/android/MainActivity",method,"()Ljava/lang/String;");
@@ -964,10 +973,18 @@ private:
                     },Qt::QueuedConnection);
             };
             while(!roots.isEmpty() && !cancel->load()) {
+                if(!fullScan && timer.elapsed()>automaticLimitMs) {
+                    truncated=true;
+                    break;
+                }
                 const QString root=roots.takeLast();
                 QDirIterator it(root,QDir::Dirs|QDir::Files|QDir::Hidden|
                     QDir::NoDotAndDotDot|QDir::NoSymLinks);
                 while(!cancel->load() && it.hasNext()) {
+                    if(!fullScan && timer.elapsed()>automaticLimitMs) {
+                        truncated=true;
+                        break;
+                    }
                     const QString path=it.next();
                     const QFileInfo info=it.fileInfo();
                     if(info.isDir()) {
@@ -997,8 +1014,9 @@ private:
                 if(batch.size()>=32)deliverBatch();
             }
             deliverBatch();
-            QMetaObject::invokeMethod(qApp,[home,cancel,generation]() {
-                if(home && !cancel->load())home->finishScan(generation);
+            QMetaObject::invokeMethod(qApp,[home,cancel,generation,truncated]() {
+                if(home && !cancel->load())
+                    home->finishScan(generation,truncated);
             },Qt::QueuedConnection);
         });
     }
@@ -1007,6 +1025,12 @@ private:
     {
         if(generation!=m_scanGeneration || m_mode!=AllProjects)return;
         for(const auto &p:projects)addProject(p);
+        m_scanDiscoveredCount+=projects.size();
+        if(m_scanDiscoveredCount>0)
+            m_message->setText(i18np(
+                "Checking folders… %1 project discovered",
+                "Checking folders… %1 projects discovered",
+                m_scanDiscoveredCount));
         scheduleThumbnails();
     }
 
@@ -1028,14 +1052,20 @@ private:
         m_scanner.start([entries]() {MobileProjectIndex::save(entries);});
     }
 
-    void finishScan(int generation)
+    void finishScan(int generation,bool truncated)
     {
         if(generation!=m_scanGeneration || m_mode!=AllProjects)return;
         sortProjects();
         const int count=m_list->count();
-        m_message->setText(count==0?
-            i18n("No Krita projects found. Add a folder or use Browse Files."):
-            i18np("%1 Krita project found", "%1 Krita projects found",count));
+        if(truncated) {
+            m_message->setText(
+                i18n("%1 indexed projects. Quick Downloads scan limited "
+                     "to 12 seconds; tap Refresh for a complete search.",count));
+        } else {
+            m_message->setText(count==0?
+                i18n("No Krita projects found. Add a folder or use Browse Files."):
+                i18np("%1 Krita project found", "%1 Krita projects found",count));
+        }
         QSettings().setValue(
             QStringLiteral("MobileStudio/projectIndexLastScanMs"),
             QDateTime::currentMSecsSinceEpoch());
@@ -1152,6 +1182,7 @@ private:
     bool m_thumbnailScheduled=false;
     bool m_forceThumbnailRefresh=false;
     int m_scanGeneration=0;
+    int m_scanDiscoveredCount=0;
     std::shared_ptr<std::atomic_bool> m_scanCancel;
     QThreadPool m_scanner,m_thumbnails;
     QVector<QPointer<QObject>> m_views;
