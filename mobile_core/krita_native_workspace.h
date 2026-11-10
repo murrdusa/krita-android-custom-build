@@ -18,12 +18,15 @@
 #include <QDockWidget>
 #include <QEvent>
 #include <QMainWindow>
+#include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
 #include <QTimer>
 #include <QSettings>
 #include <QVBoxLayout>
 #include <KoCanvasController.h>
+#include <KoDockFactoryBase.h>
+#include <KoDockRegistry.h>
 #include <KoToolBase.h>
 #include <KoToolDocker.h>
 #include <KoToolManager.h>
@@ -35,6 +38,7 @@
 #include "tool_browser.h"
 #include "command_browser.h"
 #include "lightweight_canvas_host.h"
+#include "kis_mainwindow_observer.h"
 #include "native_command_layout.h"
 #include "context_tool_bar.h"
 
@@ -357,6 +361,7 @@ public:
         if(m_layers)m_layers->hide();
         if(m_brush)m_brush->hide();
         if(m_toolOptions)m_toolOptions->hide();
+        if(m_textFormatting)m_textFormatting->hide();
         if(m_color)m_color->hide();
         if(m_contextToolBar)m_contextToolBar->hide();
     }
@@ -404,6 +409,14 @@ private:
         auto *tools=KoToolManager::instance();
         auto *controller=tools ? tools->activeCanvasController() : nullptr;
         const QString id=tools ? tools->activeToolId() : QString();
+        if(m_textFormatting && m_textFormatting->isVisible()) {
+            if(id==QStringLiteral("SvgTextTool") && controller && m_host &&
+               m_host->nativeViewPort() &&
+               m_host->nativeViewPort()->currentDocument())
+                bindTextFormatting(controller->canvas());
+            else
+                m_textFormatting->hide();
+        }
         if(!canvas || !m_host->nativeViewPort() ||
            !m_host->nativeViewPort()->currentDocument() || m_canvasOnly ||
            !controller || id.isEmpty() || id==QStringLiteral("KritaShape/KisToolBrush")) {
@@ -419,6 +432,8 @@ private:
             m_contextToolBar=new MobileContextToolBar(canvas);
             m_contextToolBar->chooseTool=[this]() {chooseTool();};
             m_contextToolBar->openOptions=[this]() {toggleToolOptions();};
+            if(KoDockRegistry::instance()->value(QStringLiteral("TextProperties")))
+                m_contextToolBar->openTextFormatting=[this]() {toggleTextFormatting();};
         }
         QString label=id;
         for(const auto &entry:m_engine.tools()) {
@@ -431,6 +446,53 @@ private:
         m_contextToolBar->show();
         placeDrawingOverlays();
         m_contextToolBar->raise();
+    }
+
+    void toggleTextFormatting()
+    {
+        if(!m_host || !m_host->nativeViewPort() || m_canvasOnly ||
+           m_engine.activeTool()!=QStringLiteral("SvgTextTool") ||
+           !m_host->nativeViewPort()->currentDocument())return;
+        auto *canvas=m_host->nativeCanvas();
+        auto *controller=KoToolManager::instance()->activeCanvasController();
+        if(!canvas || !controller)return;
+        if(m_textFormatting && m_textFormatting->isVisible()) {
+            m_textFormatting->hide();
+            return;
+        }
+        if(!m_textFormatting) {
+            auto *factory=KoDockRegistry::instance()->value(QStringLiteral("TextProperties"));
+            if(!factory)return;
+            auto *panel=factory->createDockWidget();
+            auto *observer=dynamic_cast<KisMainwindowObserver*>(panel);
+            if(!observer) {
+                delete panel;
+                return;
+            }
+            if(!panel->property("_mobileTextFormattingReady").toBool()) {
+                delete panel;
+                QMessageBox::information(m_host,QObject::tr("Text Formatting"),
+                    QObject::tr("The formatting panel could not load. Edit Text is still available."));
+                return;
+            }
+            panel->setParent(canvas,Qt::Widget);
+            auto *close=new QPushButton(QObject::tr("Close Text Formatting"),panel);
+            close->setMinimumHeight(44);
+            panel->setTitleBarWidget(close);
+            connect(close,&QPushButton::clicked,panel,&QWidget::hide);
+            observer->setViewManager(m_engine.manager());
+            m_textFormatting=panel;
+        }
+        bindTextFormatting(controller->canvas());
+        showOverlay(m_textFormatting);
+    }
+
+    void bindTextFormatting(KoCanvasBase *canvas)
+    {
+        if(auto *observer=dynamic_cast<KisMainwindowObserver*>(m_textFormatting.data())) {
+            if(canvas && observer->observedCanvas()!=canvas)
+                observer->setObservedCanvas(canvas);
+        }
     }
 
     int overlayTop(QWidget *canvas) const
@@ -510,14 +572,15 @@ private:
             m_brush->setGeometry(inset,canvas->height()-panelHeight-inset,
                                  qMin(340,width),panelHeight);
         }
-        if(m_toolOptions) {
+        if(m_toolOptions || m_textFormatting) {
             const int besideLayers=width-(m_layers?m_layers->width()+5:0);
             const int available=m_layers && m_layers->isVisible() &&
                 besideLayers>=240 ? besideLayers : width;
             const int optionsWidth=qMin(340,available);
-            m_toolOptions->setGeometry(canvas->width()-optionsWidth-inset,
-                                       top,optionsWidth,
-                                       qMin(440,height));
+            const QRect bounds(canvas->width()-optionsWidth-inset,top,
+                               optionsWidth,qMin(440,height));
+            if(m_toolOptions)m_toolOptions->setGeometry(bounds);
+            if(m_textFormatting)m_textFormatting->setGeometry(bounds);
         }
         if(m_color) {
             m_color->avoidBottom(m_brush && m_brush->isVisible() ?
@@ -532,6 +595,7 @@ private:
         if(m_layers && m_layers->isVisible())m_layers->raise();
         for(QWidget *panel:{static_cast<QWidget*>(m_brush.data()),
                             static_cast<QWidget*>(m_toolOptions.data()),
+                            static_cast<QWidget*>(m_textFormatting.data()),
                             static_cast<QWidget*>(m_color.data())}) {
             if(panel && panel->isVisible())panel->raise();
         }
@@ -540,6 +604,7 @@ private:
     void showOverlay(QWidget *panel)
     {
         if(m_toolOptions && m_toolOptions.data()!=panel)m_toolOptions->hide();
+        if(m_textFormatting && m_textFormatting.data()!=panel)m_textFormatting->hide();
         if(m_color && m_color.data()!=panel)m_color->hide();
         placeDrawingOverlays();
         panel->show();
@@ -569,6 +634,7 @@ private:
     QPointer<MobileLightweightCanvasHost> m_host;
     MobileEngineBridge m_engine;
     QPointer<KoToolDocker> m_toolOptions;
+    QPointer<QDockWidget> m_textFormatting;
     QPointer<KritaMobileBrushWorkspace> m_brush;
     QPointer<KritaMobileLayersPanel> m_layers;
     QPointer<MobileColorWorkspace> m_color;

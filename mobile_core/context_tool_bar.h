@@ -91,6 +91,7 @@ public:
 
     std::function<void()> chooseTool;
     std::function<void()> openOptions;
+    std::function<void()> openTextFormatting;
 
     void setTool(const QString &id,const QString &label,
                  const QList<QPointer<QWidget>> &options,
@@ -204,6 +205,12 @@ public:
             named("showAxesCheckbox",QObject::tr("Show axes"));
         } else if(id==QStringLiteral("SvgTextTool")) {
             named("mobileEditSvgText",QObject::tr("Edit text"));
+            if(openTextFormatting) {
+                auto *format=button(QObject::tr("Format"));
+                connect(format,&QToolButton::clicked,this,[this]() {
+                    if(openTextFormatting)openTextFormatting();
+                });
+            }
             named("mobileSvgGlyphs",QObject::tr("Glyphs"));
         }
         named("cmbOutline",QObject::tr("Outline"));

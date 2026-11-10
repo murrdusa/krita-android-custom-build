@@ -1477,6 +1477,29 @@ install(FILES org.kde.krita.desktop''',
     return optionWidget;''',
         "standalone SVG text native editor controls")
     text_tool_file.write_text(text_tool,encoding="utf-8")
+
+    text_dock_file=root/"plugins/dockers/textproperties/TextPropertiesDock.cpp"
+    text_dock=text_dock_file.read_text(encoding="utf-8")
+    text_dock=one(text_dock,
+        '    if (!m_quickWidget->errors().empty()) {',
+        '    setProperty("_mobileTextFormattingReady", m_quickWidget->rootObject() != nullptr);\n    if (!m_quickWidget->rootObject()) {',
+        "text formatting QML root guard")
+    text_dock_file.write_text(text_dock,encoding="utf-8")
+
+    text_observer_file=root/"plugins/dockers/textproperties/TextPropertiesCanvasObserver.cpp"
+    text_observer=text_observer_file.read_text(encoding="utf-8")
+    text_observer=one(text_observer,
+        "        // This initializes the docker to an empty entry;",
+        '''        if (!kisview->mainWindow()) {
+            // Studio opens the formatting panel after text may already be selected.
+            // Copy the current values instead of writing an empty selection back.
+            slotCanvasTextPropertiesChanged();
+            slotCanvasCharacterPropertiesChanged();
+            return;
+        }
+        // This initializes the docker to an empty entry;''',
+        "initialize standalone text formatting without changing the selection")
+    text_observer_file.write_text(text_observer,encoding="utf-8")
     print(f"Installed independent Mobile Studio app; XMLGUI checksum {digest}")
 
 if __name__=="__main__":
