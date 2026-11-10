@@ -11,9 +11,15 @@
 #pragma once
 #ifdef Q_OS_ANDROID
 #include <QApplication>
+#include <QAction>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
+#include <QLabel>
+#include <QScrollArea>
+#include <QSpinBox>
 #include <QObject>
 #include <QDockWidget>
 #include <QEvent>
@@ -41,6 +47,7 @@
 #include "kis_mainwindow_observer.h"
 #include "native_command_layout.h"
 #include "context_tool_bar.h"
+#include "finger_pressure_calibration.h"
 
 class MobileKritaNativeWorkspace final : public QObject
 {
@@ -273,6 +280,181 @@ public:
             if(target && target->isEnabled())target->trigger();
         });
         syncToolbarShortcut();
+    }
+
+
+    // Use the same settings and input profile as the earlier Android UI.
+    // Qt's native brush input still decides which gestures are painting.
+    void openInputSettings()
+    {
+        if(!m_host)return;
+        QPointer<MobileLightweightCanvasHost> host=m_host;
+        QTimer::singleShot(0,this,[host]() {
+            if(!host)return;
+            QDialog dialog(host);
+            dialog.setWindowTitle(QObject::tr("Touch, Pressure & Buttons"));
+            dialog.setMinimumWidth(300);
+            dialog.setStyleSheet(QStringLiteral(
+                "QDialog,QScrollArea,QWidget#mobileInputSettingsBody{"
+                "background:#252529;color:#f4f4f5;}"
+                "QLabel,QCheckBox{color:#f4f4f5;}"
+                "QComboBox,QSpinBox{color:#172530;background:#eef3f7;"
+                "border:1px solid #8f9ca6;border-radius:6px;"
+                "min-height:42px;padding:3px;}"
+                "QComboBox QAbstractItemView{background:#eef3f7;color:#172530;}"
+                "QPushButton{background:#34343a;color:#f4f4f5;"
+                "border:1px solid #55555c;border-radius:8px;min-height:44px;}"));
+            auto *outer=new QVBoxLayout(&dialog);
+            outer->setContentsMargins(6,6,6,6);
+            auto *scroll=new QScrollArea(&dialog);
+            scroll->setWidgetResizable(true);
+            scroll->setFrameShape(QFrame::NoFrame);
+            auto *body=new QWidget(scroll);
+            body->setObjectName(QStringLiteral("mobileInputSettingsBody"));
+            auto *form=new QFormLayout(body);
+            form->setRowWrapPolicy(QFormLayout::WrapAllRows);
+            form->setVerticalSpacing(10);
+            scroll->setWidget(body);
+            outer->addWidget(scroll,1);
+            QSettings settings;
+
+            auto *finger=new QCheckBox(QObject::tr(
+                "Finger contact area controls brush pressure"),body);
+            finger->setObjectName(QStringLiteral("mobileFingerPressureEnabled"));
+            finger->setChecked(settings.value(QString::fromLatin1(
+                MobileFingerPressureSettings::enabledKey()),false).toBool());
+            form->addRow(finger);
+            QObject::connect(finger,&QCheckBox::toggled,&dialog,[](bool enabled) {
+                QSettings().setValue(QString::fromLatin1(
+                    MobileFingerPressureSettings::enabledKey()),enabled);
+            });
+            auto *pressureInfo=new QLabel(QObject::tr(
+                "Optional. Single-finger painting only; S Pen pressure and "
+                "two-finger navigation are unchanged. Contact size is "
+                "an approximation, not measured force."),body);
+            pressureInfo->setWordWrap(true);
+            form->addRow(pressureInfo);
+            auto *calibrate=new QPushButton(QObject::tr(
+                "Calibrate contact size and sensitivity"),body);
+            form->addRow(calibrate);
+            QObject::connect(calibrate,&QPushButton::clicked,&dialog,[host]() {
+                if(!host)return;
+                MobileFingerPressureCalibrationDialog calibration(host);
+                calibration.exec();
+            });
+
+            auto *doubleTap=new QSpinBox(body);
+            doubleTap->setRange(120,600);
+            doubleTap->setSuffix(QObject::tr(" ms"));
+            doubleTap->setValue(qBound(120,settings.value(
+                QStringLiteral("TabletUi/doubleTapMs"),150).toInt(),600));
+            form->addRow(QObject::tr("One-finger double tap interval"),doubleTap);
+            QObject::connect(doubleTap,QOverload<int>::of(&QSpinBox::valueChanged),
+                &dialog,[](int value) {
+                    QSettings().setValue(QStringLiteral("TabletUi/doubleTapMs"),value);
+                });
+            auto *doubleInfo=new QLabel(QObject::tr(
+                "Double tap is assigned to Mirror View in Krita's "
+                "mobile input profile. Normal painting still uses Krita's "
+                "native gesture recognizer."),body);
+            doubleInfo->setWordWrap(true);
+            form->addRow(doubleInfo);
+            auto *pinch=new QCheckBox(QObject::tr(
+                "Quick two-finger pinch: reset canvas view"),body);
+            pinch->setChecked(settings.value(
+                QStringLiteral("TabletUi/quickPinch"),false).toBool());
+            form->addRow(pinch);
+            QObject::connect(pinch,&QCheckBox::toggled,&dialog,[](bool checked) {
+                QSettings().setValue(QStringLiteral("TabletUi/quickPinch"),checked);
+            });
+            auto *pinchMs=new QSpinBox(body);
+            pinchMs->setRange(120,500);
+            pinchMs->setSuffix(QObject::tr(" ms"));
+            pinchMs->setValue(qBound(120,settings.value(
+                QStringLiteral("TabletUi/pinchMs"),250).toInt(),500));
+            form->addRow(QObject::tr("Quick pinch interval"),pinchMs);
+            QObject::connect(pinchMs,QOverload<int>::of(&QSpinBox::valueChanged),
+                &dialog,[](int value) {
+                    QSettings().setValue(QStringLiteral("TabletUi/pinchMs"),value);
+                });
+
+            auto *volume=new QCheckBox(QObject::tr(
+                "Use volume keys for drawing actions"),body);
+            volume->setChecked(settings.value(
+                QStringLiteral("TabletUi/volumeKeys"),true).toBool());
+            form->addRow(volume);
+            QObject::connect(volume,&QCheckBox::toggled,&dialog,[](bool enabled) {
+                QSettings().setValue(QStringLiteral("TabletUi/volumeKeys"),enabled);
+            });
+            const auto addVolume=[&](const QString &label,const char *key,
+                                     int fallback) {
+                auto *combo=new QComboBox(body);
+                combo->addItem(QObject::tr("Normal volume / Disabled"),0);
+                combo->addItem(QObject::tr("Undo"),1);
+                combo->addItem(QObject::tr("Redo"),2);
+                combo->addItem(QObject::tr("Toggle eraser"),3);
+                combo->addItem(QObject::tr("Pick color once"),4);
+                combo->addItem(QObject::tr("Brush size +"),5);
+                combo->addItem(QObject::tr("Brush size -"),6);
+                const QString setting=QString::fromLatin1(key);
+                combo->setCurrentIndex(qMax(0,combo->findData(
+                    settings.value(setting,fallback).toInt())));
+                form->addRow(label,combo);
+                QObject::connect(combo,QOverload<int>::of(&QComboBox::currentIndexChanged),
+                    &dialog,[combo,setting](int) {
+                        QSettings().setValue(setting,combo->currentData().toInt());
+                    });
+            };
+            addVolume(QObject::tr("Volume down / tap"),
+                "TabletUi/volumeDownShort",1);
+            addVolume(QObject::tr("Volume up / tap"),
+                "TabletUi/volumeUpShort",2);
+            addVolume(QObject::tr("Volume down / hold"),
+                "TabletUi/volumeDownLong",4);
+            addVolume(QObject::tr("Volume up / hold"),
+                "TabletUi/volumeUpLong",3);
+            auto *holdMs=new QSpinBox(body);
+            holdMs->setRange(80,1000);
+            holdMs->setSuffix(QObject::tr(" ms"));
+            holdMs->setValue(qBound(80,settings.value(
+                QStringLiteral("TabletUi/volumeLongMs"),150).toInt(),1000));
+            form->addRow(QObject::tr("Volume hold threshold"),holdMs);
+            QObject::connect(holdMs,QOverload<int>::of(&QSpinBox::valueChanged),
+                &dialog,[](int value) {
+                    QSettings().setValue(QStringLiteral("TabletUi/volumeLongMs"),value);
+                });
+
+            auto *done=new QPushButton(QObject::tr("Done"),&dialog);
+            outer->addWidget(done);
+            QObject::connect(done,&QPushButton::clicked,&dialog,&QDialog::accept);
+            dialog.exec();
+        });
+    }
+
+    // The Android Java volume handler invokes this only on the Qt GUI
+    // thread. Actions reuse the standalone app's document-safe history.
+    void bindVolumeHistory(QAction *undo,QAction *redo)
+    {
+        m_volumeUndo=undo;
+        m_volumeRedo=redo;
+    }
+
+    bool dispatchVolumeAction(int code)
+    {
+        if(!m_engine.hasDocument())return false;
+        QAction *action=nullptr;
+        switch(code) {
+        case 1: action=m_volumeUndo;break;
+        case 2: action=m_volumeRedo;break;
+        case 3: action=m_engine.action("erase_action");break;
+        case 4: action=m_engine.action("tablet_pick_once");break;
+        case 5: action=m_engine.action("increase_brush_size");break;
+        case 6: action=m_engine.action("decrease_brush_size");break;
+        default: return false;
+        }
+        if(!action || !action->isEnabled())return false;
+        action->trigger();
+        return true;
     }
 
     void openSettings()
@@ -640,6 +822,8 @@ private:
     QPointer<MobileColorWorkspace> m_color;
     QPointer<MobileContextToolBar> m_contextToolBar;
     QPointer<QAction> m_shortcutSlot;
+    QPointer<QAction> m_volumeUndo;
+    QPointer<QAction> m_volumeRedo;
     QVector<ToolbarShortcut> m_shortcuts;
     int m_shortcutIndex=0;
     bool m_keepLayers=true,m_keepColor=true,m_showBrushSliders=false;
