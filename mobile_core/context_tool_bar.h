@@ -8,6 +8,7 @@
 #include <algorithm>
 #ifdef Q_OS_ANDROID
 #include <QAbstractButton>
+#include <KoToolBase.h>
 #include <QAbstractItemModel>
 #include <QCheckBox>
 #include <QComboBox>
@@ -25,6 +26,7 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSlider>
 #include <QScrollBar>
 #include <QScroller>
 #include <QSet>
@@ -101,7 +103,7 @@ public:
 
     void setTool(const QString &id,const QString &label,
                  const QList<QPointer<QWidget>> &options,
-                 const MobileEngineBridge &engine,QObject *nativeTool)
+                 const MobileEngineBridge &engine,KoToolBase *nativeTool)
     {
         if(m_id==id && m_options==options && m_nativeTool==nativeTool) {
             refreshControls();
@@ -150,6 +152,17 @@ public:
                 chooseFillResource(gradient);
             });
         };
+        if(id==QStringLiteral("KisToolPolygon") || id==QStringLiteral("KisToolPolyline") ||
+           id==QStringLiteral("KisToolPath") || id==QStringLiteral("KisToolSelectPolygonal") ||
+           id==QStringLiteral("KisToolSelectPath") || id==QStringLiteral("KisToolSelectMagnetic")) {
+            const QPointer<KoToolBase> path=nativeTool;
+            connect(button(QObject::tr("Finish")),&QToolButton::clicked,this,[this,path]() {
+                if(path && m_nativeTool==path.data())path->requestStrokeEnd();
+            });
+            connect(button(QObject::tr("Cancel")),&QToolButton::clicked,this,[this,path]() {
+                if(path && m_nativeTool==path.data())path->requestStrokeCancellation();
+            });
+        }
         if(id.startsWith(QStringLiteral("KisToolSelect"))) {
             addSectionChoices("sectionAction",QObject::tr("Combine"),{
                 QObject::tr("Replace"),QObject::tr("Intersect"),QObject::tr("Add"),
@@ -160,6 +173,16 @@ public:
             addSectionChoices("sectionMode",QObject::tr("Type"),
                               {QObject::tr("Pixel"),QObject::tr("Vector")});
             native("deselect",QObject::tr("Deselect"));
+            if(id==QStringLiteral("KisToolSelectMagnetic")) {
+                named("radius",QObject::tr("Radius"));
+                named("threshold",QObject::tr("Edge"));
+                named("frequency",QObject::tr("Search"));
+                named("anchorgap",QObject::tr("Anchor gap"));
+            } else {
+                named("sliderGrowSelection",QObject::tr("Grow"));
+                named("sliderFeather",QObject::tr("Feather"));
+                named("checkBoxAntiAliasSelection",QObject::tr("Anti-alias"));
+            }
             // Keep everyday selection controls visible; preserve the full
             // native command set in a single touch-friendly menu.
             nativeMenu(QObject::tr("More"),{
@@ -220,6 +243,28 @@ public:
             addSectionChoices("sectionReference",QObject::tr("Reference"),
                 {QObject::tr("Current layer"),QObject::tr("All layers"),QObject::tr("Color labels")});
             named("checkBoxAntiAlias",QObject::tr("Anti-alias"));
+        } else if(id==QStringLiteral("KisToolEncloseAndFill")) {
+            addSectionChoices("sectionEnclosingMethod",QObject::tr("Enclose with"),
+                {QObject::tr("Rectangle"),QObject::tr("Ellipse"),QObject::tr("Path"),
+                 QObject::tr("Lasso"),QObject::tr("Brush")});
+            if(auto *section=qobject_cast<KisOptionCollectionWidgetWithHeader*>(
+                   findOption("sectionWhatToFill")))
+                addOption(section->primaryWidget(),QObject::tr("Regions"));
+            addSectionChoices("sectionFillWith",QObject::tr("Source"),
+                {QObject::tr("Foreground"),QObject::tr("Background"),QObject::tr("Pattern")});
+            addFillResource(false);
+            named("sliderThreshold",QObject::tr("Tol."));
+            named("sliderCloseGap",QObject::tr("Gap"));
+            named("checkBoxSelectionAsBoundary",QObject::tr("Selection boundary"));
+            addSectionChoices("sectionReference",QObject::tr("Reference"),
+                {QObject::tr("Current layer"),QObject::tr("All layers"),QObject::tr("Color labels")});
+        } else if(id==QStringLiteral("KritaShape/KisToolSmartPatch")) {
+            named("accuracySlider",QObject::tr("Accuracy"));
+            named("patchRadius",QObject::tr("Radius"));
+        } else if(id==QStringLiteral("KritaShape/KisToolMeasure")) {
+            addReadout("mobileMeasureDistance",QObject::tr("Distance"));
+            addReadout("mobileMeasureAngle",QObject::tr("Angle"));
+            named("mobileMeasureUnits",QObject::tr("Units"));
         } else if(id==QStringLiteral("KritaFill/KisToolGradient")) {
             addFillResource(true);
             named("shape_combo",QObject::tr("Shape"));
@@ -240,6 +285,9 @@ public:
             named("intHeight",QObject::tr("Height"));
             named("lockRatioButton",QObject::tr("Lock ratio"));
             named("bnCrop",QObject::tr("Apply crop"));
+            named("intX",QObject::tr("X"));
+            named("intY",QObject::tr("Y"));
+            named("boolGrow",QObject::tr("Grow canvas"));
         } else if(id==QStringLiteral("KisAssistantTool")) {
             named("availableAssistantsComboBox",QObject::tr("Guide type"));
             named("localAssistantCheckbox",QObject::tr("Local"));
@@ -260,6 +308,14 @@ public:
         } else if(id==QStringLiteral("KritaShape/KisToolMultiBrush")) {
             named("multihandTypeCombobox",QObject::tr("Symmetry"));
             named("showAxesCheckbox",QObject::tr("Show axes"));
+            named("brushCountSpinBox",QObject::tr("Copies"));
+            named("translationRadiusSpinbox",QObject::tr("Radius"));
+            named("horizontalCheckbox",QObject::tr("Horizontal"));
+            named("verticalCheckbox",QObject::tr("Vertical"));
+            named("moveOriginButton",QObject::tr("Move origin"));
+            named("resetOriginButton",QObject::tr("Reset origin"));
+            named("intervalXSpinBox",QObject::tr("X spacing"));
+            named("intervalYSpinBox",QObject::tr("Y spacing"));
         } else if(id==QStringLiteral("SvgTextTool")) {
             named("mobileEditSvgText",QObject::tr("Edit text"));
             if(openTextFormatting) {
@@ -607,6 +663,18 @@ private:
         addChoices(label,choices);
     }
 
+    void addReadout(const char *name,const QString &label)
+    {
+        const QPointer<QLabel> native=qobject_cast<QLabel*>(findOption(name));
+        if(!native)return;
+        auto *readout=new QLabel;
+        readout->setStyleSheet(QStringLiteral("color:#f4f4f5;padding:0 6px;"));
+        m_row->addWidget(readout);
+        m_refresh.append([native,label,readout]() {
+            if(native)readout->setText(QStringLiteral("%1 %2").arg(label,native->text()));
+        });
+    }
+
     void addOption(QWidget *source,const QString &label)
     {
         if(!source || label.isEmpty() || m_used.contains(source))return;
@@ -656,6 +724,8 @@ private:
             addNumber(integer,label);
         } else if(auto *decimal=qobject_cast<QDoubleSpinBox*>(source)) {
             addNumber(decimal,label);
+        } else if(auto *slider=qobject_cast<QSlider*>(source)) {
+            addNumber(slider,label);
         } else {
             return;
         }
@@ -679,15 +749,16 @@ private:
                 "QPushButton{min-height:44px;padding:3px 12px;}"));
             auto *layout=new QVBoxLayout(&dialog);
             layout->addWidget(new QLabel(label,&dialog));
-            using Editor=std::conditional_t<std::is_same<SpinBox,QSpinBox>::value,
-                                            KisSliderSpinBox,KisDoubleSliderSpinBox>;
+            using Editor=std::conditional_t<std::is_same<SpinBox,QDoubleSpinBox>::value,
+                                            KisDoubleSliderSpinBox,KisSliderSpinBox>;
             auto *editor=new Editor(&dialog);
             if constexpr(std::is_same<SpinBox,QDoubleSpinBox>::value)
                 editor->setRange(native->minimum(),native->maximum(),native->decimals());
             else
                 editor->setRange(native->minimum(),native->maximum());
             editor->setSingleStep(native->singleStep());
-            editor->setSuffix(native->suffix());
+            if constexpr(!std::is_same<SpinBox,QSlider>::value)
+                editor->setSuffix(native->suffix());
             editor->setValue(native->value());
             editor->setMinimumSize(220,44);
             layout->addWidget(editor);
@@ -700,12 +771,21 @@ private:
                generation==alive->m_generation && alive->isVisible() &&
                alive->optionAvailable(native)) {
                 native->setValue(editor->value());
-                if(native)Q_EMIT native->editingFinished();
+                if constexpr(!std::is_same<SpinBox,QSlider>::value) {
+                    if(native)Q_EMIT native->editingFinished();
+                }
             }
         });
         m_refresh.append([this,control,label,native]() {
             control->setEnabled(optionAvailable(native));
-            setValueLabel(control,label,native?native->cleanText():QString());
+            QString value;
+            if(native) {
+                if constexpr(std::is_same<SpinBox,QSlider>::value)
+                    value=QString::number(native->value());
+                else
+                    value=native->cleanText();
+            }
+            setValueLabel(control,label,value);
         });
     }
 

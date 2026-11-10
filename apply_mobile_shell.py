@@ -1219,6 +1219,17 @@ install(FILES org.kde.krita.desktop''',
         // This initializes the docker to an empty entry;''',
         "initialize standalone text formatting without changing the selection")
     text_observer_file.write_text(text_observer,encoding="utf-8")
+    measure_file=root/"plugins/tools/basictools/kis_tool_measure.cc"
+    measure=measure_file.read_text(encoding="utf-8")
+    for variable,name in (("m_distanceLabel","mobileMeasureDistance"),
+                          ("m_angleLabel","mobileMeasureAngle"),
+                          ("unitBox","mobileMeasureUnits")):
+        widget="KComboBox" if variable=="unitBox" else "QLabel"
+        anchor=f"{variable} = new {widget}(this);"
+        measure=one(measure,anchor,anchor+f'\n    {variable}->setObjectName("{name}");',
+                    f"Studio Measure {variable}")
+    measure_file.write_text(measure,encoding="utf-8")
+
     transform_dir=root/"plugins/tools/tool_transform2"
     transform_header=transform_dir/"kis_tool_transform.h"
     transform=transform_header.read_text(encoding="utf-8")
