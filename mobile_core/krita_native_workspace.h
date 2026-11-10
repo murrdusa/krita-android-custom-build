@@ -362,7 +362,7 @@ public:
             auto *pinch=new QCheckBox(QObject::tr(
                 "Quick two-finger pinch: reset canvas view"),body);
             pinch->setChecked(settings.value(
-                QStringLiteral("TabletUi/quickPinch"),false).toBool());
+                QStringLiteral("TabletUi/quickPinch"),true).toBool());
             form->addRow(pinch);
             QObject::connect(pinch,&QCheckBox::toggled,&dialog,[](bool checked) {
                 QSettings().setValue(QStringLiteral("TabletUi/quickPinch"),checked);
@@ -437,6 +437,15 @@ public:
     {
         m_volumeUndo=undo;
         m_volumeRedo=redo;
+    }
+
+    void resetCanvasView()
+    {
+        if(!m_engine.hasDocument())return;
+        if(QAction *rotation=m_engine.action("reset_canvas_rotation"))
+            if(rotation->isEnabled())rotation->trigger();
+        if(QAction *fit=m_engine.action("zoom_to_fit"))
+            if(fit->isEnabled())fit->trigger();
     }
 
     bool dispatchVolumeAction(int code)
