@@ -874,7 +874,7 @@ private:
     // "[Compact Clip]" wrappers in the tile display.
     void setCompactClip(KisNodeSP node,bool on)
     {
-        const auto *view=m_engine.manager();
+        auto *view=m_engine.manager();
         const KisImageSP image=view?view->image().toStrongRef():KisImageSP();
         if(m_clipBusy || m_reorderPending ||
            !inImage(node,image) || !node->inherits("KisLayer") ||
