@@ -1,14 +1,14 @@
-# Mobile Studio development handoff — 2026-11-09
+# Mobile Studio development handoff — 2026-11-10
 
 **Read [AGENTS.md](AGENTS.md) first.** Source of truth is current GitHub `main` plus [PC watcher Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1), not the chat. Check commit SHAs before making claims about a build.
 
 ## Resume here
 
 - Start from GitHub `main` with a clean checkout. The WSL2 watcher already runs in `/home/pokem/krita-tablet-customizations`. Its `.build-watcher/status.json` and `.build-watcher/logs/` are the authoritative local results when Issue #1 still shows an older revision. Match the exact source SHA. Push one batch to trigger the watcher and leave APK publishing paused.
-- Home, linked Android folders, and saved versions are in `mobile_core/document_home.h` and `mobile_core/saved_version_archive.h`. `MobileSavedVersionArchive::canonicalIdentity` normalizes Android SAF tree grants and direct document URIs to one canonical project identity, ensuring both access methods share identical version histories. Existing version folders created with legacy tree-URI hashes are automatically migrated without losing snapshots.
-- Home also activates the open canvas if an identical document is tapped across different SAF access representations, avoiding redundant opens.
-- The latest Fold 6 batch still needs a device pass. Prioritize compact Transform Free → Perspective → Warp, slow finger strokes with pressure on/off, adding a missing-project folder, restoring a closed project's history, and background recovery of two dirty canvases.
-- Next code task if device feedback is unavailable: continue with next logical version-history improvement (debounced periodic background checkpoints for dirty canvases while drawing, before system process death). Keep new UI changes touch-first and use existing Krita operations.
+- **Transform mode fix is in the latest commit.** The compact bar's Mode button now triggers Krita's native `KisToolTransform{Free,Perspective,Warp,Cage,Liquify,Mesh}` actions (same path as the native gear panel) rather than simulating button clicks which triggered an autoExclusive revert on Android. The button's `isChecked()` state is used to show the active mode in the label.
+- **Home persistent project index is in the latest commit.** `MobileProjectIndex` persists discovered projects as JSON in `AppDataLocation/project-index.json`. All Projects loads the index immediately on open (fast startup), then rescans in background. Recent entries are merged into All Projects by canonical SAF identity. Thumbnails are cached as PNGs in `AppDataLocation/project-thumbs/` and invalidated by mtime. Default scan: Downloads + user-linked SAF folders only (no slow whole-storage traversal unless `MANAGE_EXTERNAL_STORAGE` granted).
+- **Device tests needed:** compact Transform mode (switch Free → Perspective → Warp, verify no revert), All Projects loads immediately from index on second open, thumbnails cached, Recent projects appear in All Projects.
+- Saved-version SAF identity fix is at `ebf68420` (previous session, build PASS). Transform + Home index commit pending watcher confirmation.
 
 ## Verified milestones
 

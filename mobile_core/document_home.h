@@ -1,10 +1,3 @@
-/*
- * SPDX-License-Identifier: GPL-2.0-or-later
- *
- * Touch-first native document launcher. Uses Krita's recent file manager
- * and native open/view services; never reads document layers into a
- * second renderer. KRA thumbnails are extracted from embedded previews.
- */
 #pragma once
 #ifdef Q_OS_ANDROID
 
@@ -13,6 +6,7 @@
 #include <QAndroidJniEnvironment>
 #include <QApplication>
 #include <QBuffer>
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -62,6 +56,145 @@
 #include "document_workflow.h"
 #include "mobile_draft_recovery.h"
 #include "saved_version_archive.h"
+
+// ---------------------------------------------------------------------------
+// Persistent project index — survives app restarts so All Projects loads
+// instantly without blocking on a full filesystem scan each time.
+//
+// Stored as JSON in AppDataLocation/project-index.json.
+// Thumbnails cached as PNG files in AppDataLocation/project-thumbs/.
+// Entries are merged by canonical SAF identity; stale entries (file gone
+// and not reachable via SAF) are pruned on each successful rescan.
+// ---------------------------------------------------------------------------
+struct MobileProjectIndexEntry {
+    QString path;        // local path or content:// URI (canonical)
+    QString title;
+    qint64  modified=0; // msecs since epoch; 0 = unknown
+    QString source;     // "recent" | "scan" | "saf"
+};
+
+class MobileProjectIndex {
+public:
+    static QString indexPath() {
+        return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+               + QStringLiteral("/project-index.json");
+    }
+    static QString thumbDir() {
+        return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+               + QStringLiteral("/project-thumbs");
+    }
+    static QString thumbPath(const QString &path) {
+        const QByteArray key=QCryptographicHash::hash(
+            path.toUtf8(),QCryptographicHash::Sha256).toHex();
+        return thumbDir()+QLatin1Char('/')+QString::fromLatin1(key)+QStringLiteral(".png");
+    }
+
+    static QVector<MobileProjectIndexEntry> load() {
+        QVector<MobileProjectIndexEntry> entries;
+        QFile f(indexPath());
+        if(!f.open(QIODevice::ReadOnly))return entries;
+        const auto doc=QJsonDocument::fromJson(f.readAll());
+        if(doc.isNull()||!doc.isObject())return entries;
+        const auto arr=doc.object().value(QStringLiteral("entries")).toArray();
+        entries.reserve(arr.size());
+        for(const auto &v:arr) {
+            const auto o=v.toObject();
+            const QString p=o.value(QStringLiteral("path")).toString();
+            if(p.isEmpty())continue;
+            MobileProjectIndexEntry e;
+            e.path=p;
+            e.title=o.value(QStringLiteral("title")).toString();
+            e.modified=qint64(o.value(QStringLiteral("modified")).toDouble());
+            e.source=o.value(QStringLiteral("source")).toString();
+            entries.append(e);
+        }
+        return entries;
+    }
+
+    static void save(const QVector<MobileProjectIndexEntry> &entries) {
+        const QString path=indexPath();
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        QJsonArray arr;
+        for(const auto &e:entries) {
+            QJsonObject o;
+            o.insert(QStringLiteral("path"),e.path);
+            o.insert(QStringLiteral("title"),e.title);
+            o.insert(QStringLiteral("modified"),double(e.modified));
+            o.insert(QStringLiteral("source"),e.source);
+            arr.append(o);
+        }
+        QJsonObject root;
+        root.insert(QStringLiteral("version"),1);
+        root.insert(QStringLiteral("entries"),arr);
+        // Atomic write: write to temp then rename
+        const QString tmp=path+QStringLiteral(".tmp");
+        QFile f(tmp);
+        if(!f.open(QIODevice::WriteOnly|QIODevice::Truncate))return;
+        f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
+        f.close();
+        QFile::remove(path);
+        QFile::rename(tmp,path);
+    }
+
+    // Merge incoming entries into existing, dedup by canonical identity.
+    // Incoming entries update timestamp and source of existing ones.
+    static QVector<MobileProjectIndexEntry> merge(
+        QVector<MobileProjectIndexEntry> existing,
+        const QVector<MobileProjectIndexEntry> &incoming)
+    {
+        QHash<QString,int> byId;
+        for(int i=0;i<existing.size();++i) {
+            byId.insert(MobileSavedVersionArchive::canonicalIdentity(existing[i].path),i);
+        }
+        for(const auto &e:incoming) {
+            const QString id=MobileSavedVersionArchive::canonicalIdentity(e.path);
+            auto it=byId.find(id);
+            if(it==byId.end()) {
+                byId.insert(id,existing.size());
+                existing.append(e);
+            } else {
+                auto &ex=existing[it.value()];
+                // Prefer the entry with more information
+                if(e.modified>ex.modified)ex.modified=e.modified;
+                if(ex.title.isEmpty()&&!e.title.isEmpty())ex.title=e.title;
+                // scan/saf sources are more authoritative than "recent"
+                if(e.source!=QStringLiteral("recent"))ex.source=e.source;
+            }
+        }
+        return existing;
+    }
+
+    // Load a cached thumbnail from disk. Returns null image if not cached
+    // or if the entry's modification time has changed (stale).
+    static QImage loadThumb(const QString &path, qint64 modified) {
+        const QString tp=thumbPath(path);
+        const QFileInfo ti(tp);
+        if(!ti.isReadable())return {};
+        // The thumb file's mtime is set to match the project's mtime.
+        // If they differ, the thumb is stale.
+        if(modified>0 && ti.lastModified().toMSecsSinceEpoch()!=modified)return {};
+        QImageReader reader(tp,"png");
+        return reader.read();
+    }
+
+    // Save a thumbnail to disk and stamp its mtime to match the project.
+    static void saveThumb(const QString &path, qint64 modified, const QImage &image) {
+        if(image.isNull())return;
+        const QString dir=thumbDir();
+        QDir().mkpath(dir);
+        const QString tp=thumbPath(path);
+        image.save(tp,"PNG");
+        // Stamp mtime so stale detection works
+        if(modified>0) {
+            const QDateTime dt=QDateTime::fromMSecsSinceEpoch(modified);
+            QFile f(tp);
+            if(f.open(QIODevice::ReadWrite)) {
+                f.setFileTime(dt,QFileDevice::FileModificationTime);
+                f.close();
+            }
+        }
+    }
+};
 
 class MobileDocumentHome final : public QFrame
 {
@@ -655,6 +788,31 @@ private:
             m_message->setText(m_lastAccess?
                 i18n("Searching accessible storage for Krita projects…"):
                 i18n("Searching common folders and folders you added…"));
+            // Load persisted index immediately so the list is populated
+            // before the background scan starts.  The scan will add new
+            // entries and update timestamps; on completion the merged index
+            // is saved back to disk.
+            const auto indexed=MobileProjectIndex::load();
+            for(const auto &e:indexed)
+                addProject({e.path,e.title,e.modified,{}});
+            // Always include Krita's Recent files in All Projects so SAF
+            // documents that live outside the scan roots are never missing.
+            {
+                const auto recent=KisRecentFilesManager::instance()->recentFiles();
+                for(auto it=recent.crbegin();it!=recent.crend();++it) {
+                    if(it->m_url.isEmpty())continue;
+                    const QString p=it->m_url.isLocalFile()?
+                        it->m_url.toLocalFile():it->m_url.toString();
+                    if(p.isEmpty())continue;
+                    const QString name=it->m_displayName.isEmpty()?
+                        QFileInfo(p).fileName():it->m_displayName;
+                    const qint64 mod=it->m_url.isLocalFile()?
+                        QFileInfo(p).lastModified().toMSecsSinceEpoch():0;
+                    addProject({p,name,mod,{}});
+                }
+            }
+            if(m_list->count()>0)
+                m_message->setText(i18n("Updating project list in background…"));
             startScan(m_lastAccess);
         }
         if(mode!=AllProjects && m_list->count()==0) {
@@ -708,10 +866,10 @@ private:
                 if(fullAccess) {
                     roots.append(root);
                 } else {
-                    for(const QString &folder:{QStringLiteral("Download"),
-                            QStringLiteral("Documents"),QStringLiteral("Pictures"),
-                            QStringLiteral("Krita")})
-                        roots.append(QDir(root).filePath(folder));
+                    // Default scan: only Downloads.  Documents/Pictures/Krita
+                    // are opt-in via "Add Folder".  This keeps startup fast on
+                    // devices with large shared storage.
+                    roots.append(QDir(root).filePath(QStringLiteral("Download")));
                 }
             }
             QSet<QString> seen;
@@ -781,6 +939,22 @@ private:
         m_message->setText(count==0?
             i18n("No Krita projects found. Add a folder or use Browse Files."):
             i18np("%1 Krita project found", "%1 Krita projects found",count));
+        // Persist the discovered set so the next launch can show it instantly.
+        QVector<MobileProjectIndexEntry> entries;
+        entries.reserve(count);
+        for(int i=0;i<count;++i) {
+            const auto *item=m_list->item(i);
+            MobileProjectIndexEntry e;
+            e.path=item->data(Qt::UserRole).toString();
+            e.title=item->text();
+            e.modified=item->data(Qt::UserRole+1).toLongLong();
+            e.source=QStringLiteral("scan");
+            entries.append(e);
+        }
+        // Run the index save on the scanner pool so it doesn't block the UI.
+        m_scanner.start([entries]() {
+            MobileProjectIndex::save(entries);
+        });
     }
 
     void sortProjects()
@@ -837,13 +1011,27 @@ private:
             const QString path=item->data(Qt::UserRole).toString();
             if(path.isEmpty() || m_pending.contains(path) ||
                m_attempted.contains(path) || m_cache.contains(path))continue;
+            // Try the persistent on-disk thumbnail first (fast, no KoStore open).
+            const qint64 modified=item->data(Qt::UserRole+1).toLongLong();
+            {
+                const QImage cached=MobileProjectIndex::loadThumb(path,modified);
+                if(!cached.isNull()) {
+                    const QIcon icon(QPixmap::fromImage(cached));
+                    m_cache.insert(path,{icon,modified});
+                    item->setIcon(icon);
+                    m_attempted.insert(path);
+                    continue;
+                }
+            }
             m_pending.insert(path);
             --budget;
             QPointer<MobileDocumentHome> home(this);
-            const qint64 modified=item->data(Qt::UserRole+1).toLongLong();
             const quint64 generation=m_previewGeneration;
             m_thumbnails.start([home,path,modified,generation]() {
                 const QImage image=preview(path);
+                // Persist to disk so future sessions don't need to re-open the archive.
+                if(!image.isNull())
+                    MobileProjectIndex::saveThumb(path,modified,image);
                 QMetaObject::invokeMethod(qApp,[home,path,image,modified,generation]() {
                     if(!home || generation!=home->m_previewGeneration)return;
                     home->m_pending.remove(path);

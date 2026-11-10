@@ -168,14 +168,27 @@ public:
                 {"copy_selection_to_new_layer",QObject::tr("Copy to layer")}
             });
         } else if(id==QStringLiteral("KisToolTransform")) {
-            addNamedChoices(QObject::tr("Mode"),{
-                {"freeTransformButton",QObject::tr("Free")},
-                {"perspectiveTransformButton",QObject::tr("Perspective")},
-                {"warpButton",QObject::tr("Warp")},
-                {"cageButton",QObject::tr("Cage")},
-                {"liquifyButton",QObject::tr("Liquify")},
-                {"meshButton",QObject::tr("Mesh")}
-            });
+            // Use Krita's named transform sub-tool actions so the mode switch
+            // goes through sigResetTransform() — the same path as the working
+            // native gear panel — instead of button->click() which triggers
+            // an autoExclusive revert on Android.
+            struct ModeEntry {const char *actionId;const char *buttonName;QString label;};
+            const std::initializer_list<ModeEntry> modeEntries={
+                {"KisToolTransformFree","freeTransformButton",QObject::tr("Free")},
+                {"KisToolTransformPerspective","perspectiveTransformButton",QObject::tr("Perspective")},
+                {"KisToolTransformWarp","warpButton",QObject::tr("Warp")},
+                {"KisToolTransformCage","cageButton",QObject::tr("Cage")},
+                {"KisToolTransformLiquify","liquifyButton",QObject::tr("Liquify")},
+                {"KisToolTransformMesh","meshButton",QObject::tr("Mesh")}
+            };
+            QList<ActionChoice> modes;
+            for(const auto &entry:modeEntries) {
+                if(auto *action=engine.action(entry.actionId)) {
+                    auto *btn=qobject_cast<QAbstractButton*>(findOption(entry.buttonName));
+                    modes.append({entry.label,action,btn});
+                }
+            }
+            addActionMenu(QObject::tr("Mode"),modes);
             if(auto *box=qobject_cast<QDialogButtonBox*>(findOption("buttonBox"))) {
                 addOption(box->button(QDialogButtonBox::Apply),QObject::tr("Apply"));
                 addOption(box->button(QDialogButtonBox::Reset),QObject::tr("Reset"));
@@ -282,6 +295,7 @@ private:
     struct ActionChoice {
         QString label;
         QPointer<QAction> action;
+        QPointer<QAbstractButton> state{}; // optional: native button whose isChecked() reflects current mode
     };
 
     QWidget *findOption(const char *name) const
@@ -354,8 +368,13 @@ private:
                 if(!choice.action)continue;
                 auto *item=menu.addAction(choice.label);
                 item->setEnabled(choice.action->isEnabled());
-                item->setCheckable(choice.action->isCheckable());
-                item->setChecked(choice.action->isChecked());
+                // Use the native button's checked state when available; it
+                // reflects the live transform mode more reliably than the
+                // action's own checked state on Android.
+                const bool checked=choice.state?choice.state->isChecked()
+                                               :choice.action->isChecked();
+                item->setCheckable(choice.state||choice.action->isCheckable());
+                item->setChecked(checked);
                 item->setData(i);
             }
             auto *picked=menu.exec(control->mapToGlobal(QPoint(0,control->height())));
@@ -367,11 +386,20 @@ private:
                 });
             }
         });
-        m_refresh.append([control,choices]() {
-            control->setEnabled(std::any_of(choices.cbegin(),choices.cend(),
-                [](const ActionChoice &choice) {
-                    return choice.action && choice.action->isEnabled();
-                }));
+        m_refresh.append([control,label,choices]() {
+            bool enabled=false;
+            QString active;
+            for(const auto &choice:choices) {
+                enabled|=choice.action&&choice.action->isEnabled();
+                // Prefer the native button's isChecked() — it tracks the
+                // live Krita transform mode without depending on the action's
+                // own checked property which may not be set on Android.
+                const bool checked=choice.state?choice.state->isChecked()
+                                               :(choice.action&&choice.action->isChecked());
+                if(checked&&active.isEmpty())active=choice.label;
+            }
+            control->setEnabled(enabled);
+            setValueLabel(control,label,active);
         });
     }
 
