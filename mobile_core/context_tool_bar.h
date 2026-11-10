@@ -21,6 +21,7 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QScroller>
 #include <QSet>
 #include <QSpinBox>
@@ -234,6 +235,9 @@ public:
             m_row->addWidget(new QLabel(QObject::tr("Tool options"),content));
         m_row->addStretch();
         m_scroll->setWidget(content);
+        // Each tool starts with its most common controls; a long strip on
+        // the previous tool must not leave the new tool scrolled to the end.
+        m_scroll->horizontalScrollBar()->setValue(0);
         refreshControls();
     }
 
