@@ -116,6 +116,23 @@ MobileKritaAndroidRuntime::Result MobileKritaAndroidRuntime::launch(
     return Result::Started;
 }
 
+void MobileKritaAndroidRuntime::resetCanvasView()
+{
+    auto *app=QCoreApplication::instance();
+    if(!app)return;
+    QMetaObject::invokeMethod(app,[]() {
+        for(QWidget *window:QApplication::topLevelWidgets()) {
+            if(!window)continue;
+            auto *object=window->findChild<QObject*>(
+                QStringLiteral("_mobileNativeEngineWorkspaces"));
+            if(auto *workspace=dynamic_cast<MobileKritaNativeWorkspace*>(object)) {
+                workspace->resetCanvasView();
+                return;
+            }
+        }
+    },Qt::QueuedConnection);
+}
+
 namespace {
 void dispatchMobileVolume(int code)
 {
