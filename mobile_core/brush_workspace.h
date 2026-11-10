@@ -111,6 +111,13 @@ public:
         m_opacity->setMinimumHeight(43);
         controlRow->addWidget(m_opacity,2);
         details->addLayout(controlRow);
+        m_flow=new KisDoubleSliderSpinBox(this);
+        m_flow->setRange(0,100,0);
+        m_flow->setPrefix(i18n("Flow: "));
+        m_flow->setSuffix(QStringLiteral("%"));
+        m_flow->setSingleStep(5);
+        m_flow->setMinimumHeight(43);
+        details->addWidget(m_flow);
         root->addWidget(m_controls);
         setDetailsExpanded(QSettings().value(
             QStringLiteral("MobileStudio/brushDetailsExpanded"),true).toBool());
@@ -125,13 +132,19 @@ public:
             if(m_syncing)return;
             if(auto *provider=resources())provider->setOpacity(percent/100.0);
         });
+        connect(m_flow,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),
+                this,[this](qreal percent) {
+            if(!m_syncing)
+                if(auto *provider=resources())provider->setFlow(percent/100.0);
+        });
         if(auto *provider=resources()) {
             connect(provider,&KisCanvasResourceProvider::sigPaintOpPresetChanged,
                     this,[this](KisPaintOpPresetSP preset) {
                 if(!preset)return;
                 m_presetName->setText(preset->name().left(26));
                 m_presetName->setToolTip(preset->name());
-                if(!m_internalChange && m_hasSelectedMode)
+                if(!m_internalChange && m_hasSelectedMode &&
+                   (m_slot!=2 || isSmudge(preset)))
                     QSettings().setValue(
                         QStringLiteral("MobilePilot/brushSlot%1").arg(m_slot),
                         preset->name());
@@ -147,6 +160,14 @@ public:
         refresh();
     }
 
+    bool isActiveMode(int slot) const
+    {
+        return m_slot==slot &&
+            m_engine.activeTool()==QStringLiteral("KritaShape/KisToolBrush");
+    }
+
+    void activateMode(int slot) { switchMode(slot); }
+
     void refresh()
     {
         auto *provider=resources();
@@ -154,7 +175,10 @@ public:
         m_syncing=true;
         m_size->setValue(provider->size());
         m_opacity->setValue(provider->opacity()*100.0);
+        m_flow->setValue(provider->flow()*100.0);
         if(auto preset=provider->currentPreset()) {
+            m_flow->setVisible(isSmudge(preset) ||
+                preset->paintOp().id()==QStringLiteral("paintbrush"));
             m_presetName->setText(preset->name().left(26));
             m_presetName->setToolTip(preset->name());
         }
@@ -164,6 +188,11 @@ public:
     }
 
 private:
+    static bool isSmudge(const KisPaintOpPresetSP &preset)
+    {
+        return preset && preset->paintOp().id()==QStringLiteral("colorsmudge");
+    }
+
     void setDetailsExpanded(bool expanded)
     {
         m_detailsExpanded=expanded;
@@ -186,7 +215,7 @@ private:
             name.contains(QStringLiteral("mixing")) ||
             preset->paintOp().id()==QStringLiteral("colorsmudge");
         if(slot==1)return eraser;
-        if(slot==2)return blend && !eraser;
+        if(slot==2)return isSmudge(preset) && !eraser;
         return !eraser && !blend;
     }
     KisCanvasResourceProvider *resources() const
@@ -240,12 +269,14 @@ private:
         const QString name=QSettings().value(
             QStringLiteral("MobilePilot/brushSlot%1").arg(slot)).toString();
         KisPaintOpPresetSP preset=findPreset(name);
+        if(slot==2 && !isSmudge(preset))preset.clear();
         // Never restore a cached eraser or blender as the Paint preset.
         // An unsaved mode receives a matching native Krita preset.
         if(!preset && slot==0 &&
            inCategory(resources()->currentPreset(),0))
             preset=resources()->currentPreset();
         if(!preset)preset=firstPresetFor(slot);
+        if(slot==2 && !preset)return;
         if(preset)setNativePreset(preset);
         setEraser(slot==1);
         m_slot=slot;
@@ -281,7 +312,8 @@ private:
         category->addItem(i18n("Painting"),0);
         category->addItem(i18n("Erasers"),1);
         category->addItem(i18n("Blending / Smudge"),2);
-        category->setCurrentIndex(slot+1);
+        category->setCurrentIndex(slot==2?3:0);
+        category->setVisible(slot!=2);
         layout->addWidget(category);
         auto *grid=new QListWidget(&dialog);
         grid->setViewMode(QListView::IconMode);
@@ -304,7 +336,7 @@ private:
         QList<KisPaintOpPresetSP> presets;
         // Filter native brush resources. Do not maintain an independent
         // preset catalog, duplicate assets or rewrite the paint engine.
-        auto refill=[this,grid,search,category,&presets]() {
+        auto refill=[this,grid,search,category,&presets,slot]() {
             grid->clear();presets.clear();
             const QString term=search->text().trimmed();
             const int mode=category->currentData().toInt();
@@ -313,6 +345,7 @@ private:
                 KisPaintOpPresetSP p=src->resourceForIndex(src->index(i,0))
                                      .dynamicCast<KisPaintOpPreset>();
                 if(!p || !p->valid() ||
+                   (slot==2 && !isSmudge(p)) ||
                    (mode>=0 && !inCategory(p,mode)) ||
                    (!term.isEmpty() &&
                     !p->name().contains(term,Qt::CaseInsensitive)))continue;
@@ -360,7 +393,7 @@ private:
     QWidget *m_controls=nullptr;
     QToolButton *m_detailToggle=nullptr;
     bool m_detailsExpanded=true;
-    KisDoubleSliderSpinBox *m_size=nullptr,*m_opacity=nullptr;
+    KisDoubleSliderSpinBox *m_size=nullptr,*m_opacity=nullptr,*m_flow=nullptr;
     KisResourceModel *m_model=nullptr;
     QTimer *m_refresh=nullptr;
     bool m_syncing=false,m_internalChange=false,m_hasSelectedMode=true;

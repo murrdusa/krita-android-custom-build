@@ -135,12 +135,15 @@ public:
         auto *saveAction=makeAction("Save");
         auto *saveAsAction=makeAction("Save As");
         auto *closeAction=makeAction("Close view");
-        auto *brushesAction=makeAction("Brushes");
+        auto *brushesAction=makeAction("Paint");
+        auto *eraserAction=makeAction("Erase");
+        auto *blendBrushAction=makeAction("Blend");
         auto *layersAction=makeAction("Layers");
         auto *colorAction=makeAction("Color");
         auto *toolsAction=makeAction("Tools");
         auto *optionsAction=makeAction("Tool Options");
         auto *commandsAction=makeAction("All Krita Commands");
+        auto *settingsAction=makeAction("Workspace Settings");
         const auto setStudioIcon=[](QAction *action,const char *name) {
             action->setIcon(QIcon(QStringLiteral(":/light_%1.svg")
                                   .arg(QString::fromLatin1(name))));
@@ -152,8 +155,8 @@ public:
         setStudioIcon(brushesAction,"krita_tool_freehand");
         setStudioIcon(layersAction,"all-layers");
         setStudioIcon(toolsAction,"tools-wizard");
-        auto *eraserAction=nativeBridge.action("erase_action");
-        if(eraserAction)setStudioIcon(eraserAction,"draw-eraser");
+        setStudioIcon(eraserAction,"draw-eraser");
+        setStudioIcon(blendBrushAction,"colorsmudge");
         if(auto *provider=nativeBridge.brushResources()) {
             const auto updateSwatch=[colorAction](const KoColor &foreground) {
                 QPixmap swatch(46,46);
@@ -178,7 +181,11 @@ public:
             if(enabled)workspace->hidePanels();
         });
         QObject::connect(brushesAction,&QAction::triggered,window,
-                         [workspace]() {workspace->toggleBrushes();});
+                         [workspace]() {workspace->toggleBrushes(0);});
+        QObject::connect(eraserAction,&QAction::triggered,window,
+                         [workspace]() {workspace->toggleBrushes(1);});
+        QObject::connect(blendBrushAction,&QAction::triggered,window,
+                         [workspace]() {workspace->toggleBrushes(2);});
         QObject::connect(layersAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleLayers();});
         QObject::connect(colorAction,&QAction::triggered,window,
@@ -189,6 +196,8 @@ public:
                          [workspace]() {workspace->toggleToolOptions();});
         QObject::connect(commandsAction,&QAction::triggered,window,
                          [workspace]() {workspace->browseCommands();});
+        QObject::connect(settingsAction,&QAction::triggered,window,
+                         [workspace]() {workspace->openSettings();});
         // Krita's selection manager already provides these native,
         // undoable actions. Expose them directly rather than inventing
         // mobile selection commands or simulating keyboard shortcuts.
@@ -319,13 +328,15 @@ public:
         if(!drawingMenu->isEmpty())
             moreActions.append(drawingMenu->menuAction());
         moreActions.append(commandsAction);
+        moreActions.append(settingsAction);
         moreActions.append(exitAction);
         // Avoid an overflow chevron hiding the primary drawing tools.
         // Less-common operations stay in an explicit, labeled menu.
         if(!MobileNativeCommandLayout::install(
             window,
             {canvasesAction,undoAction,redoAction,saveAction},
-            {brushesAction,eraserAction,colorAction,layersAction,toolsAction},
+            {brushesAction,eraserAction,blendBrushAction,
+             colorAction,layersAction,toolsAction},
             moreActions,canvasOnlyAction)) {
             qWarning() << "Independent Krita command layout unavailable";
         }

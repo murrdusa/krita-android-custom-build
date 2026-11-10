@@ -8,6 +8,10 @@
 #ifdef Q_OS_ANDROID
 
 #include <QFrame>
+#include <QDialog>
+#include <QGridLayout>
+#include <QSlider>
+#include <QScrollArea>
 #include <QMenu>
 #include <QInputDialog>
 #include <QFont>
@@ -415,6 +419,16 @@ public:
     // native-node signature prevents rebuilding the tree on every tick.
     // We never cache a duplicate document or layer model.
     std::function<void()> onRequestClose;
+    std::function<void()> onContentHeightChanged;
+    int contentHeight() const
+    {
+        int rows=0;
+        for(auto *item=m_tree->topLevelItem(0);item;item=m_tree->itemBelow(item))
+            rows+=item->sizeHint(0).height();
+        const QMargins margins=layout()->contentsMargins();
+        return layout()->sizeHint().height()-m_tree->sizeHint().height()+
+            qMax(24,rows)+m_tree->frameWidth()*2+margins.bottom();
+    }
     void refreshFromEngine()
     {
         if(!isVisible() || m_reorderPending || m_clipBusy ||
@@ -606,13 +620,105 @@ private:
             ungroup=menu.addAction(i18n("Ungroup"));
         menu.addSeparator();
         QAction *remove=menu.addAction(i18n("Delete layer"));
+        QAction *visibility=menu.addAction(node->visible()?i18n("Hide"):i18n("Show"));
+        QAction *lock=menu.addAction(node->userLocked()?i18n("Unlock"):i18n("Lock"));
+        QAction *clear=menu.addAction(i18n("Clear"));
+        clear->setEnabled(paint && node->isEditable());
+        QAction *select=menu.addAction(i18n("Select opaque"));
+        select->setEnabled(layer!=nullptr);
+        QAction *mask=menu.addAction(i18n("Add transparency mask"));
+        mask->setEnabled(layer && node->isEditable());
+        const auto validTarget=[this,node,originalImage]() {
+            return m_engine.manager() &&
+                   m_engine.manager()->image().toStrongRef()==originalImage &&
+                   inImage(node,originalImage);
+        };
+        QDialog sheet(this);
+        sheet.setWindowTitle(i18n("Layer options"));
+        sheet.setStyleSheet(QStringLiteral(
+            "QDialog{background:#252529;}"
+            "QLabel{color:#f4f4f5;font-size:15px;}"
+            "QPushButton{background:#34343a;color:#f4f4f5;border:1px solid #55555c;"
+            "border-radius:8px;padding:4px;min-height:44px;}"
+            "QPushButton:pressed{background:#51515a;}"
+            "QPushButton:disabled{color:#95959e;}"));
+        auto *outer=new QVBoxLayout(&sheet);
+        auto *scrollArea=new QScrollArea(&sheet);
+        scrollArea->setFrameShape(QFrame::NoFrame);
+        scrollArea->setWidgetResizable(true);
+        auto *body=new QWidget(scrollArea);
+        body->setObjectName(QStringLiteral("mobileLayerOptionsBody"));
+        body->setStyleSheet(QStringLiteral(
+            "QWidget#mobileLayerOptionsBody{background:#252529;}"));
+        auto *sheetLayout=new QVBoxLayout(body);
+        scrollArea->setWidget(body);
+        outer->addWidget(scrollArea);
+        QScroller::grabGesture(scrollArea->viewport(),QScroller::TouchGesture);
+        auto *title=new QLabel(node->name(),&sheet);
+        title->setAlignment(Qt::AlignCenter);
+        title->setWordWrap(true);
+        sheetLayout->addWidget(title);
+        QAction *chosen=nullptr;
+        const auto makeButton=[&](QAction *action,const QString &label) {
+            auto *button=new QPushButton(label,&sheet);
+            button->setEnabled(action->isEnabled());
+            connect(button,&QPushButton::clicked,&sheet,[&,action]() {
+                chosen=action;
+                sheet.accept();
+            });
+            return button;
+        };
+        sheetLayout->addWidget(makeButton(blendAction,i18n("Blending mode…")));
+        auto *opacityLabel=new QLabel(&sheet);
+        auto *opacitySlider=new QSlider(Qt::Horizontal,&sheet);
+        opacitySlider->setRange(0,100);
+        const int initialOpacity=(int(node->opacity())*100+127)/255;
+        opacitySlider->setValue(initialOpacity);
+        opacityLabel->setText(i18n("Opacity: %1%").arg(initialOpacity));
+        opacitySlider->setMinimumHeight(40);
+        connect(opacitySlider,&QSlider::valueChanged,&sheet,[opacityLabel](int value) {
+            opacityLabel->setText(i18n("Opacity: %1%").arg(value));
+        });
+        sheetLayout->addWidget(opacityLabel);
+        sheetLayout->addWidget(opacitySlider);
+        auto *grid=new QGridLayout;
+        const QList<QPair<QAction*,QString>> buttons{
+            {visibility,visibility->text()},{duplicate,i18n("Duplicate")},{clear,i18n("Clear")},
+            {lock,lock->text()},{merge,i18n("Merge")},{remove,i18n("Delete")},
+            {inheritAlpha,clipped?i18n("Unclip"):i18n("Clip")},
+            {select,i18n("Select")},{mask,i18n("Mask")}
+        };
+        for(int i=0;i<buttons.size();++i)
+            grid->addWidget(makeButton(buttons[i].first,buttons[i].second),i/3,i%3);
+        sheetLayout->addLayout(grid);
+        auto *footer=new QHBoxLayout;
+        auto *more=new QPushButton(i18n("More…"),&sheet);
+        connect(more,&QPushButton::clicked,&sheet,[&sheet]() {sheet.done(2);});
+        auto *done=new QPushButton(i18n("Done"),&sheet);
+        connect(done,&QPushButton::clicked,&sheet,&QDialog::accept);
+        footer->addWidget(more);
+        footer->addWidget(done);
+        outer->addLayout(footer);
+        sheet.resize(qMin(360,qMax(240,window()->width()-24)),
+                     qMin(430,qMax(200,window()->height()-48)));
         const QPoint point=m_tree->viewport()->mapToGlobal(
             m_tree->visualItemRect(item).bottomLeft());
-        QAction *chosen=menu.exec(point);
-        if(!chosen || !m_engine.manager() ||
-           m_engine.manager()->image().toStrongRef()!=originalImage ||
-           !inImage(node,originalImage))return;
-        if(chosen==rename) {
+        const int result=sheet.exec();
+        if(result==QDialog::Rejected || !validTarget())return;
+        if(opacitySlider->value()!=initialOpacity)
+            m->setNodeOpacity(node,(opacitySlider->value()*255+50)/100);
+        if(result==2)chosen=menu.exec(point);
+        if(!chosen || !validTarget())return;
+        if(chosen==visibility || chosen==lock) {
+            if(chosen==visibility)
+                setLayerProperty(node,KisLayerPropertiesIcons::visible,!node->visible());
+            else setLayerProperty(node,KisLayerPropertiesIcons::locked,!node->userLocked());
+        } else if(chosen==clear || chosen==select || chosen==mask) {
+            m_engine.selectLayer(node);
+            if(m_engine.manager()->activeNode()!=node)return;
+            if(chosen==mask)m->createNode(QStringLiteral("KisTransparencyMask"));
+            else m_engine.run(chosen==clear?"clear":"selectopaque");
+        } else if(chosen==rename) {
             bool ok=false;
             const QString next=QInputDialog::getText(
                 this,i18n("Rename layer"),i18n("Layer name"),
@@ -1322,9 +1428,7 @@ private:
             if(moved)QTimer::singleShot(0,this,[this,source,point]() {
                 moveCompactLayerAt(source,point);
             });
-            else if(source && m_active!=source) {
-                if(auto *item=itemForNode(source))tapLayer(source,item);
-            }
+            else openHeldLayer(source);
         }
     }
 
@@ -1524,9 +1628,7 @@ private:
                 if(moved)moveCompactLayerAt(source,last);
                 else if(!held) {
                     if(auto *item=itemForNode(source))tapLayer(source,item);
-                } else if(source!=m_active) {
-                    if(auto *item=itemForNode(source))tapLayer(source,item);
-                }
+                } else openHeldLayer(source);
             }
         }
         event->accept();
@@ -1664,6 +1766,14 @@ private:
             }
         }
         return QFrame::eventFilter(watched,event);
+    }
+
+    void openHeldLayer(KisNodeSP node)
+    {
+        QTimer::singleShot(0,this,[this,node]() {
+            if(isVisible() && !m_mouseDown && m_touches.isEmpty())
+                if(auto *item=itemForNode(node))showLayerActions(node,item);
+        });
     }
 
     void tapLayer(KisNodeSP node,QTreeWidgetItem *item)
@@ -2044,6 +2154,7 @@ private:
         updateRows();
         m_tree->verticalScrollBar()->setValue(scroll);
         m_signature=engineSignature();
+        if(onContentHeightChanged)onContentHeightChanged();
         QTimer::singleShot(0,this,[this]() {
             updateVisibleLayerThumbnails();
         });
