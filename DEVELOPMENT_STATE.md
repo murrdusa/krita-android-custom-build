@@ -70,7 +70,7 @@
 
 ## Test status
 
-- **Home recovery and folder management:** Recent and All Projects can browse and restore saved versions without opening the original canvas. The same picker serves the drawing menu and copies large snapshots off the UI thread. All Projects → Folders adds or removes Android folder grants. Removing a link leaves project files intact and is blocked while a drawing from that link is open. Fold 6 check: restore a closed project version from Home, verify Save As, and remove/re-add a folder containing a nested KRA.
+- **Home recovery and folder management (WSL Android build PASS at `488ff321a0f8146a2c1ca2abda1c6704c88aeee5`, 103.9 s):** Recent and All Projects can browse and restore saved versions without opening the original canvas. The same picker serves the drawing menu and copies large snapshots off the UI thread. All Projects → Folders adds or removes Android folder grants. Removing a link leaves project files intact and is blocked while a drawing from that link is open. Fold 6 check: restore a closed project version from Home, verify Save As, and remove/re-add a folder containing a nested KRA.
 
 
 - **Drawing resource controls (WSL Android build PASS at `750995ea86139dd6e0ac97d445c42e1e746e1c4b`, 106.7 s):** the Gradient and Fill strips now open touch dialogs for Krita's native gradients and patterns. Gradients keep their native editor. Patterns can be generated from the current canvas using Krita's native From Canvas controls. More → Drawing also exposes both pickers and the native Brush Editor, which can be pinned as the toolbar shortcut. Assistants expose available density, vertical, subdivision and guide-file controls in the strip. Fold 6 check: choose and edit a gradient, fill with a saved and a canvas-derived pattern, open Brush Editor, and import/export a set of guides.
@@ -128,7 +128,7 @@
 - **Native brush controls:** More → Drawing now exposes Krita's freehand brush smoothing modes and horizontal/vertical brush symmetry. The controls use the existing tool and paint toolbar actions. Fold 6 check: with Freehand Brush active, switch between Stabilizer and Disabled and verify Tool Options follows. Toggle each symmetry axis, draw mirrored strokes, and switch between canvases to check the axis state follows the document.
 
 - **Last Fold 6 test: PASS** for separate native APK target at `7cf81bffcf5b84f483d0d92112c13a1e80a9f352`: app launched without grey screen, stylus drawing and pressure worked, KRA save/reopen worked, Android file opening/sharing worked.
-- **Latest locally compiled and packaged Android source revision: `750995ea86139dd6e0ac97d445c42e1e746e1c4b`, SUCCESS**, confirmed by the local WSL2 watcher on Nov 10 at 1:13 p.m. ET. The Home and saved-version baseline `e551ee0` and the separate Transform increment `0668703` also passed. Fold 6 validation of Transform, Home and draft recovery remains pending.
+- **Latest locally compiled and packaged Android source revision: `488ff321a0f8146a2c1ca2abda1c6704c88aeee5`, SUCCESS**, confirmed by the local WSL2 watcher on Nov 10 at 1:21 p.m. ET. The Home and saved-version baseline `e551ee0` and the separate Transform increment `0668703` also passed. Fold 6 validation of Transform, Home and draft recovery remains pending.
 - Doc-only commits may not trigger another APK build. The compiled SHA above is the meaningful source baseline; always read the latest Issue #1 for newer work.
 
 ## Agreed product roadmap
