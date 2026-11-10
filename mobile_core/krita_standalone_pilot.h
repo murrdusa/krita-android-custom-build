@@ -155,7 +155,13 @@ public:
         for(const char *name : {"select_all","deselect","reselect",
                                 "invert_selection","edit_selection",
                                 "convert_to_vector_selection",
-                                "convert_to_raster_selection"}) {
+                                "convert_to_raster_selection",
+                                "selectopaque","selectopaque_add",
+                                "selectopaque_subtract",
+                                "selectopaque_intersect",
+                                "colorrange","featherselection",
+                                "growselection","shrinkselection",
+                                "borderselection","smoothselection"}) {
             if(QAction *action=nativeBridge.action(name))
                 selectionMenu->addAction(action);
         }
@@ -212,6 +218,37 @@ public:
             "view_snap_bounding_box",
             "view_snap_image_bounds",
             "view_snap_image_center"
+        });
+        // These commands manipulate Krita's current view/document,
+        // never the mobile QWidget or its GL surface directly.
+        // Actions absent from the standalone native registry are
+        // intentionally hidden rather than replaced by shortcuts.
+        addDrawingGroup("Canvas view",{
+            "view_zoom_in",
+            "view_zoom_out",
+            "zoom_to_100pct",
+            "zoom_to_fit",
+            "rotate_canvas_left",
+            "rotate_canvas_right",
+            "reset_canvas_rotation",
+            "mirror_canvas",
+            "reset_display"
+        });
+        addDrawingGroup("Image and layer transforms",{
+            "imagesize",
+            "canvassize",
+            "rotateimage",
+            "rotateImageCW90",
+            "rotateImageCCW90",
+            "mirrorImageHorizontal",
+            "mirrorImageVertical",
+            "layersize",
+            "rotatelayer",
+            "rotateLayerCW90",
+            "rotateLayerCCW90",
+            "mirrorNodeX",
+            "mirrorNodeY",
+            "offsetlayer"
         });
         QList<QAction*> moreActions{
             newAction,openAction,previousAction,nextAction,
