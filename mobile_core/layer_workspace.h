@@ -1302,7 +1302,8 @@ private:
         auto *widget=qobject_cast<QWidget*>(watched);
         const bool relevant=widget &&
             (widget==m_tree->viewport() ||
-             m_rowButtons.contains(qobject_cast<QToolButton*>(widget)));
+             m_rowButtons.contains(qobject_cast<QToolButton*>(widget)) ||
+             m_rowFrames.contains(qobject_cast<QFrame*>(widget)));
         if(!relevant && m_touches.isEmpty())return false;
         if(type==QEvent::TouchCancel) {
             m_touchHoldTimer->stop();
@@ -1431,7 +1432,41 @@ private:
         if(m_clipBusy || m_reorderPending)
             return QFrame::eventFilter(watched,event);
         auto *tile=qobject_cast<QToolButton*>(watched);
-        const int index=tile?m_rowButtons.indexOf(tile):-1;
+        auto *frame=qobject_cast<QFrame*>(watched);
+        int index=tile?m_rowButtons.indexOf(tile):-1;
+        if(index<0 && frame)index=m_rowFrames.indexOf(frame);
+        // Native Android input may retarget mouse-move/release events
+        // as the pen/finger crosses other layer widgets. The temporary
+        // application event filter installed at press must follow the
+        // whole gesture, rather than requiring watched==m_mouseTile.
+        if(m_mouseDown && m_touches.isEmpty() &&
+           (type==QEvent::MouseMove ||
+            type==QEvent::MouseButtonRelease)) {
+            auto *mouse=static_cast<QMouseEvent*>(event);
+            updateMouseLayer(mouse->globalPos());
+            if(type==QEvent::MouseButtonRelease && m_mouseHeld) {
+                finishMouseLayer();
+                return true; // No synthetic click after a reorder.
+            }
+        }
+        // Every part of a thumbnail row is a drag handle, not just
+        // the small image button. Keep inline eye/lock buttons separate.
+        if(frame && index>=0 && type==QEvent::MouseButtonPress) {
+            auto *mouse=static_cast<QMouseEvent*>(event);
+            if(mouse->button()==Qt::LeftButton) {
+                armMouseLayer(m_nodes.value(index),
+                              m_rowButtons.value(index),mouse->globalPos());
+                return true;
+            }
+        }
+        if(frame && index>=0 && type==QEvent::MouseButtonRelease &&
+           m_mouseDown && !m_mouseHeld) {
+            const KisNodeSP pressed=m_mouseNode;
+            finishMouseLayer();
+            if(auto *item=itemForNode(pressed))
+                tapLayer(pressed,item);
+            return true;
+        }
         if(index>=0 && type==QEvent::TabletPress) {
             auto *pen=static_cast<QTabletEvent*>(event);
             m_penTracking=true;
@@ -1459,11 +1494,6 @@ private:
                 }
                 return true;
             }
-        }
-        if(m_mouseNode && tile==m_mouseTile &&
-           type==QEvent::MouseMove) {
-            updateMouseLayer(
-                static_cast<QMouseEvent*>(event)->globalPos());
         }
         return QFrame::eventFilter(watched,event);
     }
@@ -1601,6 +1631,8 @@ private:
         auto *frame=new QFrame(m_tree);
         frame->setObjectName(QStringLiteral("mobileLayerTileRow"));
         frame->setFixedHeight(rowHeight);
+        frame->setAttribute(Qt::WA_AcceptTouchEvents,true);
+        frame->installEventFilter(this);
         auto *tile=new QToolButton(frame);
         tile->setGeometry(clipped?8:4,3,tileSize-(clipped?5:0),tileHeight);
         tile->setToolButtonStyle(group||mask?
