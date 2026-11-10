@@ -841,6 +841,23 @@ private:
             callback();
         });
     }
+    // Small, distinguishable labels for masks in the narrow rail.
+    // Ordinary layers have image thumbnails, whereas masks otherwise
+    // looked like generic empty grey tiles with no visible type.
+    static QString maskKind(KisNodeSP node)
+    {
+        if(!node)return QString();
+        if(node->inherits("KisTransparencyMask"))return i18n("ALPHA");
+        if(node->inherits("KisFilterMask"))return i18n("FILTER");
+        if(node->inherits("KisTransformMask"))return i18n("XFORM");
+        if(node->inherits("KisSelectionMask"))return i18n("SELECT");
+        if(node->inherits("KisColorizeMask"))return i18n("COLOR");
+        if(node->inherits("FastColorOverlayFilterMask") ||
+           node->inherits("KisFastColorOverlayFilterMask"))
+            return i18n("OVERLAY");
+        return i18n("MASK");
+    }
+
     static bool isCompactClipWrapper(KisNodeSP node)
     {
         return node && node->inherits("KisGroupLayer") &&
@@ -1694,6 +1711,7 @@ private:
             const bool highlighted=m_selected.contains(node);
             const bool active=m_active==node;
             const bool group=node->inherits("KisGroupLayer");
+            const bool mask=node->inherits("KisMask");
             const bool clipped=inheritsAlpha(node);
             const bool clipBase=node->nextSibling() &&
                 inheritsAlpha(node->nextSibling());
@@ -1701,8 +1719,8 @@ private:
                 highlighted?QColor(43,82,114):
                 group?QColor(37,66,83):QColor(42,55,68);
             if(QFrame *frame=m_rowFrames.value(i).data()) {
-                const QString edge=(clipped||clipBase)?
-                    QStringLiteral("#46b5a5"):
+                const QString edge=mask?QStringLiteral("#f0b96c"):
+                    (clipped||clipBase)?QStringLiteral("#46b5a5"):
                     group?QStringLiteral("#74acda"):
                     m_rowDepths.value(i)>0?QStringLiteral("#607c92"):
                                         QStringLiteral("#536879");
@@ -1712,14 +1730,30 @@ private:
                     .arg(background.name()).arg(clipped?7:4).arg(edge));
             }
             if(QToolButton *thumb=m_rowButtons.value(i).data()) {
-                thumb->setStyleSheet(active?
-                    "QToolButton{background:#808b97;color:white;"
-                    "border:3px solid #ec7683;border-radius:5px;}":
-                    highlighted?
-                    "QToolButton{background:#697d90;color:white;"
-                    "border:3px solid #7fc3eb;border-radius:5px;}":
-                    "QToolButton{background:#6a7480;color:white;"
-                    "border:2px solid #8a9dac;border-radius:5px;}");
+                if(mask) {
+                    // Type text is deliberately visible rather than an
+                    // unloaded thumbnail; preserve selection highlights.
+                    thumb->setStyleSheet(active?
+                        "QToolButton{background:#795737;color:#fff5dc;"
+                        "border:3px solid #ec7683;border-radius:5px;"
+                        "font-size:10px;font-weight:bold;}":
+                        highlighted?
+                        "QToolButton{background:#795737;color:#fff5dc;"
+                        "border:3px solid #7fc3eb;border-radius:5px;"
+                        "font-size:10px;font-weight:bold;}":
+                        "QToolButton{background:#5c4736;color:#fff5dc;"
+                        "border:2px solid #e7ad67;border-radius:5px;"
+                        "font-size:10px;font-weight:bold;}");
+                } else {
+                    thumb->setStyleSheet(active?
+                        "QToolButton{background:#808b97;color:white;"
+                        "border:3px solid #ec7683;border-radius:5px;}":
+                        highlighted?
+                        "QToolButton{background:#697d90;color:white;"
+                        "border:3px solid #7fc3eb;border-radius:5px;}":
+                        "QToolButton{background:#6a7480;color:white;"
+                        "border:2px solid #8a9dac;border-radius:5px;}");
+                }
             }
             item->setToolTip(0,active?i18n("Tap again for layer options"):
                 highlighted?i18n("Included in multi-selection"):
@@ -1778,9 +1812,12 @@ private:
         tile->setGeometry(clipped?8:4,3,tileSize-(clipped?5:0),tileHeight);
         tile->setToolButtonStyle(group||mask?
             Qt::ToolButtonTextOnly:Qt::ToolButtonIconOnly);
-        tile->setText(group?QStringLiteral("▣"):mask?
-                      QStringLiteral("M"):QStringLiteral("▧"));
-        tile->setToolTip(node->name()+QStringLiteral(
+        tile->setText(group?QStringLiteral("▣"):
+                      mask?maskKind(node):QStringLiteral("▧"));
+        tile->setToolTip((mask && node->parent()?
+            i18n("%1 — mask attached to %2").arg(node->name(),
+                                                   node->parent()->name()):
+            node->name()) + QStringLiteral(
             "\nTap: select; tap again: layer options"));
         tile->setIconSize(QSize(tileSize-13,tileSize-13));
         tile->setAttribute(Qt::WA_AcceptTouchEvents,true);
@@ -1854,11 +1891,13 @@ private:
         }
         if(mask || clipped) {
             auto *marker=new QLabel(frame);
-            marker->setGeometry(tile->x()+2,tileHeight-19,28,20);
-            marker->setText(clipped?QStringLiteral("↳α"):
-                                   QStringLiteral("M"));
+            marker->setGeometry(tile->x()+2,tileHeight-19,
+                                mask?45:28,19);
+            marker->setText(mask?i18n("MASK"):QStringLiteral("↳α"));
             marker->setAlignment(Qt::AlignCenter);
-            marker->setStyleSheet(
+            marker->setStyleSheet(mask?
+                "QLabel{background:#b87939;color:#ffffff;"
+                "border-radius:4px;font-weight:bold;font-size:10px;}":
                 "QLabel{background:#275b73;color:#f0faff;"
                 "border-radius:4px;font-weight:bold;}");
             marker->setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -1938,15 +1977,18 @@ private:
                 if(parentItem)parentItem->addChild(item);
                 else m_tree->addTopLevelItem(item);
                 m_items.append(item);
-                item->setExpanded(hadPreviousTree ?
-                                  expanded.contains(node.data()) :
-                                  !node->collapsed());
+                // A paint layer's children are attached masks. Unlike
+                // groups, paint layers have no disclosure arrow in the
+                // compact rail; keep those masks visible immediately.
+                const bool showAttachedMasks=node->childCount()>0 &&
+                    !node->inherits("KisGroupLayer");
+                const bool expandedByUser=hadPreviousTree ?
+                    expanded.contains(node.data()):!node->collapsed();
+                item->setExpanded(showAttachedMasks || expandedByUser);
                 makeLayerRow(item,node,depth);
                 if(node->childCount()>0) {
                     visit(node,item,depth+1);
-                    item->setExpanded(hadPreviousTree ?
-                                      expanded.contains(node.data()) :
-                                      !node->collapsed());
+                    item->setExpanded(showAttachedMasks || expandedByUser);
                 }
             }
         };
