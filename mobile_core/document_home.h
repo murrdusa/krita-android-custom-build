@@ -182,6 +182,11 @@ public:
         // The thumb file's mtime is set to match the project's mtime.
         // If they differ, the thumb is stale.
         if(modified>0 && ti.lastModified().toMSecsSinceEpoch()!=modified)return {};
+        // Android SAF providers sometimes report no modification time.
+        // Give those thumbnail entries a finite lifetime rather than
+        // showing an obsolete picture forever.
+        if(modified==0 && ti.lastModified().secsTo(
+                QDateTime::currentDateTime())>30*60)return {};
         QImageReader reader(tp,"png");
         return reader.read();
     }
@@ -740,6 +745,8 @@ private:
     void showList(Mode mode,bool forceScan=false)
     {
         m_mode=mode;
+        m_forceThumbnailRefresh=forceScan;
+        if(forceScan)m_cache.clear();
         m_recent->setChecked(mode==Recent);
         m_library->setChecked(mode==AllProjects);
         m_open->setChecked(mode==OpenCanvases);
@@ -1075,9 +1082,14 @@ private:
             --budget;
             QPointer<MobileDocumentHome> home(this);
             const quint64 generation=m_previewGeneration;
-            m_thumbnails.start([home,path,modified,generation]() {
+            const bool refresh=m_forceThumbnailRefresh;
+            m_thumbnails.start([home,path,modified,generation,refresh]() {
                 // Even cached PNG decoding belongs off the touch/UI thread.
-                QImage image=MobileProjectIndex::loadThumb(path,modified);
+                // Explicit Refresh always reopens the project rather than
+                // reusing the previous disk cache (important for SAF URIs
+                // with unknown modification timestamps).
+                QImage image=refresh?QImage():
+                    MobileProjectIndex::loadThumb(path,modified);
                 if(image.isNull()) {
                     image=preview(path);
                     // Persist to disk so next launch avoids opening KRA.
@@ -1119,6 +1131,7 @@ private:
     bool m_sortByName=false;
     bool m_restoringVersion=false;
     bool m_thumbnailScheduled=false;
+    bool m_forceThumbnailRefresh=false;
     int m_scanGeneration=0;
     std::shared_ptr<std::atomic_bool> m_scanCancel;
     QThreadPool m_scanner,m_thumbnails;
