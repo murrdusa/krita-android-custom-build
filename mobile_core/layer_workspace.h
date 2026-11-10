@@ -550,7 +550,9 @@ private:
     void showLayerActions(KisNodeSP node,QTreeWidgetItem *item)
     {
         auto *m=manager();
-        if(!m || !node || !node->parent() || !item)return;
+        auto *view=m_engine.manager();
+        const KisImageSP originalImage=view?view->image().toStrongRef():KisImageSP();
+        if(!m || !inImage(node,originalImage) || !item)return;
         QMenu menu(this);
         menu.setStyleSheet(
             "QMenu{background:#2c4051;color:#f4f9fe;"
@@ -571,8 +573,10 @@ private:
         alphaLock->setEnabled(paint!=nullptr);
         QAction *inheritAlpha=menu.addAction(i18n("Clip to layer below"));
         inheritAlpha->setCheckable(true);
-        inheritAlpha->setChecked(layer && layer->alphaChannelDisabled());
-        inheritAlpha->setEnabled(layer!=nullptr);
+        // alphaChannelDisabled is unrelated to inherit-alpha clipping.
+        // Match the actual property used by the compact clip engine.
+        inheritAlpha->setChecked(inheritsAlpha(node));
+        inheritAlpha->setEnabled(layer && !node->inherits("KisGroupLayer"));
         QAction *properties=menu.addAction(i18n("Layer properties"));
         menu.addSeparator();
         QAction *duplicate=menu.addAction(i18n("Duplicate"));
@@ -585,9 +589,6 @@ private:
         flatten->setEnabled(m_engine.canRun("flatten_layer"));
         menu.addSeparator();
         QAction *group=menu.addAction(i18n("Group selection"));
-        QAction *clipping=menu.addAction(
-            inheritsAlpha(node)?i18n("Remove clipping"):
-                                i18n("Clip to layer below"));
         QAction *ungroup=nullptr;
         if(node->inherits("KisGroupLayer"))
             ungroup=menu.addAction(i18n("Ungroup"));
@@ -596,7 +597,9 @@ private:
         const QPoint point=m_tree->viewport()->mapToGlobal(
             m_tree->visualItemRect(item).bottomLeft());
         QAction *chosen=menu.exec(point);
-        if(!chosen || !node || !node->parent())return;
+        if(!chosen || !m_engine.manager() ||
+           m_engine.manager()->image().toStrongRef()!=originalImage ||
+           !inImage(node,originalImage))return;
         if(chosen==rename) {
             bool ok=false;
             const QString next=QInputDialog::getText(
@@ -733,9 +736,6 @@ private:
                 qWarning() << "Mobile Studio: Krita layer operation unavailable";
         } else if(chosen==group) {
             m->createQuickGroup();
-        } else if(chosen==clipping) {
-            setCompactClip(node,!inheritsAlpha(node));
-            return;
         } else if(chosen==ungroup) {
             m_engine.selectLayer(node);
             m->quickUngroup();
@@ -801,9 +801,7 @@ private:
         auto *view=m_engine.manager();
         KisImageSP image=view?view->image().toStrongRef():KisImageSP();
         if(!image || !node || !node->parent())return false;
-        KisNodeSP root=node;
-        while(root && root!=image->root())root=root->parent();
-        if(root!=image->root())return false;
+        if(!inImage(node,image))return false;
         KisLayerPropertiesIcons::setNodePropertyAutoUndo(node,id,enabled,image);
         return true;
     }
@@ -844,6 +842,14 @@ private:
                 node,KisLayerPropertiesIcons::inheritAlpha,false).toBool();
     }
 
+    static bool inImage(KisNodeSP node,const KisImageSP &image)
+    {
+        if(!node || !image || !image->root())return false;
+        for(KisNodeSP ancestor=node;ancestor;ancestor=ancestor->parent())
+            if(ancestor==image->root())return true;
+        return false;
+    }
+
     static KisNodeSP logicalParent(KisNodeSP node)
     {
         if(!node)return KisNodeSP();
@@ -868,7 +874,10 @@ private:
     // "[Compact Clip]" wrappers in the tile display.
     void setCompactClip(KisNodeSP node,bool on)
     {
-        if(m_clipBusy || !node || !node->inherits("KisLayer") ||
+        const auto *view=m_engine.manager();
+        const KisImageSP image=view?view->image().toStrongRef():KisImageSP();
+        if(m_clipBusy || m_reorderPending ||
+           !inImage(node,image) || !node->inherits("KisLayer") ||
            node->inherits("KisGroupLayer") || inheritsAlpha(node)==on)
             return;
         KisNodeSP parent=logicalParent(node);
@@ -1085,8 +1094,10 @@ private:
     {
         auto *m=manager();
         auto *vm=m_engine.manager();
+        const KisImageSP image=vm?vm->image().toStrongRef():KisImageSP();
         if(m_clipBusy || m_reorderPending || !m || !vm ||
-           !source || !target || source==target)return;
+           !inImage(source,image) || !inImage(target,image) ||
+           source==target)return;
         KisNodeSP oldParent=logicalParent(source);
         KisNodeSP destination=intoGroup?target:logicalParent(target);
         if(!oldParent || !destination || !source->parent() ||
@@ -1248,7 +1259,9 @@ private:
     void groupPinchedTiles(KisNodeSP a,KisNodeSP b)
     {
         auto *m=manager();
-        if(!m || !a || !b || a==b ||
+        auto *view=m_engine.manager();
+        const KisImageSP image=view?view->image().toStrongRef():KisImageSP();
+        if(!m || !inImage(a,image) || !inImage(b,image) || a==b ||
            a->parent()!=b->parent() ||
            isCompactClipWrapper(a->parent()))return;
         KisNodeSP parent=a->parent();
