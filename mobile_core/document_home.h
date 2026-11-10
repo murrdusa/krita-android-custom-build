@@ -190,6 +190,7 @@ public:
         connect(m_drafts,&QPushButton::clicked,this,
                 [this]() {showList(RecoveryDrafts);});
         connect(m_refresh,&QPushButton::clicked,this,[this]() {
+            m_cache.clear();
             showList(m_mode);
         });
         connect(m_sort,&QPushButton::clicked,this,[this]() {
@@ -615,6 +616,8 @@ private:
         m_list->clear();
         m_views.clear();
         m_seen.clear();
+        ++m_previewGeneration;
+        m_thumbnails.clear();
         m_pending.clear();
         m_attempted.clear();
         if(m_scanCancel)m_scanCancel->store(true);
@@ -635,7 +638,9 @@ private:
                     it->m_url.toLocalFile():it->m_url.toString();
                 const QString name=it->m_displayName.isEmpty()?
                     QFileInfo(path).fileName():it->m_displayName;
-                addProject({path,name,0,{}});
+                const qint64 modified=it->m_url.isLocalFile()?
+                    QFileInfo(path).lastModified().toMSecsSinceEpoch():0;
+                addProject({path,name,modified,{}});
             }
         } else if(mode==RecoveryDrafts) {
             m_message->setText(i18n("Recovered drafts open as unsaved drawings."));
@@ -671,8 +676,12 @@ private:
         item->setData(Qt::UserRole+2,location);
         item->setToolTip(location);
         filterItem(item,m_search->text().trimmed());
-        const auto cached=m_cache.constFind(project.path);
-        if(cached!=m_cache.cend())item->setIcon(cached.value());
+        const auto cached=m_cache.find(project.path);
+        if(cached!=m_cache.end()) {
+            if(project.timestamp>0 && cached->modified!=project.timestamp)
+                m_cache.erase(cached);
+            else item->setIcon(cached->icon);
+        }
     }
 
     void startScan(bool fullAccess)
@@ -827,17 +836,19 @@ private:
             m_pending.insert(path);
             --budget;
             QPointer<MobileDocumentHome> home(this);
-            m_thumbnails.start([home,path]() {
+            const qint64 modified=item->data(Qt::UserRole+1).toLongLong();
+            const quint64 generation=m_previewGeneration;
+            m_thumbnails.start([home,path,modified,generation]() {
                 const QImage image=preview(path);
-                QMetaObject::invokeMethod(qApp,[home,path,image]() {
-                    if(!home)return;
+                QMetaObject::invokeMethod(qApp,[home,path,image,modified,generation]() {
+                    if(!home || generation!=home->m_previewGeneration)return;
                     home->m_pending.remove(path);
                     home->m_attempted.insert(path);
                     if(!image.isNull()) {
                         if(home->m_cache.size()>=96)home->m_cache.erase(
                             home->m_cache.begin());
                         const QIcon icon(QPixmap::fromImage(image));
-                        home->m_cache.insert(path,icon);
+                        home->m_cache.insert(path,{icon,modified});
                         for(int j=0;j<home->m_list->count();++j) {
                             auto *item=home->m_list->item(j);
                             if(item->data(Qt::UserRole).toString()==path)
@@ -869,6 +880,8 @@ private:
     QThreadPool m_scanner,m_thumbnails;
     QVector<QPointer<QObject>> m_views;
     QSet<QString> m_seen,m_pending,m_attempted;
-    QHash<QString,QIcon> m_cache;
+    struct CachedPreview {QIcon icon; qint64 modified=0;};
+    QHash<QString,CachedPreview> m_cache;
+    quint64 m_previewGeneration=0;
 };
 #endif

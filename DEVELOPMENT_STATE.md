@@ -2,6 +2,13 @@
 
 **Read [AGENTS.md](AGENTS.md) first.** Source of truth is current GitHub `main` plus [PC watcher Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1), not the chat. Check commit SHAs before making claims about a build.
 
+## Resume here
+
+- Start from GitHub `main` with a clean checkout. The WSL2 watcher already runs in `/home/pokem/krita-tablet-customizations`. Its `.build-watcher/status.json` and `.build-watcher/logs/` are the authoritative local results when Issue #1 still shows an older revision. Match the exact source SHA. Push one batch to trigger the watcher and leave APK publishing paused.
+- Home, linked Android folders, and saved versions are in `mobile_core/document_home.h`. `apply_mobile_shell.py` generates the Java Storage Access Framework bridge. Home now invalidates stale thumbnails when modification times change or Refresh is tapped, and drops thumbnail results from a previous view.
+- The latest Fold 6 batch still needs a device pass. Prioritize compact Transform Free → Perspective → Warp, slow finger strokes with pressure on/off, adding a missing-project folder, restoring a closed project's history, and background recovery of two dirty canvases.
+- Next code task if device feedback is unavailable: keep one saved-version identity when the same Android document is opened via a tree grant or directly through Browse Files. Preserve existing version folders and verify with the Qt archive test. The native engine already backs filters, tiling, gradients, patterns, and painting assistants. Keep new UI changes touch-first and use existing Krita operations.
+
 ## Verified milestones
 
 - **Separate Android application:** native CMake target `mobile_studio` has its own generated `krita/mobile_studio_main.cc`. Qt Android loads `libmobile_studio.so`; manifest's `android.app.lib_name` and `mobile_studio_build_apk` packaging directory match. APK ID is `org.krita.mobilestudio.debug`, label Krita Mobile Studio, separate from Krita. The upstream desktop `krita/main.cc` is not modified.
