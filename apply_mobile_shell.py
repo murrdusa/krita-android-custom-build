@@ -297,13 +297,13 @@ KisMainWindow * KisView::mainWindow() const''',
            "Krita native view count")
     mc=one(mc,
            '    bool toggled = actionCollection()->action("view_show_canvas_only")->isChecked();',
-           '''    // In the standalone QMainWindow, the desktop canvas-only
-    // toggle action may not exist. Never crash while activating
-    // the very first real KisView.
-    QAction *canvasOnlyAction=actionCollection()?
-        actionCollection()->action("view_show_canvas_only"):nullptr;
-    bool toggled=canvasOnlyAction && canvasOnlyAction->isChecked();''',
-           "Native KisViewManager missing desktop canvas-only action")
+           """    if (!mainWindow()) {
+        d->currentImageView->canvasController()->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        d->currentImageView->canvasController()->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        return;
+    }
+    bool toggled = actionCollection()->action("view_show_canvas_only")->isChecked();""",
+           "Hide canvas scrollbars in Studio")
     # Keep diagnostic checkpoints inside KisViewManager as well as the
     # launcher. A crash in any of these initialization stages should not
     # require Android logcat to distinguish from the earlier null statusbar.
@@ -1227,6 +1227,14 @@ install(FILES org.kde.krita.desktop''',
     transform=one(transform,"    KisStrokeId m_strokeId;",
                   "    KisStrokeId m_strokeId;\n    std::optional<ToolTransformArgs::TransformMode> m_pendingTransformMode;",
                   "pending Transform mode field")
+    transform=one(transform,"    void setNextActivationTransformMode(TransformToolMode mode);",
+                  """    void setNextActivationTransformMode(TransformToolMode mode);
+    Q_INVOKABLE bool mobileCanRetargetLayers() const;
+    Q_INVOKABLE void mobileRetargetLayers();""",
+                  "Studio Transform retarget API")
+    transform=one(transform,"    KisStrokeId m_strokeId;",
+                  """    ToolTransformArgs::TransformMode m_mobileStrokeMode = ToolTransformArgs::FREE_TRANSFORM;
+    KisStrokeId m_strokeId;""","remember Transform mode during stroke initialization")
     transform_header.write_text(transform,encoding="utf-8")
 
     transform_source=transform_dir/"kis_tool_transform.cc"
@@ -1236,7 +1244,8 @@ install(FILES org.kde.krita.desktop''',
         "allow replacing a queued Transform mode")
     transform=one(transform,
         "    ToolTransformArgs *config = m_transaction.currentConfig();\n    const ToolTransformArgs::TransformMode previousMode",
-        """    // Initial stroke setup runs on the image worker. Its result would
+        """    m_mobileStrokeMode = mode;
+    // Initial stroke setup runs on the image worker. Its result would
     // replace any mode written before the transaction has arrived.
     if (m_strokeId && m_transaction.rootNodes().isEmpty()) {
         m_pendingTransformMode = mode;
@@ -1260,6 +1269,27 @@ install(FILES org.kde.krita.desktop''',
         anchor=f"void KisToolTransform::{method}()\n{{"
         transform=one(transform,anchor,anchor+"\n    m_pendingTransformMode.reset();",
                       f"clear queued Transform mode on {method}")
+    transform=one(transform,
+        "void KisToolTransform::startStroke(ToolTransformArgs::TransformMode mode, bool forceReset)\n{",
+        """void KisToolTransform::startStroke(ToolTransformArgs::TransformMode mode, bool forceReset)
+{
+    m_mobileStrokeMode = mode;""","capture initial Transform mode for retarget")
+    transform=one(transform,"void KisToolTransform::slotRestartTransform()",
+        """bool KisToolTransform::mobileCanRetargetLayers() const
+{
+    return mode() == HOVER_MODE && (!m_strokeId || m_currentArgs.isIdentity());
+}
+
+void KisToolTransform::mobileRetargetLayers()
+{
+    if (!mobileCanRetargetLayers()) return;
+    const auto requestedMode = m_pendingTransformMode.value_or(
+        m_transaction.rootNodes().isEmpty() ? m_mobileStrokeMode : m_currentArgs.mode());
+    cancelStroke();
+    if (!selectedNodes().isEmpty()) startStroke(requestedMode, true);
+}
+
+void KisToolTransform::slotRestartTransform()""","retarget only an untouched Transform stroke")
     transform_source.write_text(transform,encoding="utf-8")
     draft_document_file=root/"libs/ui/KisDocument.cpp"
     draft_document=draft_document_file.read_text(encoding="utf-8")

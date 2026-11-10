@@ -125,6 +125,7 @@ private:
             "QToolButton{background:transparent;color:#f4f4f5;border:0;"
             "border-radius:8px;padding:0;}"
             "QToolButton:pressed,QToolButton:checked{background:#484850;}"
+            "QToolButton[mobileBrushMode=\"true\"]:checked{background:#316e88;}"
             "QToolButton:disabled{color:#9a9aa2;}"
             "QToolButton::menu-indicator{image:none;width:0;}"));
         auto *row=new QHBoxLayout(frame);
@@ -133,6 +134,8 @@ private:
         for(QAction *action:actions) {
             if(!action)continue;
             auto *button=new QToolButton(frame);
+            if(action->property("mobileBrushMode").toBool())
+                button->setProperty("mobileBrushMode",true);
             button->setDefaultAction(action);
             button->setAccessibleName(action->text());
             QObject::connect(action,&QAction::changed,button,[action,button]() {

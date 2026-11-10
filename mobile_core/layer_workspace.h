@@ -9,6 +9,9 @@
 
 #include <QFrame>
 #include <QDialog>
+#include <QDialogButtonBox>
+#include <QListWidget>
+#include <KoCanvasController.h>
 #include <QGridLayout>
 #include <QSlider>
 #include <QScrollArea>
@@ -52,6 +55,7 @@
 #include <functional>
 
 #include "engine_bridge.h"
+#include "kis_canvas2.h"
 #include "native_layer_reorder_policy.h"
 #include <QSettings>
 #include <chrono>
@@ -413,6 +417,20 @@ public:
         return layout()->sizeHint().height()-m_tree->sizeHint().height()+
             qMax(24,rows)+m_tree->frameWidth()*2+margins.bottom();
     }
+    void syncSelectionContext()
+    {
+        auto *m=manager();
+        if(m && !allowsMultiple()) {
+            const KisNodeSP active=m->activeNode();
+            if(active && !KisNodeManager::isNodeHidden(active,true) &&
+               m->selectedNodes()!=KisNodeList{active}) {
+                m_active=active;
+                m_selected=KisNodeList{active};
+                m->slotSetSelectedNodes(m_selected);
+            }
+        }
+        if(isVisible())refreshNow();
+    }
     void refreshFromEngine()
     {
         if(!isVisible() || m_reorderPending || m_clipBusy ||
@@ -598,10 +616,7 @@ private:
         QAction *flatten=menu.addAction(i18n("Flatten layer to paint"));
         flatten->setEnabled(m_engine.canRun("flatten_layer"));
         menu.addSeparator();
-        QAction *group=menu.addAction(i18n("Group selection"));
-        const bool selectingMultiple=m_multiImage.toStrongRef()==originalImage;
-        QAction *multi=menu.addAction(selectingMultiple?
-            i18n("Return to single selection"):i18n("Select multiple layers"));
+        QAction *group=menu.addAction(i18n("Group layers…"));
         QAction *ungroup=nullptr;
         if(node->inherits("KisGroupLayer"))
             ungroup=menu.addAction(i18n("Ungroup"));
@@ -678,7 +693,6 @@ private:
         for(int i=0;i<buttons.size();++i)
             grid->addWidget(makeButton(buttons[i].first,buttons[i].second),i/3,i%3);
         sheetLayout->addLayout(grid);
-        sheetLayout->addWidget(makeButton(multi,multi->text()));
         auto *footer=new QHBoxLayout;
         auto *more=new QPushButton(i18n("More…"),&sheet);
         connect(more,&QPushButton::clicked,&sheet,[&sheet]() {sheet.done(2);});
@@ -697,13 +711,7 @@ private:
             m->setNodeOpacity(node,(opacitySlider->value()*255+50)/100);
         if(result==2)chosen=menu.exec(point);
         if(!chosen || !validTarget())return;
-        if(chosen==multi) {
-            m_multiImage=selectingMultiple?KisImageWSP():KisImageWSP(originalImage);
-            m_active=node;
-            m_selected=KisNodeList{node};
-            applySelection();
-            return;
-        } else if(chosen==visibility || chosen==lock) {
+        if(chosen==visibility || chosen==lock) {
             if(chosen==visibility)
                 setLayerProperty(node,KisLayerPropertiesIcons::visible,!node->visible());
             else setLayerProperty(node,KisLayerPropertiesIcons::locked,!node->userLocked());
@@ -847,7 +855,7 @@ private:
             if(!m_engine.run(chosen==merge?"merge_layer":"flatten_layer"))
                 qWarning() << "Mobile Studio: Krita layer operation unavailable";
         } else if(chosen==group) {
-            m->createQuickGroup();
+            chooseGroupLayers(node,originalImage);
         } else if(chosen==ungroup) {
             m_engine.selectLayer(node);
             m->quickUngroup();
@@ -1770,27 +1778,108 @@ private:
         });
     }
 
+    bool allowsMultiple() const
+    {
+        const QString tool=m_engine.activeTool();
+        return tool==QStringLiteral("KisToolTransform") ||
+               tool==QStringLiteral("KritaTransform/KisToolMove");
+    }
+
+    KoToolBase *activeTransform() const
+    {
+        auto *tools=KoToolManager::instance();
+        auto *controller=tools?tools->activeCanvasController():nullptr;
+        auto *view=m_engine.manager();
+        if(!controller || !view || controller->canvas()!=view->canvasBase() ||
+           tools->activeToolId()!=QStringLiteral("KisToolTransform"))return nullptr;
+        return tools->toolById(controller->canvas(),tools->activeToolId());
+    }
+
+    bool canRetarget(KoToolBase *transform)
+    {
+        bool allowed=false;
+        if(QMetaObject::invokeMethod(transform,"mobileCanRetargetLayers",
+                                     Qt::DirectConnection,Q_RETURN_ARG(bool,allowed)) &&
+           allowed)return true;
+        QMessageBox::information(this,i18n("Transform in progress"),
+            i18n("Apply or reset the current transform before changing layers."));
+        return false;
+    }
+
+    void chooseGroupLayers(KisNodeSP origin,const KisImageSP &image)
+    {
+        QDialog dialog(window());
+        dialog.setWindowTitle(i18n("Group layers"));
+        auto *layout=new QVBoxLayout(&dialog);
+        layout->addWidget(new QLabel(i18n("Tap the layers to put in the group."),&dialog));
+        auto *list=new QListWidget(&dialog);
+        list->setSelectionMode(QAbstractItemView::NoSelection);
+        list->setStyleSheet(QStringLiteral("QListWidget::item{min-height:44px;}"));
+        QScroller::grabGesture(list->viewport(),QScroller::LeftMouseButtonGesture);
+        KisNodeList candidates;
+        for(const auto &node:m_nodes) {
+            if(!node || !node->inherits("KisLayer") || !node->isEditable())continue;
+            candidates.append(node);
+            auto *entry=new QListWidgetItem(node->name(),list);
+            entry->setCheckState(node==origin || m_selected.contains(node)?
+                                 Qt::Checked:Qt::Unchecked);
+            entry->setFlags(entry->flags() & ~Qt::ItemIsUserCheckable);
+        }
+        connect(list,&QListWidget::itemClicked,&dialog,[](QListWidgetItem *item) {
+            item->setCheckState(item->checkState()==Qt::Checked?Qt::Unchecked:Qt::Checked);
+        });
+        layout->addWidget(list,1);
+        auto *buttons=new QDialogButtonBox(QDialogButtonBox::Cancel,&dialog);
+        auto *group=buttons->addButton(i18n("Group"),QDialogButtonBox::AcceptRole);
+        group->setMinimumHeight(44);
+        group->setEnabled(!candidates.isEmpty());
+        connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
+        connect(group,&QPushButton::clicked,&dialog,[&dialog,list]() {
+            for(int row=0;row<list->count();++row) {
+                if(list->item(row)->checkState()==Qt::Checked) {
+                    dialog.accept();
+                    return;
+                }
+            }
+        });
+        layout->addWidget(buttons);
+        if(dialog.exec()!=QDialog::Accepted || !manager() ||
+           m_engine.manager()->image().toStrongRef()!=image)return;
+        KisNodeList chosen;
+        for(int row=0;row<candidates.size();++row)
+            if(list->item(row)->checkState()==Qt::Checked &&
+               inImage(candidates.at(row),image) && candidates.at(row)->isEditable())
+                chosen.append(candidates.at(row));
+        if(chosen.isEmpty())return;
+        if(auto *transform=activeTransform()) {
+            if(!canRetarget(transform))return;
+            m_engine.freehandBrush();
+        }
+        m_active=chosen.contains(origin)?origin:chosen.first();
+        m_selected=chosen;
+        applySelection();
+        manager()->createQuickGroup();
+    }
+
     void tapLayer(KisNodeSP node,QTreeWidgetItem *item)
     {
-        if(!node || !item || !manager())return;
-        // Selecting a layer while Transform/Move is active must not
-        // silently extend the previous selection. Krita's transform
-        // snapshots *every* selected node, so an accidentally retained
-        // empty layer triggers "Cannot transform empty layer" even when
-        // the newly tapped layer contains paint. Multi-target transforms
-        // remain available from the layer options.
-        //
-        // Do not invoke KisToolTransform::slotRestartTransform directly
-        // from a layer click: it cancels/restarts a live image stroke,
-        // potentially while its asynchronous preview is still running.
-        if(m_multiImage.toStrongRef()) {
-            if(m_selected.contains(node) && m_selected.size()>1)
+        auto *view=m_engine.manager();
+        if(!item || !view || !manager() ||
+           !inImage(node,view->image().toStrongRef()))return;
+        if(allowsMultiple()) {
+            QPointer<KoToolBase> transform=activeTransform();
+            if(m_engine.activeTool()==QStringLiteral("KisToolTransform") &&
+               (!transform || !canRetarget(transform)))return;
+            if(m_selected.contains(node)) {
                 m_selected.removeAll(node);
-            else if(!m_selected.contains(node))
+                if(m_active==node && !m_selected.isEmpty())
+                    m_active=m_selected.last();
+            } else {
                 m_selected.append(node);
-            if(!m_selected.contains(m_active) || !m_active)
-                m_active=m_selected.last();
+                m_active=node;
+            }
             applySelection();
+            if(transform)QMetaObject::invokeMethod(transform.data(),"mobileRetargetLayers");
         } else if(m_active==node && m_selected.size()==1 &&
                   m_selected.contains(node)) {
             showLayerActions(node,item);
@@ -1804,11 +1893,12 @@ private:
     void applySelection()
     {
         auto *m=manager();
-        if(!m || m_selected.isEmpty())return;
-        KisNodeList nodes=selectedTargets();
-        if(nodes.isEmpty())return;
-        if(!nodes.contains(m_active))m_active=nodes.last();
-        m->slotUiActivatedNode(m_active);
+        if(!m)return;
+        const KisNodeList nodes=selectedTargets();
+        if(!nodes.isEmpty()) {
+            if(!nodes.contains(m_active))m_active=nodes.last();
+            if(m->activeNode()!=m_active)m->slotUiActivatedNode(m_active);
+        }
         m->slotSetSelectedNodes(nodes);
         updateRows();
     }
@@ -1819,7 +1909,7 @@ private:
             if(!item)continue;
             const KisNodeSP node=m_nodes.at(i);
             const bool highlighted=m_selected.contains(node);
-            const bool active=m_active==node;
+            const bool active=highlighted && m_active==node;
             const bool group=node->inherits("KisGroupLayer");
             const bool mask=node->inherits("KisMask");
             const bool clipped=inheritsAlpha(node);
@@ -1865,9 +1955,9 @@ private:
                         "border:2px solid #8a9dac;border-radius:5px;}");
                 }
             }
-            item->setToolTip(0,active?i18n("Tap again for layer options"):
-                highlighted?i18n("Included in multi-selection"):
-                i18n("Tap to select"));
+            item->setToolTip(0,allowsMultiple()?
+                (highlighted?i18n("Tap to remove from selection"):i18n("Tap to add to selection")):
+                (active?i18n("Tap again for layer options"):i18n("Tap to select")));
         }
         if(m_summary) {
             const KisNodeList targets=selectedTargets();
@@ -2037,7 +2127,6 @@ private:
         auto *view=m_engine.manager();
         if(!m || !view)return;
         const auto image=view->image().toStrongRef();
-        if(m_multiImage.toStrongRef()!=image)m_multiImage=KisImageWSP();
         if(!image || !image->root()) {
             m_tree->clear();
             m_nodes.clear();
@@ -2089,10 +2178,8 @@ private:
         // hidden/old nodes after an ordinary single-layer tap. Transform
         // reads nodeManager()->selectedNodes() directly; filtering just
         // the visible cards would not protect its image stroke.
-        if(!m_multiImage.toStrongRef() && m_active)
+        if(!allowsMultiple() && m_active)
             m_selected=KisNodeList{m_active};
-        if(m_selected.isEmpty() && m_active && m_active->parent())
-            m_selected.append(m_active);
         if(m_active && m_active!=engineActive)
             m->slotUiActivatedNode(m_active);
         if(native!=m_selected)
@@ -2159,7 +2246,6 @@ private:
     MobileEngineBridge m_engine;
     QTreeWidget *m_tree=nullptr;
     QLabel *m_summary=nullptr;
-    KisImageWSP m_multiImage;
     QVector<KisNodeSP> m_nodes;
     QVector<QTreeWidgetItem*> m_items; // owned by m_tree
     QVector<QPointer<QFrame>> m_rowFrames;

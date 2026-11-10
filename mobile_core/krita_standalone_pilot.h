@@ -164,6 +164,7 @@ public:
         auto *exitAction=makeAction("Close app");
         QObject::connect(canvasOnlyAction,&QAction::toggled,workspace,
                          &MobileKritaNativeWorkspace::setCanvasOnly);
+        workspace->bindBrushModes(brushesAction,eraserAction,blendBrushAction);
         QObject::connect(brushesAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleBrushes(0);});
         QObject::connect(eraserAction,&QAction::triggered,window,

@@ -112,17 +112,35 @@ public:
         poll->start();
     }
 
+    void bindBrushModes(QAction *paint,QAction *erase,QAction *blend)
+    {
+        m_brushModes={paint,erase,blend};
+        for(auto *action:m_brushModes) {
+            action->setCheckable(true);
+            action->setProperty("mobileBrushMode",true);
+        }
+        if(auto *nativeErase=m_engine.action("erase_action"))
+            connect(nativeErase,&QAction::toggled,this,[this]() {syncBrushModes();});
+        if(auto *provider=m_engine.brushResources())
+            connect(provider,&KisCanvasResourceProvider::sigPaintOpPresetChanged,
+                    this,[this]() {syncBrushModes();});
+        syncBrushModes();
+    }
+
     void toggleBrushes(int slot)
     {
         if(!m_host || !m_engine.hasDocument())return;
         if(!ensureBrushControls())return;
         if(!m_brush->isActiveMode(slot)) {
             m_brush->activateMode(slot);
+            syncBrushModes();
             return;
         }
+        syncBrushModes();
         QTimer::singleShot(0,this,[this,slot]() {
             if(m_brush && m_engine.hasDocument() && m_brush->isActiveMode(slot))
                 m_brush->browsePresets(slot);
+            syncBrushModes();
         });
     }
 
@@ -607,6 +625,7 @@ public:
     {
         if(!m_host)return;
         if(!m_engine.hasDocument()) {
+            syncBrushModes();
             hidePanels();
             return;
         }
@@ -669,8 +688,23 @@ protected:
     }
 
 private:
+    void syncBrushModes()
+    {
+        int active=-1;
+        if(m_engine.hasDocument() &&
+           m_engine.activeTool()==QStringLiteral("KritaShape/KisToolBrush")) {
+            const auto *erase=m_engine.action("erase_action");
+            active=erase && erase->isChecked()?1:
+                m_brush && m_brush->isActiveMode(2)?2:0;
+        }
+        for(int slot=0;slot<m_brushModes.size();++slot)
+            if(m_brushModes.at(slot))m_brushModes.at(slot)->setChecked(slot==active);
+    }
+
     void syncContextToolBar()
     {
+        syncBrushModes();
+        if(m_layers)m_layers->syncSelectionContext();
         QWidget *canvas=m_host ? m_host->nativeCanvas() : nullptr;
         auto *tools=KoToolManager::instance();
         auto *controller=tools ? tools->activeCanvasController() : nullptr;
@@ -905,6 +939,7 @@ private:
     QPointer<KoToolDocker> m_toolOptions;
     QPointer<QDockWidget> m_textFormatting;
     QPointer<KritaMobileBrushWorkspace> m_brush;
+    QList<QAction*> m_brushModes;
     QPointer<KritaMobileLayersPanel> m_layers;
     QPointer<MobileColorWorkspace> m_color;
     QPointer<MobileContextToolBar> m_contextToolBar;

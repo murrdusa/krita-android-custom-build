@@ -4,6 +4,9 @@
 
 ## Resume here
 
+- The user confirmed the previous batch works on the Fold 6. This follow-up highlights the active Paint, Erase, or Blend mode and hides both scrollbars on the Studio canvas. Transform and Move now toggle layer membership on tap. Transform retargets an untouched preview and asks for Apply or Reset when edits are pending. Returning to a single-layer tool keeps the active layer. Layer options → Group layers opens a checklist before creating a native group.
+
+
 **Current Android source build:** `e71e69311498d09d548dd624a5c302659786d762` compiled and packaged on WSL in 116.5 seconds. Focused Qt resume, native command layout, Save/Close, SAF archive identity and Home cache checks passed. The compact Transform and Home changes await the Fold 6 checklist below.
 
 - **Follow-up integration:** compact numeric editors now emit the native editing-finished signal after setting a value, so Warp/Liquify edits are recorded by Krita's transform history.

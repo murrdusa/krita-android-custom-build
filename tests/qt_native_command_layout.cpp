@@ -36,6 +36,10 @@ int main(int argc,char **argv)
     QAction brushes(QObject::tr("Brushes"),&host);
     QAction eraser(QObject::tr("Eraser"),&host);
     QAction blend(QObject::tr("Blend"),&host);
+    for(auto *mode:{&brushes,&eraser,&blend}) {
+        mode->setCheckable(true);
+        mode->setProperty("mobileBrushMode",true);
+    }
     QAction layers(QObject::tr("Layers"),&host);
     QAction color(QObject::tr("Color"),&host);
     QAction tools(QObject::tr("Tools"),&host);
@@ -90,6 +94,14 @@ int main(int argc,char **argv)
            hasButton(secondary,&layers) &&
            hasButton(secondary,&color) && hasButton(secondary,&tools),
            "brush/layer/color/tool controls are not directly available");
+    eraser.setChecked(true);
+    for(auto *button:secondary->findChildren<QToolButton*>()) {
+        if(button->defaultAction()!=&eraser)continue;
+        verify(button->property("mobileBrushMode").toBool() && button->isChecked(),
+               "brush mode action did not highlight its toolbar button");
+        eraser.setChecked(false);
+        verify(!button->isChecked(),"brush mode highlight remained after deactivation");
+    }
     verify(more->menu()->actions().contains(&newCanvas) &&
            more->menu()->actions().contains(&open) &&
            more->menu()->actions().contains(&exit),
