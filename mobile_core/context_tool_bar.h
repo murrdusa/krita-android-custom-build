@@ -19,6 +19,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
+#include <QMetaObject>
 #include <QPointer>
 #include <QPushButton>
 #include <QScrollArea>
@@ -168,27 +169,12 @@ public:
                 {"copy_selection_to_new_layer",QObject::tr("Copy to layer")}
             });
         } else if(id==QStringLiteral("KisToolTransform")) {
-            // Use Krita's named transform sub-tool actions so the mode switch
-            // goes through sigResetTransform() — the same path as the working
-            // native gear panel — instead of button->click() which triggers
-            // an autoExclusive revert on Android.
-            struct ModeEntry {const char *actionId;const char *buttonName;QString label;};
-            const std::initializer_list<ModeEntry> modeEntries={
-                {"KisToolTransformFree","freeTransformButton",QObject::tr("Free")},
-                {"KisToolTransformPerspective","perspectiveTransformButton",QObject::tr("Perspective")},
-                {"KisToolTransformWarp","warpButton",QObject::tr("Warp")},
-                {"KisToolTransformCage","cageButton",QObject::tr("Cage")},
-                {"KisToolTransformLiquify","liquifyButton",QObject::tr("Liquify")},
-                {"KisToolTransformMesh","meshButton",QObject::tr("Mesh")}
-            };
-            QList<ActionChoice> modes;
-            for(const auto &entry:modeEntries) {
-                if(auto *action=engine.action(entry.actionId)) {
-                    auto *btn=qobject_cast<QAbstractButton*>(findOption(entry.buttonName));
-                    modes.append({entry.label,action,btn});
-                }
-            }
-            addActionMenu(QObject::tr("Mode"),modes);
+            // Krita's full Tool Options panel switches mode by calling
+            // KisToolTransformConfigWidget slots. Its global shortcut
+            // actions require KoToolManager::activeCanvasController(), which
+            // can differ in this independent, main-window-free host.
+            // Call exactly the same native slots as the working gear panel.
+            addTransformModeMenu();
             if(auto *box=qobject_cast<QDialogButtonBox*>(findOption("buttonBox"))) {
                 addOption(box->button(QDialogButtonBox::Apply),QObject::tr("Apply"));
                 addOption(box->button(QDialogButtonBox::Reset),QObject::tr("Reset"));
@@ -400,6 +386,81 @@ private:
             }
             control->setEnabled(enabled);
             setValueLabel(control,label,active);
+        });
+    }
+
+    void addTransformModeMenu()
+    {
+        struct ModeSpec {const char *buttonName;const char *slot;QString label;};
+        struct Choice {
+            QString label;
+            QPointer<QAbstractButton> button;
+            QPointer<QObject> config;
+            QByteArray slot;
+        };
+        const std::initializer_list<ModeSpec> specs={
+            {"freeTransformButton","slotSetFreeTransformModeButtonClicked",QObject::tr("Free")},
+            {"perspectiveTransformButton","slotSetPerspectiveModeButtonClicked",QObject::tr("Perspective")},
+            {"warpButton","slotSetWarpModeButtonClicked",QObject::tr("Warp")},
+            {"cageButton","slotSetCageModeButtonClicked",QObject::tr("Cage")},
+            {"liquifyButton","slotSetLiquifyModeButtonClicked",QObject::tr("Liquify")},
+            {"meshButton","slotSetMeshModeButtonClicked",QObject::tr("Mesh")}
+        };
+        QList<Choice> choices;
+        for(const auto &spec:specs) {
+            auto *button=qobject_cast<QAbstractButton*>(findOption(spec.buttonName));
+            if(!button)continue;
+            const QByteArray slot(spec.slot);
+            const QByteArray signature=slot+"(bool)";
+            // Find the tool-options owner, not the autoExclusive QToolButton.
+            // Its native slot emits sigResetTransform and preserves the
+            // same transaction handling as the full Tool Options panel.
+            for(QObject *owner=button;owner;owner=owner->parent()) {
+                if(owner->metaObject()->indexOfMethod(signature.constData())<0)
+                    continue;
+                choices.append({spec.label,button,owner,slot});
+                m_used.insert(button);
+                break;
+            }
+        }
+        if(choices.isEmpty())return;
+        auto *control=button(QObject::tr("Mode"));
+        connect(control,&QToolButton::clicked,this,[this,control,choices]() {
+            QMenu menu;
+            styleMenu(menu);
+            const quint64 generation=m_generation;
+            for(int i=0;i<choices.size();++i) {
+                const auto &choice=choices.at(i);
+                auto *item=menu.addAction(choice.label);
+                item->setData(i);
+                item->setCheckable(true);
+                item->setChecked(choice.button && choice.button->isChecked());
+                item->setEnabled(choice.config && optionAvailable(choice.button));
+            }
+            auto *picked=menu.exec(control->mapToGlobal(QPoint(0,control->height())));
+            if(!picked)return;
+            const int index=picked->data().toInt();
+            if(index<0 || index>=choices.size())return;
+            const Choice choice=choices.at(index);
+            QTimer::singleShot(0,this,[this,generation,choice]() {
+                if(generation!=m_generation || !isVisible() ||
+                   !choice.config || !optionAvailable(choice.button))return;
+                QMetaObject::invokeMethod(choice.config.data(),
+                    choice.slot.constData(),Qt::DirectConnection,
+                    Q_ARG(bool,true));
+                refreshControls();
+            });
+        });
+        m_refresh.append([this,control,choices]() {
+            bool enabled=false;
+            QString active;
+            for(const auto &choice:choices) {
+                enabled|=choice.config && optionAvailable(choice.button);
+                if(choice.button && choice.button->isChecked())
+                    active=choice.label;
+            }
+            control->setEnabled(enabled);
+            setValueLabel(control,QObject::tr("Mode"),active);
         });
     }
 
