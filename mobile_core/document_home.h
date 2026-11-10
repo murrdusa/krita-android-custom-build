@@ -759,9 +759,9 @@ private:
                             QListView::ListMode:QListView::IconMode);
         m_list->setGridSize(mode==OpenCanvases?QSize():QSize(148,164));
         m_list->setIconSize(QSize(124,124));
+        m_projectItems.clear();
         m_list->clear();
         m_views.clear();
-        m_seen.clear();
         ++m_previewGeneration;
         m_thumbnails.clear();
         m_pending.clear();
@@ -837,9 +837,32 @@ private:
 
     void addProject(const Project &project)
     {
-        if(project.path.isEmpty() || m_seen.contains(project.path))return;
-        m_seen.insert(project.path);
+        if(project.path.isEmpty())return;
+        const QString canonical=MobileSavedVersionArchive::canonicalIdentity(
+            project.path);
+        // Canonical SAF identity unifies direct and tree-grant URIs. For
+        // images and other paths the KRA identity policy doesn't handle,
+        // retain the unmodified path as the key.
+        const QString key=canonical.isEmpty()?project.path:canonical;
+        auto found=m_projectItems.find(key);
+        if(found!=m_projectItems.end()) {
+            // Scanned results can be newer than the persisted index. Update
+            // the metadata and invalidate a stale thumbnail, rather than
+            // duplicating the tile or retaining its old preview forever.
+            auto *item=found.value();
+            const qint64 previous=item->data(Qt::UserRole+1).toLongLong();
+            if(project.timestamp>previous) {
+                const QString existingPath=item->data(Qt::UserRole).toString();
+                item->setData(Qt::UserRole+1,project.timestamp);
+                m_cache.remove(existingPath);
+                m_attempted.remove(existingPath);
+                item->setIcon(m_placeholder);
+                scheduleThumbnails();
+            }
+            return;
+        }
         auto *item=new QListWidgetItem(m_placeholder,project.title,m_list);
+        m_projectItems.insert(key,item);
         item->setData(Qt::UserRole,project.path);
         item->setData(Qt::UserRole+1,project.timestamp);
         const QString location=project.folder.isEmpty()?
@@ -1077,7 +1100,8 @@ private:
     std::shared_ptr<std::atomic_bool> m_scanCancel;
     QThreadPool m_scanner,m_thumbnails;
     QVector<QPointer<QObject>> m_views;
-    QSet<QString> m_seen,m_pending,m_attempted;
+    QHash<QString,QListWidgetItem*> m_projectItems;
+    QSet<QString> m_pending,m_attempted;
     struct CachedPreview {QIcon icon; qint64 modified=0;};
     QHash<QString,CachedPreview> m_cache;
     quint64 m_previewGeneration=0;
