@@ -65,6 +65,7 @@
 #include "commands/kis_image_layer_move_command.h"
 #include "commands/KisNodeRenameCommand.h"
 #include "kis_node_manager.h"
+#include "kis_selection_manager.h"
 #include "kis_node.h"
 #include "kis_layer.h"
 #include "kis_group_layer.h"
@@ -307,18 +308,16 @@ public:
             add(layers,i18n("Fill layer"),"KisGeneratorLayer");
             add(layers,i18n("Clone layer"),"KisCloneLayer");
             add(layers,i18n("File layer"),"KisFileLayer");
-            add(masks,i18n("Transparency mask"),"KisTransparencyMask");
-            add(masks,i18n("Filter mask"),"KisFilterMask");
-            add(masks,i18n("Transform mask"),"KisTransformMask");
-            add(masks,i18n("Selection mask"),"KisSelectionMask");
-            add(masks,i18n("Colorize mask"),"KisColorizeMask");
-            add(masks,i18n("Fast color overlay mask"),
-                "FastColorOverlayFilterMask");
-            const QAction *chosen=menu.exec(
+            addMaskTypes(masks);
+            QAction *chosen=menu.exec(
                 addType->mapToGlobal(QPoint(0,addType->height())));
             if(!chosen || !m_engine.manager() ||
                m_engine.manager()->image().toStrongRef()!=original)
                 return;
+            if(masks->actions().contains(chosen)) {
+                if(nodes->createNode(chosen->data().toString()))reload();
+                return;
+            }
             for(const NewType &candidate:choices) {
                 if(chosen!=candidate.action)continue;
                 if(nodes->createNode(QString::fromLatin1(candidate.type)))
@@ -566,6 +565,19 @@ private:
         settings.sync();
     }
 
+    static void addMaskTypes(QMenu *menu)
+    {
+        const auto add=[menu](const QString &label,const char *type) {
+            menu->addAction(label)->setData(QString::fromLatin1(type));
+        };
+        add(i18n("Transparency mask"),"KisTransparencyMask");
+        add(i18n("Filter mask"),"KisFilterMask");
+        add(i18n("Transform mask"),"KisTransformMask");
+        add(i18n("Selection mask"),"KisSelectionMask");
+        add(i18n("Colorize mask"),"KisColorizeMask");
+        add(i18n("Fast color overlay mask"),"FastColorOverlayFilterMask");
+    }
+
     void showLayerActions(KisNodeSP node,QTreeWidgetItem *item)
     {
         auto *m=manager();
@@ -626,10 +638,16 @@ private:
         QAction *lock=menu.addAction(node->userLocked()?i18n("Unlock"):i18n("Lock"));
         QAction *clear=menu.addAction(i18n("Clear"));
         clear->setEnabled(paint && node->isEditable());
-        QAction *select=menu.addAction(i18n("Select opaque"));
-        select->setEnabled(layer!=nullptr);
-        QAction *mask=menu.addAction(i18n("Add transparency mask"));
-        mask->setEnabled(layer && node->isEditable());
+        QMenu *select=menu.addMenu(i18n("Select opaque"));
+        select->menuAction()->setEnabled(layer!=nullptr);
+        select->addAction(i18n("Replace selection"))->setData(int(SELECTION_REPLACE));
+        select->addAction(i18n("Add to selection"))->setData(int(SELECTION_ADD));
+        select->addAction(i18n("Subtract from selection"))->setData(int(SELECTION_SUBTRACT));
+        select->addAction(i18n("Intersect selection"))->setData(int(SELECTION_INTERSECT));
+        select->addAction(i18n("Symmetric difference"))->setData(int(SELECTION_SYMMETRICDIFFERENCE));
+        QMenu *mask=menu.addMenu(i18n("Add mask"));
+        mask->menuAction()->setEnabled(layer && node->isEditable());
+        addMaskTypes(mask);
         const auto validTarget=[this,node,originalImage]() {
             return m_engine.manager() &&
                    m_engine.manager()->image().toStrongRef()==originalImage &&
@@ -688,7 +706,7 @@ private:
             {visibility,visibility->text()},{duplicate,i18n("Duplicate")},{clear,i18n("Clear")},
             {lock,lock->text()},{merge,i18n("Merge")},{remove,i18n("Delete")},
             {inheritAlpha,clipped?i18n("Unclip"):i18n("Clip")},
-            {select,i18n("Select")},{mask,i18n("Mask")}
+            {select->menuAction(),i18n("Select")},{mask->menuAction(),i18n("Mask")}
         };
         for(int i=0;i<buttons.size();++i)
             grid->addWidget(makeButton(buttons[i].first,buttons[i].second),i/3,i%3);
@@ -710,16 +728,25 @@ private:
         if(opacitySlider->value()!=initialOpacity)
             m->setNodeOpacity(node,(opacitySlider->value()*255+50)/100);
         if(result==2)chosen=menu.exec(point);
+        else if(chosen==select->menuAction())chosen=select->exec(point);
+        else if(chosen==mask->menuAction())chosen=mask->exec(point);
         if(!chosen || !validTarget())return;
         if(chosen==visibility || chosen==lock) {
             if(chosen==visibility)
                 setLayerProperty(node,KisLayerPropertiesIcons::visible,!node->visible());
             else setLayerProperty(node,KisLayerPropertiesIcons::locked,!node->userLocked());
-        } else if(chosen==clear || chosen==select || chosen==mask) {
+        } else if(select->actions().contains(chosen)) {
+            view->selectionManager()->selectOpaqueOnNode(
+                node,static_cast<SelectionAction>(chosen->data().toInt()));
+        } else if(chosen==clear || mask->actions().contains(chosen)) {
+            if(auto *transform=activeTransform()) {
+                if(!canRetarget(transform))return;
+                m_engine.freehandBrush();
+            }
             m_engine.selectLayer(node);
             if(m_engine.manager()->activeNode()!=node)return;
-            if(chosen==mask)m->createNode(QStringLiteral("KisTransparencyMask"));
-            else m_engine.run(chosen==clear?"clear":"selectopaque");
+            if(chosen==clear)m_engine.run("clear");
+            else m->createNode(chosen->data().toString());
         } else if(chosen==rename) {
             bool ok=false;
             const QString next=QInputDialog::getText(

@@ -4,10 +4,13 @@
 
 ## Resume here
 
+- Layer options now offers native Replace, Add, Subtract, Intersect and Symmetric Difference when selecting opaque pixels. It uses the tapped layer without changing the active painting layer. Its Mask button opens the native mask types and attaches the choice to the tapped layer. Fold 6 check: combine two overlapping painted layers, then create and undo a transparency and transform mask from the layer sheet.
+
+
 - The user confirmed the previous batch works on the Fold 6. This follow-up highlights the active Paint, Erase, or Blend mode and hides both scrollbars on the Studio canvas. Transform and Move now toggle layer membership on tap. Transform retargets an untouched preview and asks for Apply or Reset when edits are pending. Returning to a single-layer tool keeps the active layer. Layer options → Group layers opens a checklist before creating a native group.
 
 
-**Current Android source build:** `b9906104b0a6734572d297d898d1e2d428922555` compiled and packaged on WSL in 114.8 seconds. The toolbar and layer-order Qt checks passed. The contextual layer workflow awaits a Fold 6 check.
+**Current Android source build:** `b9906104b0a6734572d297d898d1e2d428922555` compiled and packaged on WSL in 114.8 seconds. The toolbar and layer-order Qt checks passed. The user confirmed the contextual layer workflow on the Fold 6.
 
 - **Follow-up integration:** compact numeric editors now emit the native editing-finished signal after setting a value, so Warp/Liquify edits are recorded by Krita's transform history.
 - **Home preview safety:** thumbnail PNGs now publish atomically, changed file timestamps invalidate cache even when moving backwards, and a decode started before a scan/save updates the tile cannot replace that tile's new preview.
