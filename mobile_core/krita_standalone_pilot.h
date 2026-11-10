@@ -149,6 +149,7 @@ public:
         auto *commandsAction=makeAction("All Krita Commands");
         commandsAction->setObjectName(QStringLiteral("mobileBrowseCommands"));
         auto *settingsAction=makeAction("Workspace Settings");
+        auto *inputAction=makeAction("Touch, Pressure & Buttons");
         const auto studioIcon=[](const char *name) {
             return QIcon(QStringLiteral(":/light_%1.svg").arg(QString::fromLatin1(name)));
         };
@@ -214,6 +215,9 @@ public:
                          [workspace]() {workspace->browseCommands();});
         QObject::connect(settingsAction,&QAction::triggered,window,
                          [workspace]() {workspace->openSettings();});
+        QObject::connect(inputAction,&QAction::triggered,window,
+                         [workspace]() {workspace->openInputSettings();});
+        workspace->bindVolumeHistory(undoAction,redoAction);
         // Krita's selection manager already provides these native,
         // undoable actions. Expose them directly rather than inventing
         // mobile selection commands or simulating keyboard shortcuts.
@@ -345,6 +349,7 @@ public:
             moreActions.append(drawingMenu->menuAction());
         moreActions.append(commandsAction);
         moreActions.append(settingsAction);
+        moreActions.append(inputAction);
         moreActions.append(exitAction);
         // Avoid an overflow chevron hiding the primary drawing tools.
         // Less-common operations stay in an explicit, labeled menu.
