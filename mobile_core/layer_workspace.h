@@ -574,12 +574,20 @@ private:
         alphaLock->setCheckable(true);
         alphaLock->setChecked(paint && paint->alphaLocked());
         alphaLock->setEnabled(paint!=nullptr);
-        QAction *inheritAlpha=menu.addAction(i18n("Clip to layer below"));
+        // Make the actual nearest unclipped base explicit, including
+        // groups (whose combined alpha provides the clipping mask).
+        const KisNodeSP clipBase=clipBaseFor(node);
+        const bool clipped=inheritsAlpha(node);
+        QAction *inheritAlpha=menu.addAction(
+            clipped ? (clipBase?
+                i18n("Clipped to %1").arg(clipBase->name()):
+                i18n("Clipping (no base)")):
+            clipBase ? i18n("Clip to %1").arg(clipBase->name()):
+                       i18n("Clip (no base below)"));
         inheritAlpha->setCheckable(true);
-        // alphaChannelDisabled is unrelated to inherit-alpha clipping.
-        // Match the actual property used by the compact clip engine.
-        inheritAlpha->setChecked(inheritsAlpha(node));
-        inheritAlpha->setEnabled(layer && !node->inherits("KisGroupLayer"));
+        inheritAlpha->setChecked(clipped);
+        inheritAlpha->setEnabled(layer &&
+            !node->inherits("KisGroupLayer") && (clipped || clipBase));
         QAction *properties=menu.addAction(i18n("Layer properties"));
         menu.addSeparator();
         QAction *duplicate=menu.addAction(i18n("Duplicate"));
@@ -870,6 +878,23 @@ private:
         }
     }
 
+    // Report a single logical base for the user's clipping action.
+    // Layers are ordered bottom-to-top, so walking backwards reaches
+    // the closest un-clipped sibling. An ordinary Krita group is a
+    // valid base; its combined alpha clips the layers above it.
+    static KisNodeSP clipBaseFor(KisNodeSP node)
+    {
+        KisNodeList ordered;
+        logicalChildren(logicalParent(node),ordered);
+        const int index=ordered.indexOf(node);
+        for(int i=index-1;i>=0;--i) {
+            KisNodeSP candidate=ordered.at(i);
+            if(candidate->inherits("KisLayer") &&
+               !inheritsAlpha(candidate))return candidate;
+        }
+        return KisNodeSP();
+    }
+
     // Clipping is UI-relative: a clipped layer attaches to the FIRST
     // unclipped layer beneath it, even if layers have been moved. Krita
     // requires an actual group to make inheritAlpha mean that. Preserve
@@ -886,19 +911,7 @@ private:
         KisNodeSP parent=logicalParent(node);
         if(!parent || !manager())return;
         if(on) {
-            KisNodeList ordered;
-            logicalChildren(parent,ordered);
-            const int i=ordered.indexOf(node);
-            bool baseFound=false;
-            for(int j=i-1;j>=0;--j) {
-                KisNodeSP candidate=ordered.at(j);
-                if(candidate->inherits("KisLayer") &&
-                   !inheritsAlpha(candidate)) {
-                    baseFound=true;
-                    break;
-                }
-            }
-            if(!baseFound) {
+            if(!clipBaseFor(node)) {
                 QMessageBox::information(this,i18n("Clip layer"),
                     i18n("Place an unclipped layer below this one first."));
                 return;
