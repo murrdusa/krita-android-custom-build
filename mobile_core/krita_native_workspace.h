@@ -15,6 +15,7 @@
 #include <QEvent>
 #include <QMainWindow>
 #include <QPointer>
+#include <QPushButton>
 #include <QTimer>
 #include <QSettings>
 #include <KoCanvasController.h>
@@ -43,11 +44,12 @@ public:
         // document is attached. Refresh after, not before, that turn.
         if(auto *root=host ? dynamic_cast<MobileNativeViewStack*>(
                                  host->nativeCanvas()) : nullptr) {
+            root->installEventFilter(this);
             QObject::connect(root,&QStackedWidget::currentChanged,this,
                              [this](int) {
                 QTimer::singleShot(0,this,[this]() {
                     refresh();
-                    if(m_color && m_color->isVisible())m_color->raise();
+                    raiseOverlays();
                 });
             });
         }
@@ -63,23 +65,19 @@ public:
     void toggleBrushes()
     {
         if(!m_host || !m_engine.hasDocument())return;
-        if(!m_brushDock) {
+        QWidget *canvas=m_host->nativeCanvas();
+        if(!canvas)return;
+        if(!m_brush) {
             checkpoint("Brush controls: creating");
-            auto *dock=new QDockWidget(
-                QObject::tr("Krita brush controls"),m_host);
-            dock->setObjectName(QStringLiteral("_mobileNativeBrushDock"));
-            dock->setAllowedAreas(Qt::BottomDockWidgetArea);
-            dock->setFeatures(QDockWidget::DockWidgetClosable);
-            m_brush=new KritaMobileBrushWorkspace(m_engine,dock);
-            dock->setWidget(m_brush);
-            m_host->addDockWidget(Qt::BottomDockWidgetArea,dock);
-            m_brushDock=dock;
+            m_brush=new KritaMobileBrushWorkspace(m_engine,canvas);
+            m_brush->installEventFilter(this);
             checkpoint("Brush controls: ready");
-        } else m_brushDock->setVisible(!m_brushDock->isVisible());
-        if(m_brushDock && m_brushDock->isVisible()) {
-            m_brush->refresh();
-            m_brushDock->raise();
+        } else if(m_brush->isVisible()) {
+            m_brush->hide();
+            return;
         }
+        m_brush->refresh();
+        showOverlay(m_brush);
     }
 
     void toggleLayers()
@@ -92,24 +90,23 @@ public:
             // Docking the layer rail resized Krita's actual viewport.
             // A clipped child overlay leaves the native canvas geometry
             // unchanged, just like the existing floating color panel.
-            m_layerCanvas=canvas;
-            canvas->installEventFilter(this);
             m_layers=new KritaMobileLayersPanel(m_engine,canvas);
             // Keep the panel's own object name: its stylesheet uses
             // QFrame#MobileStudioLayersPanel for the dark floating rail.
             m_layers->setFixedWidth(124);
             m_layers->onRequestClose=[this]() {
                 if(m_layers)m_layers->hide();
+                placeDrawingOverlays();
             };
-            placeLayerOverlay();
             m_layers->show();
             checkpoint("Layers: floating overlay ready");
         }
         else m_layers->setVisible(!m_layers->isVisible());
+        placeDrawingOverlays();
         if(m_layers && m_layers->isVisible()) {
             placeLayerOverlay();
             m_layers->refreshNow();
-            m_layers->raise();
+            raiseOverlays();
         }
     }
 
@@ -117,14 +114,16 @@ public:
     // desktop Tool Options docker. They are live engine controls,
     // not copies or reverse-engineered equivalents. This also exposes
     // selection, transform, perspective and fill configuration.
-    void toggleToolOptions()
+    void toggleToolOptions(bool keepOpen=false)
     {
         if(!m_host || !m_engine.hasDocument())return;
         KoToolManager *tools=KoToolManager::instance();
         if(!tools || !tools->activeCanvasController())return;
+        QWidget *canvas=m_host->nativeCanvas();
+        if(!canvas)return;
 
         if(!m_toolOptions) {
-            auto *dock=new KoToolDocker(m_host);
+            auto *dock=new KoToolDocker(canvas);
             dock->setObjectName(QStringLiteral("_mobileNativeToolOptions"));
             // Native tool widgets inherit Qt's Android palette, which
             // may put white text into white editable fields. Limit the
@@ -148,10 +147,10 @@ public:
                 "QDockWidget#_mobileNativeToolOptions QRadioButton,"
                 "QDockWidget#_mobileNativeToolOptions QCheckBox{"
                 "color:#f3f7fc;}"));
-            dock->setAllowedAreas(Qt::LeftDockWidgetArea |
-                                  Qt::RightDockWidgetArea);
-            dock->setFeatures(QDockWidget::DockWidgetClosable);
-            m_host->addDockWidget(Qt::RightDockWidgetArea,dock);
+            auto *dismiss=new QPushButton(QObject::tr("Close Tool Options"),dock);
+            dismiss->setMinimumHeight(44);
+            dock->setTitleBarWidget(dismiss);
+            connect(dismiss,&QPushButton::clicked,dock,&QWidget::hide);
             m_toolOptions=dock;
             // One owner for the option widgets; the active native
             // tool continues to own their state and lifetime.
@@ -164,14 +163,14 @@ public:
                     return;
                 dock->setOptionWidgets(widgets);
             });
-            checkpoint("Krita native tool options: dock connected");
-        } else {
-            m_toolOptions->setVisible(!m_toolOptions->isVisible());
+            checkpoint("Krita native tool options: overlay connected");
+        } else if(m_toolOptions->isVisible() && !keepOpen) {
+            m_toolOptions->hide();
+            return;
         }
 
-        if(!m_toolOptions || !m_toolOptions->isVisible())return;
+        showOverlay(m_toolOptions);
         syncActiveToolOptions();
-        m_toolOptions->raise();
     }
 
     void toggleColor()
@@ -192,17 +191,12 @@ public:
             checkpoint("Color wheel: creating on native canvas root");
             m_color=new MobileColorWorkspace(m_engine,canvas);
             checkpoint("Color wheel: constructed");
-            m_color->show();
-        } else {
-            m_color->setVisible(!m_color->isVisible());
+        } else if(m_color->isVisible()) {
+            m_color->hide();
+            return;
         }
-        if(m_color && m_color->isVisibleTo(canvas)) {
-            m_color->refresh();
-            m_color->raise();
-            checkpoint("Color wheel: visible on native canvas root");
-        } else {
-            checkpoint("Color wheel: visible state not reached");
-        }
+        m_color->refresh();
+        showOverlay(m_color);
     }
 
     void chooseTool()
@@ -212,7 +206,8 @@ public:
         QTimer::singleShot(0,this,[this,host]() {
             if(host) {
                 checkpoint("Tool chooser: opening");
-                MobileToolBrowser::open(m_engine,host);
+                if(MobileToolBrowser::open(m_engine,host,true) && host)
+                    toggleToolOptions(true);
                 checkpoint("Tool chooser: closed");
             }
         });
@@ -233,6 +228,10 @@ public:
     void refresh()
     {
         if(!m_host)return;
+        if(!m_engine.hasDocument()) {
+            hidePanels();
+            return;
+        }
         // Switching between native canvases changes the active tool's
         // KoCanvasController. Rebind the existing Tool Options dock to
         // that canvas immediately instead of leaving stale controls.
@@ -240,28 +239,36 @@ public:
             syncActiveToolOptions();
         if(m_brush && m_brush->isVisible())m_brush->refresh();
         if(m_layers && m_layers->isVisible())m_layers->refreshNow();
-        if(m_color && m_color->isVisible()) {
-            m_color->refresh();
-            m_color->raise();
-        }
+        if(m_color && m_color->isVisible())m_color->refresh();
+    }
+
+    void hidePanels()
+    {
+        if(m_layers)m_layers->hide();
+        if(m_brush)m_brush->hide();
+        if(m_toolOptions)m_toolOptions->hide();
+        if(m_color)m_color->hide();
     }
 
 protected:
     bool eventFilter(QObject *watched,QEvent *event) override
     {
-        if(watched==m_layerCanvas &&
+        if(m_host && watched==m_host->nativeCanvas() &&
            (event->type()==QEvent::Resize ||
             event->type()==QEvent::Show)) {
             placeLayerOverlay();
+            placeDrawingOverlays();
         }
+        if(watched==m_brush && event->type()==QEvent::LayoutRequest)
+            placeDrawingOverlays();
         return QObject::eventFilter(watched,event);
     }
 
 private:
     void placeLayerOverlay()
     {
-        if(!m_layers || !m_layerCanvas)return;
-        QWidget *canvas=m_layerCanvas.data();
+        if(!m_layers)return;
+        QWidget *canvas=m_layers->parentWidget();
         if(canvas->width()<140 || canvas->height()<180)return;
         const int inset=5;
         const int panelWidth=qMin(124,qMax(110,canvas->width()-2*inset));
@@ -270,7 +277,48 @@ private:
         m_layers->setGeometry(
             canvas->width()-panelWidth-inset,inset,
             panelWidth,panelHeight);
-        if(m_layers->isVisible())m_layers->raise();
+    }
+
+    void placeDrawingOverlays()
+    {
+        QWidget *canvas=m_host ? m_host->nativeCanvas() : nullptr;
+        if(!canvas)return;
+        const int inset=5;
+        const int width=canvas->width()-2*inset;
+        const int height=canvas->height()-2*inset;
+        if(width<=0 || height<=0)return;
+        if(m_brush) {
+            const int panelHeight=qMin(height,m_brush->sizeHint().height());
+            m_brush->setGeometry(inset,canvas->height()-panelHeight-inset,
+                                 qMin(460,width),panelHeight);
+        }
+        if(m_toolOptions) {
+            const int besideLayers=width-129;
+            const int available=m_layers && m_layers->isVisible() &&
+                besideLayers>=240 ? besideLayers : width;
+            m_toolOptions->setGeometry(inset,inset,qMin(340,available),
+                                       qMin(440,height));
+        }
+    }
+
+    void raiseOverlays()
+    {
+        if(m_layers && m_layers->isVisible())m_layers->raise();
+        for(QWidget *panel:{static_cast<QWidget*>(m_brush.data()),
+                            static_cast<QWidget*>(m_toolOptions.data()),
+                            static_cast<QWidget*>(m_color.data())}) {
+            if(panel && panel->isVisible())panel->raise();
+        }
+    }
+
+    void showOverlay(QWidget *panel)
+    {
+        if(m_brush && m_brush.data()!=panel)m_brush->hide();
+        if(m_toolOptions && m_toolOptions.data()!=panel)m_toolOptions->hide();
+        if(m_color && m_color.data()!=panel)m_color->hide();
+        placeDrawingOverlays();
+        panel->show();
+        raiseOverlays();
     }
 
     void syncActiveToolOptions()
@@ -294,8 +342,6 @@ private:
     }
     QPointer<MobileLightweightCanvasHost> m_host;
     MobileEngineBridge m_engine;
-    QPointer<QDockWidget> m_brushDock;
-    QPointer<QWidget> m_layerCanvas;
     QPointer<KoToolDocker> m_toolOptions;
     QPointer<KritaMobileBrushWorkspace> m_brush;
     QPointer<KritaMobileLayersPanel> m_layers;

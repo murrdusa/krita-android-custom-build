@@ -38,6 +38,8 @@ int main(int argc,char **argv)
     QAction newCanvas(QObject::tr("New"),&host);
     QAction open(QObject::tr("Open"),&host);
     QAction exit(QObject::tr("Exit test"),&host);
+    QAction canvasOnly(QObject::tr("Canvas Only"),&host);
+    canvasOnly.setCheckable(true);
     int brushed=0;
     int opened=0;
     QObject::connect(&brushes,&QAction::triggered,&host,
@@ -48,7 +50,8 @@ int main(int argc,char **argv)
     verify(MobileNativeCommandLayout::install(
         &host,{&canvases,&undo,&redo,&save},
         {&brushes,&layers,&color,&tools},
-        {&newCanvas,&open,&exit}),"could not install command chrome");
+        {&newCanvas,&open,&exit,&canvasOnly},&canvasOnly),
+        "could not install command chrome");
     auto *primary=host.findChild<QToolBar*>(
         QStringLiteral("_mobileNativeDocumentBar"));
     auto *secondary=host.findChild<QToolBar*>(
@@ -83,6 +86,22 @@ int main(int argc,char **argv)
     verify(host.centralWidget()==canvas && secondary->isVisible() &&
            primary->isVisible(),
            "visible command bars hid or destroyed the original canvas");
+    auto *restore=canvas->findChild<QToolButton*>(
+        QStringLiteral("_mobileNativeRestoreControls"));
+    verify(restore && !restore->isVisible(),"restore button starts visible");
+    const int normalHeight=canvas->height();
+    canvasOnly.trigger();
+    QApplication::processEvents();
+    verify(canvasOnly.isChecked() && restore->isVisible() &&
+           !primary->isVisible() && !secondary->isVisible() &&
+           host.centralWidget()==canvas && canvas->height()>normalHeight,
+           "Canvas Only did not make room for the existing canvas");
+    restore->click();
+    QApplication::processEvents();
+    verify(!canvasOnly.isChecked() && !restore->isVisible() &&
+           primary->isVisible() && secondary->isVisible() &&
+           canvas->height()==normalHeight,
+           "Show Controls did not restore the command bars");
     verify(!MobileNativeCommandLayout::install(
         &host,{&save},{&brushes},{&exit}),
         "duplicate chrome installation was accepted");

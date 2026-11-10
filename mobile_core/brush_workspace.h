@@ -68,7 +68,7 @@ public:
             });
         }
         auto *browse=new QToolButton(this);
-        browse->setText(i18n("Brushes..."));
+        browse->setText(i18n("Presets"));
         browse->setMinimumHeight(42);
         browse->setToolTip(i18n("Search Krita brush presets"));
         buttons->addWidget(browse,1);
@@ -85,14 +85,16 @@ public:
         root->addLayout(buttons);
 
         m_controls=new QWidget(this);
-        auto *controlRow=new QHBoxLayout(m_controls);
+        auto *details=new QVBoxLayout(m_controls);
+        details->setContentsMargins(0,0,0,0);
+        details->setSpacing(4);
+        auto *controlRow=new QHBoxLayout;
         controlRow->setContentsMargins(0,0,0,0);
         controlRow->setSpacing(6);
         m_presetName=new QLabel(i18n("Current brush"),this);
-        m_presetName->setMinimumWidth(70);
-        m_presetName->setMaximumWidth(170);
         m_presetName->setToolTip(i18n("Active Krita brush preset"));
-        controlRow->addWidget(m_presetName,1);
+        m_presetName->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Preferred);
+        details->addWidget(m_presetName);
         m_size=new KisDoubleSliderSpinBox(this);
         m_size->setRange(0.01,KisImageConfig(true).maxBrushSize(),2);
         m_size->setExponentRatio(3.0);
@@ -108,6 +110,7 @@ public:
         m_opacity->setSingleStep(5);
         m_opacity->setMinimumHeight(43);
         controlRow->addWidget(m_opacity,2);
+        details->addLayout(controlRow);
         root->addWidget(m_controls);
         setDetailsExpanded(QSettings().value(
             QStringLiteral("MobileStudio/brushDetailsExpanded"),true).toBool());

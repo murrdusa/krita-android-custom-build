@@ -138,7 +138,13 @@ public:
         auto *toolsAction=makeAction("Tools");
         auto *optionsAction=makeAction("Tool Options");
         auto *commandsAction=makeAction("All Krita Commands");
+        auto *canvasOnlyAction=makeAction("Canvas Only");
+        canvasOnlyAction->setCheckable(true);
         auto *exitAction=makeAction("Close app");
+        QObject::connect(canvasOnlyAction,&QAction::toggled,workspace,
+                         [workspace](bool enabled) {
+            if(enabled)workspace->hidePanels();
+        });
         QObject::connect(brushesAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleBrushes();});
         QObject::connect(layersAction,&QAction::triggered,window,
@@ -237,7 +243,8 @@ public:
         // never the mobile QWidget or its GL surface directly.
         // Actions absent from the standalone native registry are
         // intentionally hidden rather than replaced by shortcuts.
-        addDrawingGroup("Canvas view",{
+        auto *viewMenu=new QMenu(QObject::tr("Canvas View"),window);
+        for(const char *id:{
             "view_zoom_in",
             "view_zoom_out",
             "zoom_to_100pct",
@@ -246,8 +253,10 @@ public:
             "rotate_canvas_right",
             "reset_canvas_rotation",
             "mirror_canvas",
-            "reset_display"
-        });
+            "reset_display"}) {
+            if(QAction *native=nativeBridge.action(id))
+                viewMenu->addAction(native);
+        }
         addDrawingGroup("Image and layer transforms",{
             "imagesize",
             "canvassize",
@@ -264,15 +273,20 @@ public:
             "mirrorNodeY",
             "offsetlayer"
         });
+        auto *documentMenu=new QMenu(QObject::tr("Documents"),window);
+        documentMenu->addActions({newAction,openAction,saveAsAction});
+        documentMenu->addSeparator();
+        documentMenu->addActions({previousAction,nextAction,closeAction});
         QList<QAction*> moreActions{
-            newAction,openAction,previousAction,nextAction,
-            saveAsAction,optionsAction,commandsAction
+            documentMenu->menuAction(),optionsAction,canvasOnlyAction
         };
+        if(!viewMenu->isEmpty())
+            moreActions.append(viewMenu->menuAction());
         if(!selectionMenu->isEmpty())
             moreActions.append(selectionMenu->menuAction());
         if(!drawingMenu->isEmpty())
             moreActions.append(drawingMenu->menuAction());
-        moreActions.append(closeAction);
+        moreActions.append(commandsAction);
         moreActions.append(exitAction);
         // Avoid an overflow chevron hiding the primary drawing tools.
         // Less-common operations stay in an explicit, labeled menu.
@@ -280,7 +294,7 @@ public:
             window,
             {canvasesAction,undoAction,redoAction,saveAction},
             {brushesAction,layersAction,colorAction,toolsAction},
-            moreActions)) {
+            moreActions,canvasOnlyAction)) {
             qWarning() << "Independent Krita command layout unavailable";
         }
 

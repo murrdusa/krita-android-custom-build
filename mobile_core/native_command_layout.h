@@ -21,7 +21,8 @@ public:
     static bool install(QMainWindow *host,
                         const QList<QAction*> &documentActions,
                         const QList<QAction*> &workspaceActions,
-                        const QList<QAction*> &moreActions)
+                        const QList<QAction*> &moreActions,
+                        QAction *canvasOnly=nullptr)
     {
         if(!host || !host->centralWidget() ||
            host->findChild<QToolBar*>(
@@ -57,6 +58,7 @@ public:
         moreButton->setText(QObject::tr("More"));
         moreButton->setPopupMode(QToolButton::InstantPopup);
         moreButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        moreButton->setMinimumHeight(44);
         auto *menu=new QMenu(moreButton);
         // Android's system palette can paint popup menu labels white
         // against a white background. Explicitly style both regular
@@ -82,6 +84,32 @@ public:
 
         host->addToolBar(Qt::TopToolBarArea,documents);
         host->addToolBar(Qt::BottomToolBarArea,workspace);
+        for(QToolBar *bar:{documents,workspace}) {
+            for(QAction *action:bar->actions()) {
+                if(QWidget *button=bar->widgetForAction(action))
+                    button->setMinimumHeight(44);
+            }
+        }
+        if(canvasOnly) {
+            auto *restore=new QToolButton(host->centralWidget());
+            restore->setObjectName(QStringLiteral("_mobileNativeRestoreControls"));
+            restore->setText(QObject::tr("Show Controls"));
+            restore->setMinimumSize(110,44);
+            restore->setStyleSheet(QStringLiteral(
+                "QToolButton{background:#283746;color:#f3f7fc;"
+                "border:1px solid #6f90a8;border-radius:6px;padding:5px;}"));
+            restore->move(5,5);
+            restore->hide();
+            QObject::connect(restore,&QToolButton::clicked,canvasOnly,
+                             [canvasOnly]() { canvasOnly->setChecked(false); });
+            QObject::connect(canvasOnly,&QAction::toggled,restore,
+                             [documents,workspace,restore](bool enabled) {
+                documents->setVisible(!enabled);
+                workspace->setVisible(!enabled);
+                restore->setVisible(enabled);
+                if(enabled)restore->raise();
+            });
+        }
         return host->centralWidget() &&
                documents->parentWidget()==host &&
                workspace->parentWidget()==host;

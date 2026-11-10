@@ -28,9 +28,11 @@
 
 class MobileToolBrowser final {
 public:
-    static void open(const MobileEngineBridge &engine,QWidget *parent)
+    // Returns true when the user asks to open the active tool's options.
+    static bool open(const MobileEngineBridge &engine,QWidget *parent,
+                     bool offerOptions=false)
     {
-        if(!parent || !engine.hasDocument())return;
+        if(!parent || !engine.hasDocument())return false;
         const QVector<MobileEngineBridge::MobileTool> available=engine.tools();
         QDialog dialog(parent);
         dialog.setWindowTitle(i18n("Tools"));
@@ -82,9 +84,18 @@ public:
         auto *count=new QLabel(&dialog);
         count->setWordWrap(true);
         layout->addWidget(count);
+        auto *buttons=new QHBoxLayout;
         auto *done=new QPushButton(i18n("Close"),&dialog);
-        layout->addWidget(done);
+        buttons->addWidget(done);
         QObject::connect(done,&QPushButton::clicked,&dialog,&QDialog::reject);
+        constexpr int showOptions=2;
+        if(offerOptions) {
+            auto *options=new QPushButton(i18n("Tool Options"),&dialog);
+            buttons->addWidget(options);
+            QObject::connect(options,&QPushButton::clicked,&dialog,
+                             [&dialog]() { dialog.done(showOptions); });
+        }
+        layout->addLayout(buttons);
 
         const QString current=engine.activeTool();
         QSettings settings;
@@ -92,7 +103,9 @@ public:
             QStringLiteral("MobileStudio/recentTools")).toStringList();
         QVector<int> order;
         order.reserve(available.size());
-        // Previously used tools first, then native section/priority order.
+        // Keep the active tool above recents and native section order.
+        for(int i=0;i<available.size();++i)
+            if(available.at(i).id==current)order.append(i);
         for(const QString &id:recent)
             for(int i=0;i<available.size();++i)
                 if(available.at(i).id==id && !order.contains(i))order.append(i);
@@ -149,7 +162,10 @@ public:
         const QSize bounds=parent->window()->size();
         dialog.resize(qMax(300,qMin(540,bounds.width()-24)),
                       qMax(340,qMin(750,bounds.height()-50)));
-        if(dialog.exec()!=QDialog::Accepted || requested.isEmpty())return;
+        list->setFocus();
+        const int result=dialog.exec();
+        if(result==showOptions)return true;
+        if(result!=QDialog::Accepted || requested.isEmpty())return false;
         if(engine.selectTool(requested)) {
             QStringList history=settings.value(
                 QStringLiteral("MobileStudio/recentTools")).toStringList();
@@ -159,6 +175,7 @@ public:
             settings.setValue(QStringLiteral("MobileStudio/recentTools"),
                               history);
         }
+        return false;
     }
 };
 #endif // Q_OS_ANDROID
