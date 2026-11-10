@@ -162,15 +162,7 @@ public:
         }
 
         if(!m_toolOptions || !m_toolOptions->isVisible())return;
-        // Restore options when the docker first opens or after changing
-        // documents while it was closed, without restarting a transform
-        // tool or losing its in-progress configuration.
-        if(auto *controller=tools->activeCanvasController()) {
-            if(KoToolBase *tool=tools->toolById(
-                   controller->canvas(),tools->activeToolId())) {
-                m_toolOptions->setOptionWidgets(tool->optionWidgets());
-            }
-        }
+        syncActiveToolOptions();
         m_toolOptions->raise();
     }
 
@@ -221,6 +213,11 @@ public:
     void refresh()
     {
         if(!m_host)return;
+        // Switching between native canvases changes the active tool's
+        // KoCanvasController. Rebind the existing Tool Options dock to
+        // that canvas immediately instead of leaving stale controls.
+        if(m_toolOptions && m_toolOptions->isVisible())
+            syncActiveToolOptions();
         if(m_brush && m_brush->isVisible())m_brush->refresh();
         if(m_layers && m_layers->isVisible())m_layers->refreshNow();
         if(m_color && m_color->isVisible()) {
@@ -230,6 +227,18 @@ public:
     }
 
 private:
+    void syncActiveToolOptions()
+    {
+        if(!m_toolOptions || !m_toolOptions->isVisible())return;
+        auto *tools=KoToolManager::instance();
+        if(!tools)return;
+        auto *controller=tools->activeCanvasController();
+        if(!controller)return;
+        if(KoToolBase *tool=tools->toolById(
+               controller->canvas(),tools->activeToolId())) {
+            m_toolOptions->setOptionWidgets(tool->optionWidgets());
+        }
+    }
     static void checkpoint(const char *stage)
     {
         QSettings settings;
