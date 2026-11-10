@@ -1452,7 +1452,63 @@ install(FILES org.kde.krita.desktop''',
     # welcome page to open the entire project for a thumbnail.
     activity=one(activity,
         "    private static final String TAG",
-        r'''    public static byte[] tabletKraPreview(String location) {
+        r'''    public static String tabletProjectRoots() {
+        org.json.JSONArray roots = new org.json.JSONArray();
+        roots.put(Environment.getExternalStorageDirectory().getAbsolutePath());
+        MainActivity activity = tabletPermissionActivity;
+        if (activity != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            android.os.storage.StorageManager storage =
+                activity.getSystemService(android.os.storage.StorageManager.class);
+            if (storage != null) for (android.os.storage.StorageVolume volume : storage.getStorageVolumes()) {
+                java.io.File directory = volume.getDirectory();
+                if (directory != null && !volume.isPrimary()) roots.put(directory.getAbsolutePath());
+            }
+        }
+        return roots.toString();
+    }
+
+    public static void tabletRememberProjectAccess(String location) {
+        MainActivity activity = tabletPermissionActivity;
+        if (activity == null) return;
+        Uri uri = Uri.parse(location);
+        if (!android.provider.DocumentsContract.isDocumentUri(activity, uri)) return;
+        try {
+            activity.getContentResolver().takePersistableUriPermission(
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (SecurityException ignored) {
+            // Some providers offer only temporary access.
+        }
+    }
+
+    public static String tabletGrantedProjects() {
+        org.json.JSONArray projects = new org.json.JSONArray();
+        MainActivity activity = tabletPermissionActivity;
+        if (activity == null) return projects.toString();
+        android.content.ContentResolver resolver = activity.getContentResolver();
+        for (android.content.UriPermission permission : resolver.getPersistedUriPermissions()) {
+            Uri uri = permission.getUri();
+            if (!permission.isReadPermission() ||
+                !android.provider.DocumentsContract.isDocumentUri(activity, uri)) continue;
+            try (android.database.Cursor row = resolver.query(uri,
+                    new String[]{android.provider.OpenableColumns.DISPLAY_NAME},
+                    null, null, null)) {
+                if (row == null || !row.moveToFirst()) continue;
+                String name = row.getString(0);
+                if (name == null) continue;
+                String lower = name.toLowerCase(java.util.Locale.ROOT);
+                if (!lower.endsWith(".kra") && !lower.endsWith(".krz")) continue;
+                org.json.JSONObject item = new org.json.JSONObject();
+                item.put("uri", uri.toString());
+                item.put("name", name);
+                projects.put(item);
+            } catch (Exception ignored) {
+                // A provider can remove the file or revoke its grant.
+            }
+        }
+        return projects.toString();
+    }
+
+    public static byte[] tabletKraPreview(String location) {
         MainActivity activity=tabletPermissionActivity;
         if(activity==null || location==null ||
            !location.startsWith("content://"))return null;

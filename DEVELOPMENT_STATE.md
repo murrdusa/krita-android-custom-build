@@ -70,6 +70,9 @@
 
 ## Test status
 
+- **Fold 6 follow-up:** the compact Transform Mode menu now clicks the same native mode buttons as full Tool Options. All Projects scans Android's mounted shared storage roots and includes KRA/KRZ files with persistent document grants. Browse Files asks Android to retain read access when the provider permits it. Providers with temporary grants remain accessible through Browse Files. Finger-contact pressure now rejects isolated sample spikes and limits abrupt transitions using the existing Stability setting. Device check: find a previously missing drawing, switch Free → Perspective → Warp using the compact bar, and compare constant-width and deliberately varied finger strokes.
+
+
 - **Automatic recovery drafts (Nov 10):** Studio asks Krita's native background autosave for dirty open canvases every 30 seconds and when the app becomes inactive. Each canvas has one private KRA draft, including new untitled drawings and SAF documents. A completed staged file atomically replaces the previous draft. Native successful Save and explicit Don't Save remove it, while Cancel leaves it available. With no external open intent, Studio tries a single draft automatically once per file revision. Multiple drafts or a previously attempted draft appear under Home → Recover drafts. Restored drafts require Save As. The saved-version browser still retains completed local KRA saves separately. Fold 6 check: create unsaved art, background it, force-stop and reopen, then verify Save As and Don't Save each clear its draft. Also test two dirty drawings and a SAF-opened drawing. Recovery can only restore the last completed draft.
 - **Combined Home and saved-version baseline:** The restarted WSL2 watcher compiled and packaged exact main revision `e551ee0737a4d5dda2df86a145636b836f1f858c` on Nov 10 at 11:48 a.m. ET. The earlier attempt failed before compilation because of a stale Docker GUI mount. Fold 6 Home and saved-version checks are pending.
 

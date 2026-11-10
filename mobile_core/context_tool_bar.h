@@ -5,6 +5,7 @@
  * The full Tool Options panel remains the only owner of the native layout.
  */
 #pragma once
+#include <algorithm>
 #ifdef Q_OS_ANDROID
 #include <QAbstractButton>
 #include <QAbstractItemModel>
@@ -159,19 +160,14 @@ public:
                 {"copy_selection_to_new_layer",QObject::tr("Copy to layer")}
             });
         } else if(id==QStringLiteral("KisToolTransform")) {
-            QList<ActionChoice> modes;
-            const auto mode=[this,&engine,&modes](const char *id,const char *widget,
-                                                   const QString &label) {
-                if(auto *action=engine.action(id))
-                    modes.append({label,action,qobject_cast<QAbstractButton*>(findOption(widget))});
-            };
-            mode("KisToolTransformFree","freeTransformButton",QObject::tr("Free"));
-            mode("KisToolTransformPerspective","perspectiveTransformButton",QObject::tr("Perspective"));
-            mode("KisToolTransformWarp","warpButton",QObject::tr("Warp"));
-            mode("KisToolTransformCage","cageButton",QObject::tr("Cage"));
-            mode("KisToolTransformLiquify","liquifyButton",QObject::tr("Liquify"));
-            mode("KisToolTransformMesh","meshButton",QObject::tr("Mesh"));
-            addActionMenu(QObject::tr("Mode"),modes);
+            addNamedChoices(QObject::tr("Mode"),{
+                {"freeTransformButton",QObject::tr("Free")},
+                {"perspectiveTransformButton",QObject::tr("Perspective")},
+                {"warpButton",QObject::tr("Warp")},
+                {"cageButton",QObject::tr("Cage")},
+                {"liquifyButton",QObject::tr("Liquify")},
+                {"meshButton",QObject::tr("Mesh")}
+            });
             if(auto *box=qobject_cast<QDialogButtonBox*>(findOption("buttonBox"))) {
                 addOption(box->button(QDialogButtonBox::Apply),QObject::tr("Apply"));
                 addOption(box->button(QDialogButtonBox::Reset),QObject::tr("Reset"));
@@ -268,7 +264,6 @@ private:
     struct ActionChoice {
         QString label;
         QPointer<QAction> action;
-        QPointer<QAbstractButton> state{};
     };
 
     QWidget *findOption(const char *name) const
@@ -341,8 +336,8 @@ private:
                 if(!choice.action)continue;
                 auto *item=menu.addAction(choice.label);
                 item->setEnabled(choice.action->isEnabled());
-                item->setCheckable(choice.state || choice.action->isCheckable());
-                item->setChecked(choice.state?choice.state->isChecked():choice.action->isChecked());
+                item->setCheckable(choice.action->isCheckable());
+                item->setChecked(choice.action->isChecked());
                 item->setData(i);
             }
             auto *picked=menu.exec(control->mapToGlobal(QPoint(0,control->height())));
@@ -354,15 +349,11 @@ private:
                 });
             }
         });
-        m_refresh.append([control,label,choices]() {
-            bool enabled=false;
-            QString active;
-            for(const auto &choice:choices) {
-                enabled|=choice.action && choice.action->isEnabled();
-                if(choice.state && choice.state->isChecked())active=choice.label;
-            }
-            control->setEnabled(enabled);
-            setValueLabel(control,label,active);
+        m_refresh.append([control,choices]() {
+            control->setEnabled(std::any_of(choices.cbegin(),choices.cend(),
+                [](const ActionChoice &choice) {
+                    return choice.action && choice.action->isEnabled();
+                }));
         });
     }
 
@@ -374,8 +365,11 @@ private:
             QMenu menu;
             styleMenu(menu);
             const quint64 generation=m_generation;
-            for(const auto &choice:choices) {
+            const QPointer<MobileContextToolBar> alive=this;
+            for(int i=0;i<choices.size();++i) {
+                const auto &choice=choices.at(i);
                 auto *item=menu.addAction(choice.label);
+                item->setData(i);
                 if(choice.button) {
                     item->setEnabled(optionAvailable(choice.button));
                     item->setCheckable(choice.button->isCheckable());
@@ -383,12 +377,15 @@ private:
                 } else {
                     item->setEnabled(false);
                 }
-                connect(item,&QAction::triggered,this,[this,generation,choice]() {
-                    if(generation!=m_generation || !isVisible())return;
-                    if(optionAvailable(choice.button))choice.button->click();
+            }
+            auto *picked=menu.exec(control->mapToGlobal(QPoint(0,control->height())));
+            if(picked && alive) {
+                const auto source=choices.at(picked->data().toInt()).button;
+                QTimer::singleShot(0,alive.data(),[this,generation,source]() {
+                    if(generation==m_generation && optionAvailable(source))
+                        source->click();
                 });
             }
-            menu.exec(control->mapToGlobal(QPoint(0,control->height())));
         });
         m_refresh.append([this,control,label,choices]() {
             bool enabled=false;

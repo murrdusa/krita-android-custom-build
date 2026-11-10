@@ -26,6 +26,9 @@
 #include <QIcon>
 #include <QImageReader>
 #include <QImage>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -444,17 +447,34 @@ private:
         const auto cancel=std::make_shared<std::atomic_bool>(false);
         m_scanCancel=cancel;
         const int generation=++m_scanGeneration;
-        const QStringList roots=fullAccess?
-            QStringList{QStringLiteral("/storage/emulated/0")}:
-            QStringList{QStringLiteral("/storage/emulated/0/Download"),
-                        QStringLiteral("/storage/emulated/0/Documents"),
-                        QStringLiteral("/storage/emulated/0/Pictures/Krita"),
-                        QStringLiteral("/storage/emulated/0/Krita")};
         QPointer<MobileDocumentHome> home(this);
-        m_scanner.start([home,cancel,generation,roots]() {
+        m_scanner.start([home,cancel,generation,fullAccess]() {
+            const auto androidList=[](const char *method) {
+                const auto result=QAndroidJniObject::callStaticObjectMethod(
+                    "org/krita/android/MainActivity",method,"()Ljava/lang/String;");
+                return QJsonDocument::fromJson(result.toString().toUtf8()).array();
+            };
+            QStringList roots;
+            for(const auto &volume:androidList("tabletProjectRoots")) {
+                const QString root=volume.toString();
+                if(root.isEmpty())continue;
+                if(fullAccess) {
+                    roots.append(root);
+                } else {
+                    for(const QString &folder:{QStringLiteral("Download"),
+                            QStringLiteral("Documents"),QStringLiteral("Pictures"),
+                            QStringLiteral("Krita")})
+                        roots.append(QDir(root).filePath(folder));
+                }
+            }
             QSet<QString> seen;
             QVector<Project> batch;
-            int count=0;
+            for(const auto &project:androidList("tabletGrantedProjects")) {
+                const auto entry=project.toObject();
+                batch.append({entry.value(QStringLiteral("uri")).toString(),
+                              entry.value(QStringLiteral("name")).toString(),0});
+            }
+            int count=batch.size();
             QElapsedTimer elapsed;
             elapsed.start();
             for(const QString &root:roots) {
@@ -523,8 +543,8 @@ private:
         m_message->setText(count==0?
             i18n("No local Krita documents found. Use Browse Files "
                  "for documents from other providers."):
-            i18np("%1 local Krita document found",
-                   "%1 local Krita documents found",count));
+            i18np("%1 Krita project found",
+                   "%1 Krita projects found",count));
         filterItems();
         scheduleThumbnails();
     }

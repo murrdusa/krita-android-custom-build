@@ -160,6 +160,8 @@ public:
             stroke.smoothed=MobileFingerPressureSettings::mapDiameter(
                 diameter,stroke.range,stroke.response.gamma);
             stroke.lastTarget=stroke.smoothed;
+            stroke.previousRaw=stroke.smoothed;
+            stroke.lastRaw=stroke.smoothed;
             stroke.lastDiameter=diameter;
             stroke.lastSampleTime=eventTime;
             stroke.minDiameter=diameter;
@@ -172,11 +174,9 @@ public:
         // Absolute contact size relative to the user's calibrated minimum
         // and maximum. Unlike per-stroke normalization, a thumb starts at
         // higher pressure than a pinky when its contact is larger.
-        const qreal target=MobileFingerPressureSettings::mapDiameter(
+        const qreal raw=MobileFingerPressureSettings::mapDiameter(
             diameter,stroke.range,stroke.response.gamma);
 
-        // Small measurement jitter should not fluctuate brush opacity.
-        // Cap sudden jumps, then low-pass filter at ~25% per input sample.
         // Repeated use of the same touch sample stays idempotent.
         if(eventTime==stroke.lastSampleTime &&
            qAbs(diameter-stroke.lastDiameter)<0.001)
@@ -191,6 +191,11 @@ public:
         stroke.maxDiameter=qMax(stroke.maxDiameter,diameter);
         stroke.uniqueBins.insert(qRound(diameter*4.0));
         ++stroke.samples;
+        // Reject isolated contact-size jumps before the adaptive filter.
+        const qreal target=qMax(qMin(stroke.previousRaw,stroke.lastRaw),
+            qMin(qMax(stroke.previousRaw,stroke.lastRaw),raw));
+        stroke.previousRaw=stroke.lastRaw;
+        stroke.lastRaw=raw;
         const qreal motion=qAbs(target-stroke.lastTarget);
         if(motion<0.06)
             stroke.noise=qBound(qreal(0.002),
@@ -201,10 +206,10 @@ public:
         const qreal error=target-stroke.smoothed;
         const qreal alpha=MobileFingerPressureSettings::adaptiveAlpha(
             error,stroke.noise,stroke.response.stability,elapsed);
-        // No fixed 1.5% dead zone: slow real pressure changes remain
-        // observable while measured jitter gets a smaller filter alpha.
-        stroke.smoothed=qBound(qreal(0.0),
-            stroke.smoothed+error*alpha,qreal(1.0));
+        // Limit how far adjacent samples can move even when quantized
+        // contact sizes make the adaptive filter see a large change.
+        const qreal maxStep=elapsed*(0.009-0.006*stroke.response.stability);
+        stroke.smoothed+=qBound(-maxStep,error*alpha,maxStep);
         if((target==0.0 || target==1.0) &&
            qAbs(target-stroke.smoothed)<0.002)
             stroke.smoothed=target;
@@ -226,6 +231,8 @@ private:
         QSet<int> uniqueBins;
         qreal noise=0.006;
         qreal lastTarget=0;
+        qreal previousRaw=0;
+        qreal lastRaw=0;
         MobileFingerContactSource::State source;
         bool usedCorrectedQt=false;
         int rawSamples=0;

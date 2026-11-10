@@ -10,6 +10,7 @@
 #pragma once
 #ifdef Q_OS_ANDROID
 
+#include <QAndroidJniObject>
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QPointer>
@@ -142,9 +143,15 @@ public:
         int successful=0;
         for(const QString &path:paths) {
             if(path.isEmpty())continue;
-            if(m_host->openFile(path))
+            if(m_host->openFile(path)) {
                 ++successful;
-            else
+                if(path.startsWith(QStringLiteral("content://"))) {
+                    const auto uri=QAndroidJniObject::fromString(path);
+                    QAndroidJniObject::callStaticMethod<void>(
+                        "org/krita/android/MainActivity","tabletRememberProjectAccess",
+                        "(Ljava/lang/String;)V",uri.object<jstring>());
+                }
+            } else
                 QMessageBox::warning(parent,QObject::tr("Open failed"),
                     QObject::tr("Could not open %1").arg(
                         QFileInfo(path).fileName()));

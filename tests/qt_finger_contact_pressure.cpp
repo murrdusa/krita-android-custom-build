@@ -156,6 +156,13 @@ int main(int argc,char **argv)
     setting.setValue(curveKey,1.0);
     setting.setValue(stabilityKey,0.5);
 
+    const qreal steady=touch(device,QEvent::TouchBegin,16,970,
+                             Qt::TouchPointPressed);
+    require(qAbs(touch(device,QEvent::TouchUpdate,24,978)-steady)<0.0001 &&
+            qAbs(touch(device,QEvent::TouchUpdate,16,986)-steady)<0.0001,
+            "one-frame contact spike changed brush pressure");
+    touch(device,QEvent::TouchEnd,16,994,Qt::TouchPointReleased);
+
     // Restore the normal test range.
     setting.setValue(minKey,8.0);
     setting.setValue(maxKey,24.0);
