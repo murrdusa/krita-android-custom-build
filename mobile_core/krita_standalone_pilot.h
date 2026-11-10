@@ -11,6 +11,7 @@
 #include <QDebug>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QMap>
 #include <QFile>
 #include <QFileInfo>
 #include <QIcon>
@@ -40,42 +41,18 @@
 #include "krita_engine_session.h"
 #include "krita_native_workspace.h"
 #include "native_command_layout.h"
-#include "native_bootstrap_audit.h"
 #include "saved_version_archive.h"
-#include "engine_only_root.h"
+#include <filter/kis_filter.h>
+#include <filter/kis_filter_registry.h>
 
 class MobileKritaStandalonePilot final
 {
 public:
-    static bool launch(QWidget *nativeWindow,
+    static bool launch(MobileLightweightCanvasHost *window,
                        std::function<void(bool)> firstCanvasReady={})
     {
-        if(!nativeWindow || nativeWindow->window()!=nativeWindow ||
-           !nativeWindow->isVisible())return false;
-        // Opt-in V3 uses this painting host as the actual Android root.
-        // Do not reparent it into itself or create a second QMainWindow.
-        auto *directRoot=dynamic_cast<MobileLightweightCanvasHost*>(
-            nativeWindow);
-        if(directRoot && directRoot->nativeViewPort()) {
-            const bool ready=!directRoot->nativeViewPort()->
-                openViews().isEmpty();
-            if(firstCanvasReady)firstCanvasReady(ready);
-            return ready;
-        }
-        // Android forbids the desktop-style second native window used
-        // by the first test. A second instance instead focuses the
-        // existing CHILD overlay; the engine and document views are
-        // still independent of Krita's MDI.
-        if(auto *existing=nativeWindow->findChild<MobileLightweightCanvasHost*>(
-               QStringLiteral("_mobileStandaloneEnginePilot"),
-               Qt::FindDirectChildrenOnly)) {
-            existing->show();
-            existing->raise();
-            existing->setFocus(Qt::OtherFocusReason);
-            if(firstCanvasReady)firstCanvasReady(existing->nativeViewPort() &&
-                         !existing->nativeViewPort()->openViews().isEmpty());
-            return true;
-        }
+        if(!window || !window->isWindow() || !window->isVisible() ||
+           window->nativeViewPort())return false;
 
         // Persist the last startup phase and emit logcat checkpoints.
         auto stage=[](const char *name,bool pending=true) {
@@ -88,24 +65,6 @@ public:
             settings.sync();
             qWarning() << "Standalone engine checkpoint:" << name;
         };
-        stage("Creating native drawing host");
-        auto *window=directRoot ? directRoot :
-            new MobileLightweightCanvasHost;
-        if(!directRoot && !window->embedInExistingWindow(nativeWindow)) {
-            delete window;
-            return false;
-        }
-        if(!directRoot) {
-            window->setObjectName(
-                QStringLiteral("_mobileStandaloneEnginePilot"));
-            window->setWindowTitle(
-                QObject::tr("Krita native engine test"));
-        }
-        window->setAttribute(Qt::WA_DeleteOnClose,true);
-        // In V2 the parent is a plain QMainWindow, not KisMainWindow.
-        // Android keeps a single native top-level in both boot modes.
-        if(auto *independent=dynamic_cast<MobileEngineOnlyRoot*>(nativeWindow))
-            independent->setDrawingHost(window);
         stage("Creating independent Krita engine session");
         MobileKritaEngineSession *engineSession=
             MobileKritaEngineSession::attach(window);
@@ -122,7 +81,6 @@ public:
         auto documents=QSharedPointer<MobileDocumentService>::create(
             services.documents,services.views);
         QPointer<MobileLightweightCanvasHost> alive=window;
-        QPointer<QWidget> desktopNative=nativeWindow;
         const MobileEngineBridge nativeBridge(services,engineSession->viewManager());
         // Native controls now use the independent manager and host ports,
         // not the old desktop MDI window or its docker instances.
@@ -328,6 +286,13 @@ public:
             if(QAction *native=nativeBridge.action(id))
                 viewMenu->addAction(native);
         }
+        auto *wrapMenu=new QMenu(QObject::tr("Seamless Tiling"),viewMenu);
+        for(const char *id:{"wrap_around_mode","wrap_around_hv_axis",
+                            "wrap_around_h_axis","wrap_around_v_axis"}) {
+            if(QAction *native=nativeBridge.action(id))wrapMenu->addAction(native);
+        }
+        if(!wrapMenu->isEmpty())viewMenu->addMenu(wrapMenu);
+
         addDrawingGroup("Image and layer transforms",{
             "imagesize",
             "canvassize",
@@ -344,6 +309,26 @@ public:
             "mirrorNodeY",
             "offsetlayer"
         });
+        auto *filtersMenu=new QMenu(QObject::tr("Filters"),window);
+        for(const char *id:{"filter_apply_again","filter_apply_reprompt"}) {
+            if(QAction *native=nativeBridge.action(id))filtersMenu->addAction(native);
+        }
+        QMap<QString,QMenu*> filterGroups;
+        auto *filterRegistry=KisFilterRegistry::instance();
+        QStringList filterIds=filterRegistry->keys();
+        filterIds.sort();
+        for(const QString &id:filterIds) {
+            const auto filter=filterRegistry->value(id);
+            QAction *native=nativeBridge.action(QStringLiteral("krita_filter_")+id);
+            if(!filter || !native)continue;
+            const QString name=filter->menuCategory().name();
+            auto *&group=filterGroups[name];
+            if(!group)group=new QMenu(name,filtersMenu);
+            group->addAction(native);
+        }
+        if(!filterGroups.isEmpty() && !filtersMenu->isEmpty())filtersMenu->addSeparator();
+        for(auto *group:filterGroups)filtersMenu->addMenu(group);
+
         auto *documentMenu=new QMenu(QObject::tr("Documents"),window);
         documentMenu->addActions({newAction,openAction,saveAsAction,exportAction,
                                   versionsAction});
@@ -358,6 +343,8 @@ public:
             moreActions.append(selectionMenu->menuAction());
         if(!drawingMenu->isEmpty())
             moreActions.append(drawingMenu->menuAction());
+        if(!filtersMenu->isEmpty())
+            moreActions.append(filtersMenu->menuAction());
         moreActions.append(commandsAction);
         moreActions.append(settingsAction);
         moreActions.append(inputAction);
@@ -569,7 +556,7 @@ public:
         });
 
         // Close uses the existing Krita Save/Discard/Cancel transaction.
-        QPointer<QWidget> topLevel=nativeWindow;
+        QPointer<QWidget> topLevel=window;
         QObject::connect(exitAction,&QAction::triggered,window,
                          [alive,topLevel]() {
             if(!alive)return;
@@ -631,7 +618,7 @@ public:
         window->suppressNativeStatusChrome();
         QTimer::singleShot(0,window,
                            [alive,home,stage,firstCanvas,firstCanvasReady,
-                            desktopNative,intentHost=services.documents]() {
+                            intentHost=services.documents]() {
             if(!alive)return;
             const int opened=MobileAndroidDocumentIntents::attachAndOpen(
                 alive.data(),intentHost);
@@ -641,8 +628,6 @@ public:
             } else {
                 firstCanvas();
             }
-            if(auto *desktop=qobject_cast<QMainWindow*>(desktopNative.data()))
-                MobileNativeBootstrapAudit::record(desktop);
             if(firstCanvasReady)firstCanvasReady(true);
         });
         return true;

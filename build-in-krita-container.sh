@@ -84,10 +84,10 @@ if not database.is_file():
 entries = json.loads(database.read_text())
 candidates = [
     entry for entry in entries
-    if pathlib.Path(entry["file"]).name == "mobile_native_engine_compile_probe.cpp"
+    if pathlib.Path(entry["file"]).name == "engine_only_bootstrap.cpp"
 ]
 if len(candidates) != 1:
-    sys.exit(f"Expected one native engine compile probe, found {len(candidates)}")
+    sys.exit(f"Expected one native Studio bootstrap unit, found {len(candidates)}")
 
 entry = candidates[0]
 argv = entry.get("arguments") or shlex.split(entry["command"])
@@ -105,9 +105,9 @@ for token in argv:
     clean.append(token)
 clean.append("-fsyntax-only")
 print("## Compiler:", clean[0], flush=True)
-print("## Target: mobile_native_engine_compile_probe.cpp", flush=True)
+print("## Target: engine_only_bootstrap.cpp", flush=True)
 subprocess.run(clean, cwd=entry["directory"], check=True)
-print("## PASS: standalone Krita API headers type-checked", flush=True)
+print("## PASS: live Studio bootstrap type-checked", flush=True)
 PY
   if [[ "${KRITA_NATIVE_PREFLIGHT_ONLY:-0}" == "1" ]]; then
     echo "## PASS: Android compiler preflight only (no target build, no APK)"

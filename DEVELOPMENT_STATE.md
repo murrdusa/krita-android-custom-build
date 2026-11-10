@@ -70,6 +70,9 @@
 
 ## Test status
 
+- **Filters, seamless tiling, and desktop cleanup:** More → Filters groups registered Krita effects and exposes native previews, reapply and filter masks where supported. Canvas View → Seamless Tiling exposes Krita's wrap toggle and axis controls. The Android source generator no longer injects the old embedded Studio pilot into KisMainWindow or copies its obsolete adapters. The live standalone entry replaces the compile-only probe. Krita's shared engine/UI library remains linked. Fold 6 check: preview and cancel Gaussian Blur, apply and undo Levels, create a filter mask, then paint across a wrapped canvas edge.
+
+
 - **Project library (WSL Android build PASS at `633208bddf4312a4a2e5c02cb016f3cf598ffca8`, 110.0 s):** All Projects now scans shared storage without a project-count or duration cutoff. **Add folder…** uses Android's folder picker, keeps the folder grant, and indexes accessible KRA/KRZ files in subfolders. Local and folder-granted copies of the same shared-storage document are merged. Search matches folder names, and All Projects remembers Newest or Name order. Fold 6 check: add a folder with a previously missing drawing, verify nested files appear and open, then restart and check the grant and sort order persist. Android providers that do not expose folder access still use Browse Files.
 
 
