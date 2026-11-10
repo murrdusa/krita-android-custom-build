@@ -14,6 +14,7 @@
 #include <QSharedPointer>
 #include <QSettings>
 #include <functional>
+#include <initializer_list>
 #include <QTimer>
 #include <QToolBar>
 #include <QWidget>
@@ -180,6 +181,17 @@ public:
             "fill_selection_pattern",
             "stroke_selection",
             "stroke_shapes"
+        });
+        addDrawingGroup("Clipboard and canvas edits",{
+            "edit_cut",
+            "edit_copy",
+            "copy_merged",
+            "edit_paste",
+            "paste_at",
+            "paste_into",
+            "clear",
+            "cut_selection_to_new_layer",
+            "copy_selection_to_new_layer"
         });
         addDrawingGroup("Assistants and guides",{
             "view_toggle_painting_assistants",
