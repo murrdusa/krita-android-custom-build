@@ -128,6 +128,14 @@ public:
         const auto native=[this,&engine](const char *name,const QString &caption) {
             if(auto *action=engine.action(name))addAction(action,caption);
         };
+        const auto nativeMenu=[this,&engine](
+            const QString &caption,std::initializer_list<Named> entries) {
+            QList<ActionChoice> choices;
+            for(const auto &entry:entries)
+                if(auto *action=engine.action(entry.name))
+                    choices.append({entry.label,action});
+            addActionMenu(caption,choices);
+        };
         if(id.startsWith(QStringLiteral("KisToolSelect"))) {
             addSectionChoices("sectionAction",QObject::tr("Combine"),{
                 QObject::tr("Replace"),QObject::tr("Intersect"),QObject::tr("Add"),
@@ -137,14 +145,18 @@ public:
             named("sliderCloseGap",QObject::tr("Gap"));
             addSectionChoices("sectionMode",QObject::tr("Type"),
                               {QObject::tr("Pixel"),QObject::tr("Vector")});
-            native("select_all",QObject::tr("Select all"));
-            native("invert_selection",QObject::tr("Invert"));
             native("deselect",QObject::tr("Deselect"));
-            native("growselection",QObject::tr("Grow"));
-            native("shrinkselection",QObject::tr("Shrink"));
-            native("featherselection",QObject::tr("Feather"));
-            native("copy_merged",QObject::tr("Copy merged"));
-            native("copy_selection_to_new_layer",QObject::tr("Copy to layer"));
+            // Keep everyday selection controls visible; preserve the full
+            // native command set in a single touch-friendly menu.
+            nativeMenu(QObject::tr("More"),{
+                {"select_all",QObject::tr("Select all")},
+                {"invert_selection",QObject::tr("Invert")},
+                {"growselection",QObject::tr("Grow")},
+                {"shrinkselection",QObject::tr("Shrink")},
+                {"featherselection",QObject::tr("Feather")},
+                {"copy_merged",QObject::tr("Copy merged")},
+                {"copy_selection_to_new_layer",QObject::tr("Copy to layer")}
+            });
         } else if(id==QStringLiteral("KisToolTransform")) {
             addNamedChoices(QObject::tr("Transform mode"),{
                 {"freeTransformButton",QObject::tr("Free")},
@@ -158,10 +170,12 @@ public:
                 addOption(box->button(QDialogButtonBox::Apply),QObject::tr("Apply"));
                 addOption(box->button(QDialogButtonBox::Reset),QObject::tr("Reset"));
             }
-            named("flipXButton",QObject::tr("Flip H"));
-            named("flipYButton",QObject::tr("Flip V"));
-            named("rotateCCWButton",QObject::tr("Rotate left"));
-            named("rotateCWButton",QObject::tr("Rotate right"));
+            addNamedChoices(QObject::tr("Adjust"),{
+                {"flipXButton",QObject::tr("Flip H")},
+                {"flipYButton",QObject::tr("Flip V")},
+                {"rotateCCWButton",QObject::tr("Rotate left")},
+                {"rotateCWButton",QObject::tr("Rotate right")}
+            });
         } else if(id==QStringLiteral("KritaFill/KisToolFill")) {
             addSectionChoices("sectionWhatToFill",QObject::tr("Fill area"),
                 {QObject::tr("Selection"),QObject::tr("Contiguous"),QObject::tr("Similar color")});
@@ -242,6 +256,10 @@ private:
         QString label;
         QPointer<QAbstractButton> button;
     };
+    struct ActionChoice {
+        QString label;
+        QPointer<QAction> action;
+    };
 
     QWidget *findOption(const char *name) const
     {
@@ -296,6 +314,36 @@ private:
             control->setEnabled(native && native->isEnabled());
             control->setCheckable(native && native->isCheckable());
             control->setChecked(native && native->isChecked());
+        });
+    }
+
+    void addActionMenu(const QString &label,const QList<ActionChoice> &choices)
+    {
+        if(choices.isEmpty())return;
+        auto *control=button(label);
+        connect(control,&QToolButton::clicked,this,[this,control,choices]() {
+            QMenu menu;
+            styleMenu(menu);
+            const quint64 generation=m_generation;
+            for(const auto &choice:choices) {
+                if(!choice.action)continue;
+                auto *item=menu.addAction(choice.label);
+                item->setEnabled(choice.action->isEnabled());
+                item->setCheckable(choice.action->isCheckable());
+                item->setChecked(choice.action->isChecked());
+                connect(item,&QAction::triggered,this,[this,generation,choice]() {
+                    if(generation!=m_generation || !isVisible())return;
+                    if(choice.action && choice.action->isEnabled())
+                        choice.action->trigger();
+                });
+            }
+            menu.exec(control->mapToGlobal(QPoint(0,control->height())));
+        });
+        m_refresh.append([control,choices]() {
+            bool enabled=false;
+            for(const auto &choice:choices)
+                enabled|=choice.action && choice.action->isEnabled();
+            control->setEnabled(enabled);
         });
     }
 
