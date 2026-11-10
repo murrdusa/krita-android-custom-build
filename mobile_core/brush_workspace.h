@@ -12,6 +12,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPointer>
+#include <QPalette>
 #include <QPushButton>
 #include <QScroller>
 #include <QSettings>
@@ -114,6 +115,18 @@ public:
         m_opacity->setSingleStep(5);
         m_opacity->setMinimumHeight(43);
         controlRow->addWidget(m_opacity,2);
+        if(slidersOnly) {
+            for(QWidget *slider:{m_size,m_opacity}) {
+                QPalette colors=slider->palette();
+                colors.setColor(QPalette::Base,QColor(QStringLiteral("#34343a")));
+                colors.setColor(QPalette::Button,QColor(QStringLiteral("#34343a")));
+                colors.setColor(QPalette::Text,Qt::white);
+                colors.setColor(QPalette::ButtonText,Qt::white);
+                colors.setColor(QPalette::Highlight,QColor(QStringLiteral("#32616b")));
+                colors.setColor(QPalette::HighlightedText,Qt::white);
+                slider->setPalette(colors);
+            }
+        }
         details->addLayout(controlRow);
         root->addWidget(m_controls);
         if(slidersOnly) {

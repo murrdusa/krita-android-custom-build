@@ -8,9 +8,10 @@
 #pragma once
 #ifdef Q_OS_ANDROID
 #include <QAction>
-#include <QMenuBar>
+#include <QMenu>
 #include <QPointer>
 #include <QSharedPointer>
+#include <QToolButton>
 #include <kactioncollection.h>
 #include <KoToolFactoryBase.h>
 #include <KoToolRegistry.h>
@@ -31,15 +32,22 @@ public:
     }
     QList<QAction*> availableActions() const override
     {
-        return m_actions ? m_actions->actions() : QList<QAction*>{};
+        if(!m_actions)return {};
+        auto actions=m_actions->actions();
+        for(const char *id:{"view_toggledockers","view_toggledockertitlebars",
+                            "lock_toolbars","options_configure_toolbars",
+                            "showStatusBar","view_show_canvas_only"}) {
+            if(auto *desktop=m_actions->action(QString::fromLatin1(id)))
+                actions.removeAll(desktop);
+        }
+        return actions;
     }
     QList<QAction*> menuRootActions() const override
     {
         if(!m_host)return {};
-        // Do not create a legacy desktop menu bar by querying menuBar().
-        const auto *bar=m_host->findChild<QMenuBar*>(
-            QString(),Qt::FindDirectChildrenOnly);
-        return bar ? bar->actions() : QList<QAction*>{};
+        const auto *more=m_host->findChild<QToolButton*>(
+            QStringLiteral("_mobileNativeMoreButton"));
+        return more && more->menu() ? more->menu()->actions() : QList<QAction*>{};
     }
 private:
     QPointer<KisKActionCollection> m_actions;

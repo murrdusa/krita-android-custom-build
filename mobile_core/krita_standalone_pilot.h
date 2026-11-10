@@ -147,6 +147,7 @@ public:
         auto *toolsAction=makeAction("Tools");
         auto *optionsAction=makeAction("Tool Options");
         auto *commandsAction=makeAction("All Krita Commands");
+        commandsAction->setObjectName(QStringLiteral("mobileBrowseCommands"));
         auto *settingsAction=makeAction("Workspace Settings");
         const auto studioIcon=[](const char *name) {
             return QIcon(QStringLiteral(":/light_%1.svg").arg(QString::fromLatin1(name)));

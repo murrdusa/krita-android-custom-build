@@ -85,7 +85,8 @@ public:
             }
         };
         for(QAction *a:engine.menuRootActions()) {
-            if(!a || a->isSeparator())continue;
+            if(!a || a->isSeparator() ||
+               a->objectName()==QStringLiteral("mobileBrowseCommands"))continue;
             QString name=label(a->text());
             if(name.isEmpty() && a->menu())
                 name=label(a->menu()->title());

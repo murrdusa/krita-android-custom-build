@@ -1425,6 +1425,58 @@ install(FILES org.kde.krita.desktop''',
                  'android:label="Krita Mobile Studio"',
                  "Mobile Studio debug label")
     debugManifest.write_text(debugXml,encoding="utf-8")
+    text_tool_file=root/"plugins/tools/svgtexttool/SvgTextTool.cpp"
+    text_tool=text_tool_file.read_text(encoding="utf-8")
+    text_tool=one(text_tool,"#include <QMenuBar>",
+        "#include <QMenuBar>\n#include <QPushButton>\n#include <QVBoxLayout>",
+        "mobile SVG text controls includes")
+    text_tool=one(text_tool,
+        '    if (canvas2) {\n        canvas2->setCurrentShapeManagerOwnerShape(nullptr);',
+        '    if (canvas2 && canvas2->viewManager()) {\n        canvas2->setCurrentShapeManagerOwnerShape(nullptr);',
+        "SVG text view manager guard")
+    text_tool=one(text_tool,
+        '        QDockWidget *docker = canvas2->viewManager()->mainWindow()->dockWidget("TextProperties");\n        if (docker && m_optionManager) {\n            m_optionManager->setTextPropertiesOpen(docker->isVisible());\n        }',
+        '        auto *mainWindow = canvas2->viewManager()->mainWindow();\n        auto *docker = mainWindow ? mainWindow->dockWidget("TextProperties") : nullptr;\n        if (m_optionManager) {\n            m_optionManager->setTextPropertiesOpen(docker && docker->isVisible());\n        }',
+        "SVG text activation without a desktop window")
+    text_tool=one(text_tool,
+        '    if (optionWidget->errors().isEmpty()) {\n        optionWidget->rootObject()->setProperty("manager",',
+        '    if (optionWidget->rootObject()) {\n        optionWidget->rootObject()->setProperty("manager",',
+        "SVG text options QML root guard")
+    text_tool=one(text_tool,
+        '    if (canvas2 && canvas2->viewManager()->mainWindow()) {',
+        '    if (canvas2 && canvas2->viewManager() && canvas2->viewManager()->mainWindow()) {',
+        "SVG text advanced desktop controls guard")
+    text_tool=one(text_tool,
+        '    slotTextTypeUpdated();\n\n\n    return optionWidget;',
+        '''    slotTextTypeUpdated();
+
+#ifdef Q_OS_ANDROID
+    if (canvas2 && canvas2->viewManager() && !canvas2->viewManager()->mainWindow()) {
+        auto *panel = new QWidget;
+        panel->setObjectName(toolId() + " option widget");
+        auto *layout = new QVBoxLayout(panel);
+        layout->setContentsMargins(0, 0, 0, 0);
+        auto *edit = new QPushButton(i18n("Edit selected text"), panel);
+        edit->setObjectName(QStringLiteral("mobileEditSvgText"));
+        edit->setMinimumHeight(44);
+        connect(edit, &QPushButton::clicked, this, &SvgTextTool::showEditor);
+        layout->addWidget(edit);
+        auto *glyphs = new QPushButton(i18n("Glyphs"), panel);
+        glyphs->setObjectName(QStringLiteral("mobileSvgGlyphs"));
+        glyphs->setMinimumHeight(44);
+        connect(glyphs, &QPushButton::clicked, this, &SvgTextTool::showGlyphPalette);
+        layout->addWidget(glyphs);
+        if (optionWidget->rootObject()) {
+            layout->addWidget(optionWidget);
+        } else {
+            delete optionWidget;
+        }
+        return panel;
+    }
+#endif
+    return optionWidget;''',
+        "standalone SVG text native editor controls")
+    text_tool_file.write_text(text_tool,encoding="utf-8")
     print(f"Installed independent Mobile Studio app; XMLGUI checksum {digest}")
 
 if __name__=="__main__":

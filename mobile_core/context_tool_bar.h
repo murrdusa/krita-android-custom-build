@@ -48,18 +48,17 @@ public:
             "border:1px solid #48484e;border-radius:10px;}"
             "QWidget#mobileContextControls,QScrollArea{background:#252529;border:0;}"
             "QToolButton{color:#f4f4f5;background:#34343a;border:0;"
-            "border-radius:6px;padding:3px 7px;min-height:44px;}"
+            "border-radius:6px;padding:0 5px;}"
             "QToolButton:checked,QToolButton:pressed{background:#536278;}"
             "QToolButton:disabled{color:#98989f;background:#2c2c31;}"
             "QScrollBar:horizontal{height:5px;background:#252529;}"
             "QScrollBar::handle:horizontal{background:#70707a;min-width:20px;}"
             "QScrollBar::add-line:horizontal,QScrollBar::sub-line:horizontal{width:0;}"));
         auto *layout=new QHBoxLayout(this);
-        layout->setContentsMargins(3,3,3,3);
-        layout->setSpacing(3);
+        layout->setContentsMargins(2,2,2,2);
+        layout->setSpacing(2);
         m_tool=new QToolButton(this);
-        m_tool->setMinimumWidth(78);
-        m_tool->setMaximumWidth(120);
+        m_tool->setFixedHeight(44);
         m_tool->setToolTip(QObject::tr("Choose a tool"));
         connect(m_tool,&QToolButton::clicked,this,[this]() {
             if(chooseTool)chooseTool();
@@ -76,7 +75,7 @@ public:
         auto *gear=new QToolButton(this);
         gear->setIcon(QIcon(QStringLiteral(":/light_configure.svg")));
         gear->setIconSize(QSize(22,22));
-        gear->setMinimumWidth(44);
+        gear->setFixedSize(44,44);
         gear->setAccessibleName(QObject::tr("Advanced Tool Options"));
         gear->setToolTip(gear->accessibleName());
         connect(gear,&QToolButton::clicked,this,[this]() {
@@ -106,15 +105,22 @@ public:
         ++m_generation;
         m_refresh.clear();
         m_used.clear();
-        m_tool->setText(m_tool->fontMetrics().elidedText(
-            label,Qt::ElideRight,102));
+        const QString shortLabel=id==QStringLiteral("KisToolSelectContiguous")?
+            QObject::tr("Wand"):id==QStringLiteral("KisToolSelectOutline")?
+            QObject::tr("Lasso"):id==QStringLiteral("KisToolSelectRectangular")?
+            QObject::tr("Rect"):id==QStringLiteral("KisToolSelectElliptical")?
+            QObject::tr("Ellipse"):label;
+        setChipText(m_tool,shortLabel,92);
         m_tool->setAccessibleName(QObject::tr("Current tool: %1. Choose a tool").arg(label));
 
         auto *content=new QWidget;
         content->setObjectName(QStringLiteral("mobileContextControls"));
         m_row=new QHBoxLayout(content);
         m_row->setContentsMargins(0,0,0,0);
-        m_row->setSpacing(3);
+        m_row->setSpacing(2);
+        // Never let QScrollArea compress the children to its viewport.
+        // Qt's tool-button minimum size otherwise permits clipped text.
+        m_row->setSizeConstraint(QLayout::SetMinimumSize);
         const auto named=[this](const char *name,const QString &caption) {
             addOption(findOption(name),caption);
         };
@@ -126,9 +132,9 @@ public:
                 QObject::tr("Replace"),QObject::tr("Intersect"),QObject::tr("Add"),
                 QObject::tr("Subtract"),QObject::tr("Symmetric difference")
             });
-            named("sliderThreshold",QObject::tr("Tolerance"));
-            named("sliderCloseGap",QObject::tr("Close gap"));
-            addSectionChoices("sectionMode",QObject::tr("Selection type"),
+            named("sliderThreshold",QObject::tr("Tol."));
+            named("sliderCloseGap",QObject::tr("Gap"));
+            addSectionChoices("sectionMode",QObject::tr("Type"),
                               {QObject::tr("Pixel"),QObject::tr("Vector")});
             native("select_all",QObject::tr("Select all"));
             native("invert_selection",QObject::tr("Invert"));
@@ -160,8 +166,8 @@ public:
                 {QObject::tr("Selection"),QObject::tr("Contiguous"),QObject::tr("Similar color")});
             addSectionChoices("sectionFillWith",QObject::tr("Source"),
                 {QObject::tr("Foreground"),QObject::tr("Background"),QObject::tr("Pattern")});
-            named("sliderThreshold",QObject::tr("Tolerance"));
-            named("sliderCloseGap",QObject::tr("Close gap"));
+            named("sliderThreshold",QObject::tr("Tol."));
+            named("sliderCloseGap",QObject::tr("Gap"));
             addSectionChoices("sectionReference",QObject::tr("Reference"),
                 {QObject::tr("Current layer"),QObject::tr("All layers"),QObject::tr("Color labels")});
             named("checkBoxAntiAlias",QObject::tr("Anti-alias"));
@@ -196,6 +202,9 @@ public:
         } else if(id==QStringLiteral("KritaShape/KisToolMultiBrush")) {
             named("multihandTypeCombobox",QObject::tr("Symmetry"));
             named("showAxesCheckbox",QObject::tr("Show axes"));
+        } else if(id==QStringLiteral("SvgTextTool")) {
+            named("mobileEditSvgText",QObject::tr("Edit text"));
+            named("mobileSvgGlyphs",QObject::tr("Glyphs"));
         }
         named("cmbOutline",QObject::tr("Outline"));
         named("cmbFill",QObject::tr("Fill"));
@@ -246,9 +255,10 @@ private:
     QToolButton *button(const QString &label)
     {
         auto *control=new QToolButton;
-        control->setText(label);
+        setChipText(control,label);
         control->setAccessibleName(label);
-        control->setMinimumWidth(44);
+        control->setToolTip(label);
+        control->setFixedHeight(44);
         m_row->addWidget(control);
         return control;
     }
@@ -479,9 +489,17 @@ private:
     static void setValueLabel(QToolButton *control,const QString &label,const QString &value)
     {
         const QString text=value.isEmpty()?label:QStringLiteral("%1: %2").arg(label,value);
-        control->setText(control->fontMetrics().elidedText(text,Qt::ElideRight,148));
+        setChipText(control,text);
         control->setToolTip(text);
         control->setAccessibleName(text);
+    }
+
+    static void setChipText(QToolButton *control,const QString &text,int limit=124)
+    {
+        const auto metrics=control->fontMetrics();
+        const QString shown=metrics.elidedText(text,Qt::ElideRight,limit);
+        control->setText(shown);
+        control->setFixedWidth(qMax(44,metrics.horizontalAdvance(shown)+14));
     }
 
     static void styleMenu(QMenu &menu)

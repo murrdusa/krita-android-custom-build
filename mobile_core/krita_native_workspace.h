@@ -499,7 +499,7 @@ private:
         if(m_contextToolBar && !m_contextToolBar->isHidden()) {
             const int toolbarWidth=qMin(760,qMax(0,canvas->width()-2*inset));
             m_contextToolBar->setGeometry((canvas->width()-toolbarWidth)/2,
-                MobileNativeCommandLayout::panelTopInset(canvas),toolbarWidth,58);
+                MobileNativeCommandLayout::panelTopInset(canvas),toolbarWidth,54);
         }
         const int top=overlayTop(canvas);
         const int width=canvas->width()-2*inset;
