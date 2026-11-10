@@ -4,6 +4,8 @@
 
 ## Resume here
 
+**Current Android source build:** `e71e69311498d09d548dd624a5c302659786d762` compiled and packaged on WSL in 116.5 seconds. Focused Qt resume, native command layout, Save/Close, SAF archive identity and Home cache checks passed. The compact Transform and Home changes await the Fold 6 checklist below.
+
 - **Follow-up integration:** compact numeric editors now emit the native editing-finished signal after setting a value, so Warp/Liquify edits are recorded by Krita's transform history.
 - **Home preview safety:** thumbnail PNGs now publish atomically, changed file timestamps invalidate cache even when moving backwards, and a decode started before a scan/save updates the tile cannot replace that tile's new preview.
 - **Current lifecycle fix:** returning from any popup called `initializeCurrentToolForCanvas()` unconditionally in `krita_native_view_factory.h`. Krita implements that call as deactivate/activate; Transform deactivate commits its stroke and activate starts Free mode. Studio now reconnects only on a real canvas change or first bootstrap, while ordinary Show/Expose/WindowActivate only repaint. The compact Mode label and delayed logs now read the native tool's `transformMode` property, rather than treating a checked button as proof. Exact source revision `c9d7b5e1147e327e773ae503ae3685328ac4922c` compiled and packaged on WSL in 111.5 seconds. This is a source-traced reset fix, still awaiting the Fold 6 gate.
@@ -145,19 +147,18 @@
 - **Native brush controls:** More → Drawing now exposes Krita's freehand brush smoothing modes and horizontal/vertical brush symmetry. The controls use the existing tool and paint toolbar actions. Fold 6 check: with Freehand Brush active, switch between Stabilizer and Disabled and verify Tool Options follows. Toggle each symmetry axis, draw mirrored strokes, and switch between canvases to check the axis state follows the document.
 
 - **Last Fold 6 test: PASS** for separate native APK target at `7cf81bffcf5b84f483d0d92112c13a1e80a9f352`: app launched without grey screen, stylus drawing and pressure worked, KRA save/reopen worked, Android file opening/sharing worked.
-- **Latest locally compiled and packaged Android source revision: `488ff321a0f8146a2c1ca2abda1c6704c88aeee5`, SUCCESS**, confirmed by the local WSL2 watcher on Nov 10 at 1:21 p.m. ET. The Home and saved-version baseline `e551ee0` and the separate Transform increment `0668703` also passed. Fold 6 validation of Transform, Home and draft recovery remains pending.
+- **Latest locally compiled and packaged Android source revision: `e71e69311498d09d548dd624a5c302659786d762`, SUCCESS.** The earlier lifecycle-only build at `c9d7b5e` also passed. Use the WSL watcher result for the exact SHA.
 - Doc-only commits may not trigger another APK build. The compiled SHA above is the meaningful source baseline; always read the latest Issue #1 for newer work.
 
 ## Agreed product roadmap
 
 Read [PRODUCT-ROADMAP.md](PRODUCT-ROADMAP.md) for approved preservation goals and feature priorities. **Most important future feature is project version history with automatic checkpoints on background/exit/crash recovery**, except an explicit Close → Don't Save. Next are interactive fill tolerance and convenient perspective modes. These are **not for immediate implementation**. Complete current selections/transforms, layers, and other Krita tool adaptations first; version history comes next, interface redesign follows, and additional Infinite Painter-style features come after the interface. Animation and timelapse are lower priority.
 
-## Next work — prioritize functional development, not more architecture churn
+## Next work
 
-1. **Next device gate:** S Pen/finger dragging, clipping, groups and basic layers already PASS. The earlier single-target Transform change `9aff5da` did **not** resolve Transform. Test the targeted **global selection mask visibility + native transform target synchronization** fixes `19507c0`, `1ff75e0`, `630296a` after exact Android build success. Confirm marquee doesn't create an ordinary visible mask row and transforms painted pixels rather than reporting empty layer. Leave established layer operations unchanged; UI redesign and APK upload remain paused.
-2. **Do not** spend more time on desktop startup fallback infrastructure, rebuilding Krita's paint engine, redoing the main interface, or unused desktop dependency trimming unless it blocks functionality or meaningfully improves build/runtime speed. The shipped Android target may still link Krita desktop-oriented classes in `kritaui`; that does **not** mean the original desktop application is running.
-3. PC watcher automatically compiles commits to `main`, publishes exact revision result in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1) and `local/android-wsl-build`. Never use GitHub Actions to compile when PC is available. Work on independent tasks while it runs; inspect failure issues for exact errors. APK publishing is opt-in only, currently paused.
-4. Ask for a short Fold 6 test checklist only when there is a meaningful device-only risk, new capability, or user-observable change. Keep controls finger- and pen-friendly with large targets and touch scrolling, but defer significant UI redesign until functionality is near complete.
+1. **Fold 6 gate:** test compact modes with gear closed, popup dismissal without an implicit Apply, native numeric edits, a marquee, and switching canvases. Compare the displayed mode against the handles and the full gear panel. If it still fails, capture logcat lines matching `Mobile Transform Mode` and `Mobile canvas tool initialization`. The delayed mode log reports the native enum and identifies the tool and options widget.
+2. Test Home library reopening, Recent merge, direct/tree URI deduplication, folder add/remove, and cached previews after save and Refresh. Preserve background draft recovery and explicit Close Without Saving.
+3. Continue native selection, layer and mask gaps using the existing Krita operations. Keep batch builds on the existing WSL watcher and APK publishing paused.
 
 ## Important code map
 
