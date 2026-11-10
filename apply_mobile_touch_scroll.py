@@ -34,15 +34,11 @@ def main(root):
         settingsScroll->setWidgetResizable(true);
         settingsScroll->setFrameShape(QFrame::NoFrame);
         settingsScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        settingsScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-        settingsScroll->setStyleSheet(
-            "QScrollBar:vertical{background:#303a46;width:20px;border:0;}"
-            "QScrollBar::handle:vertical{background:#80a9c6;"
-            "min-height:65px;border-radius:9px;}");
+        settingsScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         settingsScroll->viewport()->setAttribute(
-            Qt::WA_AcceptTouchEvents,false);
+            Qt::WA_AcceptTouchEvents,true);
         QScroller::grabGesture(settingsScroll->viewport(),
-                               QScroller::LeftMouseButtonGesture);
+                               QScroller::TouchGesture);
         QWidget *settingsPage = new QWidget(settingsScroll);
         QVBoxLayout *settingsContent = new QVBoxLayout(settingsPage);
         settingsContent->setContentsMargins(3,4,3,4);

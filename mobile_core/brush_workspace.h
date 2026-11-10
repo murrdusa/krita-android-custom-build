@@ -302,8 +302,12 @@ private:
                 const auto source=mapToSource(index);
                 const auto thumbnail=source.sibling(source.row(),KisAbstractResourceModel::Thumbnail)
                     .data(Qt::DecorationRole).value<QImage>();
-                // QIcon lets the delegate use the tile's icon size on Android.
-                return QIcon(QPixmap::fromImage(thumbnail));
+                if(thumbnail.isNull())return {};
+                // Scale into a square, never stretch a wide/portrait preset
+                // into a distorted icon. Krita's resource model still loads
+                // thumbnails lazily for visible cells only.
+                return QIcon(QPixmap::fromImage(thumbnail.scaled(
+                    QSize(56,56),Qt::KeepAspectRatio,Qt::SmoothTransformation)));
             }
             return QSortFilterProxyModel::data(index,role);
         }
@@ -457,7 +461,7 @@ private:
         grid->setBatchSize(32);
         grid->setUniformItemSizes(true);
         const QSize size=window()->size();
-        const int width=qMin(550,qMax(1,size.width()-16));
+        const int width=qMin(550,qMax(300,size.width()-16));
         const int gridWidth=qMax(1,width-14);
         const int columns=qMax(1,gridWidth/82);
         constexpr int tileHeight=88;

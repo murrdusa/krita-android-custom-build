@@ -46,7 +46,7 @@
 #include <QScopedPointer>
 #include <QSaveFile>
 #include <QScrollBar>
-#include <QScroller>
+#include "touch_scroll.h"
 #include <QSet>
 #include <QSharedPointer>
 #include <QStandardPaths>
@@ -310,11 +310,7 @@ public:
         m_list->setMovement(QListView::Static);
         m_list->setWordWrap(true);
         m_list->setSpacing(3);
-        m_list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-        m_list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        m_list->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
-        QScroller::grabGesture(m_list->viewport(),
-                               QScroller::LeftMouseButtonGesture);
+        MobileTouchScroll::configureList(m_list);
         layout->addWidget(m_list,1);
         m_placeholder=createPlaceholder();
 
@@ -490,7 +486,7 @@ public:
         layout->addWidget(explanation);
         auto *list=new QListWidget(&dialog);
         list->setStyleSheet(QStringLiteral("QListWidget::item{min-height:44px;padding:5px;}"));
-        QScroller::grabGesture(list->viewport(),QScroller::LeftMouseButtonGesture);
+        MobileTouchScroll::configureList(list);
         for(const auto &version:versions) {
             new QListWidgetItem(i18n("%1  •  %2 MB",
                 version.createdUtc.toLocalTime().toString(QStringLiteral("yyyy-MM-dd  HH:mm")),
@@ -579,7 +575,7 @@ private:
         auto *layout=new QVBoxLayout(&dialog);
         auto *list=new QListWidget(&dialog);
         list->setStyleSheet(QStringLiteral("QListWidget::item{min-height:44px;padding:5px;}"));
-        QScroller::grabGesture(list->viewport(),QScroller::LeftMouseButtonGesture);
+        MobileTouchScroll::configureList(list);
         for(const auto &folder:folders) {
             const auto entry=folder.toObject();
             auto *item=new QListWidgetItem(entry.value(QStringLiteral("name")).toString(),list);

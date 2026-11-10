@@ -20,6 +20,7 @@
 #include <QFont>
 #include <QLineEdit>
 #include <QScroller>
+#include "touch_scroll.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QLabel>
@@ -128,7 +129,7 @@ public:
         m_tree->setIndentation(4);
         m_tree->setSelectionMode(QAbstractItemView::NoSelection);
         m_tree->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-        m_tree->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        m_tree->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         // The compact tile handler owns touch scrolling and drag gestures.
         // QScroller otherwise steals a long press before it can reorder.
         m_tree->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,true);
@@ -666,6 +667,7 @@ private:
         auto *scrollArea=new QScrollArea(&sheet);
         scrollArea->setFrameShape(QFrame::NoFrame);
         scrollArea->setWidgetResizable(true);
+        MobileTouchScroll::configure(scrollArea);
         auto *body=new QWidget(scrollArea);
         body->setObjectName(QStringLiteral("mobileLayerOptionsBody"));
         body->setStyleSheet(QStringLiteral(
@@ -673,7 +675,6 @@ private:
         auto *sheetLayout=new QVBoxLayout(body);
         scrollArea->setWidget(body);
         outer->addWidget(scrollArea);
-        QScroller::grabGesture(scrollArea->viewport(),QScroller::TouchGesture);
         auto *title=new QLabel(node->name(),&sheet);
         title->setAlignment(Qt::AlignCenter);
         title->setWordWrap(true);
@@ -1842,7 +1843,7 @@ private:
         auto *list=new QListWidget(&dialog);
         list->setSelectionMode(QAbstractItemView::NoSelection);
         list->setStyleSheet(QStringLiteral("QListWidget::item{min-height:44px;}"));
-        QScroller::grabGesture(list->viewport(),QScroller::LeftMouseButtonGesture);
+        MobileTouchScroll::configureList(list);
         KisNodeList candidates;
         for(const auto &node:m_nodes) {
             if(!node || !node->inherits("KisLayer") || !node->isEditable())continue;
