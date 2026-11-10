@@ -167,25 +167,46 @@ public:
             document->setProperty("_mobileDraftPath",
                                   MobileDraftRecovery::allocate(title));
         }
-        return MobileKritaNativeViewFactory::attach(
+        auto *view=MobileKritaNativeViewFactory::attach(
             document,m_manager,m_root,saver);
+        if(view) {
+            connect(document,&KisDocument::sigCompleteBackgroundSaving,this,[this]() {
+                if(!m_pendingDrafts.isEmpty())
+                    QTimer::singleShot(0,this,[this]() {continueDrafts();});
+            });
+        }
+        return view;
     }
 
 private:
     void checkpointDrafts()
     {
         if(!m_root)return;
-        const auto views=m_root->openViews();
-        for(const auto &view:views) {
+        if(m_pendingDrafts.isEmpty()) {
+            for(const auto &view:m_root->openViews()) {
+                auto *document=qobject_cast<KisDocument*>(view.document.data());
+                if(document && document->isModified() &&
+                   !document->property("_mobileDraftPath").toString().isEmpty() &&
+                   !m_pendingDrafts.contains(document))
+                    m_pendingDrafts.append(document);
+            }
+        }
+        continueDrafts();
+    }
+
+    void continueDrafts()
+    {
+        if(!m_root || m_pendingDrafts.isEmpty())return;
+        for(const auto &view:m_root->openViews()) {
             auto *document=qobject_cast<KisDocument*>(view.document.data());
             if(document && document->isSaving())return;
         }
-        for(const auto &view:views) {
-            auto *document=qobject_cast<KisDocument*>(view.document.data());
-            if(!document || !document->isModified() ||
-               document->property("_mobileDraftPath").toString().isEmpty())continue;
+        while(!m_pendingDrafts.isEmpty()) {
+            const auto document=m_pendingDrafts.takeFirst();
+            if(!document || !ownsDocument(document) || !document->isModified())
+                continue;
             QMetaObject::invokeMethod(document,"slotAutoSave",Qt::DirectConnection);
-            if(document->isSaving())break;
+            if(document && document->isSaving())break;
         }
     }
 
@@ -200,6 +221,7 @@ private:
     QPointer<MobileNativeViewStack> m_root;
     QPointer<KisKActionCollection> m_actions;
     QPointer<KisViewManager> m_manager;
+    QList<QPointer<KisDocument>> m_pendingDrafts;
     QSharedPointer<MobileCommandRegistryPort> m_commands;
 };
 #endif

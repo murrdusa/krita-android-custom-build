@@ -81,8 +81,9 @@ public:
             return false;
         }
         const bool draft=MobileDraftRecovery::isDraft(path);
-        if(draft) {
-            document->setProperty("_mobileDraftPath",path);
+        const bool savedVersion=MobileSavedVersionArchive::isRecoveryCopy(path);
+        if(draft)document->setProperty("_mobileDraftPath",path);
+        if(draft || savedVersion) {
             document->resetPath();
             document->setRecovered(true);
             document->setModified(true);
@@ -101,7 +102,7 @@ public:
                 });
             return false;
         }
-        if(!draft)rememberPath(path);
+        if(!draft && !savedVersion)rememberPath(path);
         return true;
     }
 
@@ -186,26 +187,31 @@ private:
                     QObject::tr("Choose a different file from the open drawing."));
                 return false;
             }
-            const bool started=guardedDocument->exportDocument(target,targetMime,false,true);
-            if(started && guardedDocument)guardedDocument->waitForSavingToComplete();
-            return started && guardedDocument;
         }
-        // Let KisDocument apply platform SAF providers, backups,
-        // native file format conversion, and asynchronous completion.
-        const bool saved=choosePath?
-            guardedDocument->saveAs(target,targetMime,true):
-            guardedDocument->save(true,{});
-        if(saved && guardedDocument)
+        // Krita's return value only says whether background saving started.
+        // A Close → Save must keep the canvas open if the write later fails.
+        bool completed=false;
+        const auto connection=QObject::connect(guardedDocument.data(),
+            &KisDocument::sigSavingFinished,guardedDocument.data(),
+            [&completed,&target](const QString &path) {
+                if(path==target)completed=true;
+            });
+        const bool started=exporting?
+            guardedDocument->exportDocument(target,targetMime,false,true):
+            choosePath?guardedDocument->saveAs(target,targetMime,true):
+                       guardedDocument->save(true,{});
+        if(started && guardedDocument)
             guardedDocument->waitForSavingToComplete();
-        if(saved && guardedDocument && !guardedDocument->isModified()) {
+        QObject::disconnect(connection);
+        if(!completed || !guardedDocument || !m_runtime ||
+           !m_runtime->ownsDocument(guardedDocument))return false;
+
+        if(!exporting) {
             rememberPath(target);
-            // Do not delay painting or interfere with Krita's native Save.
-            // Archive only completed filesystem KRA saves; unsaved/SAF
-            // checkpoints need a separate native export transaction.
-            MobileSavedVersionArchive::enqueueAfterSave(target);
+            if(targetMime==guardedDocument->nativeFormatMimeType())
+                MobileSavedVersionArchive::enqueueAfterSave(target);
         }
-        return saved && guardedDocument &&
-               m_runtime && m_runtime->ownsDocument(guardedDocument);
+        return true;
     }
 
     static void rememberPath(const QString &path)

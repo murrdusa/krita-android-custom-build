@@ -11,6 +11,7 @@
 #include <QDebug>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QFile>
 #include <QFileInfo>
 #include <QIcon>
 #include <QLabel>
@@ -482,9 +483,8 @@ public:
                     QMessageBox::information(alive.data(),
                         QObject::tr("Saved versions"),
                         QObject::tr("No saved versions for this drawing yet. "
-                            "A snapshot is stored after each completed local "
-                            "KRA save. Unsaved edits and Android document "
-                            "provider files are not included yet."));
+                            "Completed KRA saves appear here. "
+                            "Unsaved drafts are available from Home."));
                     return;
                 }
                 QDialog dialog(alive.data());
@@ -540,7 +540,9 @@ public:
                 if(!found)return;
                 const QString recovered=
                     MobileSavedVersionArchive::materializeRecovery(chosen);
-                if(recovered.isEmpty() || !files->openFile(recovered))
+                const bool opened=!recovered.isEmpty() && files->openFile(recovered);
+                if(!recovered.isEmpty())QFile::remove(recovered);
+                if(!opened && alive)
                     QMessageBox::warning(alive.data(),QObject::tr("Saved versions"),
                         QObject::tr("Could not open that saved copy."));
             });

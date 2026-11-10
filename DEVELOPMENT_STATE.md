@@ -70,6 +70,9 @@
 
 ## Test status
 
+- **Document safety and history:** Studio now waits for Krita's successful write signal before reporting Save or Export complete. A failed Close → Save leaves the canvas open. Saved versions include native KRA saves through readable Android document providers, keyed by URI. Opening a saved version creates an unsaved canvas that requires Save As. Background and periodic draft passes now advance through all dirty open canvases one at a time. Fold 6 check: save two edits to a picker-opened KRA, restore an earlier version and Save As, verify a failed provider write cannot close the canvas, and force-stop after backgrounding with multiple dirty canvases.
+
+
 - **Fold 6 follow-up:** exact revision `244af5794d1b95178f6d97d72a5bc73ae8628db2` compiled and packaged successfully on the WSL2 watcher in 115.9 seconds (Nov 10, 12:17 p.m. ET). The focused pressure and calibration tests passed. The compact Transform Mode menu now clicks the same native mode buttons as full Tool Options. All Projects scans Android's mounted shared storage roots and includes KRA/KRZ files with persistent document grants. Browse Files asks Android to retain read access when the provider permits it. Providers with temporary grants remain accessible through Browse Files. Finger-contact pressure now rejects isolated sample spikes and limits abrupt transitions using the existing Stability setting. Device check: find a previously missing drawing, switch Free → Perspective → Warp using the compact bar, and compare constant-width and deliberately varied finger strokes.
 
 
@@ -110,7 +113,7 @@
 - **Native brush controls:** More → Drawing now exposes Krita's freehand brush smoothing modes and horizontal/vertical brush symmetry. The controls use the existing tool and paint toolbar actions. Fold 6 check: with Freehand Brush active, switch between Stabilizer and Disabled and verify Tool Options follows. Toggle each symmetry axis, draw mirrored strokes, and switch between canvases to check the axis state follows the document.
 
 - **Last Fold 6 test: PASS** for separate native APK target at `7cf81bffcf5b84f483d0d92112c13a1e80a9f352`: app launched without grey screen, stylus drawing and pressure worked, KRA save/reopen worked, Android file opening/sharing worked.
-- **Latest locally compiled and packaged Android source revision: `60c04d00abc7df97417b644d5cdaa89eb6dabbb2`, SUCCESS**, confirmed by the local WSL2 watcher on Nov 10 at 11:54 a.m. ET. The Home and saved-version baseline `e551ee0` and the separate Transform increment `0668703` also passed. Fold 6 validation of Transform, Home and draft recovery remains pending.
+- **Latest locally compiled and packaged Android source revision: `244af5794d1b95178f6d97d72a5bc73ae8628db2`, SUCCESS**, confirmed by the local WSL2 watcher on Nov 10 at 12:17 p.m. ET. The Home and saved-version baseline `e551ee0` and the separate Transform increment `0668703` also passed. Fold 6 validation of Transform, Home and draft recovery remains pending.
 - Doc-only commits may not trigger another APK build. The compiled SHA above is the meaningful source baseline; always read the latest Issue #1 for newer work.
 
 ## Agreed product roadmap

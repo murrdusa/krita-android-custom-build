@@ -47,12 +47,15 @@ int main(int argc,char **argv)
         QStringLiteral("private-recovery"));
     const QByteArray initial=QByteArray::fromHex("504b0304")+"saved-A";
     save(source,initial);
-    require(!MobileSavedVersionArchive::folderFor(
-        QStringLiteral("content://provider/project.kra"),store).size(),
-        "Android content URI must not be mistaken for filesystem storage");
-    require(!MobileSavedVersionArchive::snapshot(
-        QStringLiteral("content://provider/project.kra"),store),
-        "SAF snapshot attempt should not silently succeed");
+    const QString uri=QStringLiteral("content://provider/document/42");
+    const QString uriFolder=MobileSavedVersionArchive::folderFor(uri,store);
+    require(!uriFolder.isEmpty() &&
+            uriFolder!=MobileSavedVersionArchive::folderFor(source,store) &&
+            uriFolder!=MobileSavedVersionArchive::folderFor(uri+QStringLiteral("0"),store),
+            "opaque provider URI needs a distinct project history");
+    require(!MobileSavedVersionArchive::snapshot(uri,store) &&
+            MobileSavedVersionArchive::list(uri,store).isEmpty(),
+            "unreadable provider must not produce a version");
     require(MobileSavedVersionArchive::snapshot(source,store),
             "first completed save snapshot failed");
     auto versions=MobileSavedVersionArchive::list(source,store);
@@ -101,6 +104,10 @@ int main(int argc,char **argv)
     require(!MobileSavedVersionArchive::snapshot(unsupported,store),
             "non-KRA bytes were archived");
     qputenv("XDG_DATA_HOME",temp.path().toUtf8());
+    const QString restored=MobileSavedVersionArchive::materializeRecovery(versions.first());
+    require(MobileSavedVersionArchive::isRecoveryCopy(restored) &&
+            !MobileSavedVersionArchive::isRecoveryCopy(source),
+            "only private restored copies should require Save As");
     const QString draft=MobileDraftRecovery::allocate(QStringLiteral("a/b"));
     require(!draft.isEmpty() && draft!=MobileDraftRecovery::allocate(QStringLiteral("a/b")),
             "draft paths must be private and unique");
@@ -112,6 +119,6 @@ int main(int argc,char **argv)
             !MobileDraftRecovery::isDraft(source),
             "draft listing exposed staging or external files");
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
-               " SAF rejection and original-file preservation";
+               " provider identity and original-file preservation";
     return 0;
 }

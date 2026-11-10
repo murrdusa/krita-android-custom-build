@@ -1,10 +1,8 @@
 /*
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Non-destructive v1 of Mobile Studio's project version store.
- * This stores COMPLETED native KRA saves in app-private storage. It does
- * not claim to capture unsaved strokes, background exits or SAF URIs yet.
- * Never modifies the drawing, the native save path or Krita's undo stack.
+ * Completed native KRA saves in app-private storage, including Android
+ * document providers. Unsaved edits are handled by private draft recovery.
  */
 #pragma once
 
@@ -34,22 +32,19 @@ public:
     static constexpr int maxVersions() {return 12;}
     static constexpr qint64 maxBytes() {return 512LL*1024*1024;}
 
-    // Existing filesystem-backed KRA documents only. The Android SAF
-    // content URI stream and new unsaved drawings require a native Krita
-    // export/checkpoint integration, not an unsafe QFile copy attempt.
     static QString folderFor(const QString &source,
                              const QString &rootOverride=QString())
     {
-        if(source.isEmpty() || source.startsWith(
-              QStringLiteral("content:"),Qt::CaseInsensitive))
-            return {};
-        const QFileInfo file(source);
-        if(file.suffix().compare(QStringLiteral("kra"),Qt::CaseInsensitive)!=0)
-            return {};
-        const QString identity=QDir::cleanPath(
-            file.canonicalFilePath().isEmpty()?
-                file.absoluteFilePath():file.canonicalFilePath());
-        if(identity.isEmpty())return {};
+        if(source.isEmpty())return {};
+        QString identity=source;
+        if(!isProviderUri(source)) {
+            const QFileInfo file(source);
+            if(file.suffix().compare(QStringLiteral("kra"),Qt::CaseInsensitive)!=0)
+                return {};
+            const QString canonical=file.canonicalFilePath();
+            identity=QDir::cleanPath(canonical.isEmpty()?
+                                    file.absoluteFilePath():canonical);
+        }
         const QString base=rootOverride.isEmpty()?
             QDir(QStandardPaths::writableLocation(
                 QStandardPaths::AppDataLocation))
@@ -63,7 +58,6 @@ public:
     static QVector<Version> list(const QString &source,
                                 const QString &rootOverride=QString())
     {
-        QMutexLocker guard(&lock());
         return scan(folderFor(source,rootOverride));
     }
 
@@ -75,25 +69,26 @@ public:
         QMutexLocker guard(&lock());
         const QString folder=folderFor(source,rootOverride);
         if(folder.isEmpty())return false;
-        QFileInfo original(source);
-        if(!original.exists() || !original.isFile() ||
-           original.size()<=0 || original.size()>qint64(8)*1024*1024*1024)
-            return false;
+        constexpr qint64 copyLimit=8LL*1024*1024*1024;
+        const bool provider=isProviderUri(source);
+        QFileInfo original;
+        if(!provider) {
+            original.setFile(source);
+            if(!original.isFile())return false;
+        }
+
+        QFile input(source);
+        if(!input.open(QIODevice::ReadOnly) ||
+           input.peek(4)!=QByteArray::fromHex("504b0304"))return false;
+        const qint64 expected=provider?input.size():original.size();
+        if(expected>copyLimit || (!provider && expected<=0))return false;
         if(!QDir().mkpath(folder))return false;
         const QStorageInfo disk(folder);
         if(disk.isValid() && disk.isReady() &&
            disk.bytesAvailable()>=0 &&
-           disk.bytesAvailable()<original.size()+16LL*1024*1024)
-            return false;
-
-        QFile input(source);
-        if(!input.open(QIODevice::ReadOnly))return false;
-        // Krita's native KRA serialization is ZIP-based. A truncated or
-        // unrelated file should never be exposed as a recoverable version.
-        if(input.peek(4)!=QByteArray::fromHex("504b0304"))
+           disk.bytesAvailable()<qMax(qint64(0),expected)+16LL*1024*1024)
             return false;
         const QDateTime before=original.lastModified();
-        const qint64 expected=original.size();
         const QString stem=QDateTime::currentDateTimeUtc().toString(
             QStringLiteral("yyyyMMddTHHmmsszzz"))+QStringLiteral("-")+
             QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -103,25 +98,19 @@ public:
 
         QCryptographicHash hash(QCryptographicHash::Sha256);
         qint64 copied=0;
-        while(!input.atEnd()) {
-            const QByteArray block=input.read(256*1024);
-            if(block.isEmpty()) {
-                output.cancelWriting();
+        QByteArray block(256*1024,Qt::Uninitialized);
+        qint64 length=0;
+        while((length=input.read(block.data(),block.size()))>0) {
+            copied+=length;
+            if(copied>copyLimit || output.write(block.constData(),length)!=length)
                 return false;
-            }
-            if(output.write(block)!=block.size()) {
-                output.cancelWriting();
-                return false;
-            }
-            hash.addData(block);
-            copied+=block.size();
+            hash.addData(block.constData(),length);
         }
-        input.close();
-        original.refresh();
-        if(copied!=expected || original.size()!=expected ||
-           original.lastModified()!=before) {
-            output.cancelWriting(); // source changed during the copy
-            return false;
+        if(length<0 || (expected>0 && copied!=expected))return false;
+        if(!provider) {
+            original.refresh();
+            if(original.size()!=expected || original.lastModified()!=before)
+                return false;
         }
         const QByteArray sha=hash.result().toHex();
         const auto previous=scan(folder);
@@ -158,10 +147,7 @@ public:
     static QString materializeRecovery(const Version &version,
                                        const QString &rootOverride=QString())
     {
-        const QString base=rootOverride.isEmpty()?
-            QDir(QStandardPaths::writableLocation(
-                QStandardPaths::AppDataLocation))
-                .filePath(QStringLiteral("recovered-versions")):rootOverride;
+        const QString base=rootOverride.isEmpty()?recoveryDirectory():rootOverride;
         if(base.isEmpty() || !QDir().mkpath(base))return {};
         QFile source(version.path);
         if(!source.open(QIODevice::ReadOnly))return {};
@@ -181,7 +167,33 @@ public:
         return destination.commit()?path:QString();
     }
 
+    static bool isRecoveryCopy(const QString &path)
+    {
+        if(isProviderUri(path))return false;
+        const QFileInfo file(path);
+        const QString name=file.completeBaseName();
+        const QString folder=recoveryDirectory();
+        return !folder.isEmpty() && file.absolutePath()==folder &&
+            !file.isSymLink() && file.isFile() &&
+            file.suffix()==QStringLiteral("kra") &&
+            name.startsWith(QStringLiteral("Recovered-")) &&
+            !QUuid(name.mid(10)).isNull();
+    }
+
 private:
+    static bool isProviderUri(const QString &source)
+    {
+        return source.startsWith(QStringLiteral("content://"),Qt::CaseInsensitive);
+    }
+
+    static QString recoveryDirectory()
+    {
+        const QString base=QStandardPaths::writableLocation(
+            QStandardPaths::AppDataLocation);
+        return base.isEmpty()?QString():
+            QDir(base).filePath(QStringLiteral("recovered-versions"));
+    }
+
     static QMutex &lock()
     {
         static QMutex mutex;
