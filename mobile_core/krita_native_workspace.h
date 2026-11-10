@@ -94,8 +94,8 @@ public:
             m_layerCanvas=canvas;
             canvas->installEventFilter(this);
             m_layers=new KritaMobileLayersPanel(m_engine,canvas);
-            m_layers->setObjectName(
-                QStringLiteral("_mobileNativeFloatingLayers"));
+            // Keep the panel's own object name: its stylesheet uses
+            // QFrame#MobileStudioLayersPanel for the dark floating rail.
             m_layers->setFixedWidth(124);
             m_layers->onRequestClose=[this]() {
                 if(m_layers)m_layers->hide();
