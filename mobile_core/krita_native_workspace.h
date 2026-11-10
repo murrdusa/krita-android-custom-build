@@ -25,6 +25,7 @@
 #include <QEvent>
 #include <QMainWindow>
 #include <QMessageBox>
+#include <QMetaObject>
 #include <QPointer>
 #include <QPushButton>
 #include <QTimer>
@@ -140,6 +141,29 @@ public:
         QTimer::singleShot(0,this,[this,slot]() {
             if(m_brush && m_engine.hasDocument() && m_brush->isActiveMode(slot))
                 m_brush->browsePresets(slot);
+            syncBrushModes();
+        });
+    }
+
+    void pickCloneSource()
+    {
+        if(!m_engine.hasDocument())return;
+        QTimer::singleShot(0,this,[this]() {
+            auto *view=m_engine.manager();
+            if(!view || !m_engine.hasDocument() || !ensureBrushControls())return;
+            if(!m_brush->activateCloneBrush()) {
+                view->showFloatingMessage(tr("No Clone Brush preset is available."),QIcon());
+                return;
+            }
+            auto *tools=KoToolManager::instance();
+            auto *controller=tools?tools->activeCanvasController():nullptr;
+            if(!controller || controller->canvas()!=view->canvasBase() ||
+               tools->activeToolId()!=QStringLiteral("KritaShape/KisToolBrush"))return;
+            auto *tool=tools->toolById(controller->canvas(),tools->activeToolId());
+            bool armed=false;
+            if(tool && QMetaObject::invokeMethod(tool,"mobileArmCloneSource",
+                   Qt::DirectConnection,Q_RETURN_ARG(bool,armed)) && armed)
+                view->showFloatingMessage(tr("Tap the canvas to set the Clone Brush source."),QIcon());
             syncBrushModes();
         });
     }

@@ -174,6 +174,35 @@ public:
         return slot!=2 || (resources() && isSmudge(resources()->currentPreset()));
     }
 
+    bool activateCloneBrush()
+    {
+        auto *provider=resources();
+        if(!provider)return false;
+        auto preset=provider->currentPreset();
+        if(!preset || preset->paintOp().id()!=QStringLiteral("duplicate")) {
+            preset.clear();
+            auto *source=model();
+            for(int row=0;row<source->rowCount();++row) {
+                auto candidate=source->resourceForIndex(source->index(row,0))
+                                     .dynamicCast<KisPaintOpPreset>();
+                if(candidate && candidate->valid() &&
+                   candidate->paintOp().id()==QStringLiteral("duplicate")) {
+                    preset=candidate;
+                    break;
+                }
+            }
+            if(!preset)return false;
+        }
+        m_engine.freehandBrush();
+        if(provider->currentPreset()!=preset)setNativePreset(preset);
+        setEraser(false);
+        m_slot=0;
+        m_hasSelectedMode=true;
+        refresh();
+        return provider->currentPreset() &&
+               provider->currentPreset()->paintOp().id()==QStringLiteral("duplicate");
+    }
+
     void activateMode(int slot) { switchMode(slot); }
     void browsePresets(int slot) { openPresetBrowser(slot); }
 
@@ -213,6 +242,7 @@ private:
     static bool inCategory(const KisPaintOpPresetSP &preset,int slot)
     {
         if(!preset)return false;
+        if(slot==3)return preset->paintOp().id()==QStringLiteral("duplicate");
         const QString name=preset->name().toLower();
         const bool eraser=name.contains(QStringLiteral("erase")) ||
             name.contains(QStringLiteral("eraser")) ||
@@ -336,6 +366,7 @@ private:
         category->addItem(i18n("Painting"),0);
         category->addItem(i18n("Erasers"),1);
         category->addItem(i18n("Blending / Smudge"),2);
+        category->addItem(i18n("Clone"),3);
         category->setCurrentIndex(slot==2?3:0);
         category->setVisible(slot!=2);
         layout->addWidget(category);

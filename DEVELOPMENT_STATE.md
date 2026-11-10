@@ -4,6 +4,9 @@
 
 ## Resume here
 
+- More → Drawing → Set Clone Source selects a native Clone preset when needed and arms one canvas tap for the source. The next stroke paints normally. The command can be pinned as the toolbar shortcut, and the brush browser has a Clone filter. Deferred Fold 6 check: choose a source, verify the source tap leaves the canvas unchanged, paint on the destination, and repeat after selecting a different source layer.
+
+
 - The contextual tool strip now exposes native Reference Images import, arrangement and appearance controls, Colorize Mask preview and edge settings, Knife gutter controls, and Dynamic Brush mass and drag. Keep these in the deferred Fold 6 batch with the existing layer and drawing-tool changes.
 
 

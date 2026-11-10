@@ -1238,6 +1238,66 @@ install(FILES org.kde.krita.desktop''',
                  f"Studio Dynamic Brush {variable}")
     dyna_file.write_text(dyna,encoding="utf-8")
 
+    freehand_header=root/"libs/ui/tool/kis_tool_freehand.h"
+    freehand=freehand_header.read_text(encoding="utf-8")
+    freehand=one(freehand,"    bool trySampleByPaintOp(KoPointerEvent *event, AlternateAction action);",
+        """    bool trySampleByPaintOp(KoPointerEvent *event, AlternateAction action,
+                            bool pickCloneSource = false);""",
+        "Clone source sampling flag")
+    freehand=one(freehand,"    int flags() const override;",
+        """    int flags() const override;
+    Q_INVOKABLE bool mobileArmCloneSource();""","Studio Clone source command")
+    freehand=one(freehand,"    bool m_paintopBasedSamplingInAction {false};",
+        """    bool m_paintopBasedSamplingInAction {false};
+    bool m_mobileCloneSourceArmed {false};
+    bool m_mobileCloneSourceTap {false};""","one-shot Clone source state")
+    freehand_header.write_text(freehand,encoding="utf-8")
+
+    freehand_file=root/"libs/ui/tool/kis_tool_freehand.cc"
+    freehand=freehand_file.read_text(encoding="utf-8")
+    freehand=one(freehand,"void KisToolFreehand::deactivate()\n{",
+        """void KisToolFreehand::deactivate()
+{
+    m_mobileCloneSourceArmed = false;
+    m_mobileCloneSourceTap = false;""","clear Clone source state on tool change")
+    freehand=one(freehand,"void KisToolFreehand::beginPrimaryAction(KoPointerEvent *event)\n{",
+        """bool KisToolFreehand::mobileArmCloneSource()
+{
+    const auto preset = currentPaintOpPreset();
+    m_mobileCloneSourceArmed = mode() == HOVER_MODE && preset &&
+        preset->paintOp().id() == QStringLiteral("duplicate");
+    return m_mobileCloneSourceArmed;
+}
+
+void KisToolFreehand::beginPrimaryAction(KoPointerEvent *event)
+{
+    m_mobileCloneSourceTap = false;
+    if (m_mobileCloneSourceArmed) {
+        m_mobileCloneSourceArmed = false;
+        const auto preset = currentPaintOpPreset();
+        if (preset && preset->paintOp().id() == QStringLiteral("duplicate") &&
+            trySampleByPaintOp(event, SampleFgImage, true)) {
+            m_mobileCloneSourceTap = true;
+            requestUpdateOutline(event->point, event);
+            return;
+        }
+    }
+""","use native Clone sampling on the next canvas tap")
+    for method in ("continuePrimaryAction","endPrimaryAction"):
+        anchor=f"void KisToolFreehand::{method}(KoPointerEvent *event)\n{{"
+        reset=" m_mobileCloneSourceTap = false;" if method=="endPrimaryAction" else ""
+        freehand=one(freehand,anchor,anchor+
+            f"\n    if (m_mobileCloneSourceTap) {{{reset} return; }}",
+            f"consume Clone source {method} without painting")
+    freehand=one(freehand,
+        "bool KisToolFreehand::trySampleByPaintOp(KoPointerEvent *event, AlternateAction action)",
+        """bool KisToolFreehand::trySampleByPaintOp(KoPointerEvent *event, AlternateAction action,
+                                           bool pickCloneSource)""","receive Clone source flag")
+    freehand=one(freehand,"                                                                                   event->modifiers(),",
+        """                                                                                   pickCloneSource ? Qt::KeyboardModifiers(Qt::ControlModifier) : event->modifiers(),""",
+        "reuse native Clone engine origin selection")
+    freehand_file.write_text(freehand,encoding="utf-8")
+
     transform_dir=root/"plugins/tools/tool_transform2"
     transform_header=transform_dir/"kis_tool_transform.h"
     transform=transform_header.read_text(encoding="utf-8")

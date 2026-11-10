@@ -149,11 +149,17 @@ public:
         }
         auto *canvasOnlyAction=makeAction("Canvas Only");
         canvasOnlyAction->setCheckable(true);
+        auto *cloneSourceAction=makeAction("Set Clone Source");
+        cloneSourceAction->setIcon(studioIcon("krita_tool_color_sampler"));
+        QObject::connect(cloneSourceAction,&QAction::triggered,workspace,[workspace]() {
+            workspace->pickCloneSource();
+        });
         workspace->configureToolbarShortcut(shortcutSlot,{
             {QStringLiteral("canvases"),canvasesAction,studioIcon("folder-documents")},
             {QStringLiteral("options"),optionsAction,studioIcon("configure")},
             {QStringLiteral("brush-editor"),nativeBridge.action("show_brush_editor"),
              studioIcon("paintop_settings_02")},
+            {QStringLiteral("clone-source"),cloneSourceAction,cloneSourceAction->icon()},
             {QStringLiteral("fit"),nativeBridge.action("zoom_to_fit"),studioIcon("zoom-fit")},
             {QStringLiteral("mirror"),nativeBridge.action("mirror_canvas"),studioIcon("mirror-view")},
             {QStringLiteral("assistants"),nativeBridge.action("view_toggle_painting_assistants"),
@@ -235,6 +241,7 @@ public:
             });
         }
         drawingMenu->addMenu(fillResourcesMenu);
+        drawingMenu->addAction(cloneSourceAction);
         if(auto *editor=nativeBridge.action("show_brush_editor"))
             drawingMenu->addAction(editor);
         addDrawingGroup("Brush smoothing",{
