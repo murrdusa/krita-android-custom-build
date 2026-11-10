@@ -118,6 +118,43 @@ public:
     QVector<MobileTool> tools() const { return m_commands.tools(); }
     QString activeTool() const { return m_commands.activeTool(); }
     bool selectTool(const QString &id) const {
+        // Krita's Transform tool snapshots the native selected-node
+        // list *when it activates*. The global canvas selection is
+        // internally a root-level KisSelectionMask; if it slipped into
+        // that list while making a marquee, the transform could
+        // incorrectly report "Cannot transform empty layer" even
+        // though the visibly selected paint layer contains content.
+        //
+        // Normalize before activating Transform, not while its image
+        // stroke is running. Preserve intentional multi-layer targets.
+        if(m_manager && (id==QStringLiteral("KisToolTransform") ||
+                         id==QStringLiteral("KritaTransform/KisToolMove"))) {
+            auto *nodes=m_manager->nodeManager();
+            const KisImageSP image=m_manager->image().toStrongRef();
+            if(nodes && image && image->root()) {
+                const auto belongsToImage=[&image](KisNodeSP node) {
+                    for(KisNodeSP p=node;p;p=p->parent())
+                        if(p==image->root())return true;
+                    return false;
+                };
+                const KisNodeList existing=nodes->selectedNodes();
+                KisNodeList targets;
+                for(const KisNodeSP &node:existing) {
+                    if(belongsToImage(node) &&
+                       !KisNodeManager::isNodeHidden(node,true) &&
+                       !targets.contains(node))
+                        targets.append(node);
+                }
+                const KisNodeSP active=m_manager->activeNode();
+                if(belongsToImage(active) &&
+                   !KisNodeManager::isNodeHidden(active,true) &&
+                   targets.size()<=1) {
+                    targets=KisNodeList{active};
+                }
+                if(!targets.isEmpty() && targets!=existing)
+                    nodes->slotSetSelectedNodes(targets);
+            }
+        }
         return m_commands.selectTool(id);
     }
     void freehandBrush() const { m_commands.freehandBrush(); }
