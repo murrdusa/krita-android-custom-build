@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include <QApplication>
 #include <QListWidget>
+#include <QListView>
+#include <QStringListModel>
 #include <QScrollArea>
 #include <QVBoxLayout>
 #include "mobile_core/touch_scroll.h"
@@ -69,5 +71,30 @@ int main(int argc,char **argv)
     modes.verticalScrollBar()->setValue(0);
     pointer(viewport,QEvent::MouseButtonPress,row);
     pointer(viewport,QEvent::MouseButtonRelease,row);
-    verify(clicks==1,"list tap did not select exactly once");
+    verify(clicks==1,"Home project list tap did not select exactly once");
+
+    // The brush picker uses QListView::clicked rather than a
+    // QListWidget::itemClicked. Both must receive a full click pair
+    // after a stationary touch, while drag never activates a preset.
+    QStringListModel presets;
+    presets.setStringList({QStringLiteral("Pencil"),
+                           QStringLiteral("Ink"),
+                           QStringLiteral("Eraser")});
+    QListView brushes;
+    brushes.setModel(&presets);
+    brushes.resize(240,160);
+    MobileTouchScroll::configureList(&brushes);
+    brushes.show();
+    QApplication::processEvents();
+    int presetClicks=0;
+    QObject::connect(&brushes,&QListView::clicked,&brushes,
+                     [&](const QModelIndex &) {++presetClicks;});
+    auto *brushViewport=brushes.viewport();
+    const QPoint brushTap=brushViewport->mapToGlobal(
+        brushes.visualRect(presets.index(0,0)).center());
+    pointer(brushViewport,QEvent::MouseButtonPress,brushTap);
+    pointer(brushViewport,QEvent::MouseButtonRelease,brushTap);
+    verify(presetClicks==1,"Brushes list tap did not select a preset");
+    drag(brushViewport,brushTap);
+    verify(presetClicks==1,"Brushes drag accidentally selected a preset");
 }
