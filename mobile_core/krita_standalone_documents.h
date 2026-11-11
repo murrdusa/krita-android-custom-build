@@ -82,7 +82,13 @@ public:
 
         const auto checkpoint=MobileDraftRecovery::latestFor(
             path,MobileSavedVersionArchive::projectModified(path));
-        const QString latest=checkpoint.exists()?checkpoint.absoluteFilePath():QString();
+        // A newer draft can survive an interrupted save with invalid
+        // bytes. Prefer the completed project rather than repeatedly
+        // attempting that draft whenever the named file is opened.
+        // Keep the damaged draft available for manual inspection.
+        const QString latest=checkpoint.exists() &&
+            MobileDraftRecovery::hasKraHeader(checkpoint.absoluteFilePath())?
+            checkpoint.absoluteFilePath():QString();
         const QString source=latest.isEmpty()?path:latest;
         KisDocument *document=KisPart::instance()->createDocument();
         if(!document)return false;
