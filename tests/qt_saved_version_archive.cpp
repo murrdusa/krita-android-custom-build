@@ -250,12 +250,17 @@ int main(int argc,char **argv)
             "treeUri2 must normalize to canonical document URI");
     require(MobileSavedVersionArchive::canonicalIdentity(docUri)==docUri,
             "direct docUri must remain canonical identity");
+    const QString decoratedUri=treeUri1+
+        QStringLiteral("?grant=temporary#picker");
+    require(MobileSavedVersionArchive::canonicalIdentity(decoratedUri)==docUri,
+            "picker URI query and fragment must not fork a document identity");
     const QString docFolder=MobileSavedVersionArchive::folderFor(docUri,store);
     const QString treeFolder1=MobileSavedVersionArchive::folderFor(treeUri1,store);
     const QString treeFolder2=MobileSavedVersionArchive::folderFor(treeUri2,store);
     require(!docFolder.isEmpty(), "document version folder must not be empty");
-    require(docFolder==treeFolder1 && docFolder==treeFolder2,
-            "SAF tree grants and direct document access must share the same version history");
+    require(docFolder==treeFolder1 && docFolder==treeFolder2 &&
+            docFolder==MobileSavedVersionArchive::folderFor(decoratedUri,store),
+            "SAF document, tree and decorated picker URIs must share version history");
     const QString otherDocUri=QStringLiteral(
         "content://com.android.externalstorage.documents/document/primary%3ADrawings%2Fother.kra");
     require(MobileSavedVersionArchive::folderFor(otherDocUri,store)!=docFolder,
