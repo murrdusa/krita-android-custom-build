@@ -1,17 +1,15 @@
 /*
  * SPDX-License-Identifier: GPL-2.0-or-later
- *
- * Regression: native commands visible in floating control groups, real QActions
- * preserved, and existing Krita canvas not touched.
  */
 #include <QApplication>
 #include <QDebug>
-#include <QFrame>
 #include <QMainWindow>
 #include <QPixmap>
-#include <QMenu>
+#include <QScrollArea>
+#include <QScrollBar>
+#include <QSettings>
+#include <QTemporaryDir>
 #include <QToolButton>
-#include <QWidget>
 #include "mobile_core/native_command_layout.h"
 
 static void verify(bool pass,const char *message)
@@ -22,136 +20,79 @@ static void verify(bool pass,const char *message)
 int main(int argc,char **argv)
 {
     QApplication app(argc,argv);
+    QTemporaryDir config;
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,config.path());
+    app.setOrganizationName(QStringLiteral("KritaToolbarTest"));
+    app.setApplicationName(QStringLiteral("KritaToolbarTest"));
+
     QMainWindow host;
-    host.resize(720,870);
+    host.resize(320,420);
     auto *canvas=new QWidget(&host);
-    canvas->setObjectName(QStringLiteral("unchangedKritaCanvas"));
     host.setCentralWidget(canvas);
 
-    QAction canvases(QObject::tr("Canvases"),&host);
-    QAction home(QObject::tr("Home"),&host);
-    QAction undo(QObject::tr("Undo"),&host);
-    QAction redo(QObject::tr("Redo"),&host);
-    QAction save(QObject::tr("Save"),&host);
-    QAction brushes(QObject::tr("Brushes"),&host);
-    QAction eraser(QObject::tr("Eraser"),&host);
-    QAction blend(QObject::tr("Blend"),&host);
-    for(auto *mode:{&brushes,&eraser,&blend}) {
-        mode->setCheckable(true);
-        mode->setProperty("mobileBrushMode",true);
-    }
-    QAction layers(QObject::tr("Layers"),&host);
-    QAction color(QObject::tr("Color"),&host);
-    QAction tools(QObject::tr("Tools"),&host);
-    QAction newCanvas(QObject::tr("New"),&host);
-    QAction open(QObject::tr("Open"),&host);
-    QAction exit(QObject::tr("Exit test"),&host);
-    QAction canvasOnly(QObject::tr("Canvas Only"),&host);
+    QAction home(QStringLiteral("Home"),&host);
+    QAction brush(QStringLiteral("Paint"),&host);
+    QAction tool(QStringLiteral("Tool Settings"),&host);
+    QAction undo(QStringLiteral("Undo"),&host);
+    QAction redo(QStringLiteral("Redo"),&host);
+    QAction save(QStringLiteral("Save"),&host);
+    QAction shortcut(QStringLiteral("Shortcut"),&host);
+    QAction open(QStringLiteral("Open"),&host);
+    QAction canvasOnly(QStringLiteral("Canvas Only"),&host);
     canvasOnly.setCheckable(true);
-    QPixmap icon(20,20);
-    icon.fill(Qt::white);
-    for(QAction *action:{&home,&canvases,&undo,&redo,&save,&brushes,&eraser,&blend,
-                         &layers,&color,&tools})
-        action->setIcon(QIcon(icon));
-    int brushed=0;
-    int opened=0;
-    QObject::connect(&brushes,&QAction::triggered,&host,
-                     [&brushed]() { ++brushed; });
-    QObject::connect(&open,&QAction::triggered,&host,
-                     [&opened]() { ++opened; });
+    brush.setCheckable(true);
+    QPixmap pixmap(20,20);
+    pixmap.fill(Qt::white);
+    const QIcon icon(pixmap);
+    for(auto *action:{&home,&brush,&tool,&undo,&redo,&save,&shortcut})
+        action->setIcon(icon);
 
-    verify(MobileNativeCommandLayout::install(
-        &host,{&home,&canvases,&undo,&redo,&save},
-        {&brushes,&eraser,&blend,&color,&layers,&tools},
-        {&newCanvas,&open,&exit,&canvasOnly},&canvasOnly),
-        "could not install command chrome");
-    auto *primary=host.findChild<QFrame*>(
-        QStringLiteral("_mobileNativeDocumentBar"));
-    auto *secondary=host.findChild<QFrame*>(
-        QStringLiteral("_mobileNativeWorkspaceBar"));
-    auto *more=host.findChild<QToolButton*>(
-        QStringLiteral("_mobileNativeMoreButton"));
-    verify(primary && secondary && more && more->menu(),
-           "the two rows or overflow menu are missing");
-    verify(host.centralWidget()==canvas &&
-           canvas->parentWidget()==&host,
-           "native command chrome replaced or reparented painting canvas");
-    const auto hasButton=[](QFrame *panel,QAction *action) {
-        for(auto *button:panel->findChildren<QToolButton*>())
-            if(button->defaultAction()==action)return true;
-        return false;
+    const QStringList defaults{"brush","tool","undo","redo","save","shortcut"};
+    const QStringList saved{"tool","redo","brush","save","undo","shortcut"};
+    QSettings().setValue(QStringLiteral("MobileStudio/primaryToolbarCommands"),saved);
+    const MobileNativeCommandLayout::Commands commands{
+        {"brush",&brush},{"tool",&tool},{"undo",&undo},{"redo",&redo},
+        {"save",&save},{"shortcut",&shortcut}
     };
-    verify(hasButton(primary,&canvases) && hasButton(primary,&save) &&
-           !hasButton(primary,&brushes),
-           "document actions leaked into the workspace controls");
-    canvases.setText(QObject::tr("Tool Options"));
-    for(auto *button:primary->findChildren<QToolButton*>()) {
-        if(button->defaultAction()==&canvases)
-            verify(button->accessibleName()==canvases.text(),
-                   "reassigned toolbar shortcut kept its previous label");
-    }
-    verify(hasButton(secondary,&brushes) && hasButton(secondary,&eraser) &&
-           hasButton(secondary,&layers) &&
-           hasButton(secondary,&color) && hasButton(secondary,&tools),
-           "brush/layer/color/tool controls are not directly available");
-    eraser.setChecked(true);
-    for(auto *button:secondary->findChildren<QToolButton*>()) {
-        if(button->defaultAction()!=&eraser)continue;
-        verify(button->property("mobileBrushMode").toBool() && button->isChecked(),
-               "brush mode action did not highlight its toolbar button");
-        eraser.setChecked(false);
-        verify(!button->isChecked(),"brush mode highlight remained after deactivation");
-    }
-    verify(more->menu()->actions().contains(&newCanvas) &&
-           more->menu()->actions().contains(&open) &&
-           more->menu()->actions().contains(&exit),
-           "file and exit actions disappeared from the More menu");
-    brushes.trigger();
-    open.trigger();
-    verify(brushed==1 && opened==1,
-           "rehosting QAction changed command delivery");
+    int triggered=0;
+    QObject::connect(&brush,&QAction::triggered,&host,[&]() {++triggered;});
+    verify(MobileNativeCommandLayout::install(
+        &host,&home,icon,commands,defaults,{&open},&canvasOnly),"toolbar installation");
     host.show();
     QApplication::processEvents();
-    verify(host.centralWidget()==canvas && secondary->isVisible() &&
-           primary->isVisible(),
-           "visible command bars hid or destroyed the original canvas");
-    auto *restore=canvas->findChild<QToolButton*>(
-        QStringLiteral("_mobileNativeRestoreControls"));
-    verify(restore && !restore->isVisible(),"restore button starts visible");
-    verify(primary->y()==secondary->y() && !primary->geometry().intersects(secondary->geometry()),
-           "control groups collide on a wide canvas");
-    const QRect normalGeometry=canvas->geometry();
+
+    auto *bar=canvas->findChild<QFrame*>(QStringLiteral("_mobileNativeToolbar"));
+    auto *scroll=bar?bar->findChild<QScrollArea*>():nullptr;
+    auto *more=bar?bar->findChild<QToolButton*>(QStringLiteral("_mobileNativeMoreButton")):nullptr;
+    verify(bar && scroll && more && more->menu(),"toolbar or Settings missing");
+    verify(canvas->rect().contains(bar->geometry()),"toolbar overflowed the narrow canvas");
+    verify(scroll->horizontalScrollBar()->maximum()>0,"narrow toolbar does not scroll");
+    verify(more->menu()->actions().contains(&open),"file command disappeared");
+    auto *strip=scroll->widget()->layout();
+    verify(qobject_cast<QToolButton*>(strip->itemAt(0)->widget())->defaultAction()==&tool,
+           "toolbar did not load the saved command order");
+
+    auto *button=qobject_cast<QToolButton*>(strip->itemAt(2)->widget());
+    verify(button && button->defaultAction()==&brush && button->height()>=44,
+           "brush does not have its original action or a finger-sized button");
+    brush.setChecked(true);
+    brush.setEnabled(false);
+    brush.setText(QStringLiteral("Brush"));
+    verify(button->isChecked() && !button->isEnabled() &&
+           button->accessibleName()==QStringLiteral("Brush"),"button state diverged from its action");
+    brush.setEnabled(true);
+    button->click();
+    verify(triggered==1,"toolbar button did not trigger the existing action");
+
+    const QRect bounds=canvas->geometry();
     canvasOnly.trigger();
-    QApplication::processEvents();
-    verify(canvasOnly.isChecked() && restore->isVisible() &&
-           !primary->isVisible() && !secondary->isVisible() &&
-           host.centralWidget()==canvas && canvas->geometry()==normalGeometry,
-           "Canvas Only failed to hide controls without resizing the canvas");
+    auto *restore=canvas->findChild<QToolButton*>(QStringLiteral("_mobileNativeRestoreControls"));
+    verify(restore && restore->isVisible() && !bar->isVisible(),"Canvas Only did not hide the toolbar");
     restore->click();
-    QApplication::processEvents();
-    verify(!canvasOnly.isChecked() && !restore->isVisible() &&
-           primary->isVisible() && secondary->isVisible() &&
-           canvas->geometry()==normalGeometry,
-           "Show Controls did not restore the command bars");
-    host.resize(320,420);
-    QApplication::processEvents();
-    verify(primary->window()==&host &&
-           primary->y()>secondary->geometry().bottom(),
-           "control groups did not stack on a narrow canvas");
-    verify(MobileNativeCommandLayout::panelTopInset(canvas)>primary->geometry().bottom(),
-           "workspace overlays have no clearance below the controls");
-    for(QFrame *panel:{primary,secondary}) {
-        verify(canvas->rect().contains(panel->geometry()),
-               "a floating group overflowed at 320 px");
-        for(QToolButton *button:panel->findChildren<QToolButton*>()) {
-            verify(button->isVisible() && button->height()>=44,
-                   "a primary touch target overflowed at 320 px");
-        }
-    }
-    verify(!MobileNativeCommandLayout::install(
-        &host,{&save},{&brushes},{&exit}),
-        "duplicate chrome installation was accepted");
-    qInfo()<<"PASS: Krita canvas unchanged, native controls immediately"
-              " accessible, real actions preserved";
+    verify(bar->isVisible() && !restore->isVisible() && canvas->geometry()==bounds,
+           "restoring the toolbar changed canvas geometry");
+    verify(!MobileNativeCommandLayout::install(&host,&home,icon,commands,defaults,{}),
+           "duplicate toolbar installation accepted");
     return 0;
 }

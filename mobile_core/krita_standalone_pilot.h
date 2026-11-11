@@ -365,13 +365,29 @@ public:
         moreActions.append(settingsAction);
         moreActions.append(inputAction);
         moreActions.append(exitAction);
-        // Avoid an overflow chevron hiding the primary drawing tools.
-        // Less-common operations stay in an explicit, labeled menu.
-        if(!MobileNativeCommandLayout::install(
-            window,
-            {homeAction,shortcutSlot,undoAction,redoAction,saveAction},
-            {brushesAction,eraserAction,blendBrushAction,
-             colorAction,layersAction,toolsAction},
+        MobileNativeCommandLayout::Commands toolbarCommands;
+        for(auto *action:nativeBridge.availableActions()) {
+            if(!action || action->objectName().isEmpty() || action->menu() ||
+               action->text().isEmpty() || action->isSeparator() ||
+               action->objectName().startsWith(QStringLiteral("mobile_")))continue;
+            toolbarCommands.insert(QStringLiteral("krita/")+action->objectName(),action);
+        }
+        const QList<QPair<const char*,QAction*>> studioCommands{
+            {"paint",brushesAction},{"erase",eraserAction},{"blend",blendBrushAction},
+            {"tool-settings",optionsAction},{"color",colorAction},{"layers",layersAction},
+            {"tools",toolsAction},{"undo",undoAction},{"redo",redoAction},{"save",saveAction},
+            {"shortcut",shortcutSlot},{"new",newAction},{"open",openAction},
+            {"save-as",saveAsAction},{"export",exportAction},{"versions",versionsAction},
+            {"close",closeAction},{"canvas-only",canvasOnlyAction},
+            {"clone-source",cloneSourceAction},{"input-settings",inputAction},
+            {"workspace-settings",settingsAction},{"commands",commandsAction}
+        };
+        for(const auto &entry:studioCommands)
+            toolbarCommands.insert(QString::fromLatin1(entry.first),entry.second);
+        setStudioIcon(optionsAction,"configure");
+        if(!MobileNativeCommandLayout::install(window,homeAction,studioIcon("configure"),
+            toolbarCommands,{"paint","erase","blend","tool-settings","color","layers",
+                             "tools","undo","redo","save","shortcut"},
             moreActions,canvasOnlyAction)) {
             qWarning() << "Independent Krita command layout unavailable";
         }

@@ -4,6 +4,8 @@
 
 ## Resume here
 
+- **Compact default toolbar:** The drawing controls share a single translucent, horizontally scrollable strip. Home and the Settings gear are pinned, and the gear menu still exposes the default drawing commands and existing shortcut. Edit Toolbar adds, removes and reorders existing Studio and Krita actions by stable ID, persists the primary layout and can restore the default. The toolbar reads its state from the live QActions. Multiple bars, arbitrary placement and idle fading remain future work. Check Issue #1 for the exact build.
+
 - **Touch gestures:** Native gesture actions now resolve through the canvas that received the gesture and dispatch after the input event, avoiding the standalone crash from dereferencing a desktop main window. Undo, Redo and Canvas Only use Studio’s existing actions. More → Touch, Pressure & Buttons → Touch gestures has per-gesture choices and More actions. Krita’s active profile supplies defaults, with one-finger double tap set to Flip Canvas when unassigned. Existing quick-pinch preferences are respected and fresh installs use Krita’s normal pinch behavior. Check Issue #1 for the exact WSL build. Device verification remains pending.
 
 - **Home and one canvas:** Home keeps New Canvas, Browse Files, searchable Recent and All Projects, and Recover Drafts when needed. A project opens a sheet with Open, Duplicate (an unsaved KRA copy), Version History, Star and confirmed Delete. All Projects remembers Newest, Name or Starred ordering. The separate Folders and Open Canvases controls are gone. Opening or creating another drawing goes through the native Save/Discard/Cancel close flow. The first Home batch compiled and packaged at `6248cc8dd90c5d94cc542cac5bc62eaec8bcf8b0`.
