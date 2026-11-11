@@ -159,7 +159,8 @@ public:
             auto *tools=KoToolManager::instance();
             auto *controller=tools?tools->activeCanvasController():nullptr;
             if(!controller || controller->canvas()!=view->canvasBase() ||
-               tools->activeToolId()!=QStringLiteral("KritaShape/KisToolBrush"))return;
+               tools->activeToolId().section(QLatin1Char('/'),-1)!=
+                   QStringLiteral("KisToolBrush"))return;
             auto *tool=tools->toolById(controller->canvas(),tools->activeToolId());
             bool armed=false;
             if(tool && QMetaObject::invokeMethod(tool,"mobileArmCloneSource",
@@ -734,7 +735,8 @@ private:
     {
         int active=-1;
         if(m_engine.hasDocument() &&
-           m_engine.activeTool()==QStringLiteral("KritaShape/KisToolBrush")) {
+           m_engine.activeTool().section(QLatin1Char('/'),-1)==
+               QStringLiteral("KisToolBrush")) {
             const auto *erase=m_engine.action("erase_action");
             active=erase && erase->isChecked()?1:
                 m_brush && m_brush->isActiveMode(2)?2:0;
@@ -761,7 +763,8 @@ private:
         }
         if(!canvas || !m_host->nativeViewPort() ||
            !m_host->nativeViewPort()->currentDocument() || m_canvasOnly ||
-           !controller || id.isEmpty() || id==QStringLiteral("KritaShape/KisToolBrush")) {
+           !controller || id.isEmpty() || id.section(QLatin1Char('/'),-1)==
+               QStringLiteral("KisToolBrush")) {
             if(m_contextToolBar && !m_contextToolBar->isHidden()) {
                 m_contextToolBar->hide();
                 placeDrawingOverlays();
