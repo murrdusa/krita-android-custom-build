@@ -1481,7 +1481,12 @@ private:
         auto onFlattened=[this,source,target,destination,
                           intoGroup,insertAbove]() {
             auto *nodes=manager();
-            if(!nodes || !source || !target || !destination ||
+            auto *view=m_engine.manager();
+            if(!nodes || !view || !m_clipImage ||
+               view->image().toStrongRef()!=m_clipImage ||
+               !inImage(source,m_clipImage) ||
+               !inImage(target,m_clipImage) ||
+               !inImage(destination,m_clipImage) ||
                !destination->allowAsChild(source))return;
             KisNodeSP below=intoGroup?destination->lastChild():
                 (insertAbove?target:target->prevSibling());
