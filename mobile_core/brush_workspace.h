@@ -225,7 +225,8 @@ public:
     bool isActiveMode(int slot) const
     {
         if(!m_hasSelectedMode || m_slot!=slot ||
-           m_engine.activeTool()!=QStringLiteral("KritaShape/KisToolBrush"))
+           m_engine.activeTool().section(QLatin1Char('/'),-1)!=
+               QStringLiteral("KisToolBrush"))
             return false;
         const QAction *eraser=m_engine.action("erase_action");
         if(eraser && eraser->isChecked()!=(slot==1))return false;
