@@ -761,9 +761,11 @@ private:
             else
                 m_textFormatting->hide();
         }
+        auto *view=m_engine.manager();
         if(!canvas || !m_host->nativeViewPort() ||
            !m_host->nativeViewPort()->currentDocument() || m_canvasOnly ||
-           !controller || id.isEmpty() || id.section(QLatin1Char('/'),-1)==
+           !view || !controller || controller->canvas()!=view->canvasBase() ||
+           id.isEmpty() || id.section(QLatin1Char('/'),-1)==
                QStringLiteral("KisToolBrush")) {
             if(m_contextToolBar && !m_contextToolBar->isHidden()) {
                 m_contextToolBar->hide();
@@ -772,7 +774,16 @@ private:
             return;
         }
         auto *tool=tools->toolById(controller->canvas(),id);
-        if(!tool)return;
+        if(!tool) {
+            // A document or tool change can invalidate the native tool
+            // before the next UI refresh. Never leave controls wired to
+            // the preceding document/tool displayed over the canvas.
+            if(m_contextToolBar && !m_contextToolBar->isHidden()) {
+                m_contextToolBar->hide();
+                placeDrawingOverlays();
+            }
+            return;
+        }
         if(!m_contextToolBar) {
             m_contextToolBar=new MobileContextToolBar(canvas);
             m_contextToolBar->chooseTool=[this]() {chooseTool();};
