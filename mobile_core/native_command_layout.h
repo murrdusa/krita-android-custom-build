@@ -31,6 +31,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include "touch_scroll.h"
+#include "toolbar_drag_gesture.h"
 
 class MobileNativeCommandLayout final : public QObject
 {
@@ -39,11 +40,15 @@ public:
 
     static bool install(QMainWindow *host,QAction *home,const QIcon &settingsIcon,
                         const Commands &commands,const QStringList &defaults,
-                        const QList<QAction*> &moreActions,QAction *canvasOnly=nullptr)
+                        const QList<QAction*> &moreActions,QAction *canvasOnly=nullptr,
+                        MobileToolbarGestureButton::InlineAdjustment adjust={},
+                        MobileToolbarGestureButton::ColorSample sample={})
     {
         QWidget *canvas=host?host->centralWidget():nullptr;
         if(!canvas || !home || toolbar(canvas))return false;
         auto *layout=new MobileNativeCommandLayout(canvas,commands,defaults);
+        layout->m_adjust=std::move(adjust);
+        layout->m_sample=std::move(sample);
         auto *row=new QHBoxLayout(layout->m_toolbar);
         row->setContentsMargins(1,1,1,1);
         row->setSpacing(1);
@@ -335,7 +340,37 @@ private:
         for(const auto &id:bar.ids) {
             auto action=m_commands.value(id);
             if(!action)continue;
-            auto *button=makeButton(strip,action,bar.target,bar.icon,vertical);
+            QToolButton *button=nullptr;
+            if(MobileToolbarDrag::usesButton(id) ||
+               id==QStringLiteral("color") ||
+               id==QStringLiteral("tool-settings") ||
+               id==QStringLiteral("paint") || id==QStringLiteral("erase") ||
+               id==QStringLiteral("blend") || id==QStringLiteral("tools") ||
+               id==QStringLiteral("shortcut")) {
+                // Construct even for currently disabled assignments:
+                // settings can change without rebuilding toolbar layout.
+                auto *gesture=new MobileToolbarGestureButton(
+                    strip,id,vertical,m_adjust,m_sample);
+                gesture->setDefaultAction(action);
+                gesture->setFocusPolicy(Qt::NoFocus);
+                gesture->setIconSize(QSize(bar.icon,bar.icon));
+                button=gesture;
+                const auto sync=[gesture,action,bar,vertical]() {
+                    QString label=action->text();
+                    label.remove(QLatin1Char('&'));
+                    gesture->setAccessibleName(label);
+                    gesture->setVisible(action->isVisible());
+                    gesture->setToolButtonStyle(action->icon().isNull()?
+                        Qt::ToolButtonTextOnly:Qt::ToolButtonIconOnly);
+                    const int width=action->icon().isNull() && !vertical?
+                        qBound(bar.target,gesture->fontMetrics().horizontalAdvance(label)+10,132):
+                        bar.target;
+                    gesture->setFixedSize(width,bar.target);
+                    gesture->setToolTip(action->toolTip().isEmpty()?label:action->toolTip());
+                };
+                QObject::connect(action,&QAction::changed,gesture,sync);
+                sync();
+            } else button=makeButton(strip,action,bar.target,bar.icon,vertical);
             if(action==shortcut)shortcutButton=button;
             row->addWidget(button);
         }
@@ -661,6 +696,8 @@ private:
     }
 
     Commands m_commands;
+    MobileToolbarGestureButton::InlineAdjustment m_adjust;
+    MobileToolbarGestureButton::ColorSample m_sample;
     QStringList m_defaults;
     QVector<Bar> m_bars;
     QVector<QFrame*> m_extra;
