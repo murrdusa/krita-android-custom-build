@@ -32,6 +32,9 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QScrollArea>
+#include <QScroller>
+#include <QResizeEvent>
 #include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QStackedWidget>
@@ -200,19 +203,35 @@ public:
         layout->addWidget(paintingArea,1);
         updateLayerPresentation();
 
-        m_brushWorkspace=new KritaMobileBrushWorkspace(m_engine,root);
+        // These two controls share a single viewport on portrait phones.
+        // Otherwise Qt gives them two full-width rows, wasting valuable
+        // canvas height even though both sections fit in one scrollable strip.
+        m_controlViewport=new QScrollArea(root);
+        m_controlViewport->setFrameShape(QFrame::NoFrame);
+        m_controlViewport->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        m_controlViewport->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        m_controlViewport->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
+        m_controlViewport->setWidgetResizable(true);
+        auto *controls=new QWidget(m_controlViewport);
+        m_controlContainer=controls;
+        m_controlLayout=new QBoxLayout(QBoxLayout::TopToBottom,controls);
+        m_controlLayout->setContentsMargins(0,0,0,0);
+        m_controlLayout->setSpacing(2);
+        m_brushWorkspace=new KritaMobileBrushWorkspace(m_engine,controls);
         m_brushWorkspace->setSizePolicy(
             QSizePolicy::Expanding,QSizePolicy::Fixed);
-        layout->addWidget(m_brushWorkspace,0);
-
-        // Configurable, horizontally scrollable Quick Actions replace the
-        // old eight-button footer without adding more chrome. Every item
-        // calls either a native Krita action/tool or a mobile workflow.
+        m_controlLayout->addWidget(m_brushWorkspace);
+        // Quick Actions retains its own touch-scrollable list.
         m_quickActions=new MobileQuickActions(
             m_engine,
             [this](const QString &id){runQuickAction(id);},
-            root);
-        layout->addWidget(m_quickActions,0);
+            controls);
+        m_controlLayout->addWidget(m_quickActions);
+        m_controlViewport->setWidget(controls);
+        QScroller::grabGesture(m_controlViewport->viewport(),
+                               QScroller::TouchGesture);
+        layout->addWidget(m_controlViewport,0);
+        QTimer::singleShot(0,this,[this]() {updateControlLayout();});
 
         // The mobile shell no longer owns or observes a desktop MDI
         // widget. The backend adapter owns native document navigation.
@@ -336,6 +355,7 @@ public:
         // Hide controls that require a document. This also prevents a
         // stale layer panel from occupying space after the last close.
         if(m_brushWorkspace)m_brushWorkspace->setVisible(has);
+        if(m_controlViewport)m_controlViewport->setVisible(has);
         if(m_colorWorkspace) {
             m_colorWorkspace->setVisible(has);
             if(has) {
@@ -361,10 +381,17 @@ public:
             fullTitle,Qt::ElideMiddle,textWidth));
         m_document->setToolTip(fullTitle);
         if(m_brushWorkspace && has)m_brushWorkspace->refresh();
+        if(has)updateControlLayout();
         if(m_layers && m_layers->isVisible())m_layers->refreshFromEngine();
     }
 
 protected:
+    void resizeEvent(QResizeEvent *event) override
+    {
+        QMainWindow::resizeEvent(event);
+        updateControlLayout();
+    }
+
     bool eventFilter(QObject *watched,QEvent *event) override
     {
         if(watched==m_paintingArea &&
@@ -760,8 +787,45 @@ private:
         m_colorWorkspace->raise();
     }
 
+    void updateControlLayout()
+    {
+        if(!m_controlViewport || !m_controlContainer || !m_controlLayout ||
+           !m_brushWorkspace || !m_quickActions)return;
+        const bool narrow=width()<650;
+        if(narrow!=m_controlsNarrow) {
+            m_controlsNarrow=narrow;
+            if(narrow) {
+                m_controlViewport->setWidgetResizable(false);
+                m_controlLayout->setDirection(QBoxLayout::LeftToRight);
+                // Preserve each control's usable touch targets. The whole
+                // strip scrolls horizontally rather than wrapping into
+                // two rows or compressing buttons beyond recognition.
+                m_brushWorkspace->setFixedWidth(370);
+                m_quickActions->setFixedWidth(465);
+                m_controlContainer->setFixedWidth(837);
+            } else {
+                m_brushWorkspace->setMinimumWidth(0);
+                m_brushWorkspace->setMaximumWidth(QWIDGETSIZE_MAX);
+                m_quickActions->setMinimumWidth(0);
+                m_quickActions->setMaximumWidth(QWIDGETSIZE_MAX);
+                m_controlContainer->setMinimumWidth(0);
+                m_controlContainer->setMaximumWidth(QWIDGETSIZE_MAX);
+                m_controlLayout->setDirection(QBoxLayout::TopToBottom);
+                m_controlViewport->setWidgetResizable(true);
+            }
+        }
+        m_controlLayout->activate();
+        const int desired=qMax(1,m_controlContainer->sizeHint().height()+2);
+        if(m_controlViewport->height()!=desired)
+            m_controlViewport->setFixedHeight(desired);
+    }
+
     MobileEngineBridge m_engine;
     QPointer<QFrame> m_mobileHeader;
+    QScrollArea *m_controlViewport=nullptr;
+    QWidget *m_controlContainer=nullptr;
+    QBoxLayout *m_controlLayout=nullptr;
+    bool m_controlsNarrow=false;
     bool m_mobilePresentationEnabled=true;
     QPointer<QWidget> m_paintingArea;
     QHBoxLayout *m_paintingLayout=nullptr;
