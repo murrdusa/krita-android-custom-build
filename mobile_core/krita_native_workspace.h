@@ -91,6 +91,7 @@ public:
     {
         setObjectName(QStringLiteral("_mobileNativeEngineWorkspaces"));
         const QSettings settings;
+        m_panelPlacements=settings.value(QStringLiteral("MobileStudio/canvasPanelPlacements")).toMap();
         m_keepLayers=settings.value(QStringLiteral("MobileStudio/keepLayersOpen"),true).toBool();
         m_keepColor=settings.value(QStringLiteral("MobileStudio/keepColorOpen"),true).toBool();
         const bool oldSliders=settings.value(QStringLiteral("MobileStudio/showBrushSliders"),true).toBool();
@@ -846,6 +847,41 @@ public:
         return true;
     }
 
+    QVector<MobileCanvasLayoutEditor::Target> layoutPanels()
+    {
+        QVector<MobileCanvasLayoutEditor::Target> targets;
+        auto *canvas=m_host?m_host->nativeCanvas():nullptr;
+        if(!canvas)return targets;
+        for(const auto &entry:editablePanels()) {
+            auto *panel=entry.second;
+            if(!panel || !panel->isVisible())continue;
+            QSize minimum(120,44);
+            if(panel==m_color)minimum=QSize(104,104);
+            if(panel==m_layers)minimum=QSize(82,76);
+            targets.append({panel,minimum,false,
+                [this,canvas,id=entry.first](const QRect &rect,bool) {
+                    m_panelPlacements.insert(id,MobileCanvasLayoutEditor::relative(
+                        rect,canvas->rect().adjusted(2,2,-2,-2)));
+                }});
+        }
+        return targets;
+    }
+
+    void setCanvasLayoutEditing(bool editing)
+    {
+        m_canvasLayoutEditing=editing;
+        if(editing) {
+            clearToolbarPreview();
+            return;
+        }
+        QSettings().setValue(QStringLiteral("MobileStudio/canvasPanelPlacements"),
+                             m_panelPlacements);
+        updateBrushSliders();
+        syncContextToolBar();
+        placeDrawingOverlays();
+        raiseOverlays();
+    }
+
     void adjustToolbarDrag(const QString &parameter,qreal pixels,const QPoint &global,
                            MobileToolbarDrag::Phase phase)
     {
@@ -1069,7 +1105,7 @@ protected:
             QTimer::singleShot(0,this,[this]() {placeDrawingOverlays();});
         }
         const auto type=event->type();
-        if(m_host && (type==QEvent::MouseButtonPress || type==QEvent::MouseButtonDblClick ||
+        if(!m_canvasLayoutEditing && m_host && (type==QEvent::MouseButtonPress || type==QEvent::MouseButtonDblClick ||
                       type==QEvent::TabletPress || type==QEvent::TouchBegin)) {
             auto *target=pressTarget(watched,event);
             dismissTemporaryPanels(target);
@@ -1106,6 +1142,47 @@ protected:
     }
 
 private:
+    QList<QPair<QString,QWidget*>> editablePanels() const
+    {
+        return {{QStringLiteral("layers"),m_layers.data()},
+                {QStringLiteral("color"),m_color.data()},
+                {QStringLiteral("size"),m_brush.data()},
+                {QStringLiteral("opacity"),m_opacityStrip.data()},
+                {QStringLiteral("tool-options"),m_toolOptions.data()},
+                {QStringLiteral("brush-options"),m_brushOptions.data()},
+                {QStringLiteral("text-options"),m_textFormatting.data()},
+                {QStringLiteral("context"),m_contextToolBar.data()}};
+    }
+
+    bool hasEditedPlacement(const QWidget *panel) const
+    {
+        if(!panel || m_panelPlacements.isEmpty())return false;
+        for(const auto &entry:editablePanels())
+            if(panel==entry.second)return m_panelPlacements.value(entry.first).toRectF().isValid();
+        return false;
+    }
+
+    void placeEditedPanels(const QRect &bounds)
+    {
+        for(const auto &entry:editablePanels()) {
+            auto *panel=entry.second;
+            const auto placement=m_panelPlacements.value(entry.first).toRectF();
+            if(!panel || !panel->isVisible() || !placement.isValid())continue;
+            const QRect geometry=MobileCanvasLayoutEditor::absolute(placement,bounds);
+            if(panel==m_color) {
+                m_color->setManualWheelPlacement(geometry);
+            } else {
+                if(panel==m_layers && m_layers->width()!=geometry.width()) {
+                    m_layers->setFixedWidth(geometry.width());
+                    QTimer::singleShot(0,m_layers.data(),[this]() {
+                        if(m_layers && m_layers->isVisible())m_layers->refreshNow();
+                    });
+                }
+                panel->setGeometry(geometry);
+            }
+        }
+    }
+
     MobileToolbarDragPreview *toolbarPreview()
     {
         if(!m_toolbarPreview && m_host && m_host->nativeCanvas())
@@ -1361,6 +1438,7 @@ private:
         auto *canvas=m_host->nativeCanvas();
         if(!canvas || (target!=canvas && !canvas->isAncestorOf(target)))return;
         auto *button=qobject_cast<QToolButton*>(target);
+        if(button && button->objectName()==QStringLiteral("_mobileNativeMoreButton"))return;
         QAction *action=button?button->defaultAction():nullptr;
         const auto dismiss=[target,action](QWidget *panel,QAction *opener) {
             if(panel && panel->isVisible() && panel!=target &&
@@ -1398,6 +1476,7 @@ private:
 
     void syncContextToolBar()
     {
+        if(m_canvasLayoutEditing)return;
         syncBrushModes();
         if(m_layers)m_layers->syncSelectionContext();
         QWidget *canvas=m_host ? m_host->nativeCanvas() : nullptr;
@@ -1508,7 +1587,7 @@ private:
 
     int overlayTop(QWidget *canvas) const
     {
-        if(m_contextToolBar && !m_contextToolBar->isHidden())
+        if(m_contextToolBar && !m_contextToolBar->isHidden() && !hasEditedPlacement(m_contextToolBar))
             return m_contextToolBar->geometry().bottom()+3;
         return MobileNativeCommandLayout::panelTopInset(canvas);
     }
@@ -1525,6 +1604,7 @@ private:
 
     void updateBrushSliders()
     {
+        if(m_canvasLayoutEditing)return;
         const bool available=!m_canvasOnly && m_engine.hasDocument();
         if(available && m_showSize && ensureBrushControls()) {
             m_brush->setSliderVisibility(true,false);
@@ -1555,7 +1635,8 @@ private:
             int height=0;
             int count=0;
             for(int i=0;i<2;++i) {
-                if(!panels[i] || !panels[i]->isVisible() || m_sliderCorners[i]/2!=band)continue;
+                if(!panels[i] || !panels[i]->isVisible() || hasEditedPlacement(panels[i]) ||
+                   m_sliderCorners[i]/2!=band)continue;
                 widths[i]=qMin(m_sliderWidths[i],available.width());
                 height=qMax(height,panels[i]->sizeHint().height());
                 total+=widths[i];
@@ -1593,9 +1674,11 @@ private:
     void placeDrawingOverlays()
     {
         QWidget *canvas=m_host?m_host->nativeCanvas():nullptr;
-        if(!canvas)return;
+        if(!canvas || m_canvasLayoutEditing)return;
+        const QRect canvasBounds=canvas->rect().adjusted(2,2,-2,-2);
+        placeEditedPanels(canvasBounds);
         QRect viewport=MobileNativeCommandLayout::overlayBounds(canvas);
-        if(m_contextToolBar && !m_contextToolBar->isHidden())
+        if(m_contextToolBar && !m_contextToolBar->isHidden() && !hasEditedPlacement(m_contextToolBar))
             m_contextToolBar->setGeometry(viewport.left(),viewport.top(),
                 qMin(760,qMax(0,viewport.width())),48);
         viewport.setTop(overlayTop(canvas));
@@ -1605,7 +1688,7 @@ private:
         if(!viewport.isValid())return;
 
         QRect besideLayers=viewport;
-        if(m_layers && m_layers->isVisible()) {
+        if(m_layers && m_layers->isVisible() && !hasEditedPlacement(m_layers)) {
             const int width=qMin(m_layerWidth,qMax(82,viewport.width()-90));
             const bool resized=width!=m_layers->width();
             if(resized)m_layers->setFixedWidth(width);
@@ -1629,13 +1712,14 @@ private:
             // after its native option widgets are attached. The panel
             // must occupy usable canvas space rather than collapse into
             // an unclickable one-line strip.
-            if(m_toolOptions)m_toolOptions->setGeometry(
+            if(m_toolOptions && !hasEditedPlacement(m_toolOptions))m_toolOptions->setGeometry(
                 bounds.x(),bounds.y(),bounds.width(),bounds.height());
-            if(m_brushOptions)m_brushOptions->setGeometry(bounds.x(),bounds.y(),bounds.width(),
+            if(m_brushOptions && !hasEditedPlacement(m_brushOptions))m_brushOptions->setGeometry(bounds.x(),bounds.y(),bounds.width(),
                 qMin(room.height(),m_brushOptions->sizeHint().height()));
-            if(m_textFormatting)m_textFormatting->setGeometry(bounds);
+            if(m_textFormatting && !hasEditedPlacement(m_textFormatting))m_textFormatting->setGeometry(bounds);
         }
-        if(m_color) {
+        if(m_color && !hasEditedPlacement(m_color)) {
+            m_color->setManualWheelPlacement({});
             QList<QRect> obstacles;
             for(QWidget *panel:{static_cast<QWidget*>(m_brush.data()),
                                 static_cast<QWidget*>(m_opacityStrip.data()),
@@ -1717,6 +1801,7 @@ private:
     QString m_dragParameter;
     qreal m_dragBaseline=0,m_dragMaximum=1;
     bool m_keepLayers=true,m_keepColor=true,m_showSize=true,m_showOpacity=true;
-    bool m_canvasOnly=false;
+    bool m_canvasOnly=false,m_canvasLayoutEditing=false;
+    QVariantMap m_panelPlacements;
 };
 #endif

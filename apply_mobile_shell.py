@@ -676,6 +676,8 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
         native_command_layout.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/toolbar_drag_gesture.h").write_text(
         toolbar_drag_gesture.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/canvas_layout_editor.h").write_text(
+        (own/"mobile_core/canvas_layout_editor.h").read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/context_tool_bar.h").write_text(
         (own/"mobile_core/context_tool_bar.h").read_text(encoding="utf-8"),
         encoding="utf-8")

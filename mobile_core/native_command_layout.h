@@ -32,6 +32,7 @@
 #include <QVBoxLayout>
 #include "touch_scroll.h"
 #include "recent_colors.h"
+#include "canvas_layout_editor.h"
 #include "toolbar_drag_gesture.h"
 
 class MobileNativeCommandLayout final : public QObject
@@ -101,6 +102,10 @@ public:
 
         auto *edit=menu->addAction(QObject::tr("Edit UI Layout…"));
         QObject::connect(edit,&QAction::triggered,layout,[layout]() {
+            QTimer::singleShot(0,layout,[layout]() {layout->editCanvasLayout();});
+        });
+        auto *commandsAction=menu->addAction(QObject::tr("Customize toolbar commands…"));
+        QObject::connect(commandsAction,&QAction::triggered,layout,[layout]() {
             QTimer::singleShot(0,layout,[layout]() {layout->editToolbar();});
         });
         if(layout->m_selectColor) {
@@ -142,6 +147,7 @@ public:
             QObject::connect(canvasOnly,&QAction::toggled,layout,
                              [layout,restore](bool enabled) {
                 layout->m_canvasOnly=enabled;
+                if(enabled && layout->m_editor)layout->m_editor->closeEditor(false);
                 layout->m_toolbar->setVisible(!enabled);
                 restore->setVisible(enabled);
                 layout->position();
@@ -151,6 +157,7 @@ public:
         if(auto *stack=qobject_cast<QStackedWidget*>(canvas)) {
             QObject::connect(stack,&QStackedWidget::currentChanged,layout,[layout,menu](int) {
                 if(menu->isVisible())menu->hide();
+                if(layout->m_editor)layout->m_editor->closeEditor(false);
                 layout->requestPosition();
             });
         }
@@ -158,6 +165,13 @@ public:
         layout->m_toolbar->setVisible(!layout->m_canvasOnly);
         layout->rebuild();
         return layout;
+    }
+
+    void setLayoutPanels(std::function<QVector<MobileCanvasLayoutEditor::Target>()> panels,
+                         std::function<void(bool)> editing)
+    {
+        m_layoutPanels=std::move(panels);
+        m_layoutEditing=std::move(editing);
     }
 
     void observeForeground(const QColor &color)
@@ -188,8 +202,10 @@ protected:
     bool eventFilter(QObject *watched,QEvent *event) override
     {
         if(watched==parent() &&
-           (event->type()==QEvent::Resize || event->type()==QEvent::Show))
-            position();
+           (event->type()==QEvent::Resize || event->type()==QEvent::Show)) {
+            if(m_editor)m_editor->setGeometry(static_cast<QWidget*>(parent())->rect());
+            else position();
+        }
         return false;
     }
 
@@ -204,6 +220,7 @@ private:
         int icon=24;
         int spacing=1;
         int opacity=66;
+        QRectF placement;
     };
 
     MobileNativeCommandLayout(QWidget *canvas,const Commands &commands,
@@ -229,9 +246,12 @@ private:
                 bar.icon=qBound(16,data.value(QStringLiteral("icon"),24).toInt(),40);
                 bar.spacing=qBound(0,data.value(QStringLiteral("spacing"),1).toInt(),12);
                 bar.opacity=qBound(0,data.value(QStringLiteral("opacity"),66).toInt(),100);
+                bar.placement=data.value(QStringLiteral("placement")).toRectF();
                 m_bars.append(bar);
             }
         }
+        if(!m_commands.contains(QStringLiteral("shortcut")))
+            for(auto &bar:m_bars)bar.ids.removeAll(QStringLiteral("shortcut"));
         m_toolbar=new QFrame(canvas);
         m_toolbar->setObjectName(QStringLiteral("_mobileNativeToolbar"));
     }
@@ -270,7 +290,8 @@ private:
                 {QStringLiteral("name"),bar.name},{QStringLiteral("commands"),bar.ids},
                 {QStringLiteral("edge"),int(bar.edge)},{QStringLiteral("alignment"),bar.alignment},
                 {QStringLiteral("target"),bar.target},{QStringLiteral("icon"),bar.icon},
-                {QStringLiteral("spacing"),bar.spacing},{QStringLiteral("opacity"),bar.opacity}
+                {QStringLiteral("spacing"),bar.spacing},{QStringLiteral("opacity"),bar.opacity},
+                {QStringLiteral("placement"),bar.placement}
             };
             values.append(value);
         }
@@ -376,21 +397,96 @@ private:
         history->raise();
     }
 
+    static bool verticalEdge(Edge edge) {return edge==Left || edge==Right;}
+
+    static void reserveEdge(QRect &usable,const QRect &bar,Edge edge)
+    {
+        switch(edge) {
+        case Top:if(qAbs(bar.top()-usable.top())<=8)usable.setTop(bar.bottom()+3);break;
+        case Bottom:if(qAbs(bar.bottom()-usable.bottom())<=8)usable.setBottom(bar.top()-3);break;
+        case Left:if(qAbs(bar.left()-usable.left())<=8)usable.setLeft(bar.right()+3);break;
+        case Right:if(qAbs(bar.right()-usable.right())<=8)usable.setRight(bar.left()-3);break;
+        }
+    }
+
+    void placeEditedBar(QFrame *frame,const Bar &bar,const QRect &bounds,bool history)
+    {
+        QRect rect=MobileCanvasLayoutEditor::absolute(bar.placement,bounds);
+        const bool vertical=verticalEdge(bar.edge);
+        const int breadth=bar.target+4+(history?historyThickness:0);
+        if(vertical)rect.setWidth(qMin(breadth,bounds.width()));
+        else rect.setHeight(qMin(breadth,bounds.height()));
+        rect.moveTo(bounds.x()+qRound(bar.placement.x()*(bounds.width()-rect.width())),
+                    bounds.y()+qRound(bar.placement.y()*(bounds.height()-rect.height())));
+        frame->setGeometry(rect);
+    }
+
+    void editCanvasLayout()
+    {
+        if(m_editor || m_canvasOnly)return;
+        auto *canvas=static_cast<QWidget*>(parent());
+        if(m_layoutEditing)m_layoutEditing(true);
+        auto targets=m_layoutPanels?m_layoutPanels():QVector<MobileCanvasLayoutEditor::Target>();
+        const auto addToolbar=[&](QFrame *frame,int index) {
+            const bool vertical=verticalEdge(m_bars.at(index).edge);
+            const auto name=QStringLiteral("_mobileToolbarColorHistory");
+            const auto *history=frame->findChild<QFrame*>(name,Qt::FindDirectChildrenOnly);
+            const int strip=history && history->isVisible()?historyThickness:0;
+            const int minimumBreadth=48+strip;
+            const int minimumLength=index==0?100:48;
+            targets.append({frame,vertical?QSize(minimumBreadth,minimumLength):
+                                           QSize(minimumLength,minimumBreadth),true,
+                [this,canvas,index,strip,vertical](const QRect &rect,bool rotate) {
+                    const QRect bounds=canvas->rect().adjusted(2,2,-2,-2);
+                    auto &bar=m_bars[index];
+                    const bool finalVertical=vertical!=rotate;
+                    const int target=qBound(44,(finalVertical?rect.width():rect.height())-4-strip,72);
+                    bar.icon=qBound(16,qRound(bar.icon*target/qreal(bar.target)),40);
+                    bar.target=target;
+                    bar.edge=finalVertical?(rect.center().x()<bounds.center().x()?Left:Right):
+                                            (rect.center().y()<bounds.center().y()?Top:Bottom);
+                    bar.placement=MobileCanvasLayoutEditor::relative(rect,bounds);
+                    m_editedBars=true;
+                }});
+        };
+        addToolbar(m_toolbar,0);
+        for(int i=0;i<m_extra.size();++i)addToolbar(m_extra.at(i),i+1);
+        m_editor=new MobileCanvasLayoutEditor(canvas,targets,[this]() {
+            m_editor.clear();
+            if(m_editedBars) {
+                m_editedBars=false;
+                saveBars();
+                rebuild();
+            } else position();
+            if(m_layoutEditing)m_layoutEditing(false);
+        });
+    }
+
     void position()
     {
+        if(m_editor)return;
         auto *canvas=static_cast<QWidget*>(parent());
-        QRect usable=canvas->rect().adjusted(2,2,-2,-2);
+        const QRect bounds=canvas->rect().adjusted(2,2,-2,-2);
+        if(!bounds.isValid())return;
+        QRect usable=bounds;
         const auto &main=m_bars.first();
         const auto *row=m_toolbar->layout();
-        const int pinnedWidth=row->itemAt(0)->widget()->width()+
-                              row->itemAt(2)->widget()->width();
-        const int stripWidth=m_scroll->widget()?m_scroll->widget()->width():0;
+        const bool mainVertical=verticalEdge(main.edge);
+        const auto *home=row->itemAt(0)->widget();
+        const auto *settings=row->itemAt(2)->widget();
+        const int pinned=mainVertical?home->height()+settings->height():home->width()+settings->width();
+        const auto *commands=m_scroll->widget();
+        const int stripLength=commands?(mainVertical?commands->height():commands->width()):0;
         const bool history=m_historyEnabled && !m_canvasOnly && !m_recentColors.isEmpty();
-        m_toolbar->setGeometry(usable.x(),usable.y(),
-            qMin(pinnedWidth+stripWidth+6,qMax(0,usable.width())),
-            main.target+4+(history?historyThickness:0));
-        placeHistory(m_toolbar,Top,1,history);
-        if(!m_canvasOnly)usable.setTop(m_toolbar->geometry().bottom()+3);
+        if(main.placement.isValid()) {
+            placeEditedBar(m_toolbar,main,bounds,history);
+        } else {
+            m_toolbar->setGeometry(usable.x(),usable.y(),
+                qMin(pinned+stripLength+6,qMax(0,usable.width())),
+                main.target+4+(history?historyThickness:0));
+        }
+        placeHistory(m_toolbar,main.edge,1,history);
+        if(!m_canvasOnly)reserveEdge(usable,m_toolbar->geometry(),main.edge);
         const int minimumWidth=qMax(140,usable.width()*2/3);
         const int minimumHeight=qMax(190,usable.height()*2/3);
         // Horizontal bars reserve their rows before the side rails are placed.
@@ -400,6 +496,16 @@ private:
                 const auto &spec=m_bars.at(i+1);
                 if(spec.edge!=edge)continue;
                 auto *frame=m_extra.at(i);
+                if(spec.placement.isValid()) {
+                    frame->setVisible(!m_canvasOnly);
+                    if(!m_canvasOnly) {
+                        placeEditedBar(frame,spec,bounds,history);
+                        placeHistory(frame,edge,2,history);
+                        frame->raise();
+                        reserveEdge(usable,frame->geometry(),edge);
+                    }
+                    continue;
+                }
                 auto *scroll=static_cast<QScrollArea*>(frame->layout()->itemAt(0)->widget());
                 const int extent=vertical?scroll->widget()->height():scroll->widget()->width();
                 const int available=vertical?usable.height():usable.width();
@@ -501,7 +607,7 @@ private:
             const auto hint=row->sizeHint();
             const QSize size=vertical?QSize(bar.target,hint.height()):QSize(hint.width(),bar.target);
             if(strip->size()!=size)strip->setFixedSize(size);
-            if(scroll==m_scroll)scroll->setVisible(hint.width()>0);
+            if(scroll==m_scroll)scroll->setVisible((vertical?hint.height():hint.width())>0);
         };
         for(int i=0;i<row->count();++i) {
             auto *button=static_cast<QToolButton*>(row->itemAt(i)->widget());
@@ -529,8 +635,16 @@ private:
     {
         m_toolbar->setProperty("mobileCommandToolbar",true);
         m_toolbar->setStyleSheet(toolbarStyle(m_bars.first()));
-        m_scroll->setMinimumSize(0,m_bars.first().target);
-        populate(m_scroll,m_bars.first(),false);
+        const auto &main=m_bars.first();
+        const bool vertical=verticalEdge(main.edge);
+        auto *mainRow=static_cast<QBoxLayout*>(m_toolbar->layout());
+        delete m_toolbar->findChild<QFrame*>(QStringLiteral("_mobileToolbarColorHistory"),
+                                            Qt::FindDirectChildrenOnly);
+        mainRow->setDirection(vertical?QBoxLayout::TopToBottom:QBoxLayout::LeftToRight);
+        mainRow->itemAt(0)->widget()->setFixedSize(main.target,main.target);
+        mainRow->itemAt(2)->widget()->setFixedSize(main.target,main.target);
+        m_scroll->setMinimumSize(vertical?main.target:0,vertical?0:main.target);
+        populate(m_scroll,main,vertical);
         qDeleteAll(m_extra);
         m_extra.clear();
         qDeleteAll(m_toolbarMenu->findChildren<QMenu*>(QString(),Qt::FindDirectChildrenOnly));
@@ -622,22 +736,8 @@ private:
         scroll->setWidget(body);
         layout->addWidget(scroll,1);
         auto *name=new QLineEdit(bar.name,body);
-        auto *edge=new MobileTouchComboBox(body);
-        auto *alignment=new MobileTouchComboBox(body);
-        if(!main) {
-            form->addRow(QObject::tr("Name"),name);
-            edge->addItems({QObject::tr("Top · horizontal"),QObject::tr("Bottom · horizontal"),
-                            QObject::tr("Left · vertical"),QObject::tr("Right · vertical")});
-            edge->setCurrentIndex(bar.edge);
-            form->addRow(QObject::tr("Edge"),edge);
-            alignment->addItems({QObject::tr("Start"),QObject::tr("Center"),QObject::tr("End")});
-            alignment->setCurrentIndex(bar.alignment);
-            form->addRow(QObject::tr("Position along edge"),alignment);
-        } else {
-            name->hide();
-            edge->hide();
-            alignment->hide();
-        }
+        if(!main)form->addRow(QObject::tr("Name"),name);
+        else name->hide();
         const auto spin=[form,body](const QString &label,int value,int low,int high) {
             auto *field=new QSpinBox(body);
             field->setMinimumHeight(44);
@@ -659,8 +759,6 @@ private:
         if(dialog.exec()!=QDialog::Accepted)return;
         if(!main) {
             if(!name->text().trimmed().isEmpty())bar.name=name->text().trimmed();
-            bar.edge=Edge(edge->currentIndex());
-            bar.alignment=alignment->currentIndex();
         }
         bar.target=target->value();
         bar.icon=icon->value();
@@ -673,7 +771,7 @@ private:
         if(m_editing)return;
         QScopedValueRollback<bool> editing(m_editing,true);
         QDialog dialog(m_toolbar->window());
-        dialog.setWindowTitle(QObject::tr("Edit UI Layout"));
+        dialog.setWindowTitle(QObject::tr("Customize toolbar commands"));
         auto *layout=new QVBoxLayout(&dialog);
         auto *selector=new MobileTouchComboBox(&dialog);
         selector->setMinimumHeight(44);
@@ -816,6 +914,9 @@ private:
     QFrame *m_toolbar=nullptr;
     QScrollArea *m_scroll=nullptr;
     QToolButton *m_restore=nullptr;
-    bool m_canvasOnly=false,m_editing=false,m_positionPending=false;
+    QPointer<MobileCanvasLayoutEditor> m_editor;
+    std::function<QVector<MobileCanvasLayoutEditor::Target>()> m_layoutPanels;
+    std::function<void(bool)> m_layoutEditing;
+    bool m_canvasOnly=false,m_editing=false,m_positionPending=false,m_editedBars=false;
 };
 #endif

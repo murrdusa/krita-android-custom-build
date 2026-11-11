@@ -400,6 +400,8 @@ public:
                 }
             });
         if(commandLayout) {
+            commandLayout->setLayoutPanels([workspace]() {return workspace->layoutPanels();},
+                [workspace](bool editing) {workspace->setCanvasLayoutEditing(editing);});
             if(auto *provider=nativeBridge.brushResources()) {
                 if(MobileRecentColors::load().isEmpty())
                     commandLayout->observeForeground(provider->fgColor().toQColor());

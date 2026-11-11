@@ -18,8 +18,9 @@ namespace MobileToolbarDrag
 {
 inline QString preference(const char *parameter)
 {
-    return QStringLiteral("MobileStudio/toolbarDrag/")+
-        QString::fromLatin1(parameter);
+    const QString key=QString::fromLatin1(parameter);
+    return (key==QStringLiteral("sample")?QStringLiteral("MobileStudio/toolbarDrag/"):
+                                          QStringLiteral("MobileStudio/toolbarVerticalSlider/"))+key;
 }
 inline QString assignment(const char *parameter)
 {

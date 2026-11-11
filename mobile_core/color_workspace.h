@@ -407,6 +407,13 @@ public:
         dialog.exec();
     }
 
+    void setManualWheelPlacement(const QRect &geometry)
+    {
+        if(geometry==m_manualWheelPlacement)return;
+        m_manualWheelPlacement=geometry;
+        updateForViewport();
+    }
+
     void setWheelArea(const QRect &area,const QList<QRect> &obstacles)
     {
         if(m_wheelArea==area && m_wheelObstacles==obstacles)return;
@@ -509,6 +516,14 @@ private:
             const QRect bounds=(m_wheelArea.isNull()?parent->rect():m_wheelArea)
                 .intersected(parent->rect()).adjusted(1,1,-1,-1);
             const bool history=m_showHistory && !m_history.isEmpty();
+            if(m_manualWheelPlacement.isValid()) {
+                const auto manual=m_manualWheelPlacement.intersected(parent->rect());
+                const int historyHeight=history?qBound(18,manual.width()/7,42)+2:0;
+                const int side=qMin(manual.width(),manual.height()-historyHeight);
+                if(side>0)applyWheelGeometry(
+                    QRect(manual.topLeft(),QSize(side,side+historyHeight)),side,history);
+                return;
+            }
             const int preferred[]={184,212,252};
             const bool left=m_corner%2;
             const bool top=m_corner>=2;
@@ -550,17 +565,7 @@ private:
             if(!placement.isValid())placement=corner;
             const int wheelSide=placement.width();
             if(wheelSide<=0)return;
-            setGeometry(placement);
-            m_wheel->setGeometry(0,0,wheelSide,wheelSide);
-            m_historyRow->setVisible(history);
-            m_visibleSwatches=qBound(1,wheelSide/32,8);
-            refreshHistory();
-            QRegion shape(m_wheel->geometry(),QRegion::Ellipse);
-            if(history) {
-                m_historyRow->setGeometry(0,wheelSide+2,wheelSide,placement.height()-wheelSide-2);
-                shape=shape.united(QRegion(m_historyRow->geometry()));
-            }
-            setMask(shape);
+            applyWheelGeometry(placement,wheelSide,history);
             return;
         }
         // Prefer the requested size, then progressively smaller sizes.
@@ -586,6 +591,21 @@ private:
         if(size()!=desired)setFixedSize(desired);
         reposition();
     }
+    void applyWheelGeometry(const QRect &placement,int wheelSide,bool history)
+    {
+        setGeometry(placement);
+        m_wheel->setGeometry(0,0,wheelSide,wheelSide);
+        m_historyRow->setVisible(history);
+        m_visibleSwatches=qBound(1,wheelSide/32,8);
+        refreshHistory();
+        QRegion shape(m_wheel->geometry(),QRegion::Ellipse);
+        if(history) {
+            m_historyRow->setGeometry(0,wheelSide+2,wheelSide,placement.height()-wheelSide-2);
+            shape=shape.united(QRegion(m_historyRow->geometry()));
+        }
+        setMask(shape);
+    }
+
     void reposition()
     {
         auto *parent=parentWidget();
@@ -684,7 +704,7 @@ private:
     QString m_lastSwatchColor;
     bool m_expanded=true,m_wantsExpanded=true,m_dragging=false;
     int m_sizeLevel=1,m_corner=0,m_rightInset=7,m_bottomInset=7;
-    QRect m_wheelArea;
+    QRect m_wheelArea,m_manualWheelPlacement;
     QList<QRect> m_wheelObstacles;
     int m_avoidBottom=0,m_avoidTop=0,m_avoidRight=0;
     bool m_wheelOnly=false,m_showHistory=false;

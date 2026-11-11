@@ -17,6 +17,17 @@ static void verify(bool pass,const char *message)
     if(!pass)qFatal("Native engine command layout: %s",message);
 }
 
+static void drag(QWidget *editor,const QPoint &start,const QPoint &end)
+{
+    for(const auto type:{QEvent::MouseButtonPress,QEvent::MouseMove,QEvent::MouseButtonRelease}) {
+        const QPoint pos=type==QEvent::MouseButtonPress?start:end;
+        const auto button=type==QEvent::MouseMove?Qt::NoButton:Qt::LeftButton;
+        const auto held=type==QEvent::MouseButtonRelease?Qt::NoButton:Qt::LeftButton;
+        QMouseEvent event(type,pos,editor->mapToGlobal(pos),button,held,Qt::NoModifier);
+        QApplication::sendEvent(editor,&event);
+    }
+}
+
 int main(int argc,char **argv)
 {
     QApplication app(argc,argv);
@@ -120,9 +131,10 @@ int main(int argc,char **argv)
     QSettings().setValue(QStringLiteral("MobileStudio/recentColors"),
                          QStringList{QStringLiteral("#ffaa5500"),QStringLiteral("#ff0066ff")});
     QColor picked;
-    verify(MobileNativeCommandLayout::install(
+    auto *secondLayout=MobileNativeCommandLayout::install(
         &second,&home,icon,commands,defaults,{},&canvasOnly,{},{},
-        [&picked](const QColor &color) {picked=color;}),"could not reload multiple toolbars");
+        [&picked](const QColor &color) {picked=color;});
+    verify(secondLayout,"could not reload multiple toolbars");
     second.show();
     QApplication::processEvents();
     auto *side=secondCanvas->findChild<QFrame*>(QStringLiteral("_mobileCustomToolbar"));
@@ -166,5 +178,45 @@ int main(int argc,char **argv)
             for(auto *entry:menu->actions())
                 if(entry->menu() && entry->menu()->actions().contains(&brush))fallback=true;
     verify(fallback,"the gear menu lost commands from an overflow toolbar");
+    second.resize(460,650);
+    auto *panel=new QPushButton(QStringLiteral("Panel"),secondCanvas);
+    const QRect panelStart(126,220,80,80);
+    panel->setGeometry(panelStart);
+    panel->show();
+    bool editing=false;
+    QRect savedPanel;
+    secondLayout->setLayoutPanels([&]() {
+        return QVector<MobileCanvasLayoutEditor::Target>{{panel,QSize(48,48),false,
+            [&](const QRect &rect,bool) {savedPanel=rect;panel->setGeometry(rect);}}};
+    },[&](bool value) {editing=value;});
+    QAction *edit=nullptr;
+    for(auto *action:secondMenu->actions())
+        if(action->text()==QStringLiteral("Edit UI Layout…"))edit=action;
+    verify(edit,"missing canvas layout action");
+    QApplication::processEvents();
+    const QPoint mainCenter=secondBar->geometry().center();
+    edit->trigger();
+    QApplication::processEvents();
+    auto *editor=secondCanvas->findChild<QWidget*>(QStringLiteral("_mobileCanvasLayoutEditor"));
+    verify(editor && editing && !panel->isVisible() && !secondBar->isVisible(),
+           "layout editor did not shield the real controls");
+    drag(editor,panelStart.center(),panelStart.center()-QPoint(120,0));
+    drag(editor,QPoint(81,299),QPoint(121,339));
+    drag(editor,mainCenter,mainCenter);
+    for(auto *button:editor->findChildren<QPushButton*>()) {
+        if(button->text()==QStringLiteral("Rotate toolbar")) {
+            verify(button->isVisible(),"toolbar rotation was not offered");
+            button->click();
+        }
+    }
+    for(auto *button:editor->findChildren<QPushButton*>())
+        if(button->text()==QStringLiteral("Done"))button->click();
+    verify(!editing && panel->isVisible() && savedPanel.left()==2 &&
+           savedPanel.width()==savedPanel.height() && savedPanel.width()>80,
+           "layout editor did not snap and proportionally resize the panel");
+    verify(secondBar->height()>secondBar->width(),"main toolbar did not rotate");
+    const auto layouts=QSettings().value(QStringLiteral("MobileStudio/toolbars")).toList();
+    verify(layouts.first().toMap().value(QStringLiteral("placement")).toRectF().isValid(),
+           "edited toolbar placement did not persist");
     return 0;
 }
