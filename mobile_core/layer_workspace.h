@@ -258,6 +258,20 @@ public:
                          selection.size()),
                    QMessageBox::Yes|QMessageBox::No,
                    QMessageBox::No)!=QMessageBox::Yes)return;
+            const auto image=m_engine.manager()?
+                m_engine.manager()->image().toStrongRef():KisImageSP();
+            if(!image)return;
+            for(const KisNodeSP &node:selection)
+                if(!inImage(node,image))return;
+            // Destructive commands must receive the *visible* selected
+            // nodes, not an outdated native selection from another tool.
+            // This matters when the transform tool selects several layers.
+            if(auto *transform=activeTransform()) {
+                if(!canRetarget(transform))return;
+                m_engine.freehandBrush();
+            }
+            m->slotUiActivatedNode(selection.last());
+            m->slotSetSelectedNodes(selection);
             m->removeNode();
             reload();
         });
@@ -748,6 +762,9 @@ private:
             }
             m_engine.selectLayer(node);
             if(m_engine.manager()->activeNode()!=node)return;
+            // Masks and Clear target one specific layer even if a previous
+            // multi-layer transform left several nodes selected.
+            m->slotSetSelectedNodes(KisNodeList{node});
             if(chosen==clear)m_engine.run("clear");
             else m->createNode(chosen->data().toString());
         } else if(chosen==rename) {
@@ -894,7 +911,12 @@ private:
                     i18n("Delete %1?").arg(node->name()),
                     QMessageBox::Yes|QMessageBox::No,
                     QMessageBox::No)==QMessageBox::Yes) {
-                m_engine.selectLayer(node);
+                if(auto *transform=activeTransform()) {
+                    if(!canRetarget(transform))return;
+                    m_engine.freehandBrush();
+                }
+                if(!m_engine.selectLayer(node))return;
+                m->slotSetSelectedNodes(KisNodeList{node});
                 m->removeNode();
             }
         } else if(chosen==moveUp || chosen==moveDown) {
@@ -968,8 +990,10 @@ private:
     KisNodeList selectedTargets() const
     {
         KisNodeList result;
+        const auto *view=m_engine.manager();
+        const KisImageSP image=view?view->image().toStrongRef():KisImageSP();
         for(const auto &node:m_selected)
-            if(node && node->parent() &&
+            if(node && node->parent() && inImage(node,image) &&
                !KisNodeManager::isNodeHidden(node,true) &&
                !result.contains(node))
                 result.append(node);
