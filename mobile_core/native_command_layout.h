@@ -307,7 +307,7 @@ private:
         return button;
     }
 
-    static constexpr int historyThickness=28;
+    static constexpr int historyThickness=22;
 
     void placeHistory(QFrame *frame,Edge edge,int margin,bool show)
     {
@@ -341,7 +341,7 @@ private:
             for(int i=0;i<8;++i) {
                 auto *swatch=new QToolButton(history);
                 swatch->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Ignored);
-                swatch->setMaximumSize(vertical?24:44,vertical?44:24);
+                swatch->setMaximumSize(vertical?18:44,vertical?44:18);
                 row->addWidget(swatch,1);
                 QObject::connect(swatch,&QToolButton::clicked,history,[this,i]() {
                     const QColor color(m_recentColors.value(i));

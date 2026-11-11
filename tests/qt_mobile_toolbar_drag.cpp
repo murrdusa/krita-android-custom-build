@@ -5,6 +5,7 @@
 #include <QAction>
 #include <QMouseEvent>
 #include <QSettings>
+#include <QTemporaryDir>
 #include "mobile_core/toolbar_drag_gesture.h"
 
 static void require(bool ok,const char *reason)
@@ -24,26 +25,35 @@ static void mouse(QWidget *widget,QEvent::Type type,QPoint local)
 int main(int argc,char **argv)
 {
     QApplication app(argc,argv);
-    QSettings().setValue(MobileToolbarDrag::preference("opacity"),
-                         QStringLiteral("color"));
-    QSettings().setValue(MobileToolbarDrag::preference("size"),
-                         QStringLiteral("tool-settings"));
-    QSettings().setValue(MobileToolbarDrag::preference("sample"),true);
-    int opacityMoves=0, sizeMoves=0, sampled=0, taps=0;
-    qreal opacityDelta=0,sizeDelta=0;
+    QTemporaryDir config;
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,config.path());
+    app.setOrganizationName(QStringLiteral("KritaMobileToolbarDragTest"));
+    app.setApplicationName(QStringLiteral("KritaMobileToolbarDragTest"));
+    QSettings().clear();
+    require(MobileToolbarDrag::assignment("opacity").isEmpty() &&
+            MobileToolbarDrag::assignment("size").isEmpty(),"sliders must default to off");
+    QSettings().setValue(MobileToolbarDrag::preference("opacity"),QStringLiteral("paint"));
+    QSettings().setValue(MobileToolbarDrag::preference("size"),QStringLiteral("tool-settings"));
+    using MobileToolbarDrag::Phase;
+    int previews=0,commits=0,colorPreviews=0,sampled=0,taps=0;
+    qreal adjustment=0;
     QPoint lastSample;
-    const auto adjust=[&](const QString &button,qreal delta) {
-        if(button==QStringLiteral("color")) {
-            ++opacityMoves;
-            opacityDelta+=delta;
-        } else if(button==QStringLiteral("tool-settings")) {
-            ++sizeMoves;
-            sizeDelta+=delta;
+    QString parameter;
+    const auto adjust=[&](const QString &name,qreal delta,const QPoint &,Phase phase) {
+        if(phase==Phase::Preview)++previews;
+        if(phase==Phase::Commit) {
+            ++commits;
+            adjustment=delta;
+            parameter=name;
         }
     };
-    const auto sample=[&](const QPoint &pos) {
-        ++sampled;
-        lastSample=pos;
+    const auto sample=[&](const QPoint &pos,Phase phase) {
+        if(phase==Phase::Preview)++colorPreviews;
+        if(phase==Phase::Commit) {
+            ++sampled;
+            lastSample=pos;
+        }
     };
     MobileToolbarGestureButton color(nullptr,QStringLiteral("color"),
                                      false,adjust,sample);
@@ -56,21 +66,28 @@ int main(int argc,char **argv)
 
     mouse(&color,QEvent::MouseButtonPress,QPoint(20,20));
     mouse(&color,QEvent::MouseButtonRelease,QPoint(20,20));
-    require(taps==1 && opacityMoves==0 && sampled==0,
+    require(taps==1 && previews==0 && sampled==0,
             "stationary tap must open color normally");
 
     mouse(&color,QEvent::MouseButtonPress,QPoint(20,20));
-    mouse(&color,QEvent::MouseMove,QPoint(75,20));
-    mouse(&color,QEvent::MouseButtonRelease,QPoint(90,20));
-    require(taps==1 && opacityMoves>0 && opacityDelta>0 && sampled==0,
-            "horizontal color-button swipe must adjust opacity, not sample");
-
-    mouse(&color,QEvent::MouseButtonPress,QPoint(20,20));
     mouse(&color,QEvent::MouseMove,QPoint(20,85));
+    require(colorPreviews==1 && sampled==0,"color swipe should preview before committing");
     mouse(&color,QEvent::MouseButtonRelease,QPoint(20,110));
-    require(taps==1 && sampled==1 &&
-            lastSample==color.mapToGlobal(QPoint(20,110)),
-            "perpendicular color swipe must sample at release, not trigger tap");
+    require(taps==1 && sampled==1 && lastSample==color.mapToGlobal(QPoint(20,110)),
+            "perpendicular color swipe must select the release pixel");
+
+    MobileToolbarGestureButton paint(nullptr,QStringLiteral("paint"),false,adjust,sample);
+    QAction paintAction(QStringLiteral("Paint"),&paint);
+    paint.setDefaultAction(&paintAction);
+    paint.resize(48,48);
+    paint.show();
+    QApplication::processEvents();
+    mouse(&paint,QEvent::MouseButtonPress,QPoint(20,20));
+    mouse(&paint,QEvent::MouseMove,QPoint(20,-24));
+    require(previews==1 && commits==0,"slider should preview without committing during drag");
+    mouse(&paint,QEvent::MouseButtonRelease,QPoint(20,-64));
+    require(commits==1 && parameter==QStringLiteral("opacity") && adjustment==84,
+            "horizontal toolbar opacity control must use upward displacement");
 
     MobileToolbarGestureButton settings(nullptr,QStringLiteral("tool-settings"),
                                         true,adjust,sample);
@@ -82,9 +99,6 @@ int main(int argc,char **argv)
     mouse(&settings,QEvent::MouseButtonPress,QPoint(20,20));
     mouse(&settings,QEvent::MouseMove,QPoint(20,80));
     mouse(&settings,QEvent::MouseButtonRelease,QPoint(20,100));
-    require(sizeMoves>0 && sizeDelta>0,
-            "vertical toolbar must use vertical displacement for brush size");
-    require(MobileToolbarDrag::along(QPoint(5,30),true)==30 &&
-            MobileToolbarDrag::along(QPoint(5,30),false)==5,
-            "toolbar drag direction must follow bar orientation");
+    require(commits==2 && parameter==QStringLiteral("size") && adjustment==-80,
+            "vertical toolbar brush size must decrease on downward drag");
 }

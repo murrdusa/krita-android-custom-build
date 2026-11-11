@@ -10,6 +10,7 @@
  */
 #pragma once
 #ifdef Q_OS_ANDROID
+#include <optional>
 #include <QApplication>
 #include <QAction>
 #include <QCheckBox>
@@ -82,11 +83,6 @@
 class MobileKritaNativeWorkspace final : public QObject
 {
 public:
-    struct ToolbarShortcut {
-        QString id;
-        QPointer<QAction> action;
-        QIcon icon;
-    };
 
     explicit MobileKritaNativeWorkspace(
         MobileLightweightCanvasHost *host,
@@ -116,6 +112,15 @@ public:
         m_fadeTimer->setInterval(160);
         connect(m_fadeTimer,&QTimer::timeout,this,[this]() {updatePanelFades();});
         if(m_fadePanels)m_fadeTimer->start();
+        m_samplePreviewTimer.setSingleShot(true);
+        m_samplePreviewTimer.setInterval(16);
+        connect(&m_samplePreviewTimer,&QTimer::timeout,this,[this]() {
+            if(const auto sample=toolbarColorAt(m_samplePoint)) {
+                if(auto *preview=toolbarPreview())preview->color(sample->toQColor(),m_samplePoint);
+            } else if(m_toolbarPreview) {
+                m_toolbarPreview->hide();
+            }
+        });
         qApp->installEventFilter(this);
         auto *contextRefresh=new QTimer(this);
         contextRefresh->setSingleShot(true);
@@ -465,30 +470,6 @@ public:
             else provider->slotPatternActivated(resource);
         });
     }
-
-    void configureToolbarShortcut(QAction *slot,const QVector<ToolbarShortcut> &choices)
-    {
-        m_shortcutSlot=slot;
-        for(const auto &choice:choices) {
-            if(!choice.action)continue;
-            m_shortcuts.append(choice);
-            connect(choice.action,&QAction::changed,this,
-                    [this]() {syncToolbarShortcut();});
-            connect(choice.action,&QObject::destroyed,this,
-                    [this]() {syncToolbarShortcut();});
-        }
-        if(m_shortcuts.isEmpty())return;
-        const QString saved=QSettings().value(
-            QStringLiteral("MobileStudio/toolbarShortcut"),QStringLiteral("fit")).toString();
-        for(int i=0;i<m_shortcuts.size();++i)
-            if(m_shortcuts.at(i).id==saved)m_shortcutIndex=i;
-        connect(slot,&QAction::triggered,this,[this]() {
-            const auto target=m_shortcuts.at(m_shortcutIndex).action;
-            if(target && target->isEnabled())target->trigger();
-        });
-        syncToolbarShortcut();
-    }
-
 
     // Use the same settings and input profile as the earlier Android UI.
     void openTouchGestures(QWidget *parent)
@@ -865,63 +846,49 @@ public:
         return true;
     }
 
-    // The gesture callback is supplied to the command toolbar. It
-    // reads current native brush settings on every incremental move,
-    // so tool/preset changes do not leave stale slider baselines.
-    void adjustToolbarDrag(const QString &button,qreal inlinePixels)
+    void adjustToolbarDrag(const QString &parameter,qreal pixels,const QPoint &global,
+                           MobileToolbarDrag::Phase phase)
     {
-        if(!m_engine.hasDocument())return;
+        using MobileToolbarDrag::Phase;
         auto *provider=m_engine.brushResources();
-        if(!provider)return;
-        const QString opacityButton=MobileToolbarDrag::assignment("opacity");
-        const QString sizeButton=MobileToolbarDrag::assignment("size");
-        if(button==opacityButton) {
-            provider->setOpacity(qBound(qreal(0),
-                provider->opacity()+inlinePixels/220.0,qreal(1)));
-        } else if(button==sizeButton) {
-            // Relative adjustments scale to the existing brush size,
-            // retaining fine control on small presets and allowing
-            // larger presets to change without excessive dragging.
-            provider->setSize(qBound(qreal(0.01),
-                provider->size()*qPow(2.0,inlinePixels/180.0),
-                qreal(KisImageConfig(true).maxBrushSize())));
+        if(phase==Phase::Cancel || !m_engine.hasDocument() || !provider) {
+            clearToolbarPreview();
+            return;
+        }
+        const bool opacity=parameter==QStringLiteral("opacity");
+        if(m_dragParameter!=parameter) {
+            m_dragParameter=parameter;
+            m_dragBaseline=opacity?provider->opacity():provider->size();
+            m_dragMaximum=opacity?1.0:KisImageConfig(true).maxBrushSize();
+        }
+        const qreal value=opacity?qBound(qreal(0),m_dragBaseline+pixels/200.0,qreal(1)):
+            qBound(qreal(0.01),m_dragBaseline*qPow(2.0,pixels/120.0),m_dragMaximum);
+        if(phase==Phase::Commit) {
+            if(opacity)provider->setOpacity(value);
+            else provider->setSize(value);
+            clearToolbarPreview();
+        } else if(auto *preview=toolbarPreview()) {
+            const QString text=opacity?tr("Opacity %1%").arg(qRound(value*100)):
+                tr("Size %1 px").arg(QString::number(value,'f',value<10?1:0));
+            preview->value(text,opacity?value:qBound(qreal(0.01),pixels/400.0+0.5,qreal(1)),global);
         }
     }
 
-    void sampleToolbarColor(const QPoint &global)
+    void sampleToolbarColor(const QPoint &global,MobileToolbarDrag::Phase phase)
     {
-        if(!m_engine.hasDocument())return;
-        auto *manager=m_engine.manager();
-        auto *provider=m_engine.brushResources();
-        if(!manager || !provider)return;
-        auto *canvas=manager->canvasBase();
-        const KisImageSP image=manager->image().toStrongRef();
-        if(!canvas || !canvas->canvasWidget() || !image)return;
-        const QPoint widgetPoint=canvas->canvasWidget()->mapFromGlobal(global);
-        if(!canvas->canvasWidget()->rect().contains(widgetPoint))return;
-        const QPoint point=canvas->coordinatesConverter()->widgetToImage(
-            widgetPoint).toPoint();
-        // Native Krita samples overlaid reference images *before* the
-        // composited projection. Reuse that behavior so dragging the
-        // toolbar swatch onto a floating reference works too.
-        if(auto *view=canvas->imageView().data()) {
-            if(view->document() && canvas->referenceImagesDecoration() &&
-               canvas->referenceImagesDecoration()->visible()) {
-                const auto refs=view->document()->referenceImagesLayer();
-                if(refs) {
-                    const QColor referenceColor=refs->getPixel(point);
-                    if(referenceColor.isValid()) {
-                        provider->setFGColor(KoColor(referenceColor,
-                                                    image->colorSpace()));
-                        return;
-                    }
-                }
+        using MobileToolbarDrag::Phase;
+        if(phase!=Phase::Preview) {
+            m_samplePreviewTimer.stop();
+            if(phase==Phase::Commit) {
+                if(auto *provider=m_engine.brushResources())
+                    if(const auto sample=toolbarColorAt(global))
+                        provider->setFGColor(*sample);
             }
+            clearToolbarPreview();
+            return;
         }
-        if(!image->bounds().contains(point))return;
-        KoColor sampled;
-        image->projection()->pixel(point.x(),point.y(),&sampled);
-        provider->setFGColor(sampled);
+        m_samplePoint=global;
+        if(!m_samplePreviewTimer.isActive())m_samplePreviewTimer.start();
     }
 
     void openSettings()
@@ -973,13 +940,11 @@ public:
                                           const QString &selected) {
                 combo->addItem(QObject::tr("Off"),QString());
                 for(const auto &pair:QList<QPair<QString,QString>>{
-                    {QStringLiteral("color"),QObject::tr("Color wheel button")},
                     {QStringLiteral("tool-settings"),QObject::tr("Brush / Tool Settings button")},
                     {QStringLiteral("paint"),QObject::tr("Paint button")},
                     {QStringLiteral("erase"),QObject::tr("Erase button")},
                     {QStringLiteral("blend"),QObject::tr("Blend button")},
-                    {QStringLiteral("tools"),QObject::tr("Tools button")},
-                    {QStringLiteral("shortcut"),QObject::tr("Custom shortcut button")}})
+                    {QStringLiteral("tools"),QObject::tr("Tools button")}})
                     combo->addItem(pair.second,pair.first);
                 const int index=combo->findData(selected);
                 combo->setCurrentIndex(index>=0?index:0);
@@ -1001,7 +966,7 @@ public:
                     opacityDrag->setCurrentIndex(0);
             });
             layout->addWidget(new QLabel(QObject::tr(
-                "Toolbar drag gestures (along the toolbar)"),body));
+                "Vertical toolbar sliders"),body));
             layout->addWidget(new QLabel(QObject::tr("Opacity button"),body));
             layout->addWidget(opacityDrag);
             layout->addWidget(new QLabel(QObject::tr("Brush size button"),body));
@@ -1012,10 +977,8 @@ public:
                 MobileToolbarDrag::preference("sample"),true).toBool());
             layout->addWidget(sampleColor);
             auto *gestureHelp=new QLabel(QObject::tr(
-                "A tap opens the button normally. Drag along its toolbar "
-                "to adjust; right/down increases the value. Drag the Color "
-                "button across the canvas to select the color at release. "
-                "The direction follows horizontal or vertical toolbars."),body);
+                "Drag an assigned button up to increase its value or down to decrease it. "
+                "Drag Color toward the canvas to preview and pick a color."),body);
             gestureHelp->setWordWrap(true);
             layout->addWidget(gestureHelp);
             auto *panelLayout=new QPushButton(QObject::tr("Panel placement and fading…"),body);
@@ -1023,16 +986,6 @@ public:
             connect(panelLayout,&QPushButton::clicked,&dialog,[this,&dialog]() {
                 openPanelLayout(&dialog);
             });
-            auto *shortcut=new MobileTouchComboBox(body);
-            if(!m_shortcuts.isEmpty()) {
-                layout->addWidget(new QLabel(QObject::tr("Toolbar shortcut"),body));
-                for(const auto &choice:m_shortcuts)
-                    shortcut->addItem(choice.icon,choice.action->text());
-                shortcut->setCurrentIndex(m_shortcutIndex);
-                layout->addWidget(shortcut);
-            } else {
-                shortcut->hide();
-            }
             layout->addStretch(1);
             auto *done=new QPushButton(QObject::tr("Done"),&dialog);
             connect(done,&QPushButton::clicked,&dialog,&QDialog::accept);
@@ -1056,12 +1009,6 @@ public:
             settings.setValue(MobileToolbarDrag::preference("size"),selectedSize);
             settings.setValue(MobileToolbarDrag::preference("sample"),
                               sampleColor->isChecked());
-            if(shortcut->currentIndex()>=0) {
-                m_shortcutIndex=shortcut->currentIndex();
-                settings.setValue(QStringLiteral("MobileStudio/toolbarShortcut"),
-                                  m_shortcuts.at(m_shortcutIndex).id);
-                syncToolbarShortcut();
-            }
             updateBrushSliders();
         });
     }
@@ -1091,6 +1038,7 @@ public:
 
     void hidePanels()
     {
+        clearToolbarPreview();
         if(m_layers)m_layers->hide();
         if(m_brush)m_brush->hide();
         if(m_opacityStrip)m_opacityStrip->hide();
@@ -1158,6 +1106,47 @@ protected:
     }
 
 private:
+    MobileToolbarDragPreview *toolbarPreview()
+    {
+        if(!m_toolbarPreview && m_host && m_host->nativeCanvas())
+            m_toolbarPreview=new MobileToolbarDragPreview(m_host->nativeCanvas());
+        return m_toolbarPreview;
+    }
+
+    void clearToolbarPreview()
+    {
+        m_samplePreviewTimer.stop();
+        if(m_toolbarPreview)m_toolbarPreview->hide();
+        m_dragParameter.clear();
+    }
+
+    std::optional<KoColor> toolbarColorAt(const QPoint &global) const
+    {
+        if(!m_engine.hasDocument())return {};
+        auto *manager=m_engine.manager();
+        auto *canvas=manager?manager->canvasBase():nullptr;
+        if(!canvas || !canvas->canvasWidget())return {};
+        const auto image=manager->image().toStrongRef();
+        if(!image)return {};
+        const QPoint widgetPoint=canvas->canvasWidget()->mapFromGlobal(global);
+        if(!canvas->canvasWidget()->rect().contains(widgetPoint))return {};
+        const QPoint point=canvas->coordinatesConverter()->widgetToImage(widgetPoint).toPoint();
+        if(auto *view=canvas->imageView().data()) {
+            if(view->document() && canvas->referenceImagesDecoration() &&
+               canvas->referenceImagesDecoration()->visible()) {
+                const auto refs=view->document()->referenceImagesLayer();
+                if(refs) {
+                    const auto color=refs->getPixel(point);
+                    if(color.isValid())return KoColor(color,image->colorSpace());
+                }
+            }
+        }
+        if(!image->bounds().contains(point))return {};
+        KoColor sampled;
+        image->projection()->pixel(point.x(),point.y(),&sampled);
+        return sampled;
+    }
+
     static QString sliderLayoutKey(int index)
     {
         return index==0?QStringLiteral("MobileStudio/sizeSlider"):
@@ -1373,8 +1362,6 @@ private:
         if(!canvas || (target!=canvas && !canvas->isAncestorOf(target)))return;
         auto *button=qobject_cast<QToolButton*>(target);
         QAction *action=button?button->defaultAction():nullptr;
-        if(action && action==m_shortcutSlot && !m_shortcuts.isEmpty())
-            action=m_shortcuts.at(m_shortcutIndex).action;
         const auto dismiss=[target,action](QWidget *panel,QAction *opener) {
             if(panel && panel->isVisible() && panel!=target &&
                !panel->isAncestorOf(target) && action!=opener)panel->hide();
@@ -1524,25 +1511,6 @@ private:
         if(m_contextToolBar && !m_contextToolBar->isHidden())
             return m_contextToolBar->geometry().bottom()+3;
         return MobileNativeCommandLayout::panelTopInset(canvas);
-    }
-
-    void syncToolbarShortcut()
-    {
-        if(!m_shortcutSlot || m_shortcuts.isEmpty())return;
-        const auto &choice=m_shortcuts.at(m_shortcutIndex);
-        if(!choice.action) {
-            m_shortcutSlot->setData(QVariant());
-            m_shortcutSlot->setEnabled(false);
-            return;
-        }
-        m_shortcutSlot->setData(QVariant::fromValue<QObject*>(choice.action.data()));
-        m_shortcutSlot->setText(choice.action->text());
-        m_shortcutSlot->setToolTip(choice.action->toolTip());
-        m_shortcutSlot->setIcon(choice.action->icon().isNull()?choice.icon:choice.action->icon());
-        m_shortcutSlot->setEnabled(choice.action->isEnabled());
-        m_shortcutSlot->setVisible(choice.action->isVisible());
-        m_shortcutSlot->setCheckable(choice.action->isCheckable());
-        m_shortcutSlot->setChecked(choice.action->isChecked());
     }
 
     bool ensureBrushControls()
@@ -1741,11 +1709,13 @@ private:
     QPointer<KritaMobileLayersPanel> m_layers;
     QPointer<MobileColorWorkspace> m_color;
     QPointer<MobileContextToolBar> m_contextToolBar;
-    QPointer<QAction> m_shortcutSlot;
     QPointer<QAction> m_volumeUndo;
     QPointer<QAction> m_volumeRedo;
-    QVector<ToolbarShortcut> m_shortcuts;
-    int m_shortcutIndex=0;
+    QPointer<MobileToolbarDragPreview> m_toolbarPreview;
+    QTimer m_samplePreviewTimer;
+    QPoint m_samplePoint;
+    QString m_dragParameter;
+    qreal m_dragBaseline=0,m_dragMaximum=1;
     bool m_keepLayers=true,m_keepColor=true,m_showSize=true,m_showOpacity=true;
     bool m_canvasOnly=false;
 };

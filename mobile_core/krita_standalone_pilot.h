@@ -91,7 +91,6 @@ public:
         auto *newAction=makeAction("New");
         auto *openAction=makeAction("Open");
         auto *homeAction=makeAction("Home");
-        auto *shortcutSlot=makeAction("Tool Options");
         auto *undoAction=makeAction("Undo");
         auto *redoAction=makeAction("Redo");
         auto *saveAction=makeAction("Save");
@@ -156,18 +155,6 @@ public:
                                   cloneSourceAction);
         QObject::connect(cloneSourceAction,&QAction::triggered,workspace,[workspace]() {
             workspace->pickCloneSource();
-        });
-        workspace->configureToolbarShortcut(shortcutSlot,{
-            {QStringLiteral("options"),optionsAction,studioIcon("configure")},
-            {QStringLiteral("brush-editor"),nativeBridge.action("show_brush_editor"),
-             studioIcon("paintop_settings_02")},
-            {QStringLiteral("clone-source"),cloneSourceAction,cloneSourceAction->icon()},
-            {QStringLiteral("fit"),nativeBridge.action("zoom_to_fit"),studioIcon("zoom-fit")},
-            {QStringLiteral("mirror"),nativeBridge.action("mirror_canvas"),studioIcon("mirror-view")},
-            {QStringLiteral("assistants"),nativeBridge.action("view_toggle_painting_assistants"),
-             studioIcon("krita_tool_assistant")},
-            {QStringLiteral("save-as"),saveAsAction,studioIcon("document-save-as")},
-            {QStringLiteral("canvas-only"),canvasOnlyAction,studioIcon("view-fullscreen")}
         });
         auto *exitAction=makeAction("Close app");
         QObject::connect(canvasOnlyAction,&QAction::toggled,workspace,
@@ -385,7 +372,7 @@ public:
             {"paint",brushesAction},{"erase",eraserAction},{"blend",blendBrushAction},
             {"tool-settings",optionsAction},{"color",colorAction},{"layers",layersAction},
             {"tools",toolsAction},{"undo",undoAction},{"redo",redoAction},{"save",saveAction},
-            {"shortcut",shortcutSlot},{"new",newAction},{"open",openAction},
+            {"new",newAction},{"open",openAction},
             {"save-as",saveAsAction},{"export",exportAction},{"versions",versionsAction},
             {"close",closeAction},{"canvas-only",canvasOnlyAction},
             {"clone-source",cloneSourceAction},{"input-settings",inputAction},
@@ -397,13 +384,13 @@ public:
         setStudioIcon(optionsAction,"paintop_settings_02");
         auto *commandLayout=MobileNativeCommandLayout::install(window,homeAction,studioIcon("configure-thicker"),
             toolbarCommands,{"paint","erase","blend","tool-settings","color","layers",
-                             "tools","undo","redo","save","shortcut"},
+                             "tools","undo","redo","save"},
             moreActions,canvasOnlyAction,
-            [workspace](const QString &button,qreal delta) {
-                workspace->adjustToolbarDrag(button,delta);
+            [workspace](const QString &parameter,qreal delta,const QPoint &global,MobileToolbarDrag::Phase phase) {
+                workspace->adjustToolbarDrag(parameter,delta,global,phase);
             },
-            [workspace](const QPoint &global) {
-                workspace->sampleToolbarColor(global);
+            [workspace](const QPoint &global,MobileToolbarDrag::Phase phase) {
+                workspace->sampleToolbarColor(global,phase);
             },
             [nativeBridge](const QColor &color) {
                 if(auto *provider=nativeBridge.brushResources()) {
