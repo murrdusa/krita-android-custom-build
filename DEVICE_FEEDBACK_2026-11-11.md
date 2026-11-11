@@ -49,3 +49,26 @@
 7. Provide clear uncommon layer/mask instructions and then resume sections 4+ of device test checklist, after delivering a usable APK on request.
 
 **No change to engine painting, saves, or rendering should be inferred from this note. All observations are unverified device reports until fixed and tested on the actual Fold.**
+
+## Native layer and mask checks
+
+On a disposable drawing, hold **+** in Layers and choose **Layer types** or **Masks**. For attached masks, select an editable parent layer first. Use **More → Layer properties** where the node offers editable properties. Save a KRA and reopen it after exercising the nodes to check the appearance, editability and parent relationships.
+
+| Layer | What it does and what to check |
+| --- | --- |
+| Paint | Stores pixels. Draw a stroke and erase part of it. |
+| Group | Holds and composites children. Drag a paint layer into an empty group, then toggle group visibility and undo a group deletion. |
+| Vector | Stores editable shapes. Draw a rectangle, then move or resize it with the shape selection tool. |
+| Fill | Generates a color or pattern. Create a solid fill, then change its color in properties. |
+| Filter | Applies a filter to the layers below it. Put a desaturate filter above a colorful layer and toggle visibility. |
+| File | Links an external image. Choose an accessible file and confirm the link still renders after reopening while the source remains accessible. |
+| Clone | Displays the selected source layer live. Paint on the source and look for the same change in the clone. |
+
+| Mask | What it does and what to check |
+| --- | --- |
+| Transparency | Controls its parent's visible alpha. Paint black on the mask to hide part of the parent, then white to reveal it. |
+| Filter | Applies an effect to its parent. Add a blur and limit it by painting on the mask. |
+| Transform | Transforms its parent non-destructively. Move or scale it and toggle the mask visibility to compare. |
+| Selection | Stores a reusable selection. Create a marquee, add a selection mask and switch back to it after changing the active selection. |
+| Colorize | Fills regions of line art from color hints. Add hints to two enclosed areas and update the mask. |
+| Fast Color Overlay | Adds a color overlay effect to its parent. If available, choose a color and toggle the mask to compare. |

@@ -307,17 +307,22 @@ public:
             struct NewType { QAction *action; const char *type; };
             QVector<NewType> choices;
             auto add=[&](QMenu *submenu,const QString &label,
-                         const char *type) {
-                choices.append({submenu->addAction(label),type});
+                         const char *type,const char *nativeId) {
+                auto *entry=submenu->addAction(label);
+                if(auto *native=m_engine.action(nativeId)) {
+                    entry->setIcon(native->icon());
+                    entry->setEnabled(native->isEnabled());
+                }
+                choices.append({entry,type});
             };
-            add(layers,i18n("Paint layer"),"KisPaintLayer");
-            add(layers,i18n("Group layer"),"KisGroupLayer");
-            add(layers,i18n("Vector layer"),"KisShapeLayer");
-            add(layers,i18n("Filter layer"),"KisAdjustmentLayer");
-            add(layers,i18n("Fill layer"),"KisGeneratorLayer");
-            add(layers,i18n("Clone layer"),"KisCloneLayer");
-            add(layers,i18n("File layer"),"KisFileLayer");
-            addMaskTypes(masks);
+            add(layers,i18n("Paint layer"),"KisPaintLayer","add_new_paint_layer");
+            add(layers,i18n("New empty group"),"KisGroupLayer","add_new_group_layer");
+            add(layers,i18n("Vector layer"),"KisShapeLayer","add_new_shape_layer");
+            add(layers,i18n("Filter layer"),"KisAdjustmentLayer","add_new_adjustment_layer");
+            add(layers,i18n("Fill layer"),"KisGeneratorLayer","add_new_fill_layer");
+            add(layers,i18n("Clone layer"),"KisCloneLayer","add_new_clone_layer");
+            add(layers,i18n("File layer"),"KisFileLayer","add_new_file_layer");
+            addMaskTypes(masks,true);
             QAction *chosen=menu.exec(
                 addType->mapToGlobal(QPoint(0,addType->height())));
             if(!chosen || !m_engine.manager() ||
@@ -651,17 +656,23 @@ private:
         settings.sync();
     }
 
-    static void addMaskTypes(QMenu *menu)
+    void addMaskTypes(QMenu *menu,bool checkActiveLayer=false)
     {
-        const auto add=[menu](const QString &label,const char *type) {
-            menu->addAction(label)->setData(QString::fromLatin1(type));
+        const auto add=[&](const QString &label,const char *type,const char *nativeId) {
+            auto *entry=menu->addAction(label);
+            entry->setData(QString::fromLatin1(type));
+            if(auto *native=m_engine.action(nativeId)) {
+                entry->setIcon(native->icon());
+                if(checkActiveLayer)entry->setEnabled(native->isEnabled());
+            }
         };
-        add(i18n("Transparency mask"),"KisTransparencyMask");
-        add(i18n("Filter mask"),"KisFilterMask");
-        add(i18n("Transform mask"),"KisTransformMask");
-        add(i18n("Selection mask"),"KisSelectionMask");
-        add(i18n("Colorize mask"),"KisColorizeMask");
-        add(i18n("Fast color overlay mask"),"FastColorOverlayFilterMask");
+        add(i18n("Transparency mask"),"KisTransparencyMask","add_new_transparency_mask");
+        add(i18n("Filter mask"),"KisFilterMask","add_new_filter_mask");
+        add(i18n("Transform mask"),"KisTransformMask","add_new_transform_mask");
+        add(i18n("Selection mask"),"KisSelectionMask","add_new_selection_mask");
+        add(i18n("Colorize mask"),"KisColorizeMask","add_new_colorize_mask");
+        add(i18n("Fast color overlay mask"),"FastColorOverlayFilterMask",
+            "add_new_fast_color_overlay_mask");
     }
 
     void renameLayer(KisNodeSP node,const KisImageSP &image)
@@ -810,7 +821,6 @@ private:
             {visibility,visibility->text()},{duplicate,i18n("Duplicate")},{clear,i18n("Clear")},
             {alphaLock,alphaLock->isChecked()?i18n("Alpha lock: On"):i18n("Alpha lock: Off")},
             {lock,lock->text()},{merge,i18n("Merge")},{remove,i18n("Delete")},
-            {inheritAlpha,clipped?i18n("Unclip"):i18n("Clip")},
             {select->menuAction(),i18n("Select")},{mask->menuAction(),i18n("Mask")}
         };
         for(int i=0;i<buttons.size();++i) {
@@ -820,6 +830,16 @@ private:
             grid->addWidget(button,i/3,i%3);
         }
         sheetLayout->addLayout(grid);
+        if(inheritAlpha->isEnabled()) {
+            const QString full=clipped && clipBase?
+                i18n("Unclip from %1",clipBase->name()):inheritAlpha->text();
+            auto *clip=makeButton(inheritAlpha,full);
+            clip->setText(clip->fontMetrics().elidedText(
+                full,Qt::ElideRight,qMax(1,qMin(300,window()->width()-64))));
+            clip->setAccessibleName(full);
+            sheetLayout->addWidget(clip);
+        }
+        sheetLayout->addWidget(makeButton(group,group->text()));
         auto *footer=new QHBoxLayout;
         auto *more=new QPushButton(i18n("More…"),&sheet);
         connect(more,&QPushButton::clicked,&sheet,[&sheet]() {sheet.done(2);});
@@ -2356,17 +2376,23 @@ private:
                 QTimer::singleShot(0,this,[this]() {reload();});
             });
         }
-        if(mask || clipped) {
+        QString kind;
+        if(node->inherits("KisShapeLayer"))kind=i18n("VECTOR");
+        else if(node->inherits("KisGeneratorLayer"))kind=i18n("FILL");
+        else if(node->inherits("KisAdjustmentLayer"))kind=i18n("FILTER");
+        else if(node->inherits("KisFileLayer"))kind=i18n("FILE");
+        else if(node->inherits("KisCloneLayer"))kind=i18n("CLONE");
+        if(mask || clipped || !kind.isEmpty()) {
             auto *marker=new QLabel(frame);
             marker->setGeometry(tile->x()+2,tileHeight-19,
-                                mask?45:28,19);
-            marker->setText(mask?i18n("MASK"):QStringLiteral("↳α"));
+                                clipped?28:47,19);
+            marker->setText(mask?i18n("MASK"):clipped?QStringLiteral("↳α"):kind);
             marker->setAlignment(Qt::AlignCenter);
             marker->setStyleSheet(mask?
                 "QLabel{background:#b87939;color:#ffffff;"
                 "border-radius:4px;font-weight:bold;font-size:10px;}":
                 "QLabel{background:#275b73;color:#f0faff;"
-                "border-radius:4px;font-weight:bold;}");
+                "border-radius:4px;font-weight:bold;font-size:10px;}");
             marker->setAttribute(Qt::WA_TransparentForMouseEvents);
         }
         m_tree->setItemWidget(item,0,frame);

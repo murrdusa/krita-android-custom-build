@@ -880,8 +880,8 @@ public:
     {
         if(!m_host)return;
         syncPanelActions();
+        syncBrushModes();
         if(!m_engine.hasDocument()) {
-            syncBrushModes();
             hidePanels();
             return;
         }
@@ -893,6 +893,8 @@ public:
         if(m_toolOptions && m_toolOptions->isVisible())
             syncActiveToolOptions();
         if(m_brush && m_brush->isVisible())m_brush->refresh();
+        if(m_opacityStrip && m_opacityStrip->isVisible())m_opacityStrip->refresh();
+        if(m_brushOptions && m_brushOptions->isVisible())m_brushOptions->refresh();
         if(m_layers && m_layers->isVisible())m_layers->refreshNow();
         if(m_color && m_color->isVisible())m_color->refresh();
     }

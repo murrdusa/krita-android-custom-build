@@ -12,7 +12,7 @@ Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1]
 
 - Independent Android APK target `mobile_studio`, package ID `org.krita.mobilestudio.debug`, based on the actual Krita 6.0.4 paint/resource/tool/document engine. It runs through its own Qt native startup, `MobileLightweightCanvasHost`, `KisViewManager` and real `KisView`, **not** the desktop `KisMainWindow` or MDI. Native C++ engine extraction is in `mobile_core/krita_engine_initialization.cpp` and `apply_mobile_shell.py`.
 - The local Windows/WSL2 watcher automatically builds commits to `main` and records the **exact** revision plus `local/android-wsl-build` status in Issue #1. Never infer a newer build from a previous SUCCESS. Do **not** run GitHub-hosted Android builds or upload APKs unless specifically instructed. No need to ask the user to manually pull/build while the watcher runs.
-- The stability batch through `67436f4c233c636267d01e496fe9b77b0b6b7866` passed the WSL Android build (November 11, 16:44 UTC). Check the exact revision in Issue #1 for later commits.
+- The stability and controls batches through `4689a09d87d1813ac48748e25cb214b995c52065` passed the WSL Android build (November 11, 16:48 UTC). Check the exact revision in Issue #1 for later commits.
 - Cross-compiled APK success **is not** a Fold 6 runtime pass. The `qt_saved_version_archive` regression source was extended and compiled through the Android integration where applicable, but its standalone Qt test binary has **not** been executed here.
 
 ## Current application and capabilities
@@ -29,6 +29,9 @@ Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1]
 
 - Tools and noneditable drop-downs distinguish a tap from a drag. Numeric spin boxes select the editable value on first focus. The preset picker has a denser grid, elided names and live Size, Opacity and compatible Flow controls. Layer options provide direct rename and visible Alpha Lock state, a larger opacity slider and native color-space-filtered blend categories. The compact rail has folder headers, nested group guides and an outlined target for dropping into groups. Clipped layers identify their closest base in layer options and accessibility text.
 - The app currently keeps one active drawing open. The native view host can manage several views, but changing the single-canvas workflow needs a deliberate document-switching and recovery design.
+
+- On canvas activation Studio refreshes brush mode, floating size/opacity and open Brush Settings. Hold **+** for native layer and mask types. The selected layer sheet exposes grouping and names the clipping base next to its clip action. The Fold feedback record includes [native layer and mask checks](DEVICE_FEEDBACK_2026-11-11.md#native-layer-and-mask-checks).
+- The default Krita input profile maps a one-finger tap to the native popup palette while finger painting is off. The binding is also available under **Touch gestures → One-finger tap → More actions → Show popup palette**. Symmetry actions use Krita's native axes; the reported halo still needs a controlled preset comparison on the same painted layer and on a separate layer, including stock Krita.
 
 ## Latest changes (November 11)
 
