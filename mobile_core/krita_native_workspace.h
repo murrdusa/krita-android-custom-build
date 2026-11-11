@@ -39,6 +39,7 @@
 #include <QTimer>
 #include <QMouseEvent>
 #include <QTabletEvent>
+#include <QtMath>
 #include <QTouchEvent>
 #include <QTabWidget>
 #include <resources/KoAbstractGradient.h>
