@@ -4,6 +4,8 @@
 
 ## Resume here
 
+- **Nov 11 version recovery integrity:** `ebdfa47` validates each historical KRA's ZIP header and, when present, its SHA-256 sidecar before atomically publishing a recovered copy. Missing optional sidecars remain supported. `fdfb355` adds Qt regression coverage for damaged archives and checksum-free legacy copies. **Check Issue #1 for exact WSL Android build of `fdfb355340686b41b011d263a20845cdfb08218c` or later**, and run the Qt regression separately when practical; these tests are not implied by Android compilation. No Fold 6 test or APK upload.
+
 - **Menu contrast:** Studio applies a consistent widget palette at Android startup, with paired foreground and background colors for menus, combo popups, and plain dialogs. Existing local panel styles still apply. Check Issue #1 for the exact build.
 
 - **UI feedback fixes:** Settings opens its styled menu directly. A toolbar collapses a shortcut duplicate when it already shows the same action, without changing the saved shortcut assignment. Brush Tool Settings shows Size and Opacity only when their respective floating sliders are hidden. The color wheel uses a continuous antialiased hue ring, rounded saturation/value edges and clearance around both markers. Check Issue #1 for the exact build.
