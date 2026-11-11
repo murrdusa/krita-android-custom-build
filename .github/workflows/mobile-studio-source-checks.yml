@@ -357,7 +357,7 @@ jobs:
           assert 'native_command_layout=own/"mobile_core/native_command_layout.h"' in shell_patch
           assert '(root/"libs/ui/native_command_layout.h").write_text(' in shell_patch
           native_commands=Path("mobile_core/native_command_layout.h").read_text()
-          assert 'QToolButton::InstantPopup' in native_commands
+          assert 'menu->popup(' in native_commands
           assert 'QStringLiteral("_mobileNativeToolbar")' in native_commands
           assert 'MobileDocumentWorkflow::create(' in native_pilot
           assert 'MobileStudio/nativeWorkspaceLastAction' in shell_patch

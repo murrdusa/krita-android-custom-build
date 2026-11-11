@@ -58,20 +58,26 @@ public:
         MobileTouchScroll::configure(layout->m_scroll);
         row->addWidget(layout->m_scroll,1);
 
-        auto *menu=new QMenu(layout->m_toolbar);
-        menu->setTitle(QObject::tr("Settings and commands"));
-        menu->setIcon(settingsIcon);
+        auto *settings=new QAction(settingsIcon,QObject::tr("Settings and commands"),layout);
+        auto *more=makeButton(layout->m_toolbar,settings);
+        more->setObjectName(QStringLiteral("_mobileNativeMoreButton"));
+        row->addWidget(more);
+        auto *menu=new QMenu(more);
+        menu->setObjectName(QStringLiteral("_mobileNativeSettingsMenu"));
         const QString popupStyle=QStringLiteral(
             "QMenu{background:#252529;color:#f4f4f5;border:1px solid #55555c;padding:3px;}"
             "QMenu::item{color:#f4f4f5;padding:8px 14px;min-height:28px;}"
             "QMenu::item:selected{background:#45454f;}"
             "QMenu::item:disabled{color:#9a9aa2;}");
         menu->setStyleSheet(popupStyle);
-        auto *more=makeButton(layout->m_toolbar,menu->menuAction());
-        more->setObjectName(QStringLiteral("_mobileNativeMoreButton"));
-        more->setPopupMode(QToolButton::InstantPopup);
-        more->setMenu(menu);
-        row->addWidget(more);
+        // Open the real menu directly. Associating its menuAction with the
+        // tool button can make Qt wrap it in a second, unstyled menu.
+        QObject::connect(settings,&QAction::triggered,menu,[more,menu]() {
+            const int x=more->width()-menu->sizeHint().width();
+            menu->popup(more->mapToGlobal(QPoint(x,more->height())));
+        });
+        QObject::connect(menu,&QMenu::aboutToShow,more,[more]() {more->setDown(true);});
+        QObject::connect(menu,&QMenu::aboutToHide,more,[more]() {more->setDown(false);});
 
         auto *edit=menu->addAction(QObject::tr("Edit UI Layout…"));
         QObject::connect(edit,&QAction::triggered,layout,[layout]() {
@@ -317,19 +323,41 @@ private:
         auto *row=new QBoxLayout(vertical?QBoxLayout::TopToBottom:QBoxLayout::LeftToRight,strip);
         row->setContentsMargins(0,0,0,0);
         row->setSpacing(bar.spacing);
-        const auto updateSize=[this,scroll,strip,row,vertical,bar]() {
+        const auto shortcut=m_commands.value(QStringLiteral("shortcut"));
+        QToolButton *shortcutButton=nullptr;
+        for(const auto &id:bar.ids) {
+            auto action=m_commands.value(id);
+            if(!action)continue;
+            auto *button=makeButton(strip,action,bar.target,bar.icon,vertical);
+            if(action==shortcut)shortcutButton=button;
+            row->addWidget(button);
+        }
+        const auto updateSize=[this,scroll,strip,row,vertical,bar,shortcutButton]() {
             if(scroll->widget()!=strip)return;
+            if(shortcutButton && shortcutButton->defaultAction()) {
+                auto *action=shortcutButton->defaultAction();
+                const auto *target=action->data().value<QObject*>();
+                bool duplicate=false;
+                if(target) {
+                    for(int i=0;i<row->count();++i) {
+                        auto *button=static_cast<QToolButton*>(row->itemAt(i)->widget());
+                        auto *candidate=button->defaultAction();
+                        if(button!=shortcutButton && candidate==target && candidate->isVisible()) {
+                            duplicate=true;
+                            break;
+                        }
+                    }
+                }
+                shortcutButton->setVisible(action->isVisible() && !duplicate);
+            }
             const auto hint=row->sizeHint();
             const QSize size=vertical?QSize(bar.target,hint.height()):QSize(hint.width(),bar.target);
             if(strip->size()!=size)strip->setFixedSize(size);
             if(scroll==m_scroll)scroll->setVisible(hint.width()>0);
         };
-        for(const auto &id:bar.ids) {
-            auto action=m_commands.value(id);
-            if(!action)continue;
-            auto *button=makeButton(strip,action,bar.target,bar.icon,vertical);
-            row->addWidget(button);
-            QObject::connect(action,&QAction::changed,button,[this,updateSize]() {
+        for(int i=0;i<row->count();++i) {
+            auto *button=static_cast<QToolButton*>(row->itemAt(i)->widget());
+            QObject::connect(button->defaultAction(),&QAction::changed,button,[this,updateSize]() {
                 updateSize();
                 requestPosition();
             });

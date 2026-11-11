@@ -230,6 +230,7 @@ public:
             m_brushOptions->hide();
             return;
         }
+        syncBrushSettingsSliders();
         m_brushOptions->refresh();
         showOverlay(m_brushOptions);
     }
@@ -460,6 +461,8 @@ public:
             if(!choice.action)continue;
             m_shortcuts.append(choice);
             connect(choice.action,&QAction::changed,this,
+                    [this]() {syncToolbarShortcut();});
+            connect(choice.action,&QObject::destroyed,this,
                     [this]() {syncToolbarShortcut();});
         }
         if(m_shortcuts.isEmpty())return;
@@ -1334,9 +1337,11 @@ private:
         if(!m_shortcutSlot || m_shortcuts.isEmpty())return;
         const auto &choice=m_shortcuts.at(m_shortcutIndex);
         if(!choice.action) {
+            m_shortcutSlot->setData(QVariant());
             m_shortcutSlot->setEnabled(false);
             return;
         }
+        m_shortcutSlot->setData(QVariant::fromValue<QObject*>(choice.action.data()));
         m_shortcutSlot->setText(choice.action->text());
         m_shortcutSlot->setToolTip(choice.action->toolTip());
         m_shortcutSlot->setIcon(choice.action->icon().isNull()?choice.icon:choice.action->icon());
@@ -1354,6 +1359,13 @@ private:
         m_brush=new KritaMobileBrushWorkspace(m_engine,canvas,true);
         m_brush->installEventFilter(this);
         return true;
+    }
+
+    void syncBrushSettingsSliders()
+    {
+        if(m_brushOptions)
+            m_brushOptions->setSliderVisibility(!m_brush || !m_brush->isVisible(),
+                !m_opacityStrip || !m_opacityStrip->isVisible());
     }
 
     void updateBrushSliders()
@@ -1376,6 +1388,7 @@ private:
         } else if(m_opacityStrip) {
             m_opacityStrip->hide();
         }
+        syncBrushSettingsSliders();
         placeDrawingOverlays();
     }
 

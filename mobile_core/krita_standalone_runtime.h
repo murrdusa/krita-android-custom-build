@@ -52,9 +52,9 @@ public:
     QList<QAction*> menuRootActions() const override
     {
         if(!m_host)return {};
-        const auto *more=m_host->findChild<QToolButton*>(
-            QStringLiteral("_mobileNativeMoreButton"));
-        return more && more->menu() ? more->menu()->actions() : QList<QAction*>{};
+        const auto *menu=m_host->findChild<QMenu*>(
+            QStringLiteral("_mobileNativeSettingsMenu"));
+        return menu?menu->actions():QList<QAction*>{};
     }
 private:
     QPointer<KisKActionCollection> m_actions;

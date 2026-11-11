@@ -65,13 +65,25 @@ int main(int argc,char **argv)
     auto *bar=canvas->findChild<QFrame*>(QStringLiteral("_mobileNativeToolbar"));
     auto *scroll=bar?bar->findChild<QScrollArea*>():nullptr;
     auto *more=bar?bar->findChild<QToolButton*>(QStringLiteral("_mobileNativeMoreButton")):nullptr;
-    verify(bar && scroll && more && more->menu(),"toolbar or Settings missing");
+    auto *settingsMenu=more?more->findChild<QMenu*>(QStringLiteral("_mobileNativeSettingsMenu")):nullptr;
+    verify(bar && scroll && more && settingsMenu,"toolbar or Settings missing");
+    verify(!more->menu() && !more->defaultAction()->menu(),"Settings has an implicit wrapper menu");
+    more->click();
+    QApplication::processEvents();
+    verify(settingsMenu->isVisible(),"Settings button did not open its menu directly");
+    settingsMenu->hide();
     verify(canvas->rect().contains(bar->geometry()),"toolbar overflowed the narrow canvas");
     verify(scroll->horizontalScrollBar()->maximum()>0,"narrow toolbar does not scroll");
-    verify(more->menu()->actions().contains(&open),"file command disappeared");
+    verify(settingsMenu->actions().contains(&open),"file command disappeared");
     auto *strip=scroll->widget()->layout();
     verify(qobject_cast<QToolButton*>(strip->itemAt(0)->widget())->defaultAction()==&tool,
            "toolbar did not load the saved command order");
+
+    auto *shortcutButton=qobject_cast<QToolButton*>(strip->itemAt(5)->widget());
+    shortcut.setData(QVariant::fromValue<QObject*>(&tool));
+    verify(shortcutButton && shortcutButton->isHidden(),"toolbar duplicated the shortcut target");
+    shortcut.setData(QVariant::fromValue<QObject*>(&open));
+    verify(!shortcutButton->isHidden(),"distinct shortcut disappeared");
 
     auto *button=qobject_cast<QToolButton*>(strip->itemAt(2)->widget());
     verify(button && button->defaultAction()==&brush && button->height()>=44,
@@ -121,9 +133,10 @@ int main(int argc,char **argv)
     second.resize(160,280);
     QApplication::processEvents();
     verify(!side->isVisible(),"oversized rail crowded a small canvas");
-    auto *gear=secondCanvas->findChild<QToolButton*>(QStringLiteral("_mobileNativeMoreButton"));
+    auto *secondMenu=secondCanvas->findChild<QMenu*>(QStringLiteral("_mobileNativeSettingsMenu"));
+    verify(secondMenu,"second toolbar lost its Settings menu");
     bool fallback=false;
-    for(auto *action:gear->menu()->actions())
+    for(auto *action:secondMenu->actions())
         if(auto *menu=action->menu())
             for(auto *entry:menu->actions())
                 if(entry->menu() && entry->menu()->actions().contains(&brush))fallback=true;

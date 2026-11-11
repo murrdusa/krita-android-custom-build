@@ -11,6 +11,7 @@
 
 #include <QColor>
 #include <QColorDialog>
+#include <QConicalGradient>
 #include <QDialog>
 #include "touch_scroll.h"
 #include <QEvent>
@@ -23,7 +24,6 @@
 #include <QRegion>
 #include <QSize>
 #include <QPainter>
-#include <QPainterPath>
 #include <QPointer>
 #include <QPushButton>
 #include <QSettings>
@@ -69,21 +69,20 @@ protected:
     {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing,true);
-        const QPointF center=rect().center();
-        const qreal radius=qMin(width(),height())/2.0-11.0;
+        const QPointF center=wheelCenter();
+        const qreal radius=wheelRadius();
         if(radius<=0)return;
-        const QRectF circle(center.x()-radius,center.y()-radius,
-                            radius*2,radius*2);
-        // Hue is expressed as an angle in Krita's familiar HSV model,
-        // with 0/red at the right and increasing counter-clockwise.
+        // One antialiased stroke with a continuous HSV gradient avoids the
+        // exposed arc joins and pixelated rim of overlapping hue segments.
+        QConicalGradient hues(center,0);
+        for(int hue=0;hue<360;hue+=60)
+            hues.setColorAt(hue/360.0,QColor::fromHsv(hue,255,255));
+        hues.setColorAt(1.0,Qt::red);
         p.setBrush(Qt::NoBrush);
-        p.setPen(QPen(QColor(18,19,22,220),20));
-        p.drawEllipse(circle);
-        for(int hue=0;hue<360;hue+=3) {
-            QPen pen(QColor::fromHsv(hue,255,255),17,Qt::SolidLine,Qt::FlatCap);
-            p.setPen(pen);
-            p.drawArc(circle,hue*16,3*16+2);
-        }
+        p.setPen(QPen(QColor(18,19,22,215),20));
+        p.drawEllipse(center,radius,radius);
+        p.setPen(QPen(QBrush(hues),17));
+        p.drawEllipse(center,radius,radius);
         const qreal angle=qDegreesToRadians(qreal(m_hue));
         const QPointF ring(center.x()+radius*qCos(angle),
                            center.y()-radius*qSin(angle));
@@ -94,20 +93,19 @@ protected:
         p.drawEllipse(ring,11,11);
 
         const QRectF square=squareRect();
-        QPainterPath rounded;
-        rounded.addRoundedRect(square,3,3);
-        p.save();
-        p.setClipPath(rounded);
+        if(square.isEmpty())return;
         QLinearGradient horizontal(square.topLeft(),square.topRight());
         horizontal.setColorAt(0,Qt::white);
         horizontal.setColorAt(1,QColor::fromHsv(m_hue,255,255));
-        p.fillRect(square,horizontal);
         QLinearGradient vertical(square.topLeft(),square.bottomLeft());
-        vertical.setColorAt(0,QColor(0,0,0,0));
+        vertical.setColorAt(0,Qt::transparent);
         vertical.setColorAt(1,Qt::black);
-        p.fillRect(square,vertical);
-        p.restore();
-        p.setPen(QPen(QColor(255,255,255,220),1));
+        p.setPen(Qt::NoPen);
+        p.setBrush(horizontal);
+        p.drawRoundedRect(square,3,3);
+        p.setBrush(vertical);
+        p.drawRoundedRect(square,3,3);
+        p.setPen(QPen(QColor(24,25,29,190),1));
         p.setBrush(Qt::NoBrush);
         p.drawRoundedRect(square,3,3);
         const QPointF mark(square.left()+m_sat/255.0*square.width(),
@@ -120,11 +118,11 @@ protected:
     void mousePressEvent(QMouseEvent *event) override
     {
         if(event->button()!=Qt::LeftButton)return;
-        const QPointF delta=event->pos()-rect().center();
+        const QPointF delta=event->pos()-wheelCenter();
         const qreal dist=qSqrt(delta.x()*delta.x()+delta.y()*delta.y());
-        const qreal radius=qMin(width(),height())/2.0-11.0;
-        if(dist>=radius-17 && dist<=radius+12)m_dragMode=Hue;
-        else if(squareRect().contains(event->pos()))m_dragMode=SV;
+        const qreal radius=wheelRadius();
+        if(squareRect().contains(event->pos()))m_dragMode=SV;
+        else if(radius>0 && dist>=radius-17 && dist<=radius+12)m_dragMode=Hue;
         else {event->ignore();return;}
         setCursor(Qt::CrossCursor);
         applyPosition(event->pos(),false);
@@ -146,21 +144,23 @@ protected:
     }
 private:
     enum DragMode {None,Hue,SV};
+    QPointF wheelCenter() const {return QRectF(rect()).center();}
+    qreal wheelRadius() const {return qMin(width(),height())/2.0-15.0;}
     QRectF squareRect() const
     {
-        const qreal radius=qMin(width(),height())/2.0-11.0;
-        const qreal size=qMax(0.0,(radius-12.0)*qSqrt(2.0));
-        const QPointF center=rect().center();
+        const qreal size=qMax(0.0,(wheelRadius()-14.0)*qSqrt(2.0));
+        const QPointF center=wheelCenter();
         return QRectF(center.x()-size/2,center.y()-size/2,size,size);
     }
     void applyPosition(const QPointF &point,bool final)
     {
         if(m_dragMode==Hue) {
-            const QPointF d=point-rect().center();
+            const QPointF d=point-wheelCenter();
             const qreal angle=qRadiansToDegrees(qAtan2(-d.y(),d.x()));
             m_hue=(qRound(angle)+360)%360;
         } else if(m_dragMode==SV) {
             const QRectF square=squareRect();
+            if(square.isEmpty())return;
             const qreal x=qBound(0.0,(point.x()-square.left())/
                                       square.width(),1.0);
             const qreal y=qBound(0.0,(point.y()-square.top())/
