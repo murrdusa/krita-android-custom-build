@@ -4,6 +4,10 @@
 
 Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1). This file records *current* status, not a commit-by-commit log. The preceding complete log is preserved verbatim in [DEVELOPMENT_HISTORY_2026-11-11.md](DEVELOPMENT_HISTORY_2026-11-11.md). More focused runbooks live under `mobile_core/`.
 
+## Layers rail layout
+
+The compact Layers rail grows to fit its visible tiles until it reaches a toolbar, another panel, or the canvas edge. Edited layouts keep the chosen anchor and thickness, with overflow scrollable. **Edit UI Layout → Rotate Layers** switches between upright tiles in a vertical rail and a horizontal strip. A small read-only footer shows the active layer name, with rename still in Layer Options.
+
 ## Toolbar color history
 
 The gear menu's **Toolbars** submenu has a persistent **Toolbar color history** toggle, off by default. The strip spans each toolbar's inward edge, including custom side rails when space permits. It shares the wheel's eight-color history and records settled foreground choices, including toolbar sampling. Tap a swatch to apply it in the current Krita foreground color space. Canvas Only hides the strips with the toolbars.

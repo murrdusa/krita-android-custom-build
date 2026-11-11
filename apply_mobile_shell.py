@@ -734,6 +734,8 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
         brush.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/color_workspace.h").write_text(
         color.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/layer_rail_geometry.h").write_text(
+        (own/"mobile_core/layer_rail_geometry.h").read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/layer_workspace.h").write_text(
         layers.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/command_browser.h").write_text(

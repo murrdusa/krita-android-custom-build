@@ -71,6 +71,7 @@
 #include "engine_bridge.h"
 #include "brush_workspace.h"
 #include "layer_workspace.h"
+#include "layer_rail_geometry.h"
 #include "color_workspace.h"
 #include "tool_browser.h"
 #include "command_browser.h"
@@ -97,6 +98,7 @@ public:
         const bool oldSliders=settings.value(QStringLiteral("MobileStudio/showBrushSliders"),true).toBool();
         m_showSize=settings.value(QStringLiteral("MobileStudio/showSizeSlider"),oldSliders).toBool();
         m_showOpacity=settings.value(QStringLiteral("MobileStudio/showOpacitySlider"),oldSliders).toBool();
+        m_layersHorizontal=settings.value(QStringLiteral("MobileStudio/layersHorizontal"),false).toBool();
         m_layerCorner=qBound(0,settings.value(QStringLiteral("MobileStudio/layerCorner"),0).toInt(),3);
         m_layerWidth=qBound(82,settings.value(QStringLiteral("MobileStudio/layerWidth"),82).toInt(),120);
         m_layerHeight=qBound(25,settings.value(QStringLiteral("MobileStudio/layerHeight"),100).toInt(),100);
@@ -857,12 +859,18 @@ public:
             if(!panel || !panel->isVisible())continue;
             QSize minimum(120,44);
             if(panel==m_color)minimum=QSize(104,104);
-            if(panel==m_layers)minimum=QSize(82,76);
-            targets.append({panel,minimum,false,
-                [this,canvas,id=entry.first](const QRect &rect,bool) {
+            const bool layers=panel==m_layers;
+            if(layers)minimum=m_layersHorizontal?QSize(76,82):QSize(82,76);
+            targets.append({panel,minimum,layers,
+                [this,canvas,id=entry.first,layers](const QRect &rect,bool rotate) {
                     m_panelPlacements.insert(id,MobileCanvasLayoutEditor::relative(
                         rect,canvas->rect().adjusted(2,2,-2,-2)));
-                }});
+                    if(layers && rotate) {
+                        m_layersHorizontal=!m_layersHorizontal;
+                        QSettings().setValue(QStringLiteral("MobileStudio/layersHorizontal"),
+                                             m_layersHorizontal);
+                    }
+                },layers?tr("Rotate Layers"):QString()});
         }
         return targets;
     }
@@ -1126,7 +1134,7 @@ protected:
     bool eventFilter(QObject *watched,QEvent *event) override
     {
         if((watched==m_layers || watched==m_color || watched==m_toolOptions ||
-            watched==m_brushOptions) &&
+            watched==m_brushOptions || watched==m_textFormatting || watched==m_contextToolBar) &&
            (event->type()==QEvent::Show || event->type()==QEvent::Hide)) {
             syncPanelActions();
             QTimer::singleShot(0,this,[this]() {placeDrawingOverlays();});
@@ -1194,19 +1202,10 @@ private:
         for(const auto &entry:editablePanels()) {
             auto *panel=entry.second;
             const auto placement=m_panelPlacements.value(entry.first).toRectF();
-            if(!panel || !panel->isVisible() || !placement.isValid())continue;
+            if(!panel || panel==m_layers || !panel->isVisible() || !placement.isValid())continue;
             const QRect geometry=MobileCanvasLayoutEditor::absolute(placement,bounds);
-            if(panel==m_color) {
-                m_color->setManualWheelPlacement(geometry);
-            } else {
-                if(panel==m_layers && m_layers->width()!=geometry.width()) {
-                    m_layers->setFixedWidth(geometry.width());
-                    QTimer::singleShot(0,m_layers.data(),[this]() {
-                        if(m_layers && m_layers->isVisible())m_layers->refreshNow();
-                    });
-                }
-                panel->setGeometry(geometry);
-            }
+            if(panel==m_color)m_color->setManualWheelPlacement(geometry);
+            else panel->setGeometry(geometry);
         }
     }
 
@@ -1630,20 +1629,32 @@ private:
         if(!viewport.isValid())return;
 
         QRect besideLayers=viewport;
-        if(m_layers && m_layers->isVisible() && !hasEditedPlacement(m_layers)) {
-            const int width=qMin(m_layerWidth,qMax(82,viewport.width()-90));
-            const bool resized=width!=m_layers->width();
-            if(resized)m_layers->setFixedWidth(width);
-            const int height=qMin(viewport.height()*m_layerHeight/100,m_layers->contentHeight());
-            const bool right=m_layerCorner%2;
-            const int x=right?viewport.right()-width+1:viewport.left();
-            const int y=m_layerCorner>=2?viewport.bottom()-height+1:viewport.top();
-            m_layers->setGeometry(x,y,width,height);
-            if(right)besideLayers.setRight(x-2);
-            else besideLayers.setLeft(x+width+2);
-            if(resized)QTimer::singleShot(0,m_layers.data(),[this]() {
-                if(m_layers && m_layers->isVisible())m_layers->refreshNow();
-            });
+        QRect layerAnchor;
+        int layerLength=0;
+        bool layerReverse=false;
+        const bool editedLayers=hasEditedPlacement(m_layers);
+        const QRect railBounds=editedLayers?canvasBounds:viewport;
+        if(m_layers && m_layers->isVisible() && railBounds.isValid()) {
+            if(editedLayers) {
+                layerAnchor=MobileCanvasLayoutEditor::absolute(
+                    m_panelPlacements.value(QStringLiteral("layers")).toRectF(),railBounds);
+                const int minThickness=KritaMobileLayersPanel::compactRailWidth();
+                if(m_layersHorizontal)layerAnchor.setHeight(qMax(minThickness,layerAnchor.height()));
+                else layerAnchor.setWidth(qMax(minThickness,layerAnchor.width()));
+                const int thickness=m_layersHorizontal?layerAnchor.height():layerAnchor.width();
+                layerLength=m_layers->contentLength(m_layersHorizontal,thickness);
+            } else {
+                const int width=qMin(m_layerWidth,qMax(82,viewport.width()-90));
+                layerLength=qMin(viewport.height()*m_layerHeight/100,
+                                 m_layers->contentLength(false,width));
+                const bool right=m_layerCorner%2;
+                layerReverse=m_layerCorner>=2;
+                const int x=right?viewport.right()-width+1:viewport.left();
+                const int y=layerReverse?viewport.bottom()-layerLength+1:viewport.top();
+                layerAnchor=QRect(x,y,width,layerLength);
+                if(right)besideLayers.setRight(x-2);
+                else besideLayers.setLeft(x+width+2);
+            }
         }
         if(m_toolOptions || m_textFormatting || m_brushOptions) {
             const QRect room=besideLayers.width()>=240?besideLayers:viewport;
@@ -1660,19 +1671,30 @@ private:
                 qMin(room.height(),m_brushOptions->sizeHint().height()));
             if(m_textFormatting && !hasEditedPlacement(m_textFormatting))m_textFormatting->setGeometry(bounds);
         }
+        QList<QRect> obstacles;
+        for(auto *toolbar:canvas->findChildren<QFrame*>(QString(),Qt::FindDirectChildrenOnly))
+            if(toolbar->isVisible() && toolbar->property("mobileCommandToolbar").toBool())
+                obstacles.append(toolbar->geometry());
+        for(const auto &entry:editablePanels()) {
+            auto *panel=entry.second;
+            if(panel && panel!=m_layers && panel!=m_color && panel->isVisible())
+                obstacles.append(panel->geometry());
+        }
         if(m_color && !hasEditedPlacement(m_color)) {
             m_color->setManualWheelPlacement({});
-            QList<QRect> obstacles;
-            for(QWidget *panel:{static_cast<QWidget*>(m_brush.data()),
-                                static_cast<QWidget*>(m_opacityStrip.data()),
-                                static_cast<QWidget*>(m_layers.data()),
-                                static_cast<QWidget*>(m_toolOptions.data()),
-                                static_cast<QWidget*>(m_brushOptions.data()),
-                                static_cast<QWidget*>(m_textFormatting.data())}) {
-                if(panel && panel->isVisible())obstacles.append(panel->geometry());
-            }
-            m_color->setWheelArea(wheelBounds,obstacles);
+            auto wheelObstacles=obstacles;
+            if(layerAnchor.isValid())
+                wheelObstacles.append(MobileLayerRailGeometry::expand(
+                    layerAnchor,railBounds,qMin(layerLength,115),m_layersHorizontal,layerReverse,obstacles));
+            m_color->setWheelArea(wheelBounds,wheelObstacles);
         }
+        if(layerAnchor.isValid()) {
+            if(m_color && m_color->isVisible())obstacles.append(m_color->geometry());
+            m_layers->setRailGeometry(MobileLayerRailGeometry::expand(
+                layerAnchor,railBounds,layerLength,m_layersHorizontal,layerReverse,obstacles),
+                m_layersHorizontal);
+        }
+
     }
 
     void raiseOverlays()
@@ -1724,6 +1746,7 @@ private:
     QPointer<KritaMobileBrushWorkspace> m_brush,m_opacityStrip,m_brushOptions;
     std::array<int,2> m_sliderCorners{2,2},m_sliderWidths{168,168};
     int m_layerCorner=0,m_layerWidth=82,m_layerHeight=100;
+    bool m_layersHorizontal=false;
     bool m_fadePanels=false;
     int m_idleOpacity=35,m_fadeDelay=3;
     QElapsedTimer m_fadeClock;

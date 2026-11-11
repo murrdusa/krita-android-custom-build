@@ -49,6 +49,7 @@
 #include <QToolButton>
 #include <QPixmap>
 #include <QPainter>
+#include <QResizeEvent>
 #include <QMap>
 #include <QRegion>
 #include <algorithm>
@@ -150,7 +151,22 @@ public:
         QObject::connect(m_tree->verticalScrollBar(),
                          &QScrollBar::valueChanged,this,
                          [this](int) {updateVisibleLayerThumbnails();});
-        layout->addWidget(m_tree,1);
+        m_railLayout=new QBoxLayout(QBoxLayout::TopToBottom);
+        m_railLayout->setContentsMargins(0,0,0,0);
+        m_railLayout->setSpacing(1);
+        m_railLayout->addWidget(m_tree,1);
+        layout->addLayout(m_railLayout,1);
+        if(compactRail) {
+            m_layerName=new QLabel(this);
+            m_layerName->setObjectName(QStringLiteral("mobileLayerName"));
+            m_layerName->setStyleSheet(QStringLiteral(
+                "QLabel#mobileLayerName{background:#252e39;color:#edf5fb;"
+                "border-radius:5px;font-size:11px;padding:0 4px;}"));
+            m_layerName->setAlignment(Qt::AlignCenter);
+            m_layerName->setFixedHeight(19);
+            m_layerName->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
+            layout->addWidget(m_layerName);
+        }
         m_dragGhost=new QLabel(m_tree->viewport());
         m_dragGhost->setFixedSize(60,60);
         m_dragGhost->setAlignment(Qt::AlignCenter);
@@ -179,10 +195,12 @@ public:
         connect(m_edgeScrollTimer,&QTimer::timeout,this,[this]() {
             if(!m_tree || (!m_mouseHeld && !m_touchHeld))return;
             const QPoint global=m_touchHeld?m_touchLast:m_mouseLast;
-            const QPoint at=m_tree->viewport()->mapFromGlobal(global);
-            QScrollBar *bar=m_tree->verticalScrollBar();
-            if(at.y()<26)bar->setValue(bar->value()-18);
-            else if(at.y()>m_tree->viewport()->height()-26)
+            const auto *viewport=railViewport();
+            const int at=along(viewport->mapFromGlobal(global));
+            QScrollBar *bar=railScrollBar();
+            const int extent=m_horizontalRail?viewport->width():viewport->height();
+            if(at<26)bar->setValue(bar->value()-18);
+            else if(at>extent-26)
                 bar->setValue(bar->value()+18);
             showLayerDropPreview(m_touchHeld?m_touchPrimary:m_mouseNode,
                                  global);
@@ -270,7 +288,8 @@ public:
         auto *addType=new QPushButton(QStringLiteral("+"),this);
         addType->setAccessibleName(i18n("Add layer"));
         addType->setToolTip(i18n("Tap: new paint layer. Hold: all layer and mask types"));
-        layout->insertWidget(compactRail?0:1,addType);
+        m_addType=addType;
+        m_railLayout->insertWidget(0,addType);
         auto *addHold=new QTimer(addType);
         addHold->setSingleShot(true);
         addHold->setInterval(480);
@@ -418,15 +437,47 @@ public:
     // We never cache a duplicate document or layer model.
     std::function<void()> onRequestClose;
     std::function<void()> onContentHeightChanged;
-    int contentHeight() const
+    int contentLength(bool horizontal,int thickness) const
     {
-        int rows=0;
-        for(auto *item=m_tree->topLevelItem(0);item;item=m_tree->itemBelow(item))
-            rows+=item->sizeHint(0).height();
-        const QMargins margins=layout()->contentsMargins();
-        return layout()->sizeHint().height()-m_tree->sizeHint().height()+
-            qMax(24,rows)+m_tree->frameWidth()*2+margins.bottom();
+        int length=0;
+        for(const auto *item:visibleItems()) {
+            const auto node=m_nodes.value(item->data(0,Qt::UserRole).toInt());
+            if(!node)continue;
+            if(horizontal)length+=horizontalTileSize(thickness)+4;
+            else length+=node->inherits("KisGroupLayer")?42:
+                node->inherits("KisMask")?58:verticalTileSize(thickness)+4;
+        }
+        return (horizontal?45:(m_layerName?70:50))+qMax(24,length);
     }
+
+    void setRailGeometry(const QRect &geometry,bool horizontal)
+    {
+        const bool orientationChanged=horizontal!=m_horizontalRail;
+        const int thickness=horizontal?geometry.height():geometry.width();
+        const bool rebuild=orientationChanged ||
+            thickness!=(horizontal?height():width());
+        if(orientationChanged) {
+            m_horizontalRail=horizontal;
+            if(horizontal && !m_horizontalScroll)createHorizontalRail();
+            m_tree->setVisible(!horizontal);
+            if(m_horizontalScroll)m_horizontalScroll->setVisible(horizontal);
+            m_railLayout->setDirection(horizontal?QBoxLayout::LeftToRight:QBoxLayout::TopToBottom);
+            m_addType->setMinimumWidth(horizontal?40:0);
+            m_addType->setMaximumWidth(horizontal?40:QWIDGETSIZE_MAX);
+            m_dragGhost->setParent(railViewport());
+            m_dropMarker->setParent(railViewport());
+            hideLayerDropPreview();
+        }
+        if(horizontal) {
+            setMinimumWidth(0);
+            setMaximumWidth(QWIDGETSIZE_MAX);
+        } else if(width()!=geometry.width() || orientationChanged) {
+            setFixedWidth(geometry.width());
+        }
+        setGeometry(geometry);
+        if(rebuild)QTimer::singleShot(0,this,[this]() {refreshNow();});
+    }
+
     void syncSelectionContext()
     {
         if(m_deleteImage || m_reloading)return;
@@ -849,8 +900,7 @@ private:
                      qMin(sheetHeight,qMax(1,window()->height()-24)));
         sheet.setMaximumSize(qMax(1,window()->width()-12),
                              qMax(1,window()->height()-12));
-        const QPoint point=m_tree->viewport()->mapToGlobal(
-            m_tree->visualItemRect(item).bottomLeft());
+        const QPoint point=railViewport()->mapToGlobal(layerRect(item).bottomLeft());
         const int result=sheet.exec();
         if(result==QDialog::Rejected || !validTarget())return;
         if(opacitySlider->value()!=initialOpacity)
@@ -1572,28 +1622,110 @@ private:
         beginCompactClipRebuild(oldParent,source,onFlattened,destination);
     }
 
-    static bool childDropZone(const KisNodeSP &source,const KisNodeSP &target,
-                              const QRect &rect,const QPoint &point)
+    int along(const QPoint &point) const {return m_horizontalRail?point.x():point.y();}
+    int verticalTileSize(int width) const {return m_compactRail?qBound(73,width-9,111):73;}
+    static int horizontalTileSize(int height) {return qBound(54,height-28,111);}
+
+    QWidget *railViewport() const
     {
-        const bool center=qAbs(point.y()-rect.center().y())<rect.height()/4;
+        return m_horizontalRail?m_horizontalScroll->viewport():m_tree->viewport();
+    }
+
+    QScrollBar *railScrollBar() const
+    {
+        return m_horizontalRail?m_horizontalScroll->horizontalScrollBar():m_tree->verticalScrollBar();
+    }
+
+    QList<QTreeWidgetItem*> visibleItems() const
+    {
+        QList<QTreeWidgetItem*> result;
+        for(auto *item:m_items) {
+            auto *parent=item->parent();
+            while(parent && parent->isExpanded())parent=parent->parent();
+            if(!parent)result.append(item);
+        }
+        return result;
+    }
+
+    void createHorizontalRail()
+    {
+        m_horizontalScroll=new QScrollArea(this);
+        m_horizontalScroll->setFrameShape(QFrame::NoFrame);
+        m_horizontalScroll->setWidgetResizable(true);
+        m_horizontalScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        m_horizontalScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        m_horizontalScroll->setStyleSheet(QStringLiteral("QScrollArea{background:transparent;border:0;}"));
+        auto *viewport=m_horizontalScroll->viewport();
+        viewport->setAutoFillBackground(false);
+        viewport->setAttribute(Qt::WA_AcceptTouchEvents,true);
+        viewport->installEventFilter(this);
+        m_horizontalBody=new QWidget;
+        m_horizontalBody->setAttribute(Qt::WA_TranslucentBackground);
+        m_horizontalRows=new QHBoxLayout(m_horizontalBody);
+        m_horizontalRows->setContentsMargins(0,0,0,0);
+        m_horizontalRows->setSpacing(0);
+        m_horizontalRows->setAlignment(Qt::AlignLeft|Qt::AlignVCenter);
+        m_horizontalScroll->setWidget(m_horizontalBody);
+        m_railLayout->addWidget(m_horizontalScroll,1);
+        connect(m_horizontalScroll->horizontalScrollBar(),&QScrollBar::valueChanged,
+                this,[this](int) {updateVisibleLayerThumbnails();});
+    }
+
+    void clearHorizontalRows()
+    {
+        if(!m_horizontalRows)return;
+        while(auto *item=m_horizontalRows->takeAt(0)) {
+            delete item->widget();
+            delete item;
+        }
+        for(auto *row:m_horizontalBody->findChildren<QFrame*>(QStringLiteral("mobileLayerTileRow"),
+                                                               Qt::FindDirectChildrenOnly))
+            delete row;
+        m_horizontalBody->setMinimumWidth(0);
+    }
+
+    QRect layerRect(QTreeWidgetItem *item) const
+    {
+        if(!m_horizontalRail)return m_tree->visualItemRect(item);
+        auto *frame=m_rowFrames.value(item->data(0,Qt::UserRole).toInt()).data();
+        if(!frame || frame->isHidden())return {};
+        return QRect(frame->mapTo(railViewport(),QPoint()),frame->size());
+    }
+
+    QTreeWidgetItem *layerAt(const QPoint &point) const
+    {
+        if(!m_horizontalRail)return m_tree->itemAt(point);
+        if(!railViewport()->rect().contains(point))return nullptr;
+        auto *child=m_horizontalBody->childAt(
+            m_horizontalBody->mapFromGlobal(railViewport()->mapToGlobal(point)));
+        while(child && child->parentWidget()!=m_horizontalBody)child=child->parentWidget();
+        return m_items.value(m_rowFrames.indexOf(qobject_cast<QFrame*>(child)));
+    }
+
+    bool childDropZone(const KisNodeSP &source,const KisNodeSP &target,
+                       const QRect &rect,const QPoint &point) const
+    {
+        const bool center=qAbs(along(point)-along(rect.center()))<
+            (m_horizontalRail?rect.width():rect.height())/4;
         if(source->inherits("KisTransparencyMask"))
             return center && target->inherits("KisLayer") && target->allowAsChild(source);
         return target->inherits("KisGroupLayer") &&
-            (point.x()>rect.right()-20 || (!target->firstChild() && center));
+            ((m_horizontalRail?point.y()>rect.bottom()-20:point.x()>rect.right()-20) ||
+             (!target->firstChild() && center));
     }
 
     void moveCompactLayerAt(KisNodeSP source,const QPoint &screenPos)
     {
         if(!m_tree || !source)return;
-        const QPoint inView=m_tree->viewport()->mapFromGlobal(screenPos);
-        QTreeWidgetItem *targetItem=m_tree->itemAt(inView);
+        const QPoint inView=railViewport()->mapFromGlobal(screenPos);
+        QTreeWidgetItem *targetItem=layerAt(inView);
         if(!targetItem)return;
         const int index=m_items.indexOf(targetItem);
         if(index<0 || index>=m_nodes.size())return;
         KisNodeSP target=m_nodes.at(index);
         if(!target || target==source)return;
-        const QRect rect=m_tree->visualItemRect(targetItem);
-        const bool insertAbove=inView.y()<rect.center().y();
+        const QRect rect=layerRect(targetItem);
+        const bool insertAbove=along(inView)<along(rect.center());
         moveCompactLayer(source,target,insertAbove,childDropZone(source,target,rect,inView));
     }
 
@@ -1606,8 +1738,8 @@ private:
     KisNodeSP nodeAtScreen(const QPoint &screen) const
     {
         if(!m_tree)return KisNodeSP();
-        const QPoint inView=m_tree->viewport()->mapFromGlobal(screen);
-        QTreeWidgetItem *item=m_tree->itemAt(inView);
+        const QPoint inView=railViewport()->mapFromGlobal(screen);
+        QTreeWidgetItem *item=layerAt(inView);
         const int i=m_items.indexOf(item);
         return i>=0?m_nodes.value(i):KisNodeSP();
     }
@@ -1680,7 +1812,7 @@ private:
     void showLayerDropPreview(KisNodeSP source,const QPoint &global)
     {
         if(!source || !m_tree || !m_dragGhost || !m_dropMarker)return;
-        QWidget *viewport=m_tree->viewport();
+        QWidget *viewport=railViewport();
         const QPoint point=viewport->mapFromGlobal(global);
         if(!m_dragGhost->isVisible()) {
             const QImage thumb=source->createThumbnail(
@@ -1694,13 +1826,13 @@ private:
             qBound(0,point.x()+8,qMax(0,viewport->width()-60)),
             qBound(0,point.y()-65,qMax(0,viewport->height()-60)));
         m_dragGhost->raise();
-        QTreeWidgetItem *target=m_tree->itemAt(point);
+        QTreeWidgetItem *target=layerAt(point);
         const auto node=m_nodes.value(m_items.indexOf(target));
         if(!node || node==source) {
             m_dropMarker->hide();
             return;
         }
-        const QRect rect=m_tree->visualItemRect(target);
+        const QRect rect=layerRect(target);
         const bool inside=childDropZone(source,node,rect,point);
         const auto destination=inside?node:logicalParent(node);
         if(!destination || !destination->isEditable(false) ||
@@ -1721,9 +1853,11 @@ private:
             m_dropMarker->setGeometry(rect.adjusted(2,1,-2,-1));
         } else {
             m_dropMarker->setStyleSheet(QStringLiteral("background:#81d4fa;"));
-            const bool above=point.y()<rect.center().y();
-            m_dropMarker->setGeometry(0,above?rect.top():rect.bottom()-2,
-                                      viewport->width(),4);
+            const bool above=along(point)<along(rect.center());
+            if(m_horizontalRail)
+                m_dropMarker->setGeometry(above?rect.left():rect.right()-2,0,4,viewport->height());
+            else
+                m_dropMarker->setGeometry(0,above?rect.top():rect.bottom()-2,viewport->width(),4);
         }
         m_dropMarker->show();
         m_dropMarker->raise();
@@ -1781,7 +1915,7 @@ private:
             return false;
         auto *widget=qobject_cast<QWidget*>(watched);
         const bool relevant=widget &&
-            (widget==m_tree->viewport() ||
+            (widget==railViewport() ||
              m_rowButtons.contains(qobject_cast<QToolButton*>(widget)) ||
              m_rowFrames.contains(qobject_cast<QFrame*>(widget)));
         if(!relevant && m_touches.isEmpty())return false;
@@ -1816,7 +1950,7 @@ private:
                         QApplication::widgetAt(pos));
                     m_touchControl=(hit &&
                         !m_rowButtons.contains(hit) &&
-                        m_tree->isAncestorOf(hit))?hit:nullptr;
+                        railViewport()->isAncestorOf(hit))?hit:nullptr;
                     m_touchHeld=false;
                     m_touchMoved=false;
                     m_touchScrolling=false;
@@ -1853,10 +1987,8 @@ private:
             if(!m_touchHeld && travel>12) {
                 m_touchScrolling=true;
                 m_touchHoldTimer->stop();
-                if(m_tree->verticalScrollBar())
-                    m_tree->verticalScrollBar()->setValue(
-                        m_tree->verticalScrollBar()->value()+
-                        m_touchLast.y()-point.last.y());
+                auto *bar=railScrollBar();
+                bar->setValue(bar->value()+along(m_touchLast)-along(point.last));
             } else if(m_touchHeld && travel>18) {
                 m_touchMoved=true;
                 showLayerDropPreview(m_touchPrimary,point.last);
@@ -1925,9 +2057,9 @@ private:
             const QPoint global=pen->globalPos();
             auto *hit=qobject_cast<QToolButton*>(QApplication::widgetAt(global));
             const bool rowHit=widget && m_tree &&
-                (widget==m_tree->viewport() ||
-                 m_tree->isAncestorOf(widget));
-            const bool inlineControl=hit && m_tree->isAncestorOf(hit) &&
+                (widget==railViewport() ||
+                 railViewport()->isAncestorOf(widget));
+            const bool inlineControl=hit && railViewport()->isAncestorOf(hit) &&
                 !m_rowButtons.contains(hit);
             if(rowHit && !inlineControl) {
                 KisNodeSP node=nodeAtScreen(global);
@@ -1979,12 +2111,12 @@ private:
         // viewport. Treat both the row frame and the viewport as drag
         // handles, without changing finger-touch or inline controls.
         if(type==QEvent::MouseButtonPress && widget &&
-           (widget==m_tree->viewport() ||
+           (widget==railViewport() ||
             (index>=0 && (frame || m_rowButtons.contains(tile))))) {
             auto *mouse=static_cast<QMouseEvent*>(event);
             const QPoint global=mouse->globalPos();
             auto *hit=qobject_cast<QToolButton*>(QApplication::widgetAt(global));
-            const bool inlineControl=hit && m_tree->isAncestorOf(hit) &&
+            const bool inlineControl=hit && railViewport()->isAncestorOf(hit) &&
                 !m_rowButtons.contains(hit);
             if(mouse->button()==Qt::LeftButton && !inlineControl) {
                 KisNodeSP node=nodeAtScreen(global);
@@ -1994,11 +2126,11 @@ private:
                     // Preserve QToolButton::pressed/clicked for regular
                     // taps, while consuming a bare viewport/row press
                     // which has no button to finish the gesture.
-                    if(widget==m_tree->viewport() || frame)return true;
+                    if(widget==railViewport() || frame)return true;
                 }
             }
         }
-        if((frame || widget==m_tree->viewport()) &&
+        if((frame || widget==railViewport()) &&
            type==QEvent::MouseButtonRelease &&
            m_mouseDown && !m_mouseHeld) {
             const KisNodeSP pressed=m_mouseNode;
@@ -2193,8 +2325,26 @@ private:
         m->slotSetSelectedNodes(nodes);
         updateRows();
     }
+    void updateLayerName()
+    {
+        if(!m_layerName)return;
+        const QString name=editingGlobalSelection(manager())?i18n("Editing selection"):
+            m_active?m_active->name():QString();
+        m_layerName->setText(m_layerName->fontMetrics().elidedText(
+            name,Qt::ElideRight,qMax(0,width()-14)));
+        m_layerName->setToolTip(name);
+        m_layerName->setAccessibleName(name);
+    }
+
+    void resizeEvent(QResizeEvent *event) override
+    {
+        QFrame::resizeEvent(event);
+        updateLayerName();
+    }
+
     void updateRows()
     {
+        updateLayerName();
         for(int i=0;i<m_nodes.size();++i) {
             auto *item=m_items.value(i,nullptr);
             if(!item)continue;
@@ -2260,14 +2410,14 @@ private:
     void updateVisibleLayerThumbnails()
     {
         if(!m_tree || !isVisible())return;
-        const QRect viewport=m_tree->viewport()->rect().adjusted(0,-60,0,60);
+        const QRect viewport=railViewport()->rect().adjusted(-60,-60,60,60);
         for(int i=0;i<m_nodes.size();++i) {
             if(m_thumbnailReady.value(i,false))continue;
             QTreeWidgetItem *item=m_items.value(i);
             QToolButton *button=m_rowButtons.value(i);
             KisNodeSP node=m_nodes.value(i);
             if(!item || !button || !node)continue;
-            if(!m_tree->visualItemRect(item).intersects(viewport))continue;
+            if(!layerRect(item).intersects(viewport))continue;
             if(!node->inherits("KisGroupLayer") &&
                !node->inherits("KisMask")) {
                 const QImage thumb=node->createThumbnail(
@@ -2287,8 +2437,8 @@ private:
         const bool group=node->inherits("KisGroupLayer");
         const bool mask=node->inherits("KisMask");
         const bool clipped=inheritsAlpha(node);
-        const int tileSize=m_compactRail?qBound(73,width()-9,111):73;
-        const int tileHeight=group?38:mask?54:tileSize;
+        const int tileSize=m_horizontalRail?horizontalTileSize(height()):verticalTileSize(width());
+        const int tileHeight=m_horizontalRail?tileSize:group?38:mask?54:tileSize;
         const int rowHeight=tileHeight+4;
         int groupDepth=group?1:0;
         for(auto *parent=item->parent();parent;parent=parent->parent()) {
@@ -2297,14 +2447,18 @@ private:
         }
         const int gutter=2+qMin(5,groupDepth)*3;
         item->setSizeHint(0,QSize(0,rowHeight));
-        auto *frame=new QFrame(m_tree);
+        auto *frame=new QFrame(m_horizontalRail?m_horizontalBody:static_cast<QWidget*>(m_tree));
         frame->setObjectName(QStringLiteral("mobileLayerTileRow"));
         frame->setFixedHeight(rowHeight);
+        if(m_horizontalRail)frame->setFixedWidth(tileSize+4);
         frame->setAttribute(Qt::WA_AcceptTouchEvents,true);
         frame->installEventFilter(this);
         auto *tile=new QToolButton(frame);
-        tile->setGeometry(gutter+(clipped?4:0),2,
-                          tileSize+4-2*gutter-(clipped?4:0),tileHeight);
+        if(m_horizontalRail)
+            tile->setGeometry(2,gutter,tileSize,qMax(24,rowHeight-2*gutter));
+        else
+            tile->setGeometry(gutter+(clipped?4:0),2,
+                              tileSize+4-2*gutter-(clipped?4:0),tileHeight);
         tile->setToolButtonStyle(mask?
             Qt::ToolButtonTextOnly:Qt::ToolButtonIconOnly);
         if(mask)tile->setText(maskKind(node));
@@ -2339,7 +2493,7 @@ private:
                 return;
             tapLayer(node,item);
         });
-        const int overlay=group?20:22;
+        const int overlay=m_horizontalRail?16:group?20:22;
         const int iconX=tile->x()+tile->width()-overlay;
         const int count=group?1:qobject_cast<KisPaintLayer*>(node.data())?3:2;
         const int gap=qMax(2,(tileHeight-count*overlay)/(count+1));
@@ -2348,7 +2502,7 @@ private:
                             const KoID &prop,bool desired) {
             auto *button=new QToolButton(frame);
             button->setGeometry(iconX,
-                1+gap*(n+1)+overlay*n,overlay,overlay);
+                (m_horizontalRail?tile->y():1)+gap*(n+1)+overlay*n,overlay,overlay);
             button->setIcon(QIcon(icon));
             button->setIconSize(QSize(16,16));
             button->setAccessibleName(tooltip);
@@ -2413,7 +2567,8 @@ private:
                 "border-radius:4px;font-weight:bold;font-size:10px;}");
             marker->setAttribute(Qt::WA_TransparentForMouseEvents);
         }
-        m_tree->setItemWidget(item,0,frame);
+        if(!m_horizontalRail)m_tree->setItemWidget(item,0,frame);
+        else frame->hide();
         m_rowFrames.append(frame);
         m_rowButtons.append(tile);
         m_rowDepths.append(depth);
@@ -2427,8 +2582,9 @@ private:
     public:
         struct Edge { int depth; bool top; bool bottom; };
         struct Clip { int depth; bool above; bool below; bool clipped; bool base; };
-        LayerGuides(QWidget *parent,QVector<Edge> edges,QVector<Clip> clips,const QRect &tile)
-            : QWidget(parent),m_edges(std::move(edges)),m_clips(std::move(clips)),m_tile(tile)
+        LayerGuides(QWidget *parent,QVector<Edge> edges,QVector<Clip> clips,const QRect &tile,bool horizontal)
+            : QWidget(parent),m_edges(std::move(edges)),m_clips(std::move(clips)),m_tile(tile),
+              m_horizontal(horizontal)
         {
             setAttribute(Qt::WA_TransparentForMouseEvents);
         }
@@ -2438,26 +2594,36 @@ private:
             static const QColor colors[]={QColor("#d3f3ff"),QColor("#ffd985"),
                                           QColor("#dbbcff"),QColor("#ffaec8")};
             QPainter painter(this);
+            const int cross=m_horizontal?height():width();
+            const int length=m_horizontal?width():height();
+            QTransform transform;
+            if(m_horizontal) {
+                transform.translate(0,height()-1);
+                transform.rotate(-90);
+                painter.setTransform(transform);
+            }
             painter.save();
-            painter.setClipRegion(QRegion(rect()).subtracted(QRegion(m_tile)));
+            const QRect content(QPoint(),QSize(cross,length));
+            painter.setClipRegion(QRegion(content).subtracted(
+                QRegion(transform.inverted().mapRect(m_tile))));
             for(const auto &edge:m_edges) {
                 const int left=2+qMin(5,edge.depth)*3+qMax(0,edge.depth-5);
-                const int right=width()-1-left;
+                const int right=cross-1-left;
                 painter.setPen(QPen(colors[edge.depth%4],edge.depth<5?2:1));
-                painter.drawLine(left,0,left,height()-1);
-                painter.drawLine(right,0,right,height()-1);
+                painter.drawLine(left,0,left,length-1);
+                painter.drawLine(right,0,right,length-1);
                 if(edge.top)painter.drawLine(left,1,right,1);
-                if(edge.bottom)painter.drawLine(left,height()-2,right,height()-2);
+                if(edge.bottom)painter.drawLine(left,length-2,right,length-2);
             }
             painter.restore();
-            const int middle=height()/2;
+            const int middle=length/2;
             const QColor clipColor("#65f3db");
             painter.setPen(QPen(clipColor,2));
             painter.setBrush(clipColor);
             for(const auto &clip:m_clips) {
-                const int x=width()/4+qMin(6,clip.depth)*4;
+                const int x=cross/4+qMin(6,clip.depth)*4;
                 if(clip.above)painter.drawLine(x,0,x,middle);
-                if(clip.below)painter.drawLine(x,middle,x,height());
+                if(clip.below)painter.drawLine(x,middle,x,length);
                 if(clip.clipped) {
                     painter.drawLine(x,middle,x+9,middle);
                     painter.drawLine(x+5,middle-4,x+9,middle);
@@ -2470,6 +2636,7 @@ private:
         QVector<Edge> m_edges;
         QVector<Clip> m_clips;
         QRect m_tile;
+        bool m_horizontal;
     };
 
     QList<QTreeWidgetItem*> visibleGroups(QTreeWidgetItem *item) const
@@ -2486,13 +2653,12 @@ private:
 
     void addLayerGuides()
     {
-        QList<QTreeWidgetItem*> visible;
+        const auto visible=visibleItems();
         QHash<const KisNode*,int> indexForNode;
         m_clipBases.clear();
-        for(auto *item=m_tree->topLevelItem(0);item;item=m_tree->itemBelow(item)) {
-            const int index=item->data(0,Qt::UserRole).toInt();
-            indexForNode.insert(m_nodes.at(index).data(),visible.size());
-            visible.append(item);
+        for(int i=0;i<visible.size();++i) {
+            const int index=visible.at(i)->data(0,Qt::UserRole).toInt();
+            indexForNode.insert(m_nodes.at(index).data(),i);
         }
         struct ClipRun { int depth=0; QSet<int> clipped; };
         QMap<int,ClipRun> runsByBase;
@@ -2531,8 +2697,8 @@ private:
             auto *tile=m_rowButtons.value(index).data();
             if(!frame || !tile)continue;
             const int guideWidth=(m_compactRail?qBound(73,width()-9,111):73)+4;
-            auto *guides=new LayerGuides(frame,edges,clips.at(i),tile->geometry());
-            guides->setGeometry(0,0,guideWidth,frame->height());
+            auto *guides=new LayerGuides(frame,edges,clips.at(i),tile->geometry(),m_horizontalRail);
+            guides->setGeometry(0,0,m_horizontalRail?frame->width():guideWidth,frame->height());
             guides->show();
         }
     }
@@ -2556,13 +2722,16 @@ private:
         if(!m || !view)return;
         const auto image=view->image().toStrongRef();
         if(!image || !image->root()) {
+            clearHorizontalRows();
             m_tree->clear();
             m_nodes.clear();
             m_items.clear();
             m_signature=engineSignature();
+            m_active.clear();
+            updateLayerName();
             return;
         }
-        const int scroll=m_tree->verticalScrollBar()->value();
+        const int scroll=railScrollBar()->value();
         const bool hadPreviousTree=!m_nodes.isEmpty();
         QSet<KisNode*> expanded;
         for(int i=0;i<m_nodes.size();++i)
@@ -2618,6 +2787,7 @@ private:
         if(!editingSelection && native!=m_selected)
             m->slotSetSelectedNodes(m_selected);
 
+        clearHorizontalRows();
         m_tree->clear();
         m_nodes.clear();m_items.clear();
         m_rowFrames.clear();m_rowButtons.clear();
@@ -2668,9 +2838,19 @@ private:
             }
         };
         visit(image->root(),nullptr,0);
+        if(m_horizontalRail) {
+            int length=0;
+            for(auto *item:visibleItems()) {
+                auto *frame=m_rowFrames.value(item->data(0,Qt::UserRole).toInt()).data();
+                m_horizontalRows->addWidget(frame);
+                frame->show();
+                length+=frame->width();
+            }
+            m_horizontalBody->setMinimumWidth(length);
+        }
         addLayerGuides();
         updateRows();
-        m_tree->verticalScrollBar()->setValue(scroll);
+        railScrollBar()->setValue(scroll);
         m_signature=engineSignature();
         if(onContentHeightChanged)onContentHeightChanged();
         QTimer::singleShot(0,this,[this]() {
@@ -2680,6 +2860,13 @@ private:
     MobileEngineBridge m_engine;
     const bool m_compactRail;
     QTreeWidget *m_tree=nullptr;
+    QBoxLayout *m_railLayout=nullptr;
+    QPushButton *m_addType=nullptr;
+    QLabel *m_layerName=nullptr;
+    QScrollArea *m_horizontalScroll=nullptr;
+    QWidget *m_horizontalBody=nullptr;
+    QHBoxLayout *m_horizontalRows=nullptr;
+    bool m_horizontalRail=false;
     QVector<KisNodeSP> m_nodes;
     QVector<QTreeWidgetItem*> m_items; // owned by m_tree
     QVector<QPointer<QFrame>> m_rowFrames;

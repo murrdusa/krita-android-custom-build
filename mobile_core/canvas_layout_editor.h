@@ -20,6 +20,7 @@ public:
         QSize minimum;
         bool rotatable=false;
         std::function<void(const QRect &,bool)> save;
+        QString rotateLabel;
     };
 
     MobileCanvasLayoutEditor(QWidget *canvas,const QVector<Target> &targets,
@@ -252,7 +253,12 @@ private:
             for(int i=m_items.size()-1;i>=0;--i)
                 if(m_items.at(i).rect.contains(point)) {m_selected=i;break;}
         }
-        m_rotate->setVisible(m_selected>=0 && m_items.at(m_selected).target.rotatable);
+        const bool rotatable=m_selected>=0 && m_items.at(m_selected).target.rotatable;
+        if(rotatable) {
+            const auto &label=m_items.at(m_selected).target.rotateLabel;
+            m_rotate->setText(label.isEmpty()?tr("Rotate toolbar"):label);
+        }
+        m_rotate->setVisible(rotatable);
         if(m_selected>=0) {
             m_active=true;
             m_moved=false;
