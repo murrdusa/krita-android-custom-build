@@ -43,7 +43,7 @@ class KritaMobileBrushWorkspace final : public QFrame {
 public:
     explicit KritaMobileBrushWorkspace(const MobileEngineBridge &engine,
                                        QWidget *parent,bool slidersOnly=false,
-                                       bool toolSettings=false)
+                                       bool toolSettings=false,bool pickerControls=false)
         : QFrame(parent),m_engine(engine),m_hasSelectedMode(!slidersOnly)
     {
         setObjectName(QStringLiteral("mobileBrushWorkspace"));
@@ -135,7 +135,7 @@ public:
             }
         }
         details->addLayout(controlRow);
-        if(toolSettings) {
+        if(toolSettings || pickerControls) {
             m_flow=new KisDoubleSliderSpinBox(m_controls);
             m_flow->setRange(0,100,0);
             m_flow->setPrefix(i18n("Flow: "));
@@ -152,6 +152,8 @@ public:
                 provider->setFlow(percent/100.0);
             });
 
+        }
+        if(toolSettings) {
             m_composite=new MobileTouchComboBox(m_controls);
             m_composite->setAccessibleName(i18n("Brush blending mode"));
             m_composite->setToolTip(i18n("Brush blending mode"));
@@ -299,7 +301,8 @@ public:
         }
         if(m_presetName) {
             if(auto preset=provider->currentPreset()) {
-                m_presetName->setText(preset->name().left(26));
+                m_presetName->setText(m_presetName->fontMetrics().elidedText(
+                    preset->name(),Qt::ElideRight,qMax(1,m_presetName->contentsRect().width())));
                 m_presetName->setToolTip(preset->name());
             }
         }
@@ -518,6 +521,8 @@ private:
             "min-height:44px;padding:4px;}"
             "QListView{background:#263443;color:white;"
             "border:1px solid #617f94;}"
+            "QListView::item{color:#f4f9fe;font-size:11px;}"
+            "QListView::item:selected{background:#365c78;color:#ffffff;}"
             "QPushButton{background:#45667e;color:#fff;min-height:46px;"
             "border:1px solid #91bbd6;border-radius:7px;}");
         auto *layout=new QVBoxLayout(&dialog);
@@ -537,6 +542,7 @@ private:
         if(slot!=2)category->addItem(i18n("Clone"),3);
         category->setCurrentIndex(category->findData(slot));
         layout->addWidget(category);
+        layout->addWidget(new KritaMobileBrushWorkspace(m_engine,&dialog,true,false,true));
 
         auto *grid=new QListView(&dialog);
         grid->setViewMode(QListView::IconMode);
@@ -550,11 +556,12 @@ private:
         const QSize size=window()->size();
         const int width=qMin(550,qMax(300,size.width()-16));
         const int gridWidth=qMax(1,width-14);
-        const int columns=qMax(1,gridWidth/82);
-        constexpr int tileHeight=88;
+        const int columns=qMax(1,gridWidth/72);
+        constexpr int tileHeight=71;
         grid->setGridSize(QSize(gridWidth/columns,tileHeight));
-        grid->setIconSize(QSize(56,56));
-        grid->setWordWrap(true);
+        grid->setIconSize(QSize(50,50));
+        grid->setWordWrap(false);
+        grid->setTextElideMode(Qt::ElideRight);
         grid->setEditTriggers(QAbstractItemView::NoEditTriggers);
         MobileTouchScroll::configureList(grid);
         layout->addWidget(grid,1);

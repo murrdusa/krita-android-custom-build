@@ -261,7 +261,7 @@ public:
                        !tile.description.contains(phrase,Qt::CaseInsensitive) &&
                        !tile.tool.contains(phrase,Qt::CaseInsensitive) &&
                        !group.label.contains(phrase,Qt::CaseInsensitive))continue;
-                    auto *button=new QToolButton(content);
+                    auto *button=new MobileTouchScroll::ToolTile(content);
                     button->setAccessibleName(tile.label);
                     button->setToolTip(tile.description);
                     button->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);

@@ -7,7 +7,9 @@
  */
 #include "krita_android_runtime.h"
 #ifdef Q_OS_ANDROID
+#include <QAbstractSpinBox>
 #include <QApplication>
+#include <QTimer>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QMetaObject>
@@ -28,6 +30,28 @@
 #include <config-qt-patches-present.h>
 
 namespace {
+class SelectNumericValueOnFocus final : public QObject
+{
+public:
+    using QObject::QObject;
+
+protected:
+    bool eventFilter(QObject *object,QEvent *event) override
+    {
+        if(event->type()!=QEvent::FocusIn)return false;
+        auto *spin=qobject_cast<QAbstractSpinBox*>(object);
+        if(!spin)spin=qobject_cast<QAbstractSpinBox*>(object->parent());
+        if(spin) {
+            QTimer::singleShot(0,spin,[spin]() {
+                auto *focus=QApplication::focusWidget();
+                if(focus && (focus==spin || spin->isAncestorOf(focus)))
+                    spin->selectAll();
+            });
+        }
+        return false;
+    }
+};
+
 void applyStudioWidgetColors(QApplication &app)
 {
     // Use the same foreground/background pairs for plain Qt dialogs,
@@ -93,6 +117,7 @@ MobileKritaAndroidRuntime::Result MobileKritaAndroidRuntime::launch(
     app.initializeGlobals(args);
     app.initializeAndroidScaling(cfg);
     applyStudioWidgetColors(app);
+    app.installEventFilter(new SelectNumericValueOnFocus(&app));
     app.addResourceTypes();
     app.loadPlugins();
     if(!app.registerResources()) {

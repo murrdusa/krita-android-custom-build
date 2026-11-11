@@ -12,7 +12,7 @@ Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1]
 
 - Independent Android APK target `mobile_studio`, package ID `org.krita.mobilestudio.debug`, based on the actual Krita 6.0.4 paint/resource/tool/document engine. It runs through its own Qt native startup, `MobileLightweightCanvasHost`, `KisViewManager` and real `KisView`, **not** the desktop `KisMainWindow` or MDI. Native C++ engine extraction is in `mobile_core/krita_engine_initialization.cpp` and `apply_mobile_shell.py`.
 - The local Windows/WSL2 watcher automatically builds commits to `main` and records the **exact** revision plus `local/android-wsl-build` status in Issue #1. Never infer a newer build from a previous SUCCESS. Do **not** run GitHub-hosted Android builds or upload APKs unless specifically instructed. No need to ask the user to manually pull/build while the watcher runs.
-- Last build verified while preparing this compact handoff: `3883e2ae66562c482125c067bc03b8c1a4fa3381` **SUCCESS** (Issue #1, 2026-11-11 08:42:40 UTC). More commits followed; check Issue #1 again before saying current `main` compiled. In particular pending after that revision: native Clone action/catalog, SAF URI normalization/tests, brush-state family matching, and this documentation split.
+- The stability batch through `67436f4c233c636267d01e496fe9b77b0b6b7866` passed the WSL Android build (November 11, 16:44 UTC). Check the exact revision in Issue #1 for later commits.
 - Cross-compiled APK success **is not** a Fold 6 runtime pass. The `qt_saved_version_archive` regression source was extended and compiled through the Android integration where applicable, but its standalone Qt test binary has **not** been executed here.
 
 ## Current application and capabilities
@@ -26,6 +26,9 @@ Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1]
 ## Fold 6 stability batch (November 11)
 
 - Group/layer removal targets the live image and lets Krita finish its native remove/Undo stroke before rebuilding and validating rail selection. Group deletion uses Krita's subtree removal. Document activation restacks the command toolbar and dismisses its old menu. Home saves named native projects and writes a complete private KRA draft for unsaved drawings before closing. Explicit Close still uses native Discard. Tools uses a normal touch-scrolling dialog. Check Issue #1 for the exact WSL build. Fold validation remains pending.
+
+- Tools and noneditable drop-downs distinguish a tap from a drag. Numeric spin boxes select the editable value on first focus. The preset picker has a denser grid, elided names and live Size, Opacity and compatible Flow controls. Layer options provide direct rename and visible Alpha Lock state, a larger opacity slider and native color-space-filtered blend categories. The compact rail has folder headers, nested group guides and an outlined target for dropping into groups. Clipped layers identify their closest base in layer options and accessibility text.
+- The app currently keeps one active drawing open. The native view host can manage several views, but changing the single-canvas workflow needs a deliberate document-switching and recovery design.
 
 ## Latest changes (November 11)
 
