@@ -57,14 +57,14 @@ protected:
             const bool mobileCombo=combo && !combo->isEditable() &&
                 widget->property("_mobileTapCombo").toBool();
             const bool button=qobject_cast<QAbstractButton*>(widget);
-            // Item-view viewports already have a complete native Qt
-            // pressed/released/clicked selection state machine. Holding
-            // their press until release breaks QListView::clicked and
-            // QListWidget::itemClicked (Brushes and Home Recent/All
-            // Projects). QScroller handles touch swipes there. Only
-            // intercept actual child buttons/combos in scrolling forms.
-            // Do not synthesize clicks for the viewport itself.
-            const bool scrollControl=button || (combo && !combo->isEditable());
+            // For item views, a swipe starting on an item must scroll
+            // rather than activate it. Replay *both* halves of a stationary
+            // tap into the viewport, so Qt's clicked/itemClicked signals
+            // see one complete press/release on the same target.
+            const bool itemView=area && area->viewport()==widget &&
+                qobject_cast<QAbstractItemView*>(area);
+            const bool scrollControl=button || itemView ||
+                (combo && !combo->isEditable());
             if(!mobileCombo && (!area || !scrollControl))return false;
             m_target=widget;
             m_area=area;
@@ -99,9 +99,12 @@ protected:
         QApplication::sendEvent(target,&press);
         m_replay=nullptr;
         if(!target)return true;
-        if(target.data()==object)return false;
+        // Do not forward the original release for the same viewport:
+        // depending on Android's touch-to-mouse routing its delivery
+        // context differs from the synthetic press. Explicitly replay
+        // the matching release, and consume the original once.
         QMouseEvent release(type,target->mapFromGlobal(mouse->globalPos()),mouse->globalPos(),
-                            Qt::LeftButton,mouse->buttons(),mouse->modifiers());
+                            Qt::LeftButton,Qt::NoButton,mouse->modifiers());
         m_replay=&release;
         QApplication::sendEvent(target,&release);
         m_replay=nullptr;
