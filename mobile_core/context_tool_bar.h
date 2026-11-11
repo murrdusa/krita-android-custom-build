@@ -692,6 +692,7 @@ private:
             styleMenu(menu);
             const quint64 generation=m_generation;
             const QPointer<MobileContextToolBar> alive=this;
+            const QPointer<QObject> invokedTool=m_nativeTool;
             for(int i=0;i<choices.size();++i) {
                 const auto &choice=choices.at(i);
                 auto *item=menu.addAction(choice.label);
@@ -707,8 +708,11 @@ private:
             auto *picked=menu.exec(control->mapToGlobal(QPoint(0,control->height())));
             if(picked && alive) {
                 const auto source=choices.at(picked->data().toInt()).button;
-                QTimer::singleShot(0,alive.data(),[this,generation,source]() {
-                    if(generation==m_generation && optionAvailable(source))
+                QTimer::singleShot(0,alive.data(),
+                    [this,generation,invokedTool,source]() {
+                    if(generation==m_generation && invokedTool &&
+                       m_nativeTool==invokedTool.data() &&
+                       optionAvailable(source))
                         source->click();
                 });
             }
