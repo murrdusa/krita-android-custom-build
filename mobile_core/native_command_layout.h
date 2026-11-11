@@ -727,47 +727,6 @@ private:
         return dialog.exec()==QDialog::Accepted?selected:QString();
     }
 
-    void styleToolbar(QWidget *parent,Bar &bar,bool main)
-    {
-        QDialog dialog(parent);
-        dialog.setWindowTitle(QObject::tr("Toolbar appearance"));
-        auto *layout=new QVBoxLayout(&dialog);
-        auto *scroll=new QScrollArea(&dialog);
-        scroll->setWidgetResizable(true);
-        scroll->setFrameShape(QFrame::NoFrame);
-        MobileTouchScroll::configure(scroll);
-        auto *body=new QWidget(scroll);
-        auto *form=new QFormLayout(body);
-        form->setRowWrapPolicy(QFormLayout::WrapAllRows);
-        scroll->setWidget(body);
-        layout->addWidget(scroll,1);
-        auto *name=new QLineEdit(bar.name,body);
-        if(!main)form->addRow(QObject::tr("Name"),name);
-        else name->hide();
-        const auto spin=[form,body](const QString &label,int value,int low,int high) {
-            auto *field=new QSpinBox(body);
-            field->setMinimumHeight(44);
-            field->setRange(low,high);
-            field->setValue(value);
-            form->addRow(label,field);
-            return field;
-        };
-        auto *spacing=spin(QObject::tr("Spacing"),bar.spacing,0,12);
-        auto *opacity=spin(QObject::tr("Background opacity"),bar.opacity,0,100);
-        opacity->setSuffix(QStringLiteral("%"));
-        auto *buttons=new QDialogButtonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel,&dialog);
-        layout->addWidget(buttons);
-        QObject::connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);
-        QObject::connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
-        dialog.resize(parent->size());
-        if(dialog.exec()!=QDialog::Accepted)return;
-        if(!main) {
-            if(!name->text().trimmed().isEmpty())bar.name=name->text().trimmed();
-        }
-        bar.spacing=spacing->value();
-        bar.opacity=opacity->value();
-    }
-
     void editToolbar()
     {
         if(m_editing)return;
@@ -800,6 +759,55 @@ private:
         };
         auto *barRow=new QHBoxLayout;
         layout->insertLayout(1,barRow);
+        // Toolbar name, spacing and transparency belong to the toolbar
+        // editor, not a second modal Appearance dialog. They stay
+        // collapsed unless explicitly requested, saving Fold screen
+        // space while preserving every previously saved preference.
+        auto *properties=new QWidget(&dialog);
+        auto *propertyForm=new QFormLayout(properties);
+        propertyForm->setContentsMargins(2,2,2,2);
+        auto *barName=new QLineEdit(properties);
+        auto *barSpacing=new QSpinBox(properties);
+        barSpacing->setRange(0,12);
+        barSpacing->setMinimumHeight(44);
+        auto *barOpacity=new QSpinBox(properties);
+        barOpacity->setRange(0,100);
+        barOpacity->setSuffix(QStringLiteral("%"));
+        barOpacity->setMinimumHeight(44);
+        propertyForm->addRow(QObject::tr("Toolbar name"),barName);
+        propertyForm->addRow(QObject::tr("Button spacing"),barSpacing);
+        propertyForm->addRow(QObject::tr("Toolbar opacity"),barOpacity);
+        layout->insertWidget(2,properties);
+        properties->hide();
+        const auto updateProperties=[&]() {
+            if(current<0 || current>=bars.size())return;
+            QSignalBlocker nameBlock(barName);
+            QSignalBlocker spacingBlock(barSpacing);
+            QSignalBlocker opacityBlock(barOpacity);
+            barName->setText(bars.at(current).name);
+            barName->setEnabled(current>0);
+            barSpacing->setValue(bars.at(current).spacing);
+            barOpacity->setValue(bars.at(current).opacity);
+        };
+        QObject::connect(barName,&QLineEdit::editingFinished,&dialog,[&]() {
+            if(current<=0 || current>=bars.size())return;
+            const QString value=barName->text().trimmed();
+            if(value.isEmpty()) {
+                barName->setText(bars.at(current).name);
+                return;
+            }
+            bars[current].name=value;
+            QSignalBlocker block(selector);
+            selector->setItemText(current,value);
+        });
+        QObject::connect(barSpacing,QOverload<int>::of(&QSpinBox::valueChanged),
+            &dialog,[&](int value) {
+                if(current>=0 && current<bars.size())bars[current].spacing=value;
+            });
+        QObject::connect(barOpacity,QOverload<int>::of(&QSpinBox::valueChanged),
+            &dialog,[&](int value) {
+                if(current>=0 && current<bars.size())bars[current].opacity=value;
+            });
         auto *commandRow=new QHBoxLayout;
         layout->addLayout(commandRow);
         const auto addButton=[&](QHBoxLayout *row,const QString &label,auto callback) {
@@ -817,6 +825,7 @@ private:
             selector->setCurrentIndex(current);
             deleteBar->setEnabled(current>0);
             refresh(0);
+            updateProperties();
         };
         addButton(barRow,QObject::tr("New toolbar"),[&]() {
             Bar bar;
@@ -826,10 +835,12 @@ private:
             current=bars.size()-1;
             refillBars();
         });
-        addButton(barRow,QObject::tr("Appearance"),[&]() {
-            styleToolbar(&dialog,bars[current],current==0);
-            refillBars();
+        auto *propertiesButton=addButton(barRow,QObject::tr("Properties"),[&]() {
+            properties->setVisible(!properties->isVisible());
+            if(properties->isVisible())updateProperties();
         });
+        propertiesButton->setToolTip(QObject::tr(
+            "Toolbar name, spacing and background opacity"));
         deleteBar=addButton(barRow,QObject::tr("Delete toolbar"),[&]() {
             if(current==0)return;
             bars.removeAt(current);
@@ -842,6 +853,7 @@ private:
             current=index;
             deleteBar->setEnabled(current>0);
             refresh(0);
+            updateProperties();
         });
 
         addButton(commandRow,QObject::tr("Add"),[&]() {
@@ -885,6 +897,11 @@ private:
         sync(list->currentRow());
         dialog.resize(qMin(470,m_toolbar->window()->width()),qMin(600,m_toolbar->window()->height()));
         if(dialog.exec()!=QDialog::Accepted)return;
+        // Android may accept a dialog without moving focus out of the
+        // currently edited QLineEdit. Commit its current text explicitly.
+        if(current>0 && current<bars.size() &&
+           !barName->text().trimmed().isEmpty())
+            bars[current].name=barName->text().trimmed();
         m_bars=bars;
         saveBars();
         rebuild();
