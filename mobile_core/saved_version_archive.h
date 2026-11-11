@@ -315,6 +315,10 @@ public:
     static QString materializeRecovery(const Version &version,
                                        const QString &rootOverride=QString())
     {
+        // Snapshot publication, checksum sidecar changes, and retention
+        // pruning all share this lock. Recovery must read a consistent
+        // archived pair rather than racing deletion of an old version.
+        QMutexLocker guard(&lock());
         const QString base=rootOverride.isEmpty()?recoveryDirectory():rootOverride;
         if(base.isEmpty() || !QDir().mkpath(base))return {};
         QFile source(version.path);
