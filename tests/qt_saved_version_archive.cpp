@@ -76,6 +76,18 @@ int main(int argc,char **argv)
     require(load(firstSnapshot+QStringLiteral(".sha256"))==
             QCryptographicHash::hash(initial,QCryptographicHash::Sha256).toHex(),
             "unchanged archive should recreate a missing checksum sidecar");
+    // A syntactically valid but incorrect sidecar is not evidence that
+    // the KRA changed. Verify stored bytes and repair metadata rather
+    // than duplicating or losing an otherwise intact saved version.
+    save(firstSnapshot+QStringLiteral(".sha256"),QByteArray(64,'0'));
+    require(MobileSavedVersionArchive::snapshot(source,store) &&
+            MobileSavedVersionArchive::list(source,store).size()==1,
+            "wrong checksum metadata must not fork an unchanged version");
+    require(load(firstSnapshot+QStringLiteral(".sha256"))==
+            QCryptographicHash::hash(initial,QCryptographicHash::Sha256).toHex() &&
+            !MobileSavedVersionArchive::materializeRecovery(
+                MobileSavedVersionArchive::list(source,store).first(),recover).isEmpty(),
+            "intact archive with bad metadata should recover after repair");
     QThread::msleep(3);
     const QByteArray second=QByteArray::fromHex("504b0304")+"saved-B";
     save(source,second);
