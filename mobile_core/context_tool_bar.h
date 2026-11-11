@@ -289,7 +289,7 @@ public:
             named("checkBoxSelectionAsBoundary",QObject::tr("Selection boundary"));
             addSectionChoices("sectionReference",QObject::tr("Reference"),
                 {QObject::tr("Current layer"),QObject::tr("All layers"),QObject::tr("Color labels")});
-        } else if(id==QStringLiteral("ToolReferenceImages")) {
+        } else if(shortId==QStringLiteral("ToolReferenceImages")) {
             addNamedChoices(QObject::tr("Add reference"),{
                 {"bnAddReferenceImage",QObject::tr("From file")},
                 {"bnPasteReferenceImage",QObject::tr("From clipboard")},
@@ -369,7 +369,7 @@ public:
             named("intX",QObject::tr("X"));
             named("intY",QObject::tr("Y"));
             named("boolGrow",QObject::tr("Grow canvas"));
-        } else if(id==QStringLiteral("KisAssistantTool")) {
+        } else if(shortId==QStringLiteral("KisAssistantTool")) {
             named("availableAssistantsComboBox",QObject::tr("Guide type"));
             named("localAssistantCheckbox",QObject::tr("Local"));
             named("twoPointUseVerticalCheckbox",QObject::tr("Vertical"));
@@ -397,7 +397,7 @@ public:
             named("resetOriginButton",QObject::tr("Reset origin"));
             named("intervalXSpinBox",QObject::tr("X spacing"));
             named("intervalYSpinBox",QObject::tr("Y spacing"));
-        } else if(id==QStringLiteral("SvgTextTool")) {
+        } else if(shortId==QStringLiteral("SvgTextTool")) {
             named("mobileEditSvgText",QObject::tr("Edit text"));
             if(openTextFormatting) {
                 auto *format=button(QObject::tr("Format"));
