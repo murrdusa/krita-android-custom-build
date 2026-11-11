@@ -112,10 +112,11 @@ public:
         ++m_generation;
         m_refresh.clear();
         m_used.clear();
-        const QString shortLabel=id==QStringLiteral("KisToolSelectContiguous")?
-            QObject::tr("Wand"):id==QStringLiteral("KisToolSelectOutline")?
-            QObject::tr("Lasso"):id==QStringLiteral("KisToolSelectRectangular")?
-            QObject::tr("Rect"):id==QStringLiteral("KisToolSelectElliptical")?
+        const QString shortId=id.section(QLatin1Char('/'),-1);
+        const QString shortLabel=shortId==QStringLiteral("KisToolSelectContiguous")?
+            QObject::tr("Wand"):shortId==QStringLiteral("KisToolSelectOutline")?
+            QObject::tr("Lasso"):shortId==QStringLiteral("KisToolSelectRectangular")?
+            QObject::tr("Rect"):shortId==QStringLiteral("KisToolSelectElliptical")?
             QObject::tr("Ellipse"):label;
         setChipText(m_tool,shortLabel,92);
         m_tool->setAccessibleName(QObject::tr("Current tool: %1. Choose a tool").arg(label));
@@ -142,10 +143,6 @@ public:
                     choices.append({entry.label,action});
             addActionMenu(caption,choices);
         };
-        // Match known Krita tool families by their suffix, while keeping
-        // m_id and the native KoToolBase unchanged for dispatch/refresh.
-        // Plugin namespaces differ between builds and tool registrations.
-        const QString shortId=id.section(QLatin1Char('/'),-1);
         const auto addFillResource=[this](bool gradient) {
             if(!chooseFillResource)return;
             auto *control=button(gradient?QObject::tr("Gradient"):QObject::tr("Pattern"));
@@ -155,16 +152,13 @@ public:
         };
         // Shape tools may register with their plugin prefix, unlike the
         // selection tools. Both forms use Krita's native stroke completion.
-        const bool finishablePath=id==QStringLiteral("KisToolPolygon") ||
-            id==QStringLiteral("KisToolPolyline") ||
-            id==QStringLiteral("KisToolPath") ||
-            id==QStringLiteral("KritaShape/KisToolPolygon") ||
-            id==QStringLiteral("KritaShape/KisToolPolyline") ||
-            id==QStringLiteral("KritaShape/KisToolPath") ||
-            id==QStringLiteral("KritaShape/KisToolBezierCurve") ||
-            id==QStringLiteral("KisToolSelectPolygonal") ||
-            id==QStringLiteral("KisToolSelectPath") ||
-            id==QStringLiteral("KisToolSelectMagnetic");
+        const bool finishablePath=shortId==QStringLiteral("KisToolPolygon") ||
+            shortId==QStringLiteral("KisToolPolyline") ||
+            shortId==QStringLiteral("KisToolPath") ||
+            shortId==QStringLiteral("KisToolBezierCurve") ||
+            shortId==QStringLiteral("KisToolSelectPolygonal") ||
+            shortId==QStringLiteral("KisToolSelectPath") ||
+            shortId==QStringLiteral("KisToolSelectMagnetic");
         if(finishablePath) {
             const QPointer<KoToolBase> path=nativeTool;
             connect(button(QObject::tr("Finish")),&QToolButton::clicked,this,[this,path]() {
@@ -234,7 +228,7 @@ public:
                 {"hmirror_action",QObject::tr("Horizontal")},
                 {"vmirror_action",QObject::tr("Vertical")}
             });
-        } else if(id==QStringLiteral("KisToolTransform")) {
+        } else if(shortId==QStringLiteral("KisToolTransform")) {
             // Krita's full Tool Options panel switches mode by calling
             // KisToolTransformConfigWidget slots. Its global shortcut
             // actions require KoToolManager::activeCanvasController(), which
@@ -369,7 +363,7 @@ public:
                 {"radioGroup",QObject::tr("Group under pointer")}
             });
             named("spinMoveStep",QObject::tr("Step"));
-        } else if(id==QStringLiteral("KisToolCrop")) {
+        } else if(shortId==QStringLiteral("KisToolCrop")) {
             named("cmbType",QObject::tr("Crop target"));
             named("intWidth",QObject::tr("Width"));
             named("intHeight",QObject::tr("Height"));
@@ -628,7 +622,7 @@ private:
                 // transfers focus. Visibility is NOT proof that the native
                 // Transform tool was deactivated, and was dropping taps.
                 if(generation!=m_generation ||
-                   m_id!=QStringLiteral("KisToolTransform") ||
+                   m_id.section(QLatin1Char('/'),-1)!=QStringLiteral("KisToolTransform") ||
                    !choice.config || !choice.button ||
                    !choice.button->isEnabled()) {
                     qWarning() << "Mobile Transform Mode: request dropped"
@@ -655,7 +649,7 @@ private:
                     // transform succeeded solely from invokeMethod(true).
                     const QPointer<QObject> tool=m_nativeTool;
                     QTimer::singleShot(350,this,[this,choice,tool]() {
-                        if(m_id!=QStringLiteral("KisToolTransform") ||
+                        if(m_id.section(QLatin1Char('/'),-1)!=QStringLiteral("KisToolTransform") ||
                            !tool || tool!=m_nativeTool)return;
                         const int actual=tool->property("transformMode").toInt();
                         qInfo() << "Mobile Transform Mode: verified native state"
