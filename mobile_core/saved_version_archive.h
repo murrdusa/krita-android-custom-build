@@ -220,6 +220,20 @@ public:
                     while((got=last.read(chunk.data(),chunk.size()))>0)
                         actual.addData(chunk.constData(),got);
                     if(got==0 && actual.result().toHex()==sha) {
+                        if(oldSha!=sha) {
+                            // A prior interrupted publication can leave
+                            // the KRA intact but without its checksum.
+                            // Repair the sidecar atomically while the
+                            // verified content still matches the source.
+                            QSaveFile repair(previous.first().path+
+                                             QStringLiteral(".sha256"));
+                            if(repair.open(QIODevice::WriteOnly)) {
+                                if(repair.write(sha)==sha.size())
+                                    repair.commit();
+                                else
+                                    repair.cancelWriting();
+                            }
+                        }
                         output.cancelWriting(); // unchanged intact save
                         return true;
                     }
