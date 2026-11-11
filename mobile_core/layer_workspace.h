@@ -990,7 +990,7 @@ private:
     KisNodeList selectedTargets() const
     {
         KisNodeList result;
-        const auto *view=m_engine.manager();
+        auto *view=m_engine.manager();
         const KisImageSP image=view?view->image().toStrongRef():KisImageSP();
         for(const auto &node:m_selected)
             if(node && node->parent() && inImage(node,image) &&
