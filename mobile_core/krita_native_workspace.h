@@ -335,12 +335,10 @@ public:
         // KoToolDocker initially reports only its collapsed title-frame
         // size until the active tool widgets have been installed. Populate
         // the native option widgets *before* determining overlay geometry.
-        m_toolOptions->setOptionWidgets(
-            tools->toolById(tools->activeCanvasController()->canvas(),
-                            tools->activeToolId()) ?
-            tools->toolById(tools->activeCanvasController()->canvas(),
-                            tools->activeToolId())->optionWidgets() :
-            QList<QPointer<QWidget>>{});
+        if(auto *activeTool=tools->toolById(
+               tools->activeCanvasController()->canvas(),
+               tools->activeToolId()))
+            m_toolOptions->setOptionWidgets(activeTool->optionWidgets());
         showOverlay(m_toolOptions);
     }
 
