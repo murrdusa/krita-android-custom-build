@@ -46,9 +46,18 @@ public:
             for(const auto &entry:tools) {
                 const QString id=QString::fromLatin1(entry.id);
                 for(const auto &tool:available) {
-                    if(tool.id!=id)continue;
-                    group.tiles.append({id,entry.label,tool.description,tool.iconName,nullptr});
-                    used.insert(id);
+                    // Krita plugins may register the same tool with their
+                    // plugin namespace (e.g. KritaFill/KisToolEncloseAndFill)
+                    // rather than its short ID. Match a short requested ID
+                    // against the registered suffix, but always dispatch the
+                    // actual registered ID; never invent a tool identifier.
+                    const bool matches=tool.id==id ||
+                        (id.startsWith(QStringLiteral("KisTool")) &&
+                         tool.id.endsWith(QLatin1Char('/')+id));
+                    if(!matches || used.contains(tool.id))continue;
+                    group.tiles.append({tool.id,entry.label,tool.description,
+                                        tool.iconName,nullptr});
+                    used.insert(tool.id);
                     break;
                 }
             }
