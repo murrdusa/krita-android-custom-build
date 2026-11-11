@@ -789,17 +789,18 @@ private:
             barSpacing->setValue(bars.at(current).spacing);
             barOpacity->setValue(bars.at(current).opacity);
         };
-        QObject::connect(barName,&QLineEdit::editingFinished,&dialog,[&]() {
-            if(current<=0 || current>=bars.size())return;
-            const QString value=barName->text().trimmed();
-            if(value.isEmpty()) {
-                barName->setText(bars.at(current).name);
-                return;
-            }
-            bars[current].name=value;
-            QSignalBlocker block(selector);
-            selector->setItemText(current,value);
-        });
+        QObject::connect(barName,&QLineEdit::textEdited,&dialog,
+            [&](const QString &text) {
+                if(current<=0 || current>=bars.size())return;
+                const QString value=text.trimmed();
+                // Keep changes on the *currently selected* toolbar,
+                // even when a finger switches the selector before its
+                // text editor emits editingFinished.
+                if(value.isEmpty())return;
+                bars[current].name=value;
+                QSignalBlocker block(selector);
+                selector->setItemText(current,value);
+            });
         QObject::connect(barSpacing,QOverload<int>::of(&QSpinBox::valueChanged),
             &dialog,[&](int value) {
                 if(current>=0 && current<bars.size())bars[current].spacing=value;
