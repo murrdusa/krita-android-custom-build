@@ -2023,6 +2023,10 @@ private:
             if(m_engine.activeTool().section(QLatin1Char('/'),-1)==
                QStringLiteral("KisToolTransform") &&
                (!transform || !canRetarget(transform)))return;
+            if(editingGlobalSelection(manager())) {
+                m_selected.clear();
+                m_active.clear();
+            }
             if(m_selected.contains(node)) {
                 // Native transform requires at least one target. A second
                 // tap on the last selected layer opens its actions instead
@@ -2039,8 +2043,8 @@ private:
             }
             applySelection();
             if(transform)QMetaObject::invokeMethod(transform.data(),"mobileRetargetLayers");
-        } else if(m_active==node && m_selected.size()==1 &&
-                  m_selected.contains(node)) {
+        } else if(!editingGlobalSelection(manager()) && m_active==node &&
+                  m_selected.size()==1 && m_selected.contains(node)) {
             showLayerActions(node,item);
         } else {
             m_selected=KisNodeList{node};
@@ -2120,9 +2124,12 @@ private:
         }
         if(m_summary) {
             const KisNodeList targets=selectedTargets();
-            m_summary->setText(targets.size()==1 && targets.first()?
-                targets.first()->name():
-                i18np("%1 layer selected","%1 layers selected",targets.size()));
+            if(editingGlobalSelection(manager()))
+                m_summary->setText(i18n("Editing selection"));
+            else
+                m_summary->setText(targets.size()==1 && targets.first()?
+                    targets.first()->name():
+                    i18np("%1 layer selected","%1 layers selected",targets.size()));
         }
     }
 
@@ -2278,6 +2285,15 @@ private:
         m_thumbnailReady.append(group||mask);
     }
 
+    static bool editingGlobalSelection(KisNodeManager *nodes)
+    {
+        if(!nodes)return false;
+        const KisNodeSP active=nodes->activeNode();
+        return active && KisNodeManager::isNodeHidden(active,true) &&
+            !KisNodeManager::isNodeHidden(active,false) &&
+            nodes->selectedNodes()==KisNodeList{active};
+    }
+
     void reload()
     {
         if(m_reorderPending || m_clipBusy || m_clipPropertyPending ||
@@ -2305,11 +2321,15 @@ private:
         const KisNodeSP engineActive=view->activeNode();
         const KisNodeSP previousActive=m_active;
         m_active=engineActive;
-        // The global selection is a real KisSelectionMask under the
-        // image root, but Krita's normal docker deliberately hides it.
-        // If it became active during selection editing, restore the
-        // last visible user layer instead of transforming that mask.
-        if(!m_active || KisNodeManager::isNodeHidden(m_active,true)) {
+        // Edit Selection selects the global mask explicitly. Ordinary
+        // layer operations still need a visible layer as their target.
+        const bool editingSelection=editingGlobalSelection(m) &&
+            inImage(engineActive,image);
+        if(editingSelection) {
+            // Keep the explicit native Edit Selection target off the layer rail.
+            m_active.clear();
+        } else if(!inImage(m_active,image) ||
+                  KisNodeManager::isNodeHidden(m_active,true)) {
             m_active.clear();
             if(inImage(previousActive,image) &&
                !KisNodeManager::isNodeHidden(previousActive,true))
@@ -2341,7 +2361,7 @@ private:
             m_selected=KisNodeList{m_active};
         if(m_active && m_active!=engineActive)
             m->slotUiActivatedNode(m_active);
-        if(native!=m_selected)
+        if(!editingSelection && native!=m_selected)
             m->slotSetSelectedNodes(m_selected);
 
         m_tree->clear();
