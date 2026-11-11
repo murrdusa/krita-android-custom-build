@@ -86,8 +86,7 @@ public:
         addGroup(i18n("Retouch and color"),{
             {"KritaShape/KisToolSmartPatch",i18n("Smart Patch")},
             {"KritaShape/KisToolLazyBrush",i18n("Colorize Mask")},
-            {"KritaShape/KisToolDyna",i18n("Dynamic Brush")},
-            {"KritaSelected/KisToolColorSampler",i18n("Sample Color")}
+            {"KritaShape/KisToolDyna",i18n("Dynamic Brush")}
         });
         addGroup(i18n("Edit"),{},{
             {"krita_filter_colorbalance",i18n("Color balance"),"preferences-desktop-color"},
@@ -99,8 +98,11 @@ public:
             {"KritaShape/KisToolRectangle",i18n("Rectangle")},
             {"KritaShape/KisToolEllipse",i18n("Ellipse")},
             {"KisToolPolygon",i18n("Polygon")},
+            {"KritaShape/KisToolPolygon",i18n("Polygon")},
             {"KisToolPolyline",i18n("Polyline")},
+            {"KritaShape/KisToolPolyline",i18n("Polyline")},
             {"KisToolPath",i18n("Bézier")},
+            {"KritaShape/KisToolBezierCurve",i18n("Bézier")},
             {"KritaShape/KisToolPath",i18n("Path")}
         });
         addGroup(i18n("Guides and symmetry"),{
