@@ -101,13 +101,14 @@ public:
         return scan(folderFor(source,rootOverride));
     }
 
-    // Safe to invoke from a background worker; call enqueueAfterSave() from
-    // the Krita GUI thread after waitForSavingToComplete() returns.
-    static bool snapshot(const QString &source,
-                         const QString &rootOverride=QString())
+    // Also archive the completed private KRA autosave under the original
+    // project's identity (or under the private draft path if unsaved).
+    // This does not modify the original project or its autosave file.
+    static bool snapshotFrom(const QString &source,const QString &identity,
+                             const QString &rootOverride=QString())
     {
         QMutexLocker guard(&lock());
-        const QString folder=folderFor(source,rootOverride);
+        const QString folder=folderFor(identity,rootOverride);
         if(folder.isEmpty())return false;
         constexpr qint64 copyLimit=8LL*1024*1024*1024;
         const bool provider=isProviderUri(source);
@@ -173,10 +174,45 @@ public:
         return true;
     }
 
-    static void enqueueAfterSave(const QString &source)
+    // Original completed Save snapshots use the same safe copy path as
+    // completed autosave drafts. Different source and identity let an
+    // unsaved private draft share history with a later saved project.
+    static bool snapshot(const QString &source,
+                         const QString &rootOverride=QString())
+    {
+        return snapshotFrom(source,source,rootOverride);
+    }
+
+    static void enqueueDraftCheckpoint(const QString &draft,
+                                       const QString &identity)
+    {
+        if(folderFor(identity).isEmpty())return;
+        QThreadPool::globalInstance()->start([draft,identity]() {
+            snapshotFrom(draft,identity);
+        });
+    }
+
+    // Move history created while an untitled drawing was still a draft
+    // into the saved project's history, before taking a completed-save
+    // checkpoint. Serialized with draft snapshots by the archive mutex.
+    static void adoptHistory(const QString &previousDraft,
+                             const QString &savedPath,
+                             const QString &rootOverride=QString())
+    {
+        QMutexLocker guard(&lock());
+        const QString from=folderFor(previousDraft,rootOverride);
+        const QString to=folderFor(savedPath,rootOverride);
+        if(from.isEmpty() || to.isEmpty() || from==to)return;
+        migrateFolder(from,to);
+    }
+
+    static void enqueueAfterSave(const QString &source,
+                                 const QString &previousDraft=QString())
     {
         if(folderFor(source).isEmpty())return;
-        QThreadPool::globalInstance()->start([source]() {
+        QThreadPool::globalInstance()->start([source,previousDraft]() {
+            if(!previousDraft.isEmpty())
+                adoptHistory(previousDraft,source);
             snapshot(source);
         });
     }

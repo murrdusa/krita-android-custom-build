@@ -83,6 +83,43 @@ int main(int argc,char **argv)
             load(copy)==initial && load(source)==second,
             "recovery touched the original or historical copy");
 
+    // Draft autosave snapshots are immutable and keyed by the intended
+    // project, not the temporary draft file's location.
+    const QString draftProject=QDir(temp.path()).filePath(
+        QStringLiteral("Later Saved.kra"));
+    const QString privateDraft=QDir(temp.path()).filePath(
+        QStringLiteral("Staging.kra"));
+    const QByteArray draftA=QByteArray::fromHex("504b0304")+"draft-first";
+    const QByteArray draftB=QByteArray::fromHex("504b0304")+"draft-second";
+    save(privateDraft,draftA);
+    require(MobileSavedVersionArchive::snapshotFrom(privateDraft,privateDraft,store),
+            "first unsaved draft checkpoint failed");
+    QThread::msleep(3);
+    save(privateDraft,draftB);
+    require(MobileSavedVersionArchive::snapshotFrom(privateDraft,privateDraft,store),
+            "second unsaved draft checkpoint failed");
+    require(MobileSavedVersionArchive::list(privateDraft,store).size()==2,
+            "completed unsaved drafts should create two historical versions");
+    MobileSavedVersionArchive::adoptHistory(privateDraft,draftProject,store);
+    require(MobileSavedVersionArchive::list(privateDraft,store).isEmpty() &&
+            MobileSavedVersionArchive::list(draftProject,store).size()==2,
+            "save-as should transfer private draft history to the project");
+    save(draftProject,draftB);
+    require(MobileSavedVersionArchive::snapshot(draftProject,store) &&
+            MobileSavedVersionArchive::list(draftProject,store).size()==2,
+            "unchanged first save should not duplicate the last draft version");
+    QThread::msleep(3);
+    save(draftProject,QByteArray::fromHex("504b0304")+"saved-third");
+    require(MobileSavedVersionArchive::snapshot(draftProject,store) &&
+            MobileSavedVersionArchive::list(draftProject,store).size()==3,
+            "subsequent saved changes must join the draft version history");
+    save(privateDraft,QByteArray::fromHex("504b0304")+"other-draft");
+    require(MobileSavedVersionArchive::snapshotFrom(privateDraft,draftProject,store),
+            "named document autosave checkpoint failed");
+    require(MobileSavedVersionArchive::list(draftProject,store).size()==4 &&
+            MobileSavedVersionArchive::list(privateDraft,store).isEmpty(),
+            "named autosave should join the project timeline, not fork it");
+
     // Bound the number and total size of backups, keeping the latest
     // completed save even if it alone exceeds the usual byte budget.
     for(int i=0;i<20;++i) {

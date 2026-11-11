@@ -26,6 +26,7 @@
 #include "lightweight_canvas_host.h"
 #include "krita_native_view_factory.h"
 #include "mobile_draft_recovery.h"
+#include "saved_version_archive.h"
 
 class MobileStandaloneKritaActions final : public MobileCommandRegistryPort
 {
@@ -170,7 +171,29 @@ public:
         auto *view=MobileKritaNativeViewFactory::attach(
             document,m_manager,m_root,saver);
         if(view) {
-            connect(document,&KisDocument::sigCompleteBackgroundSaving,this,[this]() {
+            QPointer<KisDocument> alive(document);
+            connect(document,&KisDocument::sigCompleteBackgroundSaving,this,
+                [this,alive](const KritaUtils::ExportFileJob &job,
+                             KisImportExportErrorCode status,
+                             const QString &,const QString &) {
+                // Krita's own slotCompleteAutoSaving publishes the .kra
+                // via an atomic rename. Run after all signal receivers so
+                // the archive never reads an incomplete .pending.kra file.
+                if(status.isOk() &&
+                   (job.flags & KritaUtils::SaveInAutosaveMode)) {
+                    QTimer::singleShot(0,this,[this,alive,job]() {
+                        if(!alive || !ownsDocument(alive))return;
+                        const QString draft=alive->property(
+                            "_mobileDraftPath").toString();
+                        if(job.filePath!=draft+QStringLiteral(".pending.kra") ||
+                           !MobileDraftRecovery::isDraft(draft))return;
+                        const QString project=alive->path();
+                        const QString identity=
+                            MobileSavedVersionArchive::canonicalIdentity(project).isEmpty()?
+                            draft:project;
+                        MobileSavedVersionArchive::enqueueDraftCheckpoint(draft,identity);
+                    });
+                }
                 if(!m_pendingDrafts.isEmpty())
                     QTimer::singleShot(0,this,[this]() {continueDrafts();});
             });

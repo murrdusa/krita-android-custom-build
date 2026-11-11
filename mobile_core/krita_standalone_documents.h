@@ -208,8 +208,13 @@ private:
 
         if(!exporting) {
             rememberPath(target);
-            if(targetMime==guardedDocument->nativeFormatMimeType())
-                MobileSavedVersionArchive::enqueueAfterSave(target);
+            if(targetMime==guardedDocument->nativeFormatMimeType()) {
+                // An unsaved drawing already has historical private draft
+                // checkpoints. Keep them when it first receives a name.
+                const QString draft=guardedDocument->property(
+                    "_mobileDraftPath").toString();
+                MobileSavedVersionArchive::enqueueAfterSave(target,draft);
+            }
         }
         return true;
     }

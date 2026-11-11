@@ -473,7 +473,8 @@ public:
         const auto versions=MobileSavedVersionArchive::list(path);
         if(versions.isEmpty()) {
             QMessageBox::information(window(),i18n("Saved versions"),
-                i18n("Completed KRA saves will appear here."));
+                i18n("Earlier saved copies and completed draft checkpoints "
+                     "will appear here."));
             return;
         }
         QDialog dialog(window());
@@ -751,7 +752,10 @@ private:
         m_drafts->setChecked(mode==RecoveryDrafts);
         m_drafts->setVisible(mode==RecoveryDrafts || !drafts.isEmpty());
         m_versions->setChecked(false);
-        m_versions->setVisible(mode==Recent || mode==AllProjects);
+        // Drafts now retain older completed autosaves as private versions.
+        // History stays separate from the latest recoverable draft.
+        m_versions->setVisible(mode==Recent || mode==AllProjects ||
+                               mode==RecoveryDrafts);
         m_discardDraft->setChecked(false);
         m_discardDraft->setVisible(mode==RecoveryDrafts && !drafts.isEmpty());
         m_search->setVisible(mode!=OpenCanvases);
