@@ -133,9 +133,8 @@ public:
                             QStringLiteral("MobileOpenDocument"));
         dialog.setDefaultDir(QStandardPaths::writableLocation(
             QStandardPaths::PicturesLocation));
-        dialog.setMimeTypeFilters(
-            KisImportExportManager::supportedMimeTypes(
-                KisImportExportManager::Import));
+        // Providers may advertise KRA documents as ZIP or generic binary.
+        dialog.setNameFilter(QObject::tr("All files (*)"));
         dialog.setCaption(QObject::tr("Open drawing"));
         const QString path=dialog.filename();
         if(path.isEmpty())return 0;

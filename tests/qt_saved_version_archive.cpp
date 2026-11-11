@@ -174,6 +174,18 @@ int main(int argc,char **argv)
             MobileDraftRecovery::title(drafts.first())==QStringLiteral("a_b") &&
             !MobileDraftRecovery::isDraft(source),
             "draft listing exposed staging or external files");
+    require(MobileSavedVersionArchive::isKritaProjectName(QStringLiteral("Untitled.kra (2)")) &&
+            !MobileSavedVersionArchive::isKritaProjectName(QStringLiteral("drawing.kra.zip")),
+            "recognize Android numbered KRA names without matching arbitrary archives");
+    MobileDraftRecovery::setProject(draft,source);
+    const qint64 draftTime=QFileInfo(draft).lastModified().toMSecsSinceEpoch();
+    require(MobileDraftRecovery::projectFor(draft)==source &&
+            MobileDraftRecovery::latestFor(source,draftTime-1).absoluteFilePath()==draft &&
+            !MobileDraftRecovery::latestFor(source,draftTime).exists(),
+            "only a newer checkpoint should replace the saved project");
+    MobileDraftRecovery::setProject(draft,QString());
+    require(MobileDraftRecovery::projectFor(draft).isEmpty(),
+            "an untitled draft must have no project association");
     // Android SAF folder grant (tree URI) vs direct Browse Files (document URI)
     const QString docUri=QStringLiteral(
         "content://com.android.externalstorage.documents/document/primary%3ADrawings%2Fart.kra");

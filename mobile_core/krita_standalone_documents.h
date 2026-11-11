@@ -80,20 +80,37 @@ public:
                 return true;
         }
 
+        const auto checkpoint=MobileDraftRecovery::latestFor(
+            path,MobileSavedVersionArchive::projectModified(path));
+        const QString latest=checkpoint.exists()?checkpoint.absoluteFilePath():QString();
+        const QString source=latest.isEmpty()?path:latest;
         KisDocument *document=KisPart::instance()->createDocument();
         if(!document)return false;
 
         // Native Krita import filters (including KRA, PNG and PSD)
         // are chosen inside openPath. This also presents its existing
         // autosave-recovery prompt, rather than discarding recovery files.
-        if(!document->openPath(path,KisDocument::None)) {
-            delete document;
-            return false;
-        }
-        const bool draft=MobileDraftRecovery::isDraft(path);
+        const bool privateDraft=MobileDraftRecovery::isDraft(path);
         const bool savedVersion=MobileSavedVersionArchive::isRecoveryCopy(path);
-        if(draft)document->setProperty("_mobileDraftPath",path);
-        if(draft || savedVersion) {
+        if(!openProjectSource(document,source,privateDraft || savedVersion || !latest.isEmpty())) {
+            delete document;
+            if(latest.isEmpty())return false;
+            document=KisPart::instance()->createDocument();
+            if(!document || !openProjectSource(document,path,false)) {
+                delete document;
+                return false;
+            }
+        } else if(!latest.isEmpty()) {
+            // Reopen the latest completed checkpoint as the original project.
+            // Keeping the original path lets the next native Save update it.
+            document->setProperty("_mobileDraftPath",latest);
+            document->setPath(path);
+            document->setLocalFilePath(path);
+            document->setReadWrite(true);
+            document->setModified(true);
+        }
+        if(privateDraft)document->setProperty("_mobileDraftPath",path);
+        if(privateDraft || savedVersion) {
             document->resetPath();
             document->setRecovered(true);
             document->setModified(true);
@@ -112,7 +129,7 @@ public:
                 });
             return false;
         }
-        if(!draft && !savedVersion) {
+        if(!privateDraft && !savedVersion) {
             rememberPath(path);
             if(path.startsWith(QStringLiteral("content://"))) {
                 const auto uri=QAndroidJniObject::fromString(path);
@@ -135,6 +152,16 @@ public:
     }
 
 private:
+    static bool openProjectSource(KisDocument *document,const QString &path,bool privateCopy)
+    {
+        const QString name=QFileInfo(path).fileName();
+        if(MobileSavedVersionArchive::isKritaProjectName(name) &&
+           !name.endsWith(QStringLiteral(".kra"),Qt::CaseInsensitive) &&
+           !name.endsWith(QStringLiteral(".krz"),Qt::CaseInsensitive))
+            document->setMimeType(document->nativeFormatMimeType());
+        return document->openPath(path,privateCopy?KisDocument::DontAddToRecent:KisDocument::None);
+    }
+
     bool replaceCanvas(KisDocument *document) const
     {
         if(!available() || m_replacing || m_saving || !document ||

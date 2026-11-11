@@ -71,8 +71,8 @@
 //
 // Stored as JSON in AppDataLocation/project-index.json.
 // Thumbnails cached as PNG files in AppDataLocation/project-thumbs/.
-// Entries are merged by canonical SAF identity; stale entries (file gone
-// and not reachable via SAF) are pruned on each successful rescan.
+// Entries merge by canonical SAF identity. A provider file may be
+// temporarily unavailable, so keep its location until explicitly deleted.
 // ---------------------------------------------------------------------------
 struct MobileProjectIndexEntry {
     QString path;        // local path or content:// URI (canonical)
@@ -146,6 +146,12 @@ public:
         file.commit();
     }
 
+    static QString key(const QString &path)
+    {
+        const auto identity=MobileSavedVersionArchive::canonicalIdentity(path);
+        return identity.isEmpty()?path:identity;
+    }
+
     // Merge incoming entries into existing, dedup by canonical identity.
     // Incoming entries update timestamp and source of existing ones.
     static QVector<MobileProjectIndexEntry> merge(
@@ -154,21 +160,20 @@ public:
     {
         QHash<QString,int> byId;
         for(int i=0;i<existing.size();++i) {
-            byId.insert(MobileSavedVersionArchive::canonicalIdentity(existing[i].path),i);
+            byId.insert(key(existing[i].path),i);
         }
         for(const auto &e:incoming) {
-            const QString id=MobileSavedVersionArchive::canonicalIdentity(e.path);
+            const QString id=key(e.path);
             auto it=byId.find(id);
             if(it==byId.end()) {
                 byId.insert(id,existing.size());
                 existing.append(e);
             } else {
                 auto &ex=existing[it.value()];
-                // Prefer the entry with more information
-                if(e.modified>ex.modified)ex.modified=e.modified;
-                if(ex.title.isEmpty()&&!e.title.isEmpty())ex.title=e.title;
-                // scan/saf sources are more authoritative than "recent"
-                if(e.source!=QStringLiteral("recent"))ex.source=e.source;
+                if(e.modified>0)ex.modified=e.modified;
+                if(!e.title.isEmpty())ex.title=e.title;
+                ex.path=e.path;
+                ex.source=e.source;
             }
         }
         return existing;
@@ -333,6 +338,19 @@ public:
             m_cache.clear();
             showList(m_mode,true); // explicit Refresh always scans
         });
+        connect(KisRecentFilesManager::instance(),&KisRecentFilesManager::fileAdded,
+                this,[this](const QUrl &url) {
+            const auto path=url.isLocalFile()?url.toLocalFile():url.toString();
+            if(url.isLocalFile() && !isKra(path))return;
+            // Persist new locations even if the user never visits All Projects.
+            m_scanner.start([path]() {
+                const MobileProjectIndexEntry entry{
+                    path,QFileInfo(path).fileName(),MobileSavedVersionArchive::projectModified(path),
+                    QStringLiteral("recent")};
+                MobileProjectIndex::save(MobileProjectIndex::merge(
+                    MobileProjectIndex::load(),{entry}));
+            });
+        });
         connect(m_search,&QLineEdit::textChanged,this,
                 [this](const QString &) {filterItems();});
         connect(m_access,&QPushButton::clicked,this,[this]() {requestSearchAccess();});
@@ -353,8 +371,8 @@ public:
             if(state!=Qt::ApplicationActive || !isVisible())return;
             const bool access=hasAllFilesAccess();
             if(access==m_lastAccess)return;
-            QSettings().remove(QStringLiteral("MobileStudio/projectIndexLastScanMs"));
-            if(m_mode==AllProjects)showList(AllProjects,true);
+            QSettings().remove(QStringLiteral("MobileStudio/projectIndexSharedStorageScanMs"));
+            if(access || m_mode==AllProjects)showList(AllProjects,true);
             else m_lastAccess=access;
         });
         parent->installEventFilter(this);
@@ -390,6 +408,7 @@ public:
         const auto drafts=MobileDraftRecovery::list();
         if(drafts.size()!=1 || !m_files)return false;
         const auto &draft=drafts.first();
+        if(!MobileDraftRecovery::projectFor(draft.absoluteFilePath()).isEmpty())return false;
         const QString attempt=draft.fileName()+QLatin1Char(':')+
             QString::number(draft.lastModified().toMSecsSinceEpoch());
         const QString key=QStringLiteral("MobileStudio/lastAutomaticDraft");
@@ -474,8 +493,7 @@ private:
 
     static QString projectKey(const QString &path)
     {
-        const QString identity=MobileSavedVersionArchive::canonicalIdentity(path);
-        return identity.isEmpty()?path:identity;
+        return MobileProjectIndex::key(path);
     }
 
     void requestSearchAccess()
@@ -512,19 +530,29 @@ private:
         cancel->setMinimumHeight(44);
         layout->addWidget(cancel);
         connect(cancel,&QPushButton::clicked,&dialog,&QDialog::reject);
-        switch(dialog.exec()) {
+        const int chosen=dialog.exec();
+        if(!isVisible())return;
+        const QString draftProject=draft?MobileDraftRecovery::projectFor(path):QString();
+        switch(chosen) {
         case Open:
+            if(!draftProject.isEmpty()) {
+                MobileSavedVersionArchive::Version source;
+                source.path=path;
+                openCopy(source);
+                break;
+            }
             if(m_files && m_files->openFile(path))hide();
             else QMessageBox::warning(this,i18n("Drawing not opened"),
                 i18n("Could not open this drawing. Browse Files can renew Android file access."));
             break;
         case Duplicate: {
             MobileSavedVersionArchive::Version source;
-            source.path=path;
+            const auto *item=m_projectItems.value(key);
+            source.path=item?item->data(Qt::UserRole+4).toString():path;
             openCopy(source);
             break;
         }
-        case History:showSavedVersions(path);break;
+        case History:showSavedVersions(draftProject.isEmpty()?path:draftProject);break;
         case Star:
             if(!m_starred.remove(key))m_starred.insert(key);
             saveStars();
@@ -541,17 +569,25 @@ private:
     void openCopy(const MobileSavedVersionArchive::Version &version)
     {
         m_restoringVersion=true;
+        const auto views=m_engine.openDocuments();
+        const QPointer<QObject> expected=views.isEmpty()?QPointer<QObject>():views.first().nativeView;
+        const bool hadCanvas=bool(expected);
         QPointer<MobileDocumentHome> home(this);
-        QThreadPool::globalInstance()->start([home,version]() {
+        QThreadPool::globalInstance()->start([home,version,expected,hadCanvas]() {
             const QString copy=MobileSavedVersionArchive::materializeRecovery(version);
-            QMetaObject::invokeMethod(qApp,[home,copy]() {
-                const bool opened=home && !copy.isEmpty() && home->m_files &&
+            QMetaObject::invokeMethod(qApp,[home,copy,expected,hadCanvas]() {
+                const auto current=home?home->m_engine.openDocuments():
+                    QVector<MobileEngineBridge::OpenDocument>{};
+                const bool sameCanvas=hadCanvas?
+                    expected && current.size()==1 && current.first().nativeView==expected:
+                    current.isEmpty();
+                const bool opened=home && sameCanvas && !copy.isEmpty() && home->m_files &&
                     home->m_files->openFile(copy);
                 if(!copy.isEmpty())QFile::remove(copy);
                 if(!home)return;
                 home->m_restoringVersion=false;
                 if(opened)home->hide();
-                else QMessageBox::warning(home->window(),i18n("Drawing not opened"),
+                else if(sameCanvas)QMessageBox::warning(home->window(),i18n("Drawing not opened"),
                     i18n("Could not open the project copy."));
             },Qt::QueuedConnection);
         });
@@ -567,13 +603,14 @@ private:
     void deleteProject(const QString &path,const QString &title)
     {
         const QString key=projectKey(path);
+        if(QMessageBox::question(this,i18n("Delete drawing?"),
+            i18n("Permanently delete %1 from storage?",title),
+            QMessageBox::Yes|QMessageBox::Cancel,QMessageBox::Cancel)!=QMessageBox::Yes ||
+            !isVisible())return;
         for(const auto &entry:m_engine.openDocuments()) {
             const auto *document=qobject_cast<KisDocument*>(entry.document.data());
             if(document && projectKey(document->path())==key)return;
         }
-        if(QMessageBox::question(this,i18n("Delete drawing?"),
-            i18n("Permanently delete %1 from storage?",title),
-            QMessageBox::Yes|QMessageBox::Cancel,QMessageBox::Cancel)!=QMessageBox::Yes)return;
         const bool provider=path.startsWith(QStringLiteral("content://"));
         const auto uri=QAndroidJniObject::fromString(path);
         const bool removed=provider?QAndroidJniObject::callStaticMethod<jboolean>(
@@ -643,15 +680,14 @@ private:
                 i18n("The recovery file could not be removed."));
             return;
         }
+        QFile::remove(path+QStringLiteral(".project"));
         m_cache.remove(path);
         showList(RecoveryDrafts);
     }
 
     static bool isKra(const QString &path)
     {
-        const QString suffix=QFileInfo(path).suffix();
-        return suffix.compare(QStringLiteral("kra"),Qt::CaseInsensitive)==0 ||
-               suffix.compare(QStringLiteral("krz"),Qt::CaseInsensitive)==0;
+        return MobileSavedVersionArchive::isKritaProjectName(QFileInfo(path).fileName());
     }
 
     static bool hasAllFilesAccess()
@@ -739,12 +775,19 @@ private:
 
     void showList(Mode mode,bool forceScan=false)
     {
+        if(m_mode==AllProjects && m_list->count()>0)persistIndex();
         m_mode=mode;
         m_forceThumbnailRefresh=forceScan;
         if(forceScan)m_cache.clear();
         m_recent->setChecked(mode==Recent);
         m_library->setChecked(mode==AllProjects);
         const auto drafts=MobileDraftRecovery::list();
+        m_latestDrafts.clear();
+        for(const auto &draft:drafts) {
+            const auto path=MobileDraftRecovery::projectFor(draft.absoluteFilePath());
+            if(!path.isEmpty() && !m_latestDrafts.contains(projectKey(path)))
+                m_latestDrafts.insert(projectKey(path),draft);
+        }
         m_drafts->setChecked(mode==RecoveryDrafts);
         m_drafts->setVisible(mode==RecoveryDrafts || !drafts.isEmpty());
         m_refresh->setVisible(mode==AllProjects);
@@ -760,6 +803,9 @@ private:
         if(m_scanCancel)m_scanCancel->store(true);
         if(mode==Recent) {
             m_message->setText(i18n("Recently opened drawings"));
+            QHash<QString,qint64> indexedTimes;
+            for(const auto &entry:MobileProjectIndex::load())
+                indexedTimes.insert(projectKey(entry.path),entry.modified);
             const auto recent=KisRecentFilesManager::instance()->recentFiles();
             for(auto it=recent.crbegin();it!=recent.crend();++it) {
                 if(it->m_url.isEmpty())continue;
@@ -768,7 +814,8 @@ private:
                 const QString name=it->m_displayName.isEmpty()?
                     QFileInfo(path).fileName():it->m_displayName;
                 const qint64 modified=it->m_url.isLocalFile()?
-                    QFileInfo(path).lastModified().toMSecsSinceEpoch():0;
+                    QFileInfo(path).lastModified().toMSecsSinceEpoch():
+                    indexedTimes.value(projectKey(path));
                 addProject({path,name,modified,{}});
             }
         } else if(mode==RecoveryDrafts) {
@@ -779,7 +826,7 @@ private:
         } else {
             m_message->setText(m_lastAccess?
                 i18n("Searching accessible storage for Krita projects…"):
-                i18n("Searching common folders and folders you added…"));
+                i18n("Checking accessible files and Android file grants…"));
             // Load persisted index immediately so the list is populated
             // before the background scan starts.  The scan will add new
             // entries and update timestamps; on completion the merged index
@@ -803,15 +850,12 @@ private:
                     addProject({p,name,mod,{}});
                 }
             }
-            // The index is the default fast path. Only scan Downloads
-            // when the catalog is missing/stale, the user refreshes, or
-            // a storage/folder permission changed. Recent stays visible
-            // even when it lives outside the scan roots.
+            // Keep the index visible during refresh and reuse it between scans.
             const qint64 now=QDateTime::currentMSecsSinceEpoch();
             const qint64 last=QSettings().value(
-                QStringLiteral("MobileStudio/projectIndexLastScanMs"),0).toLongLong();
+                QStringLiteral("MobileStudio/projectIndexSharedStorageScanMs"),0).toLongLong();
             const bool needsScan=forceScan || last<=0 || last>now ||
-                                  now-last>10LL*60*1000;
+                                  now-last>24LL*60*60*1000;
             if(needsScan) {
                 if(m_list->count()>0) {
                     m_message->setText(i18n("Updating saved projects in background…"));
@@ -823,7 +867,7 @@ private:
             } else {
                 const int count=m_list->count();
                 m_message->setText(count==0?
-                    i18n("No indexed Krita projects. Tap Refresh to search Downloads."):
+                    i18n("No indexed Krita projects. Tap Refresh or use Browse Files."):
                     i18np("%1 indexed Krita project", "%1 indexed Krita projects",count));
                 // New recent entries are remembered immediately rather than
                 // waiting for a full scan to finish.
@@ -874,7 +918,7 @@ private:
             if(refreshedPath || modified) {
                 m_cache.remove(project.path);
                 m_attempted.remove(project.path);
-                item->setIcon(m_placeholder);
+                updatePreviewSource(item);
                 filterItem(item,m_search->text().trimmed());
                 scheduleThumbnails();
             }
@@ -891,11 +935,27 @@ private:
         item->setData(Qt::UserRole+2,location);
         item->setToolTip(location);
         filterItem(item,m_search->text().trimmed());
-        const auto cached=m_cache.find(project.path);
-        if(cached!=m_cache.end()) {
-            if(project.timestamp>0 && cached->modified!=project.timestamp)
-                m_cache.erase(cached);
-            else item->setIcon(cached->icon);
+        updatePreviewSource(item);
+    }
+
+    void updatePreviewSource(QListWidgetItem *item)
+    {
+        const QString project=item->data(Qt::UserRole).toString();
+        const qint64 savedTime=item->data(Qt::UserRole+1).toLongLong();
+        const auto draft=m_latestDrafts.value(projectKey(project));
+        const qint64 draftTime=draft.lastModified().toMSecsSinceEpoch();
+        const bool useDraft=draftTime>savedTime;
+        const QString path=useDraft?draft.absoluteFilePath():project;
+        const qint64 modified=useDraft?draftTime:savedTime;
+        item->setData(Qt::UserRole+4,path);
+        item->setData(Qt::UserRole+5,modified);
+        m_attempted.remove(path);
+        const auto cached=m_cache.find(path);
+        if(cached!=m_cache.end() && cached->modified==modified)
+            item->setIcon(cached->icon);
+        else {
+            if(cached!=m_cache.end())m_cache.erase(cached);
+            item->setIcon(m_placeholder);
         }
     }
 
@@ -908,10 +968,10 @@ private:
         const int generation=++m_scanGeneration;
         m_scanDiscoveredCount=0;
         QPointer<MobileDocumentHome> home(this);
-        m_scanner.start([home,cancel,generation,fullScan]() {
-            // A normal Home visit should never spend an unbounded time
-            // indexing nested Downloads. An explicit Refresh still offers
-            // a complete scan without changing already indexed projects.
+        const bool broadAccess=m_lastAccess;
+        m_scanner.start([home,cancel,generation,fullScan,broadAccess]() {
+            // Prioritize common directories during a timed background scan.
+            // Refresh walks all accessible shared directories.
             QElapsedTimer timer;
             timer.start();
             const qint64 automaticLimitMs=12000;
@@ -921,16 +981,17 @@ private:
                     "org/krita/android/MainActivity",method,"()Ljava/lang/String;");
                 return QJsonDocument::fromJson(result.toString().toUtf8()).array();
             };
-            QStringList roots;
+            QStringList roots,common;
             for(const auto &volume:androidList("tabletProjectRoots")) {
                 const QString root=volume.toString();
                 if(root.isEmpty())continue;
-                // Always scan Downloads only. Permission lets us read
-                // its KRA files; it must not trigger a full-device scan.
-                // Other folders are indexed only when explicitly linked.
-                roots.append(QDir(root).filePath(QStringLiteral("Download")));
+                if(broadAccess)roots.append(root);
+                for(const auto &folder:{QStringLiteral("Pictures"),QStringLiteral("Documents"),
+                                       QStringLiteral("Download")})
+                    common.append(QDir(root).filePath(folder));
             }
-            QSet<QString> seen;
+            roots.append(common);
+            QSet<QString> seen,visited;
             QVector<Project> batch;
             const auto deliverBatch=[&]() {
                 if(batch.isEmpty())return;
@@ -948,6 +1009,8 @@ private:
                     break;
                 }
                 const QString root=roots.takeLast();
+                if(visited.contains(root))continue;
+                visited.insert(root);
                 QDirIterator it(root,QDir::Dirs|QDir::Files|QDir::Hidden|
                     QDir::NoDotAndDotDot|QDir::NoSymLinks);
                 while(!cancel->load() && it.hasNext()) {
@@ -958,11 +1021,12 @@ private:
                     const QString path=it.next();
                     const QFileInfo info=it.fileInfo();
                     if(info.isDir()) {
-                        if(info.fileName()!=QStringLiteral(".krita-gallery-trash") &&
+                        if(!info.fileName().startsWith(QLatin1Char('.')) &&
                            !path.endsWith(QStringLiteral("/Android/data")) &&
                            !path.endsWith(QStringLiteral("/Android/obb")))
                             roots.append(path);
-                    } else if(info.isReadable() && isKra(path)) {
+                    } else if(info.isReadable() && isKra(path) &&
+                              !info.fileName().startsWith(QLatin1Char('.'))) {
                         seen.insert(QDir::cleanPath(path));
                         batch.append({path,info.fileName(),
                                       info.lastModified().toMSecsSinceEpoch(),{}});
@@ -1019,7 +1083,9 @@ private:
             entries.append(entry);
         }
         // The pool serializes index writes; no need to block the touch UI.
-        m_scanner.start([entries]() {MobileProjectIndex::save(entries);});
+        m_scanner.start([entries]() {
+            MobileProjectIndex::save(MobileProjectIndex::merge(MobileProjectIndex::load(),entries));
+        });
     }
 
     void finishScan(int generation,bool truncated)
@@ -1029,15 +1095,14 @@ private:
         const int count=m_list->count();
         if(truncated) {
             m_message->setText(
-                i18n("%1 indexed projects. Quick Downloads scan limited "
-                     "to 12 seconds; tap Refresh for a complete search.",count));
+                i18n("%1 indexed projects. Tap Refresh to finish searching shared storage.",count));
         } else {
             m_message->setText(count==0?
                 i18n("No Krita projects found. Try Browse Files."):
                 i18np("%1 Krita project found", "%1 Krita projects found",count));
         }
         QSettings().setValue(
-            QStringLiteral("MobileStudio/projectIndexLastScanMs"),
+            QStringLiteral("MobileStudio/projectIndexSharedStorageScanMs"),
             QDateTime::currentMSecsSinceEpoch());
         persistIndex();
     }
@@ -1048,8 +1113,8 @@ private:
         while(m_list->count())sorted.append(m_list->takeItem(0));
         std::stable_sort(sorted.begin(),sorted.end(),
             [this](QListWidgetItem *a,QListWidgetItem *b) {
-                const qint64 am=a->data(Qt::UserRole+1).toLongLong();
-                const qint64 bm=b->data(Qt::UserRole+1).toLongLong();
+                const qint64 am=a->data(Qt::UserRole+5).toLongLong();
+                const qint64 bm=b->data(Qt::UserRole+5).toLongLong();
                 if(m_sortOrder==Starred) {
                     const bool aStar=m_starred.contains(projectKey(a->data(Qt::UserRole).toString()));
                     const bool bStar=m_starred.contains(projectKey(b->data(Qt::UserRole).toString()));
@@ -1098,16 +1163,17 @@ private:
             auto *item=m_list->item(i);
             if(item->isHidden() ||
                !m_list->visualItemRect(item).intersects(region))continue;
-            const QString path=item->data(Qt::UserRole).toString();
+            const QString project=item->data(Qt::UserRole).toString();
+            const QString path=item->data(Qt::UserRole+4).toString();
             if(path.isEmpty() || m_pending.contains(path) ||
                m_attempted.contains(path) || m_cache.contains(path))continue;
-            const qint64 modified=item->data(Qt::UserRole+1).toLongLong();
+            const qint64 modified=item->data(Qt::UserRole+5).toLongLong();
             m_pending.insert(path);
             --budget;
             QPointer<MobileDocumentHome> home(this);
             const quint64 generation=m_previewGeneration;
             const bool refresh=m_forceThumbnailRefresh;
-            m_thumbnails.start([home,path,modified,generation,refresh]() {
+            m_thumbnails.start([home,project,path,modified,generation,refresh]() {
                 // Even cached PNG decoding belongs off the touch/UI thread.
                 // Explicit Refresh always reopens the project rather than
                 // reusing the previous disk cache (important for SAF URIs
@@ -1120,13 +1186,13 @@ private:
                     if(!image.isNull())
                         MobileProjectIndex::saveThumb(path,modified,image);
                 }
-                QMetaObject::invokeMethod(qApp,[home,path,image,modified,generation]() {
+                QMetaObject::invokeMethod(qApp,[home,project,path,image,modified,generation]() {
                     if(!home || generation!=home->m_previewGeneration)return;
                     home->m_pending.remove(path);
-                    const QString canonical=MobileSavedVersionArchive::canonicalIdentity(path);
-                    auto *current=home->m_projectItems.value(canonical.isEmpty()?path:canonical);
-                    if(!current || current->data(Qt::UserRole).toString()!=path ||
-                       current->data(Qt::UserRole+1).toLongLong()!=modified) {
+                    auto *current=home->m_projectItems.value(projectKey(project));
+                    if(!current || current->data(Qt::UserRole).toString()!=project ||
+                       current->data(Qt::UserRole+4).toString()!=path ||
+                       current->data(Qt::UserRole+5).toLongLong()!=modified) {
                         // A scan or save replaced this project while decoding.
                         // Let the current revision request its own preview.
                         home->scheduleThumbnails();
@@ -1138,11 +1204,7 @@ private:
                             home->m_cache.begin());
                         const QIcon icon(QPixmap::fromImage(image));
                         home->m_cache.insert(path,{icon,modified});
-                        for(int j=0;j<home->m_list->count();++j) {
-                            auto *item=home->m_list->item(j);
-                            if(item->data(Qt::UserRole).toString()==path)
-                                item->setIcon(icon);
-                        }
+                        current->setIcon(icon);
                     }
                     home->scheduleThumbnails();
                 },Qt::QueuedConnection);
@@ -1170,6 +1232,7 @@ private:
     std::shared_ptr<std::atomic_bool> m_scanCancel;
     QThreadPool m_scanner,m_thumbnails;
     QHash<QString,QListWidgetItem*> m_projectItems;
+    QHash<QString,QFileInfo> m_latestDrafts;
     QSet<QString> m_pending,m_attempted;
     struct CachedPreview {QIcon icon; qint64 modified=0;};
     QHash<QString,CachedPreview> m_cache;

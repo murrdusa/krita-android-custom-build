@@ -8,6 +8,9 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QFile>
+#include <QSaveFile>
+#include "saved_version_archive.h"
 #include <QStandardPaths>
 #include <QUuid>
 
@@ -60,6 +63,41 @@ public:
             if(isDraft(file.absoluteFilePath()))drafts.append(file);
         }
         return drafts;
+    }
+
+    static void setProject(const QString &draft,const QString &project)
+    {
+        if(draft.isEmpty())return;
+        const QString metadata=draft+QStringLiteral(".project");
+        if(MobileSavedVersionArchive::canonicalIdentity(project).isEmpty()) {
+            QFile::remove(metadata);
+            return;
+        }
+        if(projectFor(draft)==project)return;
+        QSaveFile file(metadata);
+        const QByteArray data=project.toUtf8();
+        if(file.open(QIODevice::WriteOnly) && file.write(data)==data.size())
+            file.commit();
+    }
+
+    static QString projectFor(const QString &draft)
+    {
+        QFile file(draft+QStringLiteral(".project"));
+        if(!file.open(QIODevice::ReadOnly) || file.size()>16384)return {};
+        return QString::fromUtf8(file.readAll());
+    }
+
+    static QFileInfo latestFor(const QString &project,qint64 savedModified)
+    {
+        const QString identity=MobileSavedVersionArchive::canonicalIdentity(project);
+        if(identity.isEmpty())return {};
+        for(const auto &draft:list()) {
+            if(draft.lastModified().toMSecsSinceEpoch()<=savedModified)break;
+            if(MobileSavedVersionArchive::canonicalIdentity(
+                   projectFor(draft.absoluteFilePath()))==identity)
+                return draft;
+        }
+        return {};
     }
 
     static QString title(const QFileInfo &draft)

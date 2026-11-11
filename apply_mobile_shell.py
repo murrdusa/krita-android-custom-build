@@ -933,11 +933,29 @@ install(FILES org.kde.krita.desktop''',
         if (activity == null) return;
         Uri uri = Uri.parse(location);
         if (!android.provider.DocumentsContract.isDocumentUri(activity, uri)) return;
+        android.content.ContentResolver resolver = activity.getContentResolver();
         try {
-            activity.getContentResolver().takePersistableUriPermission(
-                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        } catch (SecurityException ignored) {
-            // Some providers offer only temporary access.
+            resolver.takePersistableUriPermission(uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        } catch (SecurityException readOnly) {
+            try {
+                resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } catch (SecurityException temporary) {
+                // Some providers offer only temporary access.
+            }
+        }
+    }
+
+    public static long tabletProjectModified(String location) {
+        MainActivity activity = tabletPermissionActivity;
+        if (activity == null) return 0;
+        Uri uri = Uri.parse(location);
+        String column = DocumentsContract.Document.COLUMN_LAST_MODIFIED;
+        try (android.database.Cursor row = activity.getContentResolver().query(
+                uri, new String[]{column}, null, null, null)) {
+            return row != null && row.moveToFirst() ? row.getLong(0) : 0;
+        } catch (RuntimeException ignored) {
+            return 0;
         }
     }
 
@@ -1026,7 +1044,7 @@ install(FILES org.kde.krita.desktop''',
         String name = row.getString(1);
         if (name == null) return;
         String lower = name.toLowerCase(java.util.Locale.ROOT);
-        if (!lower.endsWith(".kra") && !lower.endsWith(".krz") &&
+        if (!lower.matches(".*[.]kr[az]( \\(\\d+\\))?") &&
             !"application/x-krita".equals(row.getString(2))) return;
         if (!seen.add(uri.getAuthority() + "/" + row.getString(0))) return;
         org.json.JSONObject item = new org.json.JSONObject();
@@ -1544,6 +1562,7 @@ void KisNodeManager::slotSomethingActivatedNodeImpl(KisNodeSP node, bool allowGl
     if (!draftPath.isEmpty()) {
         QFile::remove(draftPath);
         QFile::remove(draftPath + QStringLiteral(".pending.kra"));
+        QFile::remove(draftPath + QStringLiteral(".project"));
     }
     // Eliminate any auto-save file
     QString asf = generateAutoSaveFileName(autosaveBaseName);""",

@@ -231,6 +231,8 @@ private:
             const auto document=m_pendingDrafts.takeFirst();
             if(!document || !ownsDocument(document) || !document->isModified())
                 continue;
+            MobileDraftRecovery::setProject(
+                document->property("_mobileDraftPath").toString(),document->path());
             QMetaObject::invokeMethod(document,"slotAutoSave",Qt::DirectConnection);
             if(document && document->isSaving())break;
         }

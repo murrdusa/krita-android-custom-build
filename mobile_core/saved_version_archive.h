@@ -5,6 +5,10 @@
  * document providers. Unsaved edits are handled by private draft recovery.
  */
 #pragma once
+#include <QRegularExpression>
+#ifdef Q_OS_ANDROID
+#include <QAndroidJniObject>
+#endif
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -37,6 +41,27 @@ public:
         return source.startsWith(QStringLiteral("content://"),Qt::CaseInsensitive);
     }
 
+    static bool isKritaProjectName(const QString &name)
+    {
+        static const QRegularExpression extension(
+            QStringLiteral(R"(\.kr[az](?: \(\d+\))?$)"),
+            QRegularExpression::CaseInsensitiveOption);
+        return extension.match(name).hasMatch();
+    }
+
+    static qint64 projectModified(const QString &path)
+    {
+#ifdef Q_OS_ANDROID
+        if(isProviderUri(path)) {
+            const auto uri=QAndroidJniObject::fromString(path);
+            return QAndroidJniObject::callStaticMethod<jlong>(
+                "org/krita/android/MainActivity","tabletProjectModified","(Ljava/lang/String;)J",
+                uri.object<jstring>());
+        }
+#endif
+        return QFileInfo(path).lastModified().toMSecsSinceEpoch();
+    }
+
     // Normalizes file and provider identities so that different access methods
     // (such as Android SAF folder tree grants vs direct document URIs) map to
     // the same underlying document and project version history.
@@ -45,8 +70,7 @@ public:
         if(source.isEmpty())return {};
         if(!isProviderUri(source)) {
             const QFileInfo file(source);
-            if(file.suffix().compare(QStringLiteral("kra"),Qt::CaseInsensitive)!=0)
-                return {};
+            if(!isKritaProjectName(file.fileName()))return {};
             const QString canonical=file.canonicalFilePath();
             return QDir::cleanPath(canonical.isEmpty()?
                                     file.absoluteFilePath():canonical);
@@ -266,14 +290,14 @@ public:
             QStringLiteral(".kra"));
         QSaveFile destination(path);
         if(!destination.open(QIODevice::WriteOnly))return {};
-        while(!source.atEnd()) {
-            const QByteArray block=source.read(256*1024);
-            if(block.isEmpty() || destination.write(block)!=block.size()) {
-                destination.cancelWriting();
-                return {};
-            }
+        QByteArray block(256*1024,Qt::Uninitialized);
+        qint64 copied=0;
+        qint64 count=0;
+        while((count=source.read(block.data(),block.size()))>0) {
+            copied+=count;
+            if(destination.write(block.constData(),count)!=count)return {};
         }
-        return destination.commit()?path:QString();
+        return count==0 && copied>0 && destination.commit()?path:QString();
     }
 
     static bool isRecoveryCopy(const QString &path)
