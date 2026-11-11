@@ -45,19 +45,31 @@ public:
             Group group{name,{}};
             for(const auto &entry:tools) {
                 const QString id=QString::fromLatin1(entry.id);
-                for(const auto &tool:available) {
-                    // Krita plugins may register the same tool with their
-                    // plugin namespace (e.g. KritaFill/KisToolEncloseAndFill)
-                    // rather than its short ID. Match a short requested ID
-                    // against the registered suffix, but always dispatch the
-                    // actual registered ID; never invent a tool identifier.
-                    const bool matches=tool.id==id ||
-                        (id.startsWith(QStringLiteral("KisTool")) &&
-                         tool.id.endsWith(QLatin1Char('/')+id));
-                    if(!matches || used.contains(tool.id))continue;
+                // Prefer Krita's exact registered ID. If a plugin
+                // registers a short ID on this build and a namespaced ID
+                // on another, match only the same KisTool family. Both
+                // directions matter: the curated tile may be either form.
+                const auto addRegistered=[&](const MobileEngineBridge::MobileTool &tool) {
                     group.tiles.append({tool.id,entry.label,tool.description,
                                         tool.iconName,nullptr});
                     used.insert(tool.id);
+                };
+                bool found=false;
+                for(const auto &tool:available) {
+                    if(tool.id==id && !used.contains(tool.id)) {
+                        addRegistered(tool);
+                        found=true;
+                        break;
+                    }
+                }
+                if(found)continue;
+                const QString family=id.section(QLatin1Char('/'),-1);
+                if(!family.startsWith(QStringLiteral("KisTool")))continue;
+                for(const auto &tool:available) {
+                    if(used.contains(tool.id) ||
+                       tool.id.section(QLatin1Char('/'),-1)!=family)
+                        continue;
+                    addRegistered(tool);
                     break;
                 }
             }
