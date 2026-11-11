@@ -956,16 +956,21 @@ public:
             dialog.resize(qMin(400,m_host->width()),qMin(520,m_host->height()));
             auto *layers=new QCheckBox(QObject::tr("Keep Layers open"),body);
             auto *color=new QCheckBox(QObject::tr("Keep Color Wheel open"),body);
-            auto *size=new QCheckBox(QObject::tr("Show Size slider"),body);
-            auto *opacity=new QCheckBox(QObject::tr("Show Opacity slider"),body);
+            // One control preserves all four former independent
+            // Size/Opacity combinations without requiring two toggles.
+            auto *floatingSliders=new MobileTouchComboBox(body);
+            floatingSliders->addItem(QObject::tr("Hidden"),0);
+            floatingSliders->addItem(QObject::tr("Size only"),1);
+            floatingSliders->addItem(QObject::tr("Opacity only"),2);
+            floatingSliders->addItem(QObject::tr("Size + Opacity"),3);
+            floatingSliders->setCurrentIndex(
+                (m_showSize?1:0)|(m_showOpacity?2:0));
             layers->setChecked(m_keepLayers);
             color->setChecked(m_keepColor);
-            size->setChecked(m_showSize);
-            opacity->setChecked(m_showOpacity);
             layout->addWidget(layers);
             layout->addWidget(color);
-            layout->addWidget(size);
-            layout->addWidget(opacity);
+            layout->addWidget(new QLabel(QObject::tr("Floating brush sliders"),body));
+            layout->addWidget(floatingSliders);
             auto *fade=new QCheckBox(QObject::tr("Fade idle panels"),body);
             fade->setChecked(m_fadePanels);
             layout->addWidget(fade);
@@ -1019,7 +1024,7 @@ public:
                     opacityDrag->setCurrentIndex(0);
             });
             layout->addWidget(new QLabel(QObject::tr(
-                "Vertical toolbar sliders"),body));
+                "Swipe along toolbar to adjust"),body));
             layout->addWidget(new QLabel(QObject::tr("Opacity button"),body));
             layout->addWidget(opacityDrag);
             layout->addWidget(new QLabel(QObject::tr("Brush size button"),body));
@@ -1036,8 +1041,9 @@ public:
             if(dialog.exec()!=QDialog::Accepted)return;
             m_keepLayers=layers->isChecked();
             m_keepColor=color->isChecked();
-            m_showSize=size->isChecked();
-            m_showOpacity=opacity->isChecked();
+            const int sliderMode=floatingSliders->currentData().toInt();
+            m_showSize=bool(sliderMode&1);
+            m_showOpacity=bool(sliderMode&2);
             QSettings settings;
             settings.setValue(QStringLiteral("MobileStudio/keepLayersOpen"),m_keepLayers);
             settings.setValue(QStringLiteral("MobileStudio/keepColorOpen"),m_keepColor);
