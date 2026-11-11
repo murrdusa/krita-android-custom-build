@@ -384,8 +384,7 @@ private:
             const QString oldDigest=entry.absoluteFilePath()+
                                     QStringLiteral(".sha256");
             if(QFile::exists(targetPath) ||
-               (QFile::exists(oldDigest) &&
-                QFile::exists(targetPath+QStringLiteral(".sha256")))) {
+               QFile::exists(targetPath+QStringLiteral(".sha256"))) {
                 do {
                     targetPath=QDir(to).filePath(entry.completeBaseName()+
                         QLatin1Char('-')+
