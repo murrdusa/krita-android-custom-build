@@ -53,6 +53,15 @@ public:
             name.at(36)==QLatin1Char('_') && !QUuid(name.left(36)).isNull();
     }
 
+    // A cheap startup guard, not full ZIP validation. Manual recovery
+    // retains damaged drafts so users can still inspect them.
+    static bool hasKraHeader(const QString &path)
+    {
+        QFile file(path);
+        return file.open(QIODevice::ReadOnly) &&
+            file.peek(4)==QByteArray::fromHex("504b0304");
+    }
+
     static QFileInfoList list()
     {
         const QString folder=directory();
