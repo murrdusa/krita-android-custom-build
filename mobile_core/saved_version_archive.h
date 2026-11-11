@@ -403,6 +403,11 @@ private:
         const auto leftovers=fromDir.entryInfoList(
             QDir::Files|QDir::Readable|QDir::Hidden|QDir::NoSymLinks);
         for(const QFileInfo &entry:leftovers) {
+            // A checksum must only travel with its corresponding KRA.
+            // Moving an orphaned digest under its old name could attach
+            // it to a *different* canonical snapshot after a collision.
+            if(entry.fileName().endsWith(QStringLiteral(".kra.sha256")))
+                continue;
             const QString targetPath=QDir(to).filePath(entry.fileName());
             if(!QFile::exists(targetPath))
                 QFile::rename(entry.absoluteFilePath(),targetPath);
