@@ -83,6 +83,17 @@ public:
             {"KisToolTransform",i18n("Transform")},
             {"KisToolCrop",i18n("Crop")}
         });
+        // The floating context bar is intentionally hidden for Krita's
+        // freehand brush so it does not stack another row over the canvas.
+        // Expose its native brush-smoothing QActions here instead: these
+        // operate on Krita's current brush tool, not a mobile imitation.
+        addGroup(i18n("Brush smoothing"),{},{
+            {"set_no_brush_smoothing",i18n("None"),"draw-freehand"},
+            {"set_simple_brush_smoothing",i18n("Basic"),"draw-freehand"},
+            {"set_weighted_brush_smoothing",i18n("Weighted"),"draw-freehand"},
+            {"set_stabilizer_brush_smoothing",i18n("Stabilizer"),"draw-freehand"},
+            {"set_pixel_perfect_smoothing",i18n("Pixel perfect"),"draw-freehand"}
+        });
         addGroup(i18n("Retouch and color"),{
             {"KritaShape/KisToolSmartPatch",i18n("Smart Patch")},
             {"KritaShape/KisToolLazyBrush",i18n("Colorize Mask")},
