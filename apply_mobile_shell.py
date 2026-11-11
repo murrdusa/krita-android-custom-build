@@ -946,6 +946,20 @@ install(FILES org.kde.krita.desktop''',
         }
     }
 
+    public static String tabletProjectName(String location) {
+        MainActivity activity = tabletPermissionActivity;
+        if (activity == null) return "";
+        Uri uri = Uri.parse(location);
+        String column = android.provider.OpenableColumns.DISPLAY_NAME;
+        try (android.database.Cursor row = activity.getContentResolver().query(
+                uri, new String[]{column}, null, null, null)) {
+            if (row != null && row.moveToFirst() && !row.isNull(0)) return row.getString(0);
+        } catch (RuntimeException ignored) {
+            // A provider can disappear or revoke access.
+        }
+        return "";
+    }
+
     public static long tabletProjectModified(String location) {
         MainActivity activity = tabletPermissionActivity;
         if (activity == null) return 0;

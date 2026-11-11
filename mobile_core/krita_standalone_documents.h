@@ -106,6 +106,7 @@ public:
             document->setProperty("_mobileDraftPath",latest);
             document->setPath(path);
             document->setLocalFilePath(path);
+            applyProjectMime(document,path);
             document->setReadWrite(true);
             document->setModified(true);
         }
@@ -152,13 +153,18 @@ public:
     }
 
 private:
+    static void applyProjectMime(KisDocument *document,const QString &path)
+    {
+        const QString name=MobileSavedVersionArchive::projectName(path);
+        if(!MobileSavedVersionArchive::isKritaProjectName(name))return;
+        const QString suffix=name.mid(name.lastIndexOf(QLatin1Char('.'))+1);
+        document->setMimeType(suffix.startsWith(QStringLiteral("krz"),Qt::CaseInsensitive)?
+            QByteArray("application/x-krita-archive"):document->nativeFormatMimeType());
+    }
+
     static bool openProjectSource(KisDocument *document,const QString &path,bool privateCopy)
     {
-        const QString name=QFileInfo(path).fileName();
-        if(MobileSavedVersionArchive::isKritaProjectName(name) &&
-           !name.endsWith(QStringLiteral(".kra"),Qt::CaseInsensitive) &&
-           !name.endsWith(QStringLiteral(".krz"),Qt::CaseInsensitive))
-            document->setMimeType(document->nativeFormatMimeType());
+        applyProjectMime(document,path);
         return document->openPath(path,privateCopy?KisDocument::DontAddToRecent:KisDocument::None);
     }
 
@@ -267,7 +273,8 @@ private:
 
         if(!exporting) {
             rememberPath(target);
-            if(targetMime==guardedDocument->nativeFormatMimeType()) {
+            if(targetMime==guardedDocument->nativeFormatMimeType() ||
+               targetMime=="application/x-krita-archive") {
                 // An unsaved drawing already has historical private draft
                 // checkpoints. Keep them when it first receives a name.
                 const QString draft=guardedDocument->property(

@@ -345,7 +345,8 @@ public:
             // Persist new locations even if the user never visits All Projects.
             m_scanner.start([path]() {
                 const MobileProjectIndexEntry entry{
-                    path,QFileInfo(path).fileName(),MobileSavedVersionArchive::projectModified(path),
+                    path,MobileSavedVersionArchive::projectName(path),
+                    MobileSavedVersionArchive::projectModified(path),
                     QStringLiteral("recent")};
                 MobileProjectIndex::save(MobileProjectIndex::merge(
                     MobileProjectIndex::load(),{entry}));
@@ -803,19 +804,19 @@ private:
         if(m_scanCancel)m_scanCancel->store(true);
         if(mode==Recent) {
             m_message->setText(i18n("Recently opened drawings"));
-            QHash<QString,qint64> indexedTimes;
+            QHash<QString,MobileProjectIndexEntry> indexed;
             for(const auto &entry:MobileProjectIndex::load())
-                indexedTimes.insert(projectKey(entry.path),entry.modified);
+                indexed.insert(projectKey(entry.path),entry);
             const auto recent=KisRecentFilesManager::instance()->recentFiles();
             for(auto it=recent.crbegin();it!=recent.crend();++it) {
                 if(it->m_url.isEmpty())continue;
                 const QString path=it->m_url.isLocalFile()?
                     it->m_url.toLocalFile():it->m_url.toString();
-                const QString name=it->m_displayName.isEmpty()?
-                    QFileInfo(path).fileName():it->m_displayName;
+                const auto known=indexed.value(projectKey(path));
+                const QString name=!known.title.isEmpty()?known.title:
+                    it->m_displayName.isEmpty()?QFileInfo(path).fileName():it->m_displayName;
                 const qint64 modified=it->m_url.isLocalFile()?
-                    QFileInfo(path).lastModified().toMSecsSinceEpoch():
-                    indexedTimes.value(projectKey(path));
+                    QFileInfo(path).lastModified().toMSecsSinceEpoch():known.modified;
                 addProject({path,name,modified,{}});
             }
         } else if(mode==RecoveryDrafts) {
@@ -843,8 +844,9 @@ private:
                     const QString p=it->m_url.isLocalFile()?
                         it->m_url.toLocalFile():it->m_url.toString();
                     if(p.isEmpty())continue;
-                    const QString name=it->m_displayName.isEmpty()?
-                        QFileInfo(p).fileName():it->m_displayName;
+                    const auto *known=m_projectItems.value(projectKey(p));
+                    const QString name=known?known->data(Qt::UserRole+3).toString():
+                        it->m_displayName.isEmpty()?QFileInfo(p).fileName():it->m_displayName;
                     const qint64 mod=it->m_url.isLocalFile()?
                         QFileInfo(p).lastModified().toMSecsSinceEpoch():0;
                     addProject({p,name,mod,{}});
@@ -915,6 +917,11 @@ private:
             }
             if(modified)
                 item->setData(Qt::UserRole+1,project.timestamp);
+            if(!project.title.isEmpty() && item->data(Qt::UserRole+3).toString()!=project.title) {
+                item->setData(Qt::UserRole+3,project.title);
+                updateProjectLabel(item);
+                filterItem(item,m_search->text().trimmed());
+            }
             if(refreshedPath || modified) {
                 m_cache.remove(project.path);
                 m_attempted.remove(project.path);

@@ -49,6 +49,20 @@ public:
         return extension.match(name).hasMatch();
     }
 
+    static QString projectName(const QString &path)
+    {
+#ifdef Q_OS_ANDROID
+        if(isProviderUri(path)) {
+            const auto uri=QAndroidJniObject::fromString(path);
+            const auto name=QAndroidJniObject::callStaticObjectMethod(
+                "org/krita/android/MainActivity","tabletProjectName",
+                "(Ljava/lang/String;)Ljava/lang/String;",uri.object<jstring>()).toString();
+            if(!name.isEmpty())return name;
+        }
+#endif
+        return QFileInfo(path).fileName();
+    }
+
     static qint64 projectModified(const QString &path)
     {
 #ifdef Q_OS_ANDROID
