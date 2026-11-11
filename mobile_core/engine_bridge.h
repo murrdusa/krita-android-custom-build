@@ -127,8 +127,9 @@ public:
         //
         // Normalize before activating Transform, not while its image
         // stroke is running. Preserve intentional multi-layer targets.
-        if(m_manager && (id==QStringLiteral("KisToolTransform") ||
-                         id==QStringLiteral("KritaTransform/KisToolMove"))) {
+        const QString toolFamily=id.section(QLatin1Char('/'),-1);
+        if(m_manager && (toolFamily==QStringLiteral("KisToolTransform") ||
+                         toolFamily==QStringLiteral("KisToolMove"))) {
             auto *nodes=m_manager->nodeManager();
             const KisImageSP image=m_manager->image().toStrongRef();
             if(nodes && image && image->root()) {
