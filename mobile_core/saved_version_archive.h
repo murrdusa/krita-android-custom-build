@@ -89,11 +89,19 @@ public:
             return QDir::cleanPath(canonical.isEmpty()?
                                     file.absoluteFilePath():canonical);
         }
+        // DocumentsContract identifies a document by its authority and
+        // encoded document ID. Query parameters and URI fragments are
+        // not part of that identity and can vary with a picker grant.
+        QString documentUri=source;
+        const int fragment=documentUri.indexOf(QLatin1Char('#'));
+        if(fragment>=0)documentUri.truncate(fragment);
+        const int query=documentUri.indexOf(QLatin1Char('?'));
+        if(query>=0)documentUri.truncate(query);
         constexpr int schemeLength=10; // "content://"
-        const int slash=source.indexOf(QLatin1Char('/'),schemeLength);
-        if(slash==-1)return source;
-        const QString authority=source.mid(schemeLength,slash-schemeLength).toLower();
-        const QString path=source.mid(slash);
+        const int slash=documentUri.indexOf(QLatin1Char('/'),schemeLength);
+        if(slash==-1)return documentUri.toLower();
+        const QString authority=documentUri.mid(schemeLength,slash-schemeLength).toLower();
+        const QString path=documentUri.mid(slash);
         // Android DocumentsContract: tree document URIs have the form:
         // /tree/<treeDocumentId>/document/<documentId>
         // Direct document URIs have the form:
