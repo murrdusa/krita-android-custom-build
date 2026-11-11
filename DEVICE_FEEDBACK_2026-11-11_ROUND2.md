@@ -1,0 +1,49 @@
+# Fold 6 hands-on results — November 11, 2026, after f3c7d49
+
+**Target verified user test APK:** `f3c7d49a9e66538d8215b9b02b5f54aee1b04182`. User reports **26 new PASS, 9 FAIL, 22 prior PASS, 102 pending**; the textual item-by-item feedback contains additional UX failures and suggestions under tests marked PASS. Original pasted checklist, prior device findings, and image attachments were supplied in the ChatGPT conversation on Nov 11. **Do not mark anything from section 4 onwards as tested.**
+
+## Highest-level decision — ONE unified touch/menu interaction contract
+
+The user reports **the same touch bug in multiple different panels**: attempted finger scrolling triggers a child button/menu item instead. This affects the **layer options sheet**, **blend-mode selection**, and previously the **Tools chooser**, while the layer list itself scrolls correctly. Gesture config was repaired and passed. Rather than independent ad-hoc patches, create or extend a **single shared touch-safe scroll-versus-tap behavior** for all scrollable mobile menus/dialogs and all *future* controls.
+
+Required contract: touch press does not commit an action; vertical/horizontal displacement past a consistent touch slop cancels tap and scrolls the intended parent, including when finger begins atop a button/dropdown; short stationary tap activates child exactly once; long-hold and layer drag are preserved where appropriate; no release-generated synthetic mouse click after scrolling; preserve S Pen taps, scrolling, selection, modal/Qt popup focus and native QAction semantics. Use centralized helper/API with regression tests where feasible, migrate layer action sheet and blend picker first, then audit Tools, Brushes, Settings, and all future menus. **New project coding rule:** any new scrollable menu MUST use this unified behavior; never add a separate arbitrary event filter for each panel. If screen height permits, layer-options sheet should expand to show more controls instead of short unnecessary scroll area.
+
+## New reported failures (after last Codex fixes)
+
+- **2.7 Brushes / grid: FAIL.** Preset names have prefixes such as `i)` or `j)`/letter category markers that waste caption space. Remove or suppress this redundant display prefix without changing real preset identity. Grid still has excessive horizontal/vertical gutters. Compress thumbs while preserving aspect and minimal readable caption. Clarify control location: user wants **Size, Opacity, and conditional Flow together under a specific customize-brush tap/panel**, which currently shows only Flow; user does **NOT** want separate controls indiscriminately repeated at the bottom of Paint/Erase/Blend tabs. Preserve working existing slider gestures.
+- **2.14 Symmetry/mirror: FAIL, screenshot provided.** On transparent checkerboard, left side has a broad solid red opaque region with thin dark pencil stroke; right side has expected thinner mirrored pencil outline **plus irregular red paint outlining/bleeding around stroke** instead of merely matching pencil. Center dotted symmetry axis visible. User earlier described same artifact on green prepainted region. Treat as unexpected painted-pixel echo/halo; ask Codex to reproduce with exact preset, compare drawing on existing colored raster layer versus new transparent layer, true brush symmetry vs mirror canvas, brush opacity/eraser/composite state and stock upstream Krita. Do not assume clipping is the cause or rewrite engine before reproducing.
+- **2.21 Brush label on document switch: FAIL.** Previously reported unreadable/missing brush name after opening document via canvas Documents menu persists despite source-level refresh changes. Reproduce exact path, check labels, toolbar stacking and text contrast. The user's `1.7` was marked *previous pass* but `2.21` remains a failure; distinguish toolbar visibility from brush label readability.
+- **3.6 Group header / 'file layer': FAIL.** UI now seems to show something called `File Layer` with unfamiliar/odd icon/control layout (user screenshot of a boxed icon + folder + eye). User wants simple Infinite Painter-like **group/folder** interactions and a non-layer-looking header. **Do not delete Krita native File Layer functionality**; keep it accessible through advanced layer types, but do not elevate it into basic group UI or mislabel Group as File Layer. Diagnose whether displayed `File Layer` is actually a normal linked-image layer or mistaken group header before changing.
+- **3.8 Group boundaries: FAIL.** Borders are too thin and/or too low contrast; nested group hierarchy still looks visually weak. Increase legibility and show entire group subtree clearly without painting over thumbnail rows.
+- **3.16 Rename by layer-name tap: FAIL.** New inline label/UI is visibly misaligned and ugly near bottom of layer rail; revert that layout change. Instead, when **layer-options sheet is open**, tapping the name displayed **within that sheet** launches the rename dialog; keep former Rename command available. Do not add any extra button or large editable label to each thumbnail row.
+- **3.20 Blend selector: FAIL for touch interaction** despite visual category organization being approximately acceptable. Scrolling the common/category list often triggers selection, just like layer-options sheet. Use shared scroll-tap contract. Keep categories and favorites, current selection visible.
+- **3.22 Clipping indicator: FAIL.** Current clipped-base text/borders insufficient. Want recognizable **clip arrow** visual common to drawing programs, showing clipped layer dependency on base. Reference common compact UI conventions while preserving native nearest-nonclipped-base behavior, multi-clip runs and groups; avoid overlay clutter.
+- **3.28 Transparency mask: FAIL/uncertain.** User tried to drag masks and they appear non-draggable; cannot yet tell whether masks function. Verify when mask drag is meaningful/allowed under Krita parent restrictions, allow valid reordering or moving to compatible parent with a clear drop target, and explain unsupported moves. Test painting black/white on mask parent and saving/reopening. DO NOT claim mask engine broken solely from inability to drag.
+- **Recurring unknown icon glyph:** User reports a repeated **envelope-like X / boxed diagonal glyph** in layer interface; screenshot shows a square blue tile containing an X-shaped symbol next to folder and eye icons. Investigate unresolved/missing icon resource versus intentional native layer-type icon; replace or provide proper fallback/icon legend. It is not yet proven the asset is broken — validate by mapping actual QAction/QIcon/type and checking packaging.
+
+## Additional observations on tests marked PASS
+
+- **2.20 Color wheel: PASS with desired improvements.** Add optional responsive **color history below wheel**. Dock/anchor wheel closer to canvas corner; user wants hue ring edges nearly tangent to two panel/canvas edges, only a couple of pixels offset, not floating substantially inward/upward. Keep hit targets and movement adjustable; preserve wheel rendering and marker behavior.
+- **3.2 Layer list: PASS, options sheet is the failure.** Layer scrolling itself fine, but layer-options menu swipe activates buttons. Use shared scroll contract; expand sheet height to available screen size when content would otherwise unnecessarily scroll.
+- **2.8 Size/Opacity/Flow behavior works**; problem is location and brush preset/customization UI, not the engine controls.
+- **3.13–3.15 Delete groups (empty/populated/nested): PASS ON DEVICE** in this round, previous intermittent crash not reproduced. Preserve completion/refresh safety and do not call bug definitively eliminated; stress it later.
+- **3.21/3.23–3.27 Clipping functionality: PASS**, including multiple clips/reorder, unclip Undo/Redo, group clip base/content, save/reopen, duplicate/clear/merge/flatten/delete.
+- **2.15 one-finger popup palette PASS; 2.16 pressure simulation PASS; 2.17 calibration PASS; 2.18 gesture menu scrolling PASS; 2.19 numeric px editing PASS.** Do not regress or redo working UI.
+
+## Explicit status summary from user
+
+New PASS: 2.15, 2.16, 2.17, 2.18, 2.19, 2.20 (with UI requests), 3.1, 3.2 (layer list only), 3.3, 3.4, 3.5, 3.10, 3.11, 3.12, 3.13, 3.14, 3.15, 3.17, 3.18, 3.19, 3.21, 3.23, 3.24, 3.25, 3.26, 3.27. Prior passes include basic startup and painting and many modes. Explicit failures are 2.7, 2.14, 2.21, 3.6, 3.8, 3.16, 3.20, 3.22 and 3.28 (nine). Some passed entries have UX issues as above. **102 tests were still pending per user's tracker, especially section 4 onward.** Do not infer pass/fail for missing items.
+
+## Suggested Codex order for next implementation batch
+
+1. Centralize scroll-versus-tap behavior for Qt touch, mouse-synthesized touch and pen across all scrollable mobile menus. Repair layer-options sheet and blend picker; audit entire app and establish coding rule/test coverage.
+2. Fix layout/rename regression; categorize actual normal Group vs File Layer; stronger subtree outlines; clarify broken-looking icon; improve clipping indicator with arrow.
+3. Fix brush names/prefixes, grid density, and place Size/Opacity/Flow in the specifically requested customization panel; avoid redundant controls on tabs.
+4. Fix document-switch brush labels; reproduce symmetry artifact with controlled setup.
+5. Optional color-history and corner-hugging wheel placement.
+6. Verify mask drag semantics without breaking native parent/node constraints.
+7. Request next Fold test batch for section 4 (selection/transform) once stability fixes compiled; no APK upload unless user asks.
+
+## Expected Codex report
+
+List actual commits, exact WSL Android build SHA and results, test coverage, unresolved points and device checks. Preserve this feedback permanently. Do not claim to have reproduced the screenshot artifact or device-tested fixes without evidence.
