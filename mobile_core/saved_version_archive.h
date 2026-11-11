@@ -338,6 +338,17 @@ public:
         if(base.isEmpty() || !QDir().mkpath(base))return {};
         QFile source(version.path);
         if(!source.open(QIODevice::ReadOnly))return {};
+        // An archive chosen from the version browser has a known file
+        // length. Reject stale/oversized entries and check destination
+        // space before streaming a potentially large recovered KRA.
+        constexpr qint64 copyLimit=8LL*1024*1024*1024;
+        const qint64 size=source.size();
+        if(size<=0 || size>copyLimit ||
+           (version.bytes>0 && version.bytes!=size))return {};
+        const QStorageInfo disk(base);
+        if(disk.isValid() && disk.isReady() &&
+           disk.bytesAvailable()>=0 &&
+           disk.bytesAvailable()<size+16LL*1024*1024)return {};
         const QString path=QDir(base).filePath(
             QStringLiteral("Recovered-")+
             QUuid::createUuid().toString(QUuid::WithoutBraces)+
