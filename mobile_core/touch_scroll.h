@@ -50,6 +50,11 @@ protected:
             m_target.clear();
             auto *widget=qobject_cast<QWidget*>(object);
             if(!widget || !widget->rect().contains(mouse->pos()))return false;
+            // Dedicated toolbar drag buttons own their complete
+            // touch/mouse transaction (tap, inline slider and color
+            // sampler). Never delay or replay their events here.
+            if(widget->property("_mobileToolbarDragControl").toBool())
+                return false;
             QAbstractScrollArea *area=nullptr;
             for(auto *parent=widget->parentWidget();parent;parent=parent->parentWidget()) {
                 area=qobject_cast<QAbstractScrollArea*>(parent);
