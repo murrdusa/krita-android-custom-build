@@ -100,6 +100,38 @@ def main(root:Path):
                (standalone_krita_runtime,standalone_krita_documents,native_krita_factory)):
         raise RuntimeError("Missing Mobile Studio engine module")
 
+    # The preexisting Android reference-image gesture patch (installed by
+    # apply_reference_touch_fix.py earlier in local-build.sh) still assumed
+    # that the painting canvas belonged to KisPart::currentMainwindow().
+    # Independent Mobile Studio has no KisMainWindow; its native
+    # KisInputManager already knows the active KisCanvas2 directly.
+    # Reuse the *same* hit-tested touch gestures and undo transactions,
+    # replacing only desktop-specific canvas/document lookup.
+    reference_input=root/"libs/ui/input/kis_input_manager.cpp"
+    reference_source=reference_input.read_text(encoding="utf-8")
+    reference_source=one(reference_source,
+        """        if (QSettings().value(QStringLiteral("TabletUi/referenceFingerDrag"), true).toBool()
+            && !referenceTouch->touchPoints().isEmpty() && KisPart::exists()) {
+            KisMainWindow *window = KisPart::instance()->currentMainwindow();
+            KisCanvas2 *canvas = window && window->viewManager()
+                ? window->viewManager()->canvasBase() : nullptr;
+            if (canvas && window->activeView() &&
+                canvas->referenceImagesDecoration() &&
+                canvas->referenceImagesDecoration()->visible()) {
+                KisReferenceImagesLayerSP refs =
+                    window->activeView()->document()->referenceImagesLayer();""",
+        """        if (QSettings().value(QStringLiteral("TabletUi/referenceFingerDrag"), true).toBool()
+            && !referenceTouch->touchPoints().isEmpty()) {
+            KisCanvas2 *canvas = this->canvas();
+            KisView *activeView = canvas ? canvas->imageView().data() : nullptr;
+            if (canvas && activeView && activeView->document() &&
+                canvas->referenceImagesDecoration() &&
+                canvas->referenceImagesDecoration()->visible()) {
+                KisReferenceImagesLayerSP refs =
+                    activeView->document()->referenceImagesLayer();""",
+        "route reference-image drag/resize/double-tap through active independent canvas")
+    reference_input.write_text(reference_source,encoding="utf-8")
+
     # Studio widgets use the host-neutral engine and document ports.
     mobile_frontend=(standalone_engine_session,standalone_engine_pilot,engine_only_policy,
                      engine_only_bootstrap_header,engine_only_bootstrap_source,engine_init_header,
