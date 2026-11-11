@@ -4,6 +4,12 @@
 
 Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1). This file records *current* status, not a commit-by-commit log. The preceding complete log is preserved verbatim in [DEVELOPMENT_HISTORY_2026-11-11.md](DEVELOPMENT_HISTORY_2026-11-11.md). More focused runbooks live under `mobile_core/`.
 
+## Responsive canvas and phone brush editor
+
+The canvas reflows toolbars and floating controls on resize, favoring saved anchors and keeping items apart. Toolbars grow to fit commands where possible and scroll on narrower displays. Canvas Only is under **Canvas View**. Fade delay and opacity use touch sliders. Color history shares its toolbar background.
+
+The Android **Advanced Brush Settings** action opens Krita's native editor in a screen-sized dialog with Brush, Test, Presets, and Behavior tabs. Brush categories and native controls use full-width touch views, with a live stroke preview and native preset save/reload actions.
+
 ## Layers rail layout
 
 The compact Layers rail grows to fit its visible tiles until it reaches a toolbar, another panel, or the canvas edge. Edited layouts keep the chosen anchor and thickness, with overflow scrollable. **Edit UI Layout → Rotate Layers** switches between upright tiles in a vertical rail and a horizontal strip. A small read-only footer shows the active layer name, with rename still in Layer Options.

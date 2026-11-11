@@ -1542,13 +1542,6 @@ private:
         }
     }
 
-    int overlayTop(QWidget *canvas) const
-    {
-        if(m_contextToolBar && !m_contextToolBar->isHidden() && !hasEditedPlacement(m_contextToolBar))
-            return m_contextToolBar->geometry().bottom()+3;
-        return MobileNativeCommandLayout::panelTopInset(canvas);
-    }
-
     bool ensureBrushControls()
     {
         if(m_brush)return true;

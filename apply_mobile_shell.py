@@ -47,8 +47,252 @@ def redirect_android_engine_method(source:str, return_type:str, name:str, androi
     return one(source,old,replacement,f"Android engine {name} extraction")
 
 
+def install_phone_brush_editor(root: Path):
+    paintop_box = root / "libs/ui/kis_paintop_box.cc"
+    source = paintop_box.read_text(encoding="utf-8")
+    source = one(source, "    m_presetsEditor = new KisPaintOpPresetsEditor(",
+                 """#ifdef Q_OS_ANDROID
+    const bool mobileBrushEditor = !m_viewManager->mainWindow();
+    m_brushEditorPopupButton->setProperty("_mobileBrushEditor", mobileBrushEditor);
+#endif
+    m_presetsEditor = new KisPaintOpPresetsEditor(""", "mark standalone brush editor")
+    source = one(source, "    m_brushEditorPopupButton->setPopupWidgetDetached(cfg.paintopPopupDetached());",
+                 """#ifdef Q_OS_ANDROID
+    m_brushEditorPopupButton->setPopupWidgetDetached(mobileBrushEditor || cfg.paintopPopupDetached());
+#else
+    m_brushEditorPopupButton->setPopupWidgetDetached(cfg.paintopPopupDetached());
+#endif""", "use a dialog for the mobile brush editor")
+    paintop_box.write_text(source, encoding="utf-8")
+
+    editor = root / "libs/ui/widgets/kis_paintop_presets_editor.cpp"
+    source = editor.read_text(encoding="utf-8")
+    source = one(source, "#include <QSplitter>",
+                 """#include <QSplitter>
+#ifdef Q_OS_ANDROID
+#include <QScrollArea>
+#include <QStackedWidget>
+#include <QTabBar>
+#include <KisResourceItemListView.h>
+#include "touch_scroll.h"
+#endif""", "mobile brush editor includes")
+    source = one(source, "    QSplitter* horzSplitter {0};",
+                 """    QSplitter* horzSplitter {0};
+#ifdef Q_OS_ANDROID
+    QTabBar *mobileTabs = nullptr;
+    QMetaObject::Connection mobileScreenConnection;
+#endif""", "mobile brush editor state")
+    source = one(source, "    // Responsive Layout\n", """#ifdef Q_OS_ANDROID
+    if (parent && parent->property("_mobileBrushEditor").toBool()) {
+        auto &ui = m_d->uiWdgPaintOpPresetSettings;
+        ui.gridLayout->setContentsMargins(6, 6, 6, 6);
+        ui.gridLayout->setSpacing(4);
+        ui.brushEditorDashboard->setDirection(QBoxLayout::TopToBottom);
+        ui.brushEditorDashboard->setSpacing(3);
+        ui.presetThumbnailicon->hide();
+        ui.liveBrushPreviewView->setMinimumWidth(0);
+        ui.liveBrushPreviewView->setMaximumWidth(QWIDGETSIZE_MAX);
+        ui.liveBrushPreviewView->setFixedHeight(42);
+        ui.liveBrushPreviewView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        ui.currentBrushNameLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        ui.currentBrushNameLabel->setWordWrap(true);
+        ui.currentBrushEngineLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        ui.verticalLayout_5->setDirection(QBoxLayout::LeftToRight);
+        for (auto *button : {ui.saveNewBrushPresetButton, ui.saveBrushPresetButton}) {
+            button->setMinimumHeight(38);
+            button->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+        }
+        ui.showPresetsButton->hide();
+        ui.showScratchpadButton->hide();
+        ui.viewOptionButton->hide();
+
+        auto *behavior = new QWidget(this);
+        auto *behaviorLayout = new QVBoxLayout(behavior);
+        ui.brushEditorLayout->removeItem(ui.horizontalLayout_3);
+        ui.horizontalLayout_3->setParent(nullptr);
+        ui.horizontalLayout_3->setDirection(QBoxLayout::TopToBottom);
+        behaviorLayout->addLayout(ui.horizontalLayout_3);
+        behaviorLayout->addStretch(1);
+
+        m_d->mobileTabs = new QTabBar(this);
+        m_d->mobileTabs->setStyleSheet(QStringLiteral("QTabBar::tab{min-height:39px;padding:0 8px;}"));
+        auto *pages = new QStackedWidget(this);
+        const auto addPage = [this, pages](QWidget *page, const QString &label) {
+            page->setMinimumSize(0, 0);
+            page->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+            pages->addWidget(page);
+            m_d->mobileTabs->addTab(label);
+        };
+        addPage(ui.brushEditorSettingsControls, i18n("Brush"));
+        addPage(ui.scratchpadControls, i18n("Test"));
+        addPage(ui.presetsContainer, i18n("Presets"));
+        auto *behaviorScroll = new QScrollArea(this);
+        behaviorScroll->setFrameShape(QFrame::NoFrame);
+        behaviorScroll->setWidgetResizable(true);
+        behaviorScroll->setWidget(behavior);
+        MobileTouchScroll::configure(behaviorScroll);
+        addPage(behaviorScroll, i18n("Behavior"));
+        MobileTouchScroll::configureList(ui.presetWidget->itemChooser()->itemView());
+        connect(m_d->mobileTabs, &QTabBar::currentChanged, pages, &QStackedWidget::setCurrentIndex);
+        auto *done = new QPushButton(i18n("Done"), this);
+        done->setMinimumHeight(42);
+        connect(done, &QPushButton::clicked, this, [this]() {
+            if (parentWidget()) parentWidget()->hide();
+        });
+        ui.gridLayout->addWidget(m_d->mobileTabs, 1, 0, 1, 3);
+        ui.gridLayout->addWidget(pages, 2, 0, 1, 3);
+        ui.gridLayout->addWidget(done, 3, 0, 1, 3);
+        ui.gridLayout->setRowStretch(2, 1);
+        return;
+    }
+#endif
+
+    // Responsive Layout
+""", "tabbed native mobile brush editor")
+    source = one(source, """        if (m_d->settingsWidget->supportScratchBox() && cfg.scratchpadVisible()) {""",
+                 """#ifdef Q_OS_ANDROID
+        if (m_d->mobileTabs) {
+            const bool canTest = m_d->settingsWidget->supportScratchBox();
+            if (!canTest && m_d->mobileTabs->currentIndex() == 1)
+                m_d->mobileTabs->setCurrentIndex(0);
+            m_d->mobileTabs->setTabEnabled(1, canTest);
+        }
+#endif
+        if (m_d->settingsWidget->supportScratchBox() && cfg.scratchpadVisible()) {""",
+                 "update scratchpad availability on preset switch")
+    source = one(source, "void KisPaintOpPresetsEditor::hideEvent(QHideEvent *event)\n{",
+                 """void KisPaintOpPresetsEditor::hideEvent(QHideEvent *event)
+{
+#ifdef Q_OS_ANDROID
+    if (m_d->mobileTabs) {
+        disconnect(m_d->mobileScreenConnection);
+        QWidget::hideEvent(event);
+        return;
+    }
+#endif""", "keep mobile editor out of desktop geometry persistence")
+    source = one(source, "void KisPaintOpPresetsEditor::showEvent(QShowEvent *)\n{",
+                 """void KisPaintOpPresetsEditor::showEvent(QShowEvent *)
+{
+#ifdef Q_OS_ANDROID
+    if (m_d->mobileTabs) {
+        const auto fit = [this]() {
+            auto *frame = parentWidget();
+            if (!frame || !frame->screen()) return;
+            const QRect area = frame->screen()->availableGeometry().adjusted(6, 6, -6, -6);
+            const QSize size(qMin(540, area.width()), qMin(710, area.height()));
+            if (size.isEmpty()) return;
+            frame->setFixedSize(size);
+            frame->move(area.center() - QPoint(size.width()/2, size.height()/2));
+        };
+        fit();
+        if (parentWidget() && parentWidget()->screen())
+            m_d->mobileScreenConnection = connect(parentWidget()->screen(),
+                &QScreen::availableGeometryChanged, this, fit);
+        Q_EMIT brushEditorShown();
+        return;
+    }
+#endif""", "fit mobile editor to its screen")
+    source = one(source, "    QWidget::resizeEvent(event);\n    if (parentWidget()) {",
+                 """    QWidget::resizeEvent(event);
+#ifdef Q_OS_ANDROID
+    if (m_d->mobileTabs) return;
+#endif
+    if (parentWidget()) {""", "keep desktop popup placement separate")
+    for slot in ("slotSwitchScratchpad", "slotSwitchShowPresets"):
+        anchor = f"void KisPaintOpPresetsEditor::{slot}(bool visible)\n{{"
+        source = one(source, anchor, anchor + """
+#ifdef Q_OS_ANDROID
+    if (m_d->mobileTabs) return;
+#endif""", f"keep mobile tabs independent of {slot}")
+    editor.write_text(source, encoding="utf-8")
+
+    settings = root / "libs/ui/kis_paintop_settings_widget.cpp"
+    source = settings.read_text(encoding="utf-8")
+    source = one(source, "#include <QStackedWidget>",
+                 """#include <QStackedWidget>
+#ifdef Q_OS_ANDROID
+#include <QScrollArea>
+#include "touch_scroll.h"
+#endif""", "mobile brush setting includes")
+    source = one(source, "struct KisPaintOpSettingsWidget::Private",
+                 """#ifdef Q_OS_ANDROID
+class MobileBrushOptionDelegate final : public KisCategorizedItemDelegate
+{
+public:
+    using KisCategorizedItemDelegate::KisCategorizedItemDelegate;
+    QSize sizeHint(const QStyleOptionViewItem &option,const QModelIndex &index) const override
+    {
+        auto size = KisCategorizedItemDelegate::sizeHint(option, index);
+        size.setHeight(qMax(40, size.height()));
+        return size;
+    }
+};
+#endif
+
+struct KisPaintOpSettingsWidget::Private""", "give brush options finger-sized rows")
+    source = one(source, "    m_d->optionsList->setItemDelegate(new KisCategorizedItemDelegate(m_d->optionsList));",
+                 """#ifdef Q_OS_ANDROID
+    m_d->optionsList->setItemDelegate(new MobileBrushOptionDelegate(m_d->optionsList));
+#else
+    m_d->optionsList->setItemDelegate(new KisCategorizedItemDelegate(m_d->optionsList));
+#endif""", "select the mobile brush option delegate")
+    source = one(source, "    QStackedWidget*             optionsStack;",
+                 """    QStackedWidget*             optionsStack;
+#ifdef Q_OS_ANDROID
+    QStackedWidget *mobilePages = nullptr;
+    QPushButton *mobileBack = nullptr;
+#endif""", "mobile brush setting navigation state")
+    source = one(source, "    QHBoxLayout* layout = new QHBoxLayout(this);",
+                 """#ifdef Q_OS_ANDROID
+    auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(0, 0, 0, 0);
+    m_d->mobileBack = new QPushButton(tr("‹ Brush options"), this);
+    m_d->mobileBack->setMinimumHeight(40);
+    m_d->mobileBack->hide();
+    layout->addWidget(m_d->mobileBack);
+    m_d->mobilePages = new QStackedWidget(this);
+    m_d->optionsList->setMinimumWidth(0);
+    m_d->optionsList->setSizeAdjustPolicy(QAbstractScrollArea::AdjustIgnored);
+    MobileTouchScroll::configureList(m_d->optionsList);
+    m_d->optionsStack->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+    m_d->mobilePages->addWidget(m_d->optionsList);
+    m_d->mobilePages->addWidget(m_d->optionsStack);
+    layout->addWidget(m_d->mobilePages, 1);
+    connect(m_d->mobileBack, &QPushButton::clicked, this, [this]() {
+        m_d->mobilePages->setCurrentWidget(m_d->optionsList);
+        m_d->mobileBack->hide();
+    });
+#else
+    QHBoxLayout* layout = new QHBoxLayout(this);""", "use a full-width native category list")
+    source = one(source, "    layout->setStretch(1, 1);",
+                 "    layout->setStretch(1, 1);\n#endif", "end desktop brush options layout")
+    source = one(source, "    m_d->optionsList->viewport()->installEventFilter(this);",
+                 """#ifndef Q_OS_ANDROID
+    m_d->optionsList->viewport()->installEventFilter(this);
+#endif""", "use mobile touch routing for brush options")
+    source = one(source, "    m_d->optionsStack->addWidget(option->configurationPage());",
+                 """#ifdef Q_OS_ANDROID
+    auto *scroll = new QScrollArea(m_d->optionsStack);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidgetResizable(true);
+    scroll->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+    scroll->setWidget(option->configurationPage());
+    MobileTouchScroll::configure(scroll);
+    m_d->optionsStack->addWidget(scroll);
+#else
+    m_d->optionsStack->addWidget(option->configurationPage());
+#endif""", "scroll native brush settings on small screens")
+    source = one(source, "        m_d->optionsStack->setCurrentIndex(info.index);",
+                 """        m_d->optionsStack->setCurrentIndex(info.index);
+#ifdef Q_OS_ANDROID
+        m_d->mobileBack->show();
+        m_d->mobilePages->setCurrentWidget(m_d->optionsStack);
+#endif""", "open selected brush setting on mobile")
+    settings.write_text(source, encoding="utf-8")
+
+
 def main(root:Path):
     root=root.resolve()
+    install_phone_brush_editor(root)
     own=Path(__file__).resolve().parent
     native_chrome=own/"mobile_core/native_canvas_chrome.h"
     lightweight=own/"mobile_core/lightweight_canvas_host.h"
