@@ -68,6 +68,16 @@ public:
             {"SvgTextTool",i18n("Text")},
             {"KritaSelected/KisToolColorSampler",i18n("Eyedropper")}
         });
+        // Reuse Krita's selection fill/stroke commands directly. They
+        // operate on the current document selection (or the full layer if
+        // Krita permits it), with Krita's own undo transaction.
+        addGroup(i18n("Fill and stroke actions"),{},{
+            {"fill_selection_foreground_color",i18n("Fill foreground"),"format-fill-color"},
+            {"fill_selection_background_color",i18n("Fill background"),"format-fill-color"},
+            {"fill_selection_pattern",i18n("Fill pattern"),"format-fill-color"},
+            {"stroke_selection",i18n("Stroke selection"),"draw-freehand"},
+            {"stroke_shapes",i18n("Stroke shapes"),"draw-freehand"}
+        });
         addGroup(i18n("Select"),{
             {"KisToolSelectOutline",i18n("Lasso")},
             {"KisToolSelectRectangular",i18n("Rectangle")},
