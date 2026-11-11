@@ -215,6 +215,21 @@ public:
                 {"copy_selection_to_new_layer",QObject::tr("Copy to layer")},
                 {"cut_selection_to_new_layer",QObject::tr("Cut to layer")}
             });
+        } else if(id==QStringLiteral("KritaShape/KisToolBrush")) {
+            // Use Krita's actual freehand smoothing actions. Selecting a
+            // mode changes its native paint tool configuration, not the
+            // mobile brush engine or the drawing input stream.
+            nativeMenu(QObject::tr("Smoothing"),{
+                {"set_no_brush_smoothing",QObject::tr("None")},
+                {"set_simple_brush_smoothing",QObject::tr("Basic")},
+                {"set_weighted_brush_smoothing",QObject::tr("Weighted")},
+                {"set_stabilizer_brush_smoothing",QObject::tr("Stabilizer")},
+                {"set_pixel_perfect_smoothing",QObject::tr("Pixel perfect")}
+            });
+            nativeMenu(QObject::tr("Symmetry"),{
+                {"hmirror_action",QObject::tr("Horizontal")},
+                {"vmirror_action",QObject::tr("Vertical")}
+            });
         } else if(id==QStringLiteral("KisToolTransform")) {
             // Krita's full Tool Options panel switches mode by calling
             // KisToolTransformConfigWidget slots. Its global shortcut
