@@ -57,9 +57,14 @@ protected:
             const bool mobileCombo=combo && !combo->isEditable() &&
                 widget->property("_mobileTapCombo").toBool();
             const bool button=qobject_cast<QAbstractButton*>(widget);
-            const bool itemView=area && area->viewport()==widget &&
-                qobject_cast<QAbstractItemView*>(area);
-            const bool scrollControl=button || itemView || (combo && !combo->isEditable());
+            // Item-view viewports already have a complete native Qt
+            // pressed/released/clicked selection state machine. Holding
+            // their press until release breaks QListView::clicked and
+            // QListWidget::itemClicked (Brushes and Home Recent/All
+            // Projects). QScroller handles touch swipes there. Only
+            // intercept actual child buttons/combos in scrolling forms.
+            // Do not synthesize clicks for the viewport itself.
+            const bool scrollControl=button || (combo && !combo->isEditable());
             if(!mobileCombo && (!area || !scrollControl))return false;
             m_target=widget;
             m_area=area;
