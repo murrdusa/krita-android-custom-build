@@ -151,6 +151,9 @@ public:
         }
         auto *cloneSourceAction=makeAction("Set Clone Source");
         cloneSourceAction->setIcon(studioIcon("krita_tool_color_sampler"));
+        if(auto *collection=engineSession->viewManager()->actionCollection())
+            collection->addAction(QStringLiteral("mobile_set_clone_source"),
+                                  cloneSourceAction);
         QObject::connect(cloneSourceAction,&QAction::triggered,workspace,[workspace]() {
             workspace->pickCloneSource();
         });
