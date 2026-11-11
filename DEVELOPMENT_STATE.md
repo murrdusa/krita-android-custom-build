@@ -4,6 +4,10 @@
 
 Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1). This file records *current* status, not a commit-by-commit log. The preceding complete log is preserved verbatim in [DEVELOPMENT_HISTORY_2026-11-11.md](DEVELOPMENT_HISTORY_2026-11-11.md). More focused runbooks live under `mobile_core/`.
 
+## Immediate device-feedback priority (November 11, 2026)
+
+**READ [DEVICE_FEEDBACK_2026-11-11.md](DEVICE_FEEDBACK_2026-11-11.md) BEFORE EDITING MOBILE UI, LAYERS OR DOCUMENT NAVIGATION.** It records detailed Fold 6 user observations, all requested design changes, and priority ordering; no points may silently be dropped. The user has not tested checklist section 4 or later. First fix intermittently crashing group deletion and stale layer tree, missing top toolbar after Documents → Open, Tools touch-scroll regression, and adjust Home to autosave **named** projects while preserving unnamed-draft/explicit Discard semantics. Group and blending UI, brush grid, native mirror echo, gesture touch-vs-scroll, numeric px suffix editing, empty-group drop, first-row Alpha Lock, rename by name tap, and one-finger palette status are also documented.
+
 ## Source of truth and build gate
 
 - Independent Android APK target `mobile_studio`, package ID `org.krita.mobilestudio.debug`, based on the actual Krita 6.0.4 paint/resource/tool/document engine. It runs through its own Qt native startup, `MobileLightweightCanvasHost`, `KisViewManager` and real `KisView`, **not** the desktop `KisMainWindow` or MDI. Native C++ engine extraction is in `mobile_core/krita_engine_initialization.cpp` and `apply_mobile_shell.py`.
