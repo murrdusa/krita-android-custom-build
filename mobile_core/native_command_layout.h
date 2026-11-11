@@ -31,6 +31,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include "touch_scroll.h"
+#include "recent_colors.h"
 #include "toolbar_drag_gesture.h"
 
 class MobileNativeCommandLayout final : public QObject
@@ -38,17 +39,30 @@ class MobileNativeCommandLayout final : public QObject
 public:
     using Commands=QMap<QString,QPointer<QAction>>;
 
-    static bool install(QMainWindow *host,QAction *home,const QIcon &settingsIcon,
+    static MobileNativeCommandLayout *install(QMainWindow *host,QAction *home,const QIcon &settingsIcon,
                         const Commands &commands,const QStringList &defaults,
                         const QList<QAction*> &moreActions,QAction *canvasOnly=nullptr,
                         MobileToolbarGestureButton::InlineAdjustment adjust={},
-                        MobileToolbarGestureButton::ColorSample sample={})
+                        MobileToolbarGestureButton::ColorSample sample={},
+                        std::function<void(const QColor &)> selectColor={})
     {
         QWidget *canvas=host?host->centralWidget():nullptr;
-        if(!canvas || !home || toolbar(canvas))return false;
+        if(!canvas || !home || toolbar(canvas))return nullptr;
         auto *layout=new MobileNativeCommandLayout(canvas,commands,defaults);
         layout->m_adjust=std::move(adjust);
         layout->m_sample=std::move(sample);
+        layout->m_selectColor=std::move(selectColor);
+        layout->m_recentColors=MobileRecentColors::load();
+        layout->m_historyEnabled=layout->m_selectColor &&
+            QSettings().value(QStringLiteral("MobileStudio/toolbarColorHistory"),false).toBool();
+        layout->m_colorTimer.setSingleShot(true);
+        layout->m_colorTimer.setInterval(200);
+        QObject::connect(&layout->m_colorTimer,&QTimer::timeout,layout,[layout]() {
+            const auto colors=MobileRecentColors::remember(layout->m_pendingColor);
+            if(layout->m_recentColors==colors)return;
+            layout->m_recentColors=colors;
+            if(layout->m_historyEnabled)layout->requestPosition();
+        });
         auto *row=new QHBoxLayout(layout->m_toolbar);
         row->setContentsMargins(1,1,1,1);
         row->setSpacing(1);
@@ -89,6 +103,16 @@ public:
         QObject::connect(edit,&QAction::triggered,layout,[layout]() {
             QTimer::singleShot(0,layout,[layout]() {layout->editToolbar();});
         });
+        if(layout->m_selectColor) {
+            auto *history=menu->addAction(QObject::tr("Toolbar color history"));
+            history->setCheckable(true);
+            history->setChecked(layout->m_historyEnabled);
+            QObject::connect(history,&QAction::toggled,layout,[layout](bool enabled) {
+                layout->m_historyEnabled=enabled;
+                QSettings().setValue(QStringLiteral("MobileStudio/toolbarColorHistory"),enabled);
+                layout->position();
+            });
+        }
         auto *drawing=menu->addMenu(QObject::tr("Drawing controls"));
         drawing->setStyleSheet(popupStyle);
         for(const auto &id:defaults)
@@ -133,7 +157,14 @@ public:
         layout->m_canvasOnly=canvasOnly && canvasOnly->isChecked();
         layout->m_toolbar->setVisible(!layout->m_canvasOnly);
         layout->rebuild();
-        return true;
+        return layout;
+    }
+
+    void observeForeground(const QColor &color)
+    {
+        if(!color.isValid() || color==m_pendingColor)return;
+        m_pendingColor=color;
+        m_colorTimer.start();
     }
 
     static const char *overlayBoundsProperty()
@@ -276,6 +307,75 @@ private:
         return button;
     }
 
+    static constexpr int historyThickness=28;
+
+    void placeHistory(QFrame *frame,Edge edge,int margin,bool show)
+    {
+        auto *history=frame->findChild<QFrame*>(QStringLiteral("_mobileToolbarColorHistory"),
+                                                Qt::FindDirectChildrenOnly);
+        int left=margin,top=margin,right=margin,bottom=margin;
+        if(show) {
+            switch(edge) {
+            case Top:bottom+=historyThickness;break;
+            case Bottom:top+=historyThickness;break;
+            case Left:right+=historyThickness;break;
+            case Right:left+=historyThickness;break;
+            }
+        }
+        frame->layout()->setContentsMargins(left,top,right,bottom);
+        if(!show) {
+            if(history)history->hide();
+            return;
+        }
+        const bool vertical=edge==Left || edge==Right;
+        if(!history) {
+            history=new QFrame(frame);
+            history->setObjectName(QStringLiteral("_mobileToolbarColorHistory"));
+            history->setAccessibleName(QObject::tr("Toolbar color history"));
+            history->setStyleSheet(QStringLiteral(
+                "QFrame#_mobileToolbarColorHistory{background:#252529;border-radius:5px;}"));
+            auto *row=new QBoxLayout(vertical?QBoxLayout::TopToBottom:
+                                             QBoxLayout::LeftToRight,history);
+            row->setContentsMargins(2,2,2,2);
+            row->setSpacing(2);
+            for(int i=0;i<8;++i) {
+                auto *swatch=new QToolButton(history);
+                swatch->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Ignored);
+                swatch->setMaximumSize(vertical?24:44,vertical?44:24);
+                row->addWidget(swatch,1);
+                QObject::connect(swatch,&QToolButton::clicked,history,[this,i]() {
+                    const QColor color(m_recentColors.value(i));
+                    if(color.isValid())m_selectColor(color);
+                });
+            }
+            row->addStretch();
+        }
+        const int length=vertical?frame->height():frame->width();
+        const int count=qMin(m_recentColors.size(),qMax(1,length/32));
+        for(int i=0;i<8;++i) {
+            auto *swatch=static_cast<QToolButton*>(history->layout()->itemAt(i)->widget());
+            swatch->setVisible(i<count);
+            if(i>=count)continue;
+            const QColor color(m_recentColors.at(i));
+            const auto name=color.name(QColor::HexRgb);
+            if(swatch->accessibleName()==name && swatch->property("swatchColor").value<QColor>()==color)
+                continue;
+            swatch->setAccessibleName(name);
+            swatch->setToolTip(name);
+            swatch->setProperty("swatchColor",color);
+            swatch->setStyleSheet(QStringLiteral(
+                "QToolButton{background:rgba(%1,%2,%3,%4);border:1px solid #a6a6ae;border-radius:3px;}"
+                "QToolButton:pressed{border:2px solid white;}")
+                .arg(color.red()).arg(color.green()).arg(color.blue()).arg(color.alpha()));
+        }
+        const int x=edge==Left?frame->width()-historyThickness:0;
+        const int y=edge==Top?frame->height()-historyThickness:0;
+        history->setGeometry(x,y,vertical?historyThickness:length,
+                                 vertical?length:historyThickness);
+        history->show();
+        history->raise();
+    }
+
     void position()
     {
         auto *canvas=static_cast<QWidget*>(parent());
@@ -285,8 +385,11 @@ private:
         const int pinnedWidth=row->itemAt(0)->widget()->width()+
                               row->itemAt(2)->widget()->width();
         const int stripWidth=m_scroll->widget()?m_scroll->widget()->width():0;
+        const bool history=m_historyEnabled && !m_canvasOnly && !m_recentColors.isEmpty();
         m_toolbar->setGeometry(usable.x(),usable.y(),
-            qMin(pinnedWidth+stripWidth+6,qMax(0,usable.width())),main.target+4);
+            qMin(pinnedWidth+stripWidth+6,qMax(0,usable.width())),
+            main.target+4+(history?historyThickness:0));
+        placeHistory(m_toolbar,Top,1,history);
         if(!m_canvasOnly)usable.setTop(m_toolbar->geometry().bottom()+3);
         const int minimumWidth=qMax(140,usable.width()*2/3);
         const int minimumHeight=qMax(190,usable.height()*2/3);
@@ -300,9 +403,11 @@ private:
                 auto *scroll=static_cast<QScrollArea*>(frame->layout()->itemAt(0)->widget());
                 const int extent=vertical?scroll->widget()->height():scroll->widget()->width();
                 const int available=vertical?usable.height():usable.width();
-                const int breadth=spec.target+4;
+                const int toolbarBreadth=spec.target+4;
                 const int remaining=vertical?usable.width()-minimumWidth:usable.height()-minimumHeight;
-                const bool fits=!m_canvasOnly && extent>0 && available>=breadth && remaining>=breadth+2;
+                const bool showHistory=history && remaining>=toolbarBreadth+historyThickness+2;
+                const int breadth=toolbarBreadth+(showHistory?historyThickness:0);
+                const bool fits=!m_canvasOnly && extent>0 && available>=toolbarBreadth && remaining>=breadth+2;
                 frame->setVisible(fits);
                 if(!fits)continue;
 
@@ -313,6 +418,7 @@ private:
                 const int y=vertical?usable.top()+offset:
                     (edge==Top?usable.top():usable.bottom()-breadth+1);
                 frame->setGeometry(x,y,vertical?breadth:length,vertical?length:breadth);
+                placeHistory(frame,edge,2,showHistory);
                 frame->raise();
                 switch(edge) {
                 case Top:usable.setTop(usable.top()+breadth+2);break;
@@ -698,6 +804,11 @@ private:
     Commands m_commands;
     MobileToolbarGestureButton::InlineAdjustment m_adjust;
     MobileToolbarGestureButton::ColorSample m_sample;
+    std::function<void(const QColor &)> m_selectColor;
+    QTimer m_colorTimer;
+    QColor m_pendingColor;
+    QStringList m_recentColors;
+    bool m_historyEnabled=false;
     QStringList m_defaults;
     QVector<Bar> m_bars;
     QVector<QFrame*> m_extra;

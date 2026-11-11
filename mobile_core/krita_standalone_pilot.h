@@ -395,7 +395,7 @@ public:
         for(const auto &entry:studioCommands)
             toolbarCommands.insert(QString::fromLatin1(entry.first),entry.second);
         setStudioIcon(optionsAction,"paintop_settings_02");
-        if(!MobileNativeCommandLayout::install(window,homeAction,studioIcon("configure-thicker"),
+        auto *commandLayout=MobileNativeCommandLayout::install(window,homeAction,studioIcon("configure-thicker"),
             toolbarCommands,{"paint","erase","blend","tool-settings","color","layers",
                              "tools","undo","redo","save","shortcut"},
             moreActions,canvasOnlyAction,
@@ -404,7 +404,24 @@ public:
             },
             [workspace](const QPoint &global) {
                 workspace->sampleToolbarColor(global);
-            })) {
+            },
+            [nativeBridge](const QColor &color) {
+                if(auto *provider=nativeBridge.brushResources()) {
+                    const auto foreground=provider->fgColor();
+                    if(foreground.colorSpace())
+                        provider->setFGColor(KoColor(color,foreground.colorSpace()));
+                }
+            });
+        if(commandLayout) {
+            if(auto *provider=nativeBridge.brushResources()) {
+                if(MobileRecentColors::load().isEmpty())
+                    commandLayout->observeForeground(provider->fgColor().toQColor());
+                QObject::connect(provider,&KisCanvasResourceProvider::sigFGColorChanged,
+                                 commandLayout,[commandLayout](const KoColor &color) {
+                    commandLayout->observeForeground(color.toQColor());
+                });
+            }
+        } else {
             qWarning() << "Independent Krita command layout unavailable";
         }
 

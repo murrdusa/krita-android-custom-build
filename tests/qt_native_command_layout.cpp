@@ -117,8 +117,12 @@ int main(int argc,char **argv)
     second.resize(420,600);
     auto *secondCanvas=new QWidget(&second);
     second.setCentralWidget(secondCanvas);
+    QSettings().setValue(QStringLiteral("MobileStudio/recentColors"),
+                         QStringList{QStringLiteral("#ffaa5500"),QStringLiteral("#ff0066ff")});
+    QColor picked;
     verify(MobileNativeCommandLayout::install(
-        &second,&home,icon,commands,defaults,{},&canvasOnly),"could not reload multiple toolbars");
+        &second,&home,icon,commands,defaults,{},&canvasOnly,{},{},
+        [&picked](const QColor &color) {picked=color;}),"could not reload multiple toolbars");
     second.show();
     QApplication::processEvents();
     auto *side=secondCanvas->findChild<QFrame*>(QStringLiteral("_mobileCustomToolbar"));
@@ -127,14 +131,35 @@ int main(int argc,char **argv)
            "saved right rail did not restore vertically at the edge");
     verify(MobileNativeCommandLayout::overlayBounds(secondCanvas).right()<side->geometry().left(),
            "right rail did not reserve space for floating panels");
+    auto *secondMenu=secondCanvas->findChild<QMenu*>(QStringLiteral("_mobileNativeSettingsMenu"));
+    verify(secondMenu,"second toolbar lost its Settings menu");
+    QAction *historyToggle=nullptr;
+    for(auto *action:secondMenu->actions())
+        if(action->text()==QStringLiteral("Toolbar color history"))historyToggle=action;
+    verify(historyToggle && !historyToggle->isChecked(),"history should start off");
+    historyToggle->trigger();
+    auto *secondBar=secondCanvas->findChild<QFrame*>(QStringLiteral("_mobileNativeToolbar"));
+    const auto stripName=QStringLiteral("_mobileToolbarColorHistory");
+    auto *topHistory=secondBar->findChild<QFrame*>(stripName);
+    auto *sideHistory=side->findChild<QFrame*>(stripName);
+    verify(topHistory && topHistory->isVisible() && topHistory->width()==secondBar->width() &&
+           topHistory->geometry().bottom()==secondBar->rect().bottom(),
+           "top history did not span the inward edge");
+    verify(sideHistory && sideHistory->isVisible() && sideHistory->height()==side->height() &&
+           sideHistory->geometry().left()==side->rect().left(),
+           "right history did not span the inward edge");
+    sideHistory->findChild<QToolButton*>()->click();
+    verify(picked==QColor("#aa5500"),"history did not select the recent color");
     canvasOnly.trigger();
-    verify(!side->isVisible(),"Canvas Only left an extra toolbar visible");
+    verify(!side->isVisible() && !topHistory->isVisible(),"Canvas Only left a toolbar visible");
     canvasOnly.trigger();
+    historyToggle->trigger();
+    verify(!topHistory->isVisible() && !sideHistory->isVisible() &&
+           !QSettings().value(QStringLiteral("MobileStudio/toolbarColorHistory")).toBool(),
+           "history toggle did not hide both strips and persist");
     second.resize(160,280);
     QApplication::processEvents();
     verify(!side->isVisible(),"oversized rail crowded a small canvas");
-    auto *secondMenu=secondCanvas->findChild<QMenu*>(QStringLiteral("_mobileNativeSettingsMenu"));
-    verify(secondMenu,"second toolbar lost its Settings menu");
     bool fallback=false;
     for(auto *action:secondMenu->actions())
         if(auto *menu=action->menu())

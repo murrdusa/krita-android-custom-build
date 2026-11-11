@@ -15,6 +15,7 @@
 #include <QConicalGradient>
 #include <QDialog>
 #include "touch_scroll.h"
+#include "recent_colors.h"
 #include <QEvent>
 #include <QFrame>
 #include <QHBoxLayout>
@@ -195,8 +196,7 @@ public:
             QSettings settings;
             m_sizeLevel=qBound(0,settings.value(QStringLiteral("MobileStudio/colorWheelSize"),1).toInt(),2);
             m_corner=qBound(0,settings.value(QStringLiteral("MobileStudio/colorWheelCorner"),0).toInt(),3);
-            m_history=settings.value(QStringLiteral("MobileStudio/recentColors")).toStringList();
-            while(m_history.size()>8)m_history.removeLast();
+            m_history=MobileRecentColors::load();
             m_showHistory=settings.value(QStringLiteral("MobileStudio/colorWheelHistory"),false).toBool();
             m_wheel=new MobileHueWheel(this,12);
             m_wheel->setMinimumSize(0,0);
@@ -298,9 +298,7 @@ public:
             QStringLiteral("MobileStudio/colorWheelRight"),7).toInt());
         m_bottomInset=qMax(0,saved.value(
             QStringLiteral("MobileStudio/colorWheelBottom"),7).toInt());
-        m_history=saved.value(
-            QStringLiteral("MobileStudio/recentColors")).toStringList();
-        while(m_history.size()>8)m_history.removeLast();
+        m_history=MobileRecentColors::load();
         refreshHistory();
         setExpanded(saved.value(
             QStringLiteral("MobileStudio/colorWheelExpanded"),true).toBool());
@@ -329,6 +327,9 @@ public:
     }
     void openWheelOptions()
     {
+        m_history=MobileRecentColors::load();
+        refreshHistory();
+        updateForViewport();
         QDialog dialog(window());
         dialog.setWindowTitle(i18n("Color options"));
         auto *layout=new QVBoxLayout(&dialog);
@@ -649,12 +650,7 @@ private:
 
     void remember(const QColor &color)
     {
-        const QString code=color.name(QColor::HexArgb);
-        m_history.removeAll(code);
-        m_history.prepend(code);
-        while(m_history.size()>8)m_history.removeLast();
-        QSettings().setValue(QStringLiteral("MobileStudio/recentColors"),
-                             m_history);
+        m_history=MobileRecentColors::remember(color);
         refreshHistory();
         if(m_wheelOnly && m_showHistory && m_history.size()==1)updateForViewport();
     }
