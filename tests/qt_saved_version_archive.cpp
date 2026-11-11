@@ -100,7 +100,11 @@ int main(int argc,char **argv)
             "legacy checkpoint without checksum should still restore");
     const QString newestSnapshot=versions.first().path;
     const QByteArray newestOriginal=load(newestSnapshot);
-    save(newestSnapshot,QByteArray::fromHex("504b0304")+"corrupted");
+    QByteArray checksumMismatch=newestOriginal;
+    checksumMismatch[checksumMismatch.size()-1]='X';
+    require(checksumMismatch.size()==newestOriginal.size(),
+            "checksum corruption test must preserve archive size");
+    save(newestSnapshot,checksumMismatch);
     require(MobileSavedVersionArchive::materializeRecovery(
                 versions.first(),recover).isEmpty(),
             "damaged snapshot must fail checksum validation");
@@ -112,7 +116,7 @@ int main(int argc,char **argv)
     save(newestSnapshot,newestOriginal);
     // An existing sidecar must not cause a damaged latest KRA to be
     // treated as identical to the current good saved file.
-    save(newestSnapshot,QByteArray::fromHex("504b0304")+"damaged-copy");
+    save(newestSnapshot,checksumMismatch);
     require(MobileSavedVersionArchive::snapshot(source,store),
             "failed to repair history after a damaged checkpoint");
     versions=MobileSavedVersionArchive::list(source,store);
