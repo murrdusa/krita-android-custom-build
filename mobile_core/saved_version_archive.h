@@ -164,10 +164,27 @@ public:
         }
         const QByteArray sha=hash.result().toHex();
         const auto previous=scan(folder);
-        if(!previous.isEmpty()) {
+        if(!previous.isEmpty() && previous.first().bytes==copied) {
             QFile sidecar(previous.first().path+QStringLiteral(".sha256"));
-            if(sidecar.open(QIODevice::ReadOnly) &&
-               sidecar.readAll().trimmed()==sha) {
+            QByteArray oldSha;
+            if(sidecar.open(QIODevice::ReadOnly))
+                oldSha=sidecar.readAll().trimmed();
+            if(oldSha.size()!=64) {
+                // A crash can interrupt the checksum sidecar after the
+                // atomic KRA checkpoint has already been committed. Hash
+                // that last copy instead of evicting an older version
+                // with a second, identical checkpoint.
+                QFile last(previous.first().path);
+                if(last.open(QIODevice::ReadOnly)) {
+                    QCryptographicHash fallback(QCryptographicHash::Sha256);
+                    QByteArray chunk(256*1024,Qt::Uninitialized);
+                    qint64 got=0;
+                    while((got=last.read(chunk.data(),chunk.size()))>0)
+                        fallback.addData(chunk.constData(),got);
+                    if(got==0)oldSha=fallback.result().toHex();
+                }
+            }
+            if(oldSha==sha) {
                 output.cancelWriting(); // unchanged save, no duplicate
                 return true;
             }

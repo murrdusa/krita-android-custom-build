@@ -66,6 +66,13 @@ int main(int argc,char **argv)
             MobileSavedVersionArchive::list(source,store).size()==1,
             "repeated unchanged save should not create a duplicate");
     const QString firstSnapshot=versions.first().path;
+    // A completed KRA archive survives even when power loss occurs
+    // before the optional checksum sidecar is published.
+    require(QFile::remove(firstSnapshot+QStringLiteral(".sha256")),
+            "cannot simulate a missing checksum sidecar");
+    require(MobileSavedVersionArchive::snapshot(source,store) &&
+            MobileSavedVersionArchive::list(source,store).size()==1,
+            "sidecar loss must not evict older history with duplicates");
     QThread::msleep(3);
     const QByteArray second=QByteArray::fromHex("504b0304")+"saved-B";
     save(source,second);
