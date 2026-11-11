@@ -180,7 +180,7 @@ public:
         if(draft.isEmpty())return false;
         const QString staging=draft+QStringLiteral(".home.pending.kra");
         bool completed=false,changed=false;
-        const auto image=guarded->image().toStrongRef();
+        auto image=guarded->image().toStrongRef();
         if(!image)return false;
         const auto modified=QObject::connect(image.data(),&KisImage::sigImageModified,
             guarded.data(),[&changed]() {changed=true;});

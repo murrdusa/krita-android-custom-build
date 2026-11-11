@@ -460,7 +460,7 @@ private:
     void deleteLayers(const KisNodeList &targets)
     {
         auto *view=m_engine.manager();
-        const KisImageSP image=view?view->image().toStrongRef():KisImageSP();
+        KisImageSP image=view?view->image().toStrongRef():KisImageSP();
         if(!image || targets.isEmpty() || m_deleteImage || m_reorderPending ||
            m_clipBusy || m_clipPropertyPending)return;
         const QString prompt=targets.size()==1?
