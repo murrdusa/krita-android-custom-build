@@ -248,6 +248,9 @@ public:
                 if(m->createNode(QStringLiteral("KisGroupLayer")))reload();
         });
         addButton(creation,i18n("Duplicate"),[this]() {
+            auto *view=m_engine.manager();
+            const KisImageSP image=view?view->image().toStrongRef():KisImageSP();
+            if(!prepareNodeCreation(image,false))return;
             if(auto *m=manager()) {
                 m->duplicateActiveNode();
                 reload();
@@ -932,8 +935,19 @@ private:
             reorderNode(node,chosen==moveUp);
             return; // Rebuild after the undoable move, not during it.
         } else {
-            m_engine.selectLayer(node);
-            if(chosen==duplicate)m->duplicateActiveNode();
+            if(chosen==duplicate) {
+                // Duplicate only the tapped layer, not a stale selection
+                // left behind by Krita's multi-layer transform.
+                if(auto *transform=activeTransform()) {
+                    if(!canRetarget(transform))return;
+                    m_engine.freehandBrush();
+                }
+                if(!m_engine.selectLayer(node))return;
+                m->slotSetSelectedNodes(KisNodeList{node});
+                m->duplicateActiveNode();
+            } else {
+                m_engine.selectLayer(node);
+            }
         }
         reload();
     }
