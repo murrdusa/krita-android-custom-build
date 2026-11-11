@@ -476,6 +476,21 @@ public:
     }
 
 private:
+    // Reordering mutates Krita's real node hierarchy. Never move a
+    // transform target while an uncommitted preview is active, and
+    // recheck document identity after switching back to the brush.
+    bool prepareLayerReorder(const KisImageSP &image)
+    {
+        if(!image || m_reorderPending || m_clipBusy ||
+           m_clipPropertyPending)return false;
+        if(auto *transform=activeTransform()) {
+            if(!canRetarget(transform))return false;
+            m_engine.freehandBrush();
+        }
+        auto *view=m_engine.manager();
+        return view && view->image().toStrongRef()==image;
+    }
+
     // A reorder is a Krita image stroke, not a legacy direct-command
     // edit. It enters the same document undo stack used by pen strokes.
     // Node order is bottom-to-top, whereas the displayed tree is
@@ -530,7 +545,8 @@ private:
         // Selection is UI state; the following command is the actual
         // undoable document mutation. Never use a different document's
         // image or Krita's desktop node-manager reorder action.
-        if(!m_engine.selectLayer(node))return;
+        if(!prepareLayerReorder(image) || !inImage(node,image) ||
+           !m_engine.selectLayer(node))return;
 
         runNativeLayerStroke(image,
             new KisImageLayerMoveCommand(image,node,parent,above,true),
@@ -1444,6 +1460,8 @@ private:
         for(KisNodeSP p=destination;p;p=p->parent())
             if(p==source)return;
 
+        if(!prepareLayerReorder(image) || !inImage(source,image) ||
+           !inImage(target,image))return;
         // Plain layer moves do not need the asynchronous clip wrapper
         // teardown/rebuild. Use the same native undoable image stroke
         // as Up/Down, only regroup when a clipping run is involved.
