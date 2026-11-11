@@ -234,14 +234,18 @@ public:
 
         auto *creation=new QHBoxLayout;
         addButton(creation,i18n("+ Paint"),[this]() {
-            if(auto *m=manager()) {
+            auto *view=m_engine.manager();
+            const KisImageSP image=view?view->image().toStrongRef():KisImageSP();
+            if(!prepareNodeCreation(image,false))return;
+            if(auto *m=manager())
                 if(m->createNode(QStringLiteral("KisPaintLayer")))reload();
-            }
         });
         addButton(creation,i18n("+ Group"),[this]() {
-            if(auto *m=manager()) {
+            auto *view=m_engine.manager();
+            const KisImageSP image=view?view->image().toStrongRef():KisImageSP();
+            if(!prepareNodeCreation(image,false))return;
+            if(auto *m=manager())
                 if(m->createNode(QStringLiteral("KisGroupLayer")))reload();
-            }
         });
         addButton(creation,i18n("Duplicate"),[this]() {
             if(auto *m=manager()) {
@@ -329,22 +333,9 @@ public:
             if(!chosen || !m_engine.manager() ||
                m_engine.manager()->image().toStrongRef()!=original)
                 return;
-            if(masks->actions().contains(chosen)) {
-                // A mask belongs to one layer. Do not inherit the current
-                // multi-transform selection (or a stale layer from a prior
-                // canvas) when creating it from the global Add menu.
-                const KisNodeList current=selectedTargets();
-                KisNodeSP target=m_active;
-                if(!target || !current.contains(target) ||
-                   !target->inherits("KisLayer") ||
-                   !target->isEditable() || !inImage(target,original))
-                    return;
-                if(auto *transform=activeTransform()) {
-                    if(!canRetarget(transform))return;
-                    m_engine.freehandBrush();
-                }
-                if(!m_engine.selectLayer(target))return;
-                nodes->slotSetSelectedNodes(KisNodeList{target});
+            const bool isMask=masks->actions().contains(chosen);
+            if(!prepareNodeCreation(original,isMask))return;
+            if(isMask) {
                 if(nodes->createNode(chosen->data().toString()))reload();
                 return;
             }
@@ -365,6 +356,9 @@ public:
                 *held=false; // Consume the click after a long hold.
                 return;
             }
+            auto *view=m_engine.manager();
+            const KisImageSP image=view?view->image().toStrongRef():KisImageSP();
+            if(!prepareNodeCreation(image,false))return;
             if(auto *m=manager()) {
                 m->createNode(QStringLiteral("KisPaintLayer"));
                 QTimer::singleShot(120,this,[this]() {reload();});
@@ -994,6 +988,35 @@ private:
         if(!image || !node || !node->parent())return false;
         if(!inImage(node,image))return false;
         KisLayerPropertiesIcons::setNodePropertyAutoUndo(node,id,enabled,image);
+        return true;
+    }
+
+    // Creation uses Krita's native node manager and the current document.
+    // A live multi-layer transform must not silently gain a new target or
+    // inherit the old selection when a layer/mask is inserted.
+    bool prepareNodeCreation(const KisImageSP &image,bool mask)
+    {
+        auto *view=m_engine.manager();
+        auto *nodes=manager();
+        if(!image || !view || !nodes ||
+           view->image().toStrongRef()!=image)return false;
+        if(m_reorderPending || m_clipBusy || m_clipPropertyPending)return false;
+        KisNodeSP target=m_active;
+        if(!inImage(target,image) ||
+           KisNodeManager::isNodeHidden(target,true))
+            target=nodes->activeNode();
+        if(!inImage(target,image) ||
+           KisNodeManager::isNodeHidden(target,true))return false;
+        if(mask && (!target->inherits("KisLayer") ||
+                    !target->isEditable()))return false;
+        if(auto *transform=activeTransform()) {
+            if(!canRetarget(transform))return false;
+            m_engine.freehandBrush();
+        }
+        if(!m_engine.manager() ||
+           m_engine.manager()->image().toStrongRef()!=image ||
+           !m_engine.selectLayer(target))return false;
+        nodes->slotSetSelectedNodes(KisNodeList{target});
         return true;
     }
 
