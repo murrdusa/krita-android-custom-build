@@ -1918,9 +1918,9 @@ private:
 
     bool allowsMultiple() const
     {
-        const QString tool=m_engine.activeTool();
+        const QString tool=m_engine.activeTool().section(QLatin1Char('/'),-1);
         return tool==QStringLiteral("KisToolTransform") ||
-               tool==QStringLiteral("KritaTransform/KisToolMove");
+               tool==QStringLiteral("KisToolMove");
     }
 
     KoToolBase *activeTransform() const
@@ -1929,7 +1929,8 @@ private:
         auto *controller=tools?tools->activeCanvasController():nullptr;
         auto *view=m_engine.manager();
         if(!controller || !view || controller->canvas()!=view->canvasBase() ||
-           tools->activeToolId()!=QStringLiteral("KisToolTransform"))return nullptr;
+           tools->activeToolId().section(QLatin1Char('/'),-1)!=
+               QStringLiteral("KisToolTransform"))return nullptr;
         return tools->toolById(controller->canvas(),tools->activeToolId());
     }
 
@@ -2019,7 +2020,8 @@ private:
            !inImage(node,view->image().toStrongRef()))return;
         if(allowsMultiple()) {
             QPointer<KoToolBase> transform=activeTransform();
-            if(m_engine.activeTool()==QStringLiteral("KisToolTransform") &&
+            if(m_engine.activeTool().section(QLatin1Char('/'),-1)==
+               QStringLiteral("KisToolTransform") &&
                (!transform || !canRetarget(transform)))return;
             if(m_selected.contains(node)) {
                 // Native transform requires at least one target. A second
