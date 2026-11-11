@@ -108,7 +108,9 @@ QHash<KisInputManager*, TabletReferenceTap> tabletReferenceTaps;""")
                 }
             }
             event->accept();""",
-           """                    if (drag.moved) {
+           """                    if (drag.moved && QSettings().value(
+                            QStringLiteral("TabletUi/referenceFingerDrag"),
+                            true).toBool()) {
                         drag.shape->setAbsolutePosition(
                             drag.startingShapePosition + now - drag.startingDocPoint);
                         drag.shape->update();
