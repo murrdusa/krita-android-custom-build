@@ -95,6 +95,10 @@ QHash<KisInputManager*, TabletReferenceTap> tabletReferenceTaps;""")
                     if (drag.inTwoFinger) {""",
            """                } else {
                     const QPointF now = toDoc(points.first().pos());
+                    // A finger never lands perfectly motionless on a
+                    // touch sensor. Do not mutate the KoShape at all for
+                    // sub-slop movement: even a fractional-pixel move
+                    // changes its transform and used to reject double taps.
                     if (QLineF(points.first().pos(), drag.startingWidgetPoint).length() > 12.0)
                         drag.moved = true;
                     if (drag.inTwoFinger) {""")
@@ -104,9 +108,11 @@ QHash<KisInputManager*, TabletReferenceTap> tabletReferenceTaps;""")
                 }
             }
             event->accept();""",
-           """                    drag.shape->setAbsolutePosition(
-                        drag.startingShapePosition + now - drag.startingDocPoint);
-                    drag.shape->update();
+           """                    if (drag.moved) {
+                        drag.shape->setAbsolutePosition(
+                            drag.startingShapePosition + now - drag.startingDocPoint);
+                        drag.shape->update();
+                    }
                 }
                 if (!drag.lastCacheRefresh.isValid() ||
                     drag.lastCacheRefresh.elapsed() >= 25) {
@@ -135,14 +141,17 @@ QHash<KisInputManager*, TabletReferenceTap> tabletReferenceTaps;""")
                     drag.touchAge.isValid() && drag.touchAge.elapsed() <= 350 &&
                     !drag.moved && !drag.usedTwoFingers &&
                     drag.initialTransform == finalTransform;
-                if (shortStationaryTap) {
+                if (shortStationaryTap &&
+                    QSettings().value(
+                        QStringLiteral("TabletUi/referenceDoubleTapEnabled"),
+                        true).toBool()) {
                     const TabletReferenceTap previous = tabletReferenceTaps.value(this);
                     const int maxGapMs = QSettings().value(
-                        QStringLiteral("TabletUi/referenceDoubleTapMs"), 280).toInt();
+                        QStringLiteral("TabletUi/referenceDoubleTapMs"), 350).toInt();
                     if (previous.sinceTap.isValid() &&
                         previous.sinceTap.elapsed() <= qBound(120, maxGapMs, 650) &&
                         previous.shape == drag.shape && previous.canvas == drag.canvas &&
-                        QLineF(previous.widgetPoint, drag.startingWidgetPoint).length() <= 28.0) {
+                        QLineF(previous.widgetPoint, drag.startingWidgetPoint).length() <= 36.0) {
                         tabletReferenceTaps.remove(this);
                         const QTransform before = drag.shape->transformation();
                         QTransform flip;
