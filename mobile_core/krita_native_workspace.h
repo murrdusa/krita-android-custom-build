@@ -230,7 +230,6 @@ public:
             m_brushOptions->hide();
             return;
         }
-        syncBrushSettingsSliders();
         m_brushOptions->refresh();
         showOverlay(m_brushOptions);
     }
@@ -1365,13 +1364,6 @@ private:
         return true;
     }
 
-    void syncBrushSettingsSliders()
-    {
-        if(m_brushOptions)
-            m_brushOptions->setSliderVisibility(!m_brush || !m_brush->isVisible(),
-                !m_opacityStrip || !m_opacityStrip->isVisible());
-    }
-
     void updateBrushSliders()
     {
         const bool available=!m_canvasOnly && m_engine.hasDocument();
@@ -1392,7 +1384,6 @@ private:
         } else if(m_opacityStrip) {
             m_opacityStrip->hide();
         }
-        syncBrushSettingsSliders();
         placeDrawingOverlays();
     }
 

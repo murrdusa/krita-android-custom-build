@@ -49,6 +49,7 @@
 #include <QToolButton>
 #include <QPixmap>
 #include <QPainter>
+#include <QStyle>
 #include <QIcon>
 #include <QMetaObject>
 #include <KoToolManager.h>
@@ -99,7 +100,7 @@ public:
             "QLabel{color:#ecf3fc;font-size:14px;}"
             "QTreeWidget{background:transparent;color:#f4f4f5;"
             "border:0;font-size:14px;}"
-            "QTreeWidget::item{min-height:48px;padding:0;}"
+            "QTreeWidget::item{padding:0;}"
             "QScrollBar:vertical{width:5px;background:transparent;}"
             "QScrollBar::handle:vertical{background:#71717a;min-height:18px;border-radius:2px;}"
             "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}"
@@ -183,18 +184,6 @@ public:
             showLayerDropPreview(m_touchHeld?m_touchPrimary:m_mouseNode,
                                  global);
         });
-        m_summary=new QPushButton(i18n("Select a layer"),this);
-        m_summary->setMinimumHeight(34);
-        m_summary->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
-        m_summary->setAccessibleDescription(i18n("Tap a selected layer name to rename it"));
-        connect(m_summary,&QPushButton::clicked,this,[this]() {
-            const auto targets=selectedTargets();
-            if(targets.size()!=1 || !m_engine.manager())return;
-            renameLayer(targets.first(),m_engine.manager()->image().toStrongRef());
-        });
-        m_summary->setMaximumHeight(36);
-        layout->addWidget(m_summary);
-
         // Keep native Undo/Redo accessible while the live panel is open.
         // These are Krita's existing document actions, never a separate
         // layer-only undo stack.
@@ -1524,7 +1513,7 @@ private:
         KisNodeSP oldParent=logicalParent(source);
         KisNodeSP destination=intoGroup?target:logicalParent(target);
         if(!oldParent || !destination || !source->parent() ||
-           !destination->allowAsChild(source) ||
+           !destination->isEditable(false) || !destination->allowAsChild(source) ||
            !m->canMoveLayer(source,false))return;
         // Never move a folder inside its own descendants.
         for(KisNodeSP p=destination;p;p=p->parent())
@@ -1540,12 +1529,14 @@ private:
         // Plain layer moves do not need the asynchronous clip wrapper
         // teardown/rebuild. Use the same native undoable image stroke
         // as Up/Down, only regroup when a clipping run is involved.
-        if(!hasCompactClipStructure(oldParent) &&
-           !hasCompactClipStructure(destination) &&
-           !inheritsAlpha(source)) {
+        const bool transparencyMask=source->inherits("KisTransparencyMask");
+        if(transparencyMask || (!hasCompactClipStructure(oldParent) &&
+           !hasCompactClipStructure(destination) && !inheritsAlpha(source))) {
             KisNodeSP below=intoGroup?destination->lastChild():
                 (insertAbove?target:target->prevSibling());
-            if(below==source && source->parent()==destination)return;
+            if(below && below->parent()!=destination)return;
+            if(source->parent()==destination &&
+               (below==source || below==source->prevSibling()))return;
             if(!m_engine.selectLayer(source))return;
             runNativeLayerStroke(image,
                 new KisImageLayerMoveCommand(
@@ -1574,11 +1565,14 @@ private:
         beginCompactClipRebuild(oldParent,source,onFlattened,destination);
     }
 
-    static bool groupDropZone(const KisNodeSP &target,const QRect &rect,const QPoint &point)
+    static bool childDropZone(const KisNodeSP &source,const KisNodeSP &target,
+                              const QRect &rect,const QPoint &point)
     {
-        return target && target->inherits("KisGroupLayer") &&
-            (point.x()>rect.right()-20 ||
-             (!target->firstChild() && qAbs(point.y()-rect.center().y())<rect.height()/4));
+        const bool center=qAbs(point.y()-rect.center().y())<rect.height()/4;
+        if(source->inherits("KisTransparencyMask"))
+            return center && target->inherits("KisLayer") && target->allowAsChild(source);
+        return target->inherits("KisGroupLayer") &&
+            (point.x()>rect.right()-20 || (!target->firstChild() && center));
     }
 
     void moveCompactLayerAt(KisNodeSP source,const QPoint &screenPos)
@@ -1593,7 +1587,7 @@ private:
         if(!target || target==source)return;
         const QRect rect=m_tree->visualItemRect(targetItem);
         const bool insertAbove=inView.y()<rect.center().y();
-        moveCompactLayer(source,target,insertAbove,groupDropZone(target,rect,inView));
+        moveCompactLayer(source,target,insertAbove,childDropZone(source,target,rect,inView));
     }
 
     QTreeWidgetItem *itemForNode(KisNodeSP node) const
@@ -1700,7 +1694,21 @@ private:
             return;
         }
         const QRect rect=m_tree->visualItemRect(target);
-        if(groupDropZone(node,rect,point)) {
+        const bool inside=childDropZone(source,node,rect,point);
+        const auto destination=inside?node:logicalParent(node);
+        if(!destination || !destination->isEditable(false) ||
+           !destination->allowAsChild(source) || !manager() ||
+           !manager()->canMoveLayer(source,false)) {
+            m_dropMarker->hide();
+            return;
+        }
+        for(auto parent=destination;parent;parent=parent->parent()) {
+            if(parent==source) {
+                m_dropMarker->hide();
+                return;
+            }
+        }
+        if(inside) {
             m_dropMarker->setStyleSheet(QStringLiteral(
                 "background:transparent;border:3px solid #b0ebff;border-radius:6px;"));
             m_dropMarker->setGeometry(rect.adjusted(2,1,-2,-1));
@@ -2189,8 +2197,7 @@ private:
             const bool group=node->inherits("KisGroupLayer");
             const bool mask=node->inherits("KisMask");
             const bool clipped=inheritsAlpha(node);
-            const bool clipBase=node->nextSibling() &&
-                inheritsAlpha(node->nextSibling());
+            const bool clipBase=m_clipBases.contains(node.data());
             const QColor background=active?QColor(46,103,139):
                 highlighted?QColor(43,82,114):
                 group?QColor(37,66,83):QColor(42,55,68);
@@ -2206,7 +2213,11 @@ private:
                     .arg(background.name()).arg(clipped?4:1).arg(edge));
             }
             if(QToolButton *thumb=m_rowButtons.value(i).data()) {
-                if(mask) {
+                if(group) {
+                    thumb->setStyleSheet(active?
+                        "QToolButton{background:#365c78;border:2px solid #f1949d;border-radius:6px;}":
+                        "QToolButton{background:#243848;border:1px solid #577d96;border-radius:6px;}");
+                } else if(mask) {
                     // Type text is deliberately visible rather than an
                     // unloaded thumbnail; preserve selection highlights.
                     thumb->setStyleSheet(active?
@@ -2235,17 +2246,6 @@ private:
                 (highlighted?i18n("Tap to remove from selection"):i18n("Tap to add to selection")):
                 (active?i18n("Tap again for layer options"):i18n("Tap to select")));
         }
-        if(m_summary) {
-            const KisNodeList targets=selectedTargets();
-            const bool editing=editingGlobalSelection(manager());
-            m_summary->setEnabled(!editing && targets.size()==1 && targets.first());
-            if(editing)
-                m_summary->setText(i18n("Editing selection"));
-            else
-                m_summary->setText(targets.size()==1 && targets.first()?
-                    targets.first()->name():
-                    i18np("%1 layer selected","%1 layers selected",targets.size()));
-        }
     }
 
     // Qt's item widgets stay as small touch-friendly cards. Image previews
@@ -2268,7 +2268,7 @@ private:
                 if(!thumb.isNull()) {
                     button->setIcon(QIcon(QPixmap::fromImage(thumb)));
                     button->setIconSize(QSize(56,56));
-                } else button->setText(QStringLiteral("▧"));
+                }
             }
             m_thumbnailReady[i]=true;
         }
@@ -2281,8 +2281,14 @@ private:
         const bool mask=node->inherits("KisMask");
         const bool clipped=inheritsAlpha(node);
         const int tileSize=m_compactRail?qBound(73,width()-9,111):73;
-        const int tileHeight=group?42:mask?54:tileSize;
-        const int rowHeight=tileHeight+3;
+        const int tileHeight=group?38:mask?54:tileSize;
+        const int rowHeight=tileHeight+4;
+        int groupDepth=group?1:0;
+        for(auto *parent=item->parent();parent;parent=parent->parent()) {
+            const auto ancestor=m_nodes.value(parent->data(0,Qt::UserRole).toInt());
+            if(ancestor && ancestor->inherits("KisGroupLayer"))++groupDepth;
+        }
+        const int gutter=2+qMin(5,groupDepth)*3;
         item->setSizeHint(0,QSize(0,rowHeight));
         auto *frame=new QFrame(m_tree);
         frame->setObjectName(QStringLiteral("mobileLayerTileRow"));
@@ -2290,11 +2296,16 @@ private:
         frame->setAttribute(Qt::WA_AcceptTouchEvents,true);
         frame->installEventFilter(this);
         auto *tile=new QToolButton(frame);
-        tile->setGeometry(clipped?7:2,1,tileSize-(clipped?5:0),tileHeight);
+        tile->setGeometry(gutter+(clipped?4:0),2,
+                          tileSize+4-2*gutter-(clipped?4:0),tileHeight);
         tile->setToolButtonStyle(mask?
             Qt::ToolButtonTextOnly:Qt::ToolButtonIconOnly);
-        tile->setText(mask?maskKind(node):QStringLiteral("▧"));
-        if(group)tile->setIcon(QIcon(QStringLiteral(":/dark_folder.svg")));
+        if(mask)tile->setText(maskKind(node));
+        if(group) {
+            const QIcon folder(QStringLiteral(":/dark_folder.svg"));
+            tile->setIcon(folder.pixmap(22,22).isNull()?
+                tile->style()->standardIcon(QStyle::SP_DirClosedIcon):folder);
+        }
         const auto base=clipped?clipBaseFor(node):KisNodeSP();
         tile->setToolTip((base?
             i18n("%1 — clipped to %2",node->name(),base->name()):
@@ -2321,8 +2332,8 @@ private:
                 return;
             tapLayer(node,item);
         });
-        const int overlay=22;
-        const int iconX=tile->x()+tile->width()-overlay+1;
+        const int overlay=group?20:22;
+        const int iconX=tile->x()+tile->width()-overlay;
         const int count=group?1:qobject_cast<KisPaintLayer*>(node.data())?3:2;
         const int gap=qMax(2,(tileHeight-count*overlay)/(count+1));
         auto addOverlay=[&](int n,const QString &icon,
@@ -2362,14 +2373,13 @@ private:
         }
         if(group) {
             auto *disclose=new QToolButton(frame);
-            disclose->setGeometry(tile->x()+2,5,22,25);
-            disclose->setText(item->isExpanded()?QStringLiteral("▾"):
-                                                QStringLiteral("▸"));
+            disclose->setGeometry(tile->x()+1,4,20,32);
+            disclose->setArrowType(item->isExpanded()?Qt::DownArrow:Qt::RightArrow);
             disclose->setToolTip(item->isExpanded()?
                 i18n("Collapse group"):i18n("Expand group"));
             disclose->setStyleSheet(
-                "QToolButton{background:#285b7a;color:#ffffff;"
-                "border:1px solid #9bd4f3;border-radius:4px;}");
+                "QToolButton{background:transparent;color:#ffffff;border:0;}"
+                "QToolButton:pressed{background:#387d9c;}");
             QObject::connect(disclose,&QToolButton::clicked,this,
                              [this,node,item]() mutable {
                 item->setExpanded(!item->isExpanded());
@@ -2383,11 +2393,11 @@ private:
         else if(node->inherits("KisAdjustmentLayer"))kind=i18n("FILTER");
         else if(node->inherits("KisFileLayer"))kind=i18n("FILE");
         else if(node->inherits("KisCloneLayer"))kind=i18n("CLONE");
-        if(mask || clipped || !kind.isEmpty()) {
+        if(mask || (!clipped && !kind.isEmpty())) {
             auto *marker=new QLabel(frame);
             marker->setGeometry(tile->x()+2,tileHeight-19,
-                                clipped?28:47,19);
-            marker->setText(mask?i18n("MASK"):clipped?QStringLiteral("↳α"):kind);
+                                47,19);
+            marker->setText(mask?i18n("MASK"):kind);
             marker->setAlignment(Qt::AlignCenter);
             marker->setStyleSheet(mask?
                 "QLabel{background:#b87939;color:#ffffff;"
@@ -2405,33 +2415,52 @@ private:
 
     // The tree already stores group ancestry and expansion. Draw guides
     // across the visible rows without changing item geometry or hit tests.
-    class GroupGuides final : public QWidget
+    class LayerGuides final : public QWidget
     {
     public:
         struct Edge { int depth; bool top; bool bottom; };
-        GroupGuides(QWidget *parent,QVector<Edge> edges)
-            : QWidget(parent),m_edges(std::move(edges))
+        LayerGuides(QWidget *parent,QVector<Edge> edges,int clipX,
+                    bool above,bool below,bool clipped,bool base)
+            : QWidget(parent),m_edges(std::move(edges)),m_clipX(clipX),
+              m_above(above),m_below(below),m_clipped(clipped),m_base(base)
         {
             setAttribute(Qt::WA_TransparentForMouseEvents);
         }
     protected:
         void paintEvent(QPaintEvent *) override
         {
-            static const QColor colors[]={QColor("#9acff9"),QColor("#eac47f"),
-                                          QColor("#c3a6f6"),QColor("#f2a0bc")};
+            static const QColor colors[]={QColor("#d3f3ff"),QColor("#ffd985"),
+                                          QColor("#dbbcff"),QColor("#ffaec8")};
             QPainter painter(this);
+
             for(const auto &edge:m_edges) {
-                const int left=1+edge.depth*2;
+                const int left=2+qMin(5,edge.depth)*3+qMax(0,edge.depth-5);
                 const int right=width()-1-left;
-                painter.setPen(colors[edge.depth%4]);
+                painter.setPen(QPen(colors[edge.depth%4],edge.depth<5?2:1));
                 painter.drawLine(left,0,left,height()-1);
                 painter.drawLine(right,0,right,height()-1);
-                if(edge.top)painter.drawLine(left,0,right,0);
-                if(edge.bottom)painter.drawLine(left,height()-1,right,height()-1);
+                if(edge.top)painter.drawLine(left,1,right,1);
+                if(edge.bottom)painter.drawLine(left,height()-2,right,height()-2);
+            }
+            const int middle=height()/2;
+            const QColor clipColor("#65f3db");
+            painter.setPen(QPen(clipColor,2));
+            if(m_above)painter.drawLine(m_clipX,0,m_clipX,middle);
+            if(m_below)painter.drawLine(m_clipX,middle,m_clipX,height());
+            if(m_clipped) {
+                painter.drawLine(m_clipX,middle,m_clipX+9,middle);
+                painter.drawLine(m_clipX+5,middle-4,m_clipX+9,middle);
+                painter.drawLine(m_clipX+5,middle+4,m_clipX+9,middle);
+            }
+            if(m_base) {
+                painter.setBrush(clipColor);
+                painter.drawEllipse(QPoint(m_clipX,middle),3,3);
             }
         }
     private:
         QVector<Edge> m_edges;
+        int m_clipX;
+        bool m_above,m_below,m_clipped,m_base;
     };
 
     QList<QTreeWidgetItem*> visibleGroups(QTreeWidgetItem *item) const
@@ -2446,21 +2475,52 @@ private:
         return groups;
     }
 
-    void addGroupGuides()
+    void addLayerGuides()
     {
+        QList<QTreeWidgetItem*> visible;
+        QHash<const KisNode*,int> indexForNode;
+        m_clipBases.clear();
         for(auto *item=m_tree->topLevelItem(0);item;item=m_tree->itemBelow(item)) {
+            const int index=item->data(0,Qt::UserRole).toInt();
+            indexForNode.insert(m_nodes.at(index).data(),visible.size());
+            visible.append(item);
+        }
+        QVector<int> links(visible.size()+1,0);
+        QSet<int> clippedRows,baseRows;
+        for(int i=0;i<visible.size();++i) {
+            const auto node=m_nodes.at(visible.at(i)->data(0,Qt::UserRole).toInt());
+            if(!inheritsAlpha(node))continue;
+            clippedRows.insert(i);
+            const auto base=clipBaseFor(node);
+            const int end=indexForNode.value(base.data(),-1);
+            if(end<=i)continue;
+            m_clipBases.insert(base.data());
+            baseRows.insert(end);
+            ++links[i];
+            --links[end];
+        }
+
+        int activeLinks=0;
+        for(int i=0;i<visible.size();++i) {
+            auto *item=visible.at(i);
             const auto groups=visibleGroups(item);
-            if(groups.isEmpty())continue;
-            const auto next=visibleGroups(m_tree->itemBelow(item));
-            QVector<GroupGuides::Edge> edges;
-            for(int i=0;i<groups.size();++i)
-                edges.append({i,groups.at(i)==item,!next.contains(groups.at(i))});
+            const auto next=visibleGroups(visible.value(i+1));
+            QVector<LayerGuides::Edge> edges;
+            for(int depth=0;depth<groups.size();++depth)
+                edges.append({depth,groups.at(depth)==item,!next.contains(groups.at(depth))});
+            const bool above=activeLinks>0;
+            activeLinks+=links[i];
+            const bool below=activeLinks>0;
+            const bool clipped=clippedRows.contains(i);
+            const bool base=baseRows.contains(i);
+            if(edges.isEmpty() && !above && !below && !clipped && !base)continue;
             const int index=item->data(0,Qt::UserRole).toInt();
             auto *frame=m_rowFrames.value(index).data();
-            auto *tile=m_rowButtons.value(index).data();
-            if(!frame || !tile)continue;
-            auto *guides=new GroupGuides(frame,edges);
-            guides->setGeometry(0,0,tile->geometry().right()+3,frame->height());
+            if(!frame)continue;
+            const int guideWidth=(m_compactRail?qBound(73,width()-9,111):73)+4;
+            auto *guides=new LayerGuides(frame,edges,qMax(10,guideWidth/4),
+                                        above,below,clipped,base);
+            guides->setGeometry(0,0,guideWidth,frame->height());
             guides->show();
         }
     }
@@ -2488,10 +2548,6 @@ private:
             m_nodes.clear();
             m_items.clear();
             m_signature=engineSignature();
-            if(m_summary) {
-                m_summary->setText(i18n("No document"));
-                m_summary->setEnabled(false);
-            }
             return;
         }
         const int scroll=m_tree->verticalScrollBar()->value();
@@ -2600,7 +2656,7 @@ private:
             }
         };
         visit(image->root(),nullptr,0);
-        addGroupGuides();
+        addLayerGuides();
         updateRows();
         m_tree->verticalScrollBar()->setValue(scroll);
         m_signature=engineSignature();
@@ -2612,12 +2668,12 @@ private:
     MobileEngineBridge m_engine;
     const bool m_compactRail;
     QTreeWidget *m_tree=nullptr;
-    QPushButton *m_summary=nullptr;
     QVector<KisNodeSP> m_nodes;
     QVector<QTreeWidgetItem*> m_items; // owned by m_tree
     QVector<QPointer<QFrame>> m_rowFrames;
     QVector<QPointer<QToolButton>> m_rowButtons;
     QVector<int> m_rowDepths;
+    QSet<const KisNode*> m_clipBases;
     QVector<bool> m_thumbnailReady;
     KisNodeList m_selected;
     KisNodeSP m_active;

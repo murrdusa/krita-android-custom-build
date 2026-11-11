@@ -37,13 +37,16 @@
 #include "kis_node.h"
 #include <brushengine/kis_paintop_settings.h>
 #include <QScrollArea>
+#include <QStyledItemDelegate>
+#include <QRegularExpression>
+#include <QPainter>
 #include <klocalizedstring.h>
 
 class KritaMobileBrushWorkspace final : public QFrame {
 public:
     explicit KritaMobileBrushWorkspace(const MobileEngineBridge &engine,
                                        QWidget *parent,bool slidersOnly=false,
-                                       bool toolSettings=false,bool pickerControls=false)
+                                       bool toolSettings=false)
         : QFrame(parent),m_engine(engine),m_hasSelectedMode(!slidersOnly)
     {
         setObjectName(QStringLiteral("mobileBrushWorkspace"));
@@ -101,10 +104,8 @@ public:
         auto *controlRow=new QHBoxLayout;
         controlRow->setContentsMargins(0,0,0,0);
         controlRow->setSpacing(6);
-        if(!slidersOnly) {
-            m_presetName=new QLabel(i18n("Current brush"),this);
-            m_presetName->setToolTip(i18n("Active Krita brush preset"));
-            m_presetName->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Preferred);
+        if(!slidersOnly || toolSettings) {
+            m_presetName=new PresetLabel(m_controls);
             details->addWidget(m_presetName);
         }
         m_size=new KisDoubleSliderSpinBox(this);
@@ -135,7 +136,7 @@ public:
             }
         }
         details->addLayout(controlRow);
-        if(toolSettings || pickerControls) {
+        if(toolSettings) {
             m_flow=new KisDoubleSliderSpinBox(m_controls);
             m_flow->setRange(0,100,0);
             m_flow->setPrefix(i18n("Flow: "));
@@ -300,11 +301,8 @@ public:
             m_composite->setCurrentIndex(m_composite->findData(provider->currentCompositeOp()));
         }
         if(m_presetName) {
-            if(auto preset=provider->currentPreset()) {
-                m_presetName->setText(m_presetName->fontMetrics().elidedText(
-                    preset->name(),Qt::ElideRight,qMax(1,m_presetName->contentsRect().width())));
-                m_presetName->setToolTip(preset->name());
-            }
+            const auto preset=provider->currentPreset();
+            m_presetName->setPreset(preset?preset->name():i18n("Current brush"));
         }
         m_syncing=false;
         for(int i=0;i<3;++i)
@@ -312,6 +310,84 @@ public:
     }
 
 private:
+    static QString displayPresetName(QString name)
+    {
+        static const QRegularExpression categoryPrefix(QStringLiteral(R"(^[a-z]\)\s+)"));
+        return name.remove(categoryPrefix);
+    }
+
+    class PresetLabel final : public QLabel
+    {
+    public:
+        explicit PresetLabel(QWidget *parent) : QLabel(parent)
+        {
+            setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
+            setContentsMargins(5,3,5,3);
+            setStyleSheet(QStringLiteral(
+                "background:#252529;color:#f4f4f5;font-size:14px;"));
+        }
+
+        void setPreset(const QString &name)
+        {
+            if(m_name==name)return;
+            m_name=name;
+            setAccessibleName(name);
+            setToolTip(name);
+            fit();
+        }
+
+    protected:
+        void resizeEvent(QResizeEvent *event) override
+        {
+            QLabel::resizeEvent(event);
+            fit();
+        }
+
+    private:
+        void fit()
+        {
+            setText(fontMetrics().elidedText(displayPresetName(m_name),
+                Qt::ElideRight,qMax(0,contentsRect().width())));
+        }
+
+        QString m_name;
+    };
+
+    class PresetTile final : public QStyledItemDelegate
+    {
+    public:
+        explicit PresetTile(QListView *view) : QStyledItemDelegate(view),m_view(view) {}
+
+        QSize sizeHint(const QStyleOptionViewItem &,const QModelIndex &) const override
+        {
+            return m_view->gridSize();
+        }
+
+        void paint(QPainter *painter,const QStyleOptionViewItem &option,
+                   const QModelIndex &index) const override
+        {
+            painter->save();
+            const QRect tile=option.rect.adjusted(1,1,-1,-1);
+            painter->fillRect(tile,(option.state & QStyle::State_Selected)?
+                QColor("#365c78"):QColor("#293745"));
+            const QIcon thumb=qvariant_cast<QIcon>(index.data(Qt::DecorationRole));
+            const QRect image=tile.adjusted(2,1,-2,-15);
+            thumb.paint(painter,image,Qt::AlignCenter);
+            QFont font=option.font;
+            font.setPixelSize(11);
+            painter->setFont(font);
+            painter->setPen(QColor("#f4f9fe"));
+            const QRect caption(tile.x()+2,tile.bottom()-14,tile.width()-4,15);
+            const QString name=index.data().toString();
+            painter->drawText(caption,Qt::AlignCenter,
+                painter->fontMetrics().elidedText(name,Qt::ElideRight,caption.width()));
+            painter->restore();
+        }
+
+    private:
+        QListView *m_view;
+    };
+
     static bool supportsFlow(const KisPaintOpPresetSP &preset)
     {
         return preset && (preset->paintOp().id()==QStringLiteral("paintbrush") || isSmudge(preset));
@@ -399,7 +475,10 @@ private:
                 return QIcon(QPixmap::fromImage(thumbnail.scaled(
                     QSize(56,56),Qt::KeepAspectRatio,Qt::SmoothTransformation)));
             }
-            return QSortFilterProxyModel::data(index,role);
+            const auto value=QSortFilterProxyModel::data(index,role);
+            if(index.column()==KisAbstractResourceModel::Name && role==Qt::DisplayRole)
+                return displayPresetName(value.toString());
+            return value;
         }
 
     protected:
@@ -542,7 +621,6 @@ private:
         if(slot!=2)category->addItem(i18n("Clone"),3);
         category->setCurrentIndex(category->findData(slot));
         layout->addWidget(category);
-        layout->addWidget(new KritaMobileBrushWorkspace(m_engine,&dialog,true,false,true));
 
         auto *grid=new QListView(&dialog);
         grid->setViewMode(QListView::IconMode);
@@ -554,12 +632,12 @@ private:
         grid->setBatchSize(32);
         grid->setUniformItemSizes(true);
         const QSize size=window()->size();
-        const int width=qMin(550,qMax(300,size.width()-16));
+        const int width=qMin(550,qMax(1,size.width()-16));
         const int gridWidth=qMax(1,width-14);
-        const int columns=qMax(1,gridWidth/72);
-        constexpr int tileHeight=71;
+        const int columns=qMax(1,gridWidth/60);
+        constexpr int tileHeight=64;
         grid->setGridSize(QSize(gridWidth/columns,tileHeight));
-        grid->setIconSize(QSize(50,50));
+        grid->setItemDelegate(new PresetTile(grid));
         grid->setWordWrap(false);
         grid->setTextElideMode(Qt::ElideRight);
         grid->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -602,7 +680,7 @@ private:
 
     MobileEngineBridge m_engine;
     QToolButton *m_modes[3]={nullptr,nullptr,nullptr};
-    QLabel *m_presetName=nullptr;
+    PresetLabel *m_presetName=nullptr;
     QWidget *m_controls=nullptr;
     QToolButton *m_detailToggle=nullptr;
     bool m_detailsExpanded=true;
