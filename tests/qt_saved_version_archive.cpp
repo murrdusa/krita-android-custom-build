@@ -119,6 +119,18 @@ int main(int argc,char **argv)
     require(MobileSavedVersionArchive::list(draftProject,store).size()==4 &&
             MobileSavedVersionArchive::list(privateDraft,store).isEmpty(),
             "named autosave should join the project timeline, not fork it");
+    // Routine drafts keep updating independently while full historical
+    // copies are spaced apart. Background checkpoints may bypass the gap.
+    const int historicalCount=MobileSavedVersionArchive::list(draftProject,store).size();
+    save(privateDraft,QByteArray::fromHex("504b0304")+"too-soon");
+    require(MobileSavedVersionArchive::snapshotFrom(
+                privateDraft,draftProject,store,2LL*60*1000) &&
+            MobileSavedVersionArchive::list(draftProject,store).size()==historicalCount,
+            "routine historical snapshot ignored the time spacing");
+    require(MobileSavedVersionArchive::snapshotFrom(privateDraft,draftProject,store) &&
+            MobileSavedVersionArchive::list(draftProject,store).size()==historicalCount+1,
+            "forced background checkpoint should bypass spacing");
+
 
     // Bound the number and total size of backups, keeping the latest
     // completed save even if it alone exceeds the usual byte budget.
