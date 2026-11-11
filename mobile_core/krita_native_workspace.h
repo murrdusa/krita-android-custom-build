@@ -905,7 +905,7 @@ public:
             clearToolbarPreview();
         } else if(auto *preview=toolbarPreview()) {
             const QString text=opacity?tr("Opacity %1%").arg(qRound(value*100)):
-                tr("Size %1 px").arg(QString::number(value,'f',value<10?1:0));
+                tr("Size %1 px").arg(QString::number(value,'f',value<1?2:value<10?1:0));
             preview->value(text,opacity?value:qBound(qreal(0.01),pixels/400.0+0.5,qreal(1)),global);
         }
     }

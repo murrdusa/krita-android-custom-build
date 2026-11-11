@@ -414,8 +414,12 @@ private:
         QRect rect=MobileCanvasLayoutEditor::absolute(bar.placement,bounds);
         const bool vertical=verticalEdge(bar.edge);
         const int breadth=bar.target+4+(history?historyThickness:0);
-        if(vertical)rect.setWidth(qMin(breadth,bounds.width()));
-        else rect.setHeight(qMin(breadth,bounds.height()));
+        const int minimumLength=frame==m_toolbar?2*bar.target+6:bar.target+4;
+        const int available=vertical?bounds.height():bounds.width();
+        const int length=qBound(qMin(minimumLength,available),
+                                vertical?rect.height():rect.width(),available);
+        rect.setSize(vertical?QSize(qMin(breadth,bounds.width()),length):
+                              QSize(length,qMin(breadth,bounds.height())));
         rect.moveTo(bounds.x()+qRound(bar.placement.x()*(bounds.width()-rect.width())),
                     bounds.y()+qRound(bar.placement.y()*(bounds.height()-rect.height())));
         frame->setGeometry(rect);
