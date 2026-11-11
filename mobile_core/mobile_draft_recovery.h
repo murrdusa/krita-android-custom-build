@@ -103,7 +103,8 @@ public:
         for(const auto &draft:list()) {
             if(draft.lastModified().toMSecsSinceEpoch()<=savedModified)break;
             if(MobileSavedVersionArchive::canonicalIdentity(
-                   projectFor(draft.absoluteFilePath()))==identity)
+                   projectFor(draft.absoluteFilePath()))==identity &&
+               hasKraHeader(draft.absoluteFilePath()))
                 return draft;
         }
         return {};
