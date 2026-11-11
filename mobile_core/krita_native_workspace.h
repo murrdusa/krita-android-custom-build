@@ -27,6 +27,10 @@
 #include <QObject>
 #include <QDockWidget>
 #include <QEvent>
+#include <QElapsedTimer>
+#include <QGraphicsOpacityEffect>
+#include <QPropertyAnimation>
+#include <array>
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QMetaObject>
@@ -89,6 +93,22 @@ public:
         const bool oldSliders=settings.value(QStringLiteral("MobileStudio/showBrushSliders"),true).toBool();
         m_showSize=settings.value(QStringLiteral("MobileStudio/showSizeSlider"),oldSliders).toBool();
         m_showOpacity=settings.value(QStringLiteral("MobileStudio/showOpacitySlider"),oldSliders).toBool();
+        m_layerCorner=qBound(0,settings.value(QStringLiteral("MobileStudio/layerCorner"),0).toInt(),3);
+        m_layerWidth=qBound(82,settings.value(QStringLiteral("MobileStudio/layerWidth"),82).toInt(),120);
+        m_layerHeight=qBound(25,settings.value(QStringLiteral("MobileStudio/layerHeight"),100).toInt(),100);
+        for(int i=0;i<2;++i) {
+            const QString key=sliderLayoutKey(i);
+            m_sliderCorners[i]=qBound(0,settings.value(key+QStringLiteral("Corner"),2).toInt(),3);
+            m_sliderWidths[i]=qBound(120,settings.value(key+QStringLiteral("Width"),168).toInt(),360);
+        }
+        m_fadePanels=settings.value(QStringLiteral("MobileStudio/fadePanels"),false).toBool();
+        m_idleOpacity=qBound(15,settings.value(QStringLiteral("MobileStudio/idlePanelOpacity"),35).toInt(),90);
+        m_fadeDelay=qBound(1,settings.value(QStringLiteral("MobileStudio/panelFadeDelay"),3).toInt(),30);
+        m_fadeClock.start();
+        m_fadeTimer=new QTimer(this);
+        m_fadeTimer->setInterval(160);
+        connect(m_fadeTimer,&QTimer::timeout,this,[this]() {updatePanelFades();});
+        if(m_fadePanels)m_fadeTimer->start();
         qApp->installEventFilter(this);
         auto *contextRefresh=new QTimer(this);
         contextRefresh->setSingleShot(true);
@@ -117,7 +137,6 @@ public:
                              [this](int) {
                 QTimer::singleShot(0,this,[this]() {
                     refresh();
-                    placeLayerOverlay();
                     placeDrawingOverlays();
                     raiseOverlays();
                 });
@@ -245,7 +264,6 @@ public:
         else m_layers->setVisible(!m_layers->isVisible());
         placeDrawingOverlays();
         if(m_layers && m_layers->isVisible()) {
-            placeLayerOverlay();
             m_layers->refreshNow();
             raiseOverlays();
         }
@@ -816,6 +834,11 @@ public:
             layout->addWidget(color);
             layout->addWidget(size);
             layout->addWidget(opacity);
+            auto *panelLayout=new QPushButton(QObject::tr("Panel placement and fading…"),body);
+            layout->addWidget(panelLayout);
+            connect(panelLayout,&QPushButton::clicked,&dialog,[this,&dialog]() {
+                openPanelLayout(&dialog);
+            });
             auto *shortcut=new MobileTouchComboBox(body);
             if(!m_shortcuts.isEmpty()) {
                 layout->addWidget(new QLabel(QObject::tr("Toolbar shortcut"),body));
@@ -875,6 +898,7 @@ public:
     {
         if(m_layers)m_layers->hide();
         if(m_brush)m_brush->hide();
+        if(m_opacityStrip)m_opacityStrip->hide();
         if(m_toolOptions)m_toolOptions->hide();
         if(m_brushOptions)m_brushOptions->hide();
         if(m_textFormatting)m_textFormatting->hide();
@@ -901,23 +925,202 @@ protected:
             syncPanelActions();
             QTimer::singleShot(0,this,[this]() {placeDrawingOverlays();});
         }
-        if(m_host && (event->type()==QEvent::MouseButtonPress ||
-                     event->type()==QEvent::TabletPress || event->type()==QEvent::TouchBegin))
-            dismissTemporaryPanels(pressTarget(watched,event));
+        const auto type=event->type();
+        if(m_host && (type==QEvent::MouseButtonPress || type==QEvent::MouseButtonDblClick ||
+                      type==QEvent::TabletPress || type==QEvent::TouchBegin)) {
+            auto *target=pressTarget(watched,event);
+            dismissTemporaryPanels(target);
+            if(m_fadePanels) {
+                const int channel=type==QEvent::TouchBegin?0:type==QEvent::TabletPress?1:2;
+                m_fadeHeld[channel]=panelAt(target);
+                wakePanel(m_fadeHeld[channel]);
+            }
+        } else if(m_fadePanels) {
+            if(type==QEvent::TouchEnd || type==QEvent::TouchCancel)endPanelInput(0);
+            else if(type==QEvent::TabletRelease)endPanelInput(1);
+            else if((type==QEvent::MouseButtonRelease && QApplication::mouseButtons()==Qt::NoButton) ||
+                    type==QEvent::UngrabMouse)
+                endPanelInput(2);
+            else if(type==QEvent::Wheel)wakePanel(panelAt(qobject_cast<QWidget*>(watched)));
+            else if(type==QEvent::Show) {
+                auto *target=qobject_cast<QWidget*>(watched);
+                if(target && panelAt(target)==target)wakePanel(target);
+            } else if(type==QEvent::ApplicationDeactivate) {
+                for(int i=0;i<3;++i)endPanelInput(i);
+            }
+        }
         if(m_host && watched==m_host->nativeCanvas() &&
            (event->type()==QEvent::Resize || event->type()==QEvent::Show ||
             (event->type()==QEvent::DynamicPropertyChange &&
              static_cast<QDynamicPropertyChangeEvent*>(event)->propertyName()==
                 MobileNativeCommandLayout::overlayBoundsProperty()))) {
-            placeLayerOverlay();
             placeDrawingOverlays();
         }
-        if((watched==m_brush || watched==m_brushOptions) && event->type()==QEvent::LayoutRequest)
+        if((watched==m_brush || watched==m_opacityStrip || watched==m_brushOptions) &&
+           event->type()==QEvent::LayoutRequest)
             placeDrawingOverlays();
         return QObject::eventFilter(watched,event);
     }
 
 private:
+    static QString sliderLayoutKey(int index)
+    {
+        return index==0?QStringLiteral("MobileStudio/sizeSlider"):
+                        QStringLiteral("MobileStudio/opacitySlider");
+    }
+
+    void openPanelLayout(QWidget *parent)
+    {
+        QDialog dialog(parent);
+        dialog.setWindowTitle(QObject::tr("Panel placement and fading"));
+        auto *outer=new QVBoxLayout(&dialog);
+        auto *scroll=new QScrollArea(&dialog);
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        MobileTouchScroll::configure(scroll);
+        auto *body=new QWidget(scroll);
+        auto *form=new QFormLayout(body);
+        form->setRowWrapPolicy(QFormLayout::WrapAllRows);
+        scroll->setWidget(body);
+        outer->addWidget(scroll,1);
+        const auto corner=[form,body](const QString &label,int current) {
+            auto *choice=new MobileTouchComboBox(body);
+            choice->addItems({QObject::tr("Top left"),QObject::tr("Top right"),
+                              QObject::tr("Bottom left"),QObject::tr("Bottom right")});
+            choice->setCurrentIndex(current);
+            form->addRow(label,choice);
+            return choice;
+        };
+        const auto range=[form,body](const QString &label,int value,int low,int high,
+                                     const QString &suffix=QString()) {
+            auto *field=new QSpinBox(body);
+            field->setMinimumHeight(44);
+            field->setRange(low,high);
+            field->setValue(value);
+            field->setSuffix(suffix);
+            form->addRow(label,field);
+            return field;
+        };
+        auto *colorLayout=new QPushButton(QObject::tr("Color wheel…"),body);
+        colorLayout->setMinimumHeight(44);
+        connect(colorLayout,&QPushButton::clicked,&dialog,[this]() {openColorOptions();});
+        form->addRow(colorLayout);
+        auto *layerCorner=corner(QObject::tr("Layers position"),m_layerCorner);
+        auto *layerWidth=range(QObject::tr("Layers width"),m_layerWidth,82,120);
+        auto *layerHeight=range(QObject::tr("Layers maximum height"),m_layerHeight,25,100,QStringLiteral("%"));
+        auto *sizeCorner=corner(QObject::tr("Size slider position"),m_sliderCorners[0]);
+        auto *sizeWidth=range(QObject::tr("Size slider width"),m_sliderWidths[0],120,360);
+        auto *opacityCorner=corner(QObject::tr("Opacity slider position"),m_sliderCorners[1]);
+        auto *opacityWidth=range(QObject::tr("Opacity slider width"),m_sliderWidths[1],120,360);
+        auto *fade=new QCheckBox(QObject::tr("Fade idle persistent panels"),body);
+        fade->setChecked(m_fadePanels);
+        form->addRow(fade);
+        auto *opacity=range(QObject::tr("Idle opacity"),m_idleOpacity,15,90,QStringLiteral("%"));
+        auto *delay=range(QObject::tr("Fade after"),m_fadeDelay,1,30,QObject::tr(" s"));
+        opacity->setEnabled(fade->isChecked());
+        delay->setEnabled(fade->isChecked());
+        connect(fade,&QCheckBox::toggled,opacity,&QWidget::setEnabled);
+        connect(fade,&QCheckBox::toggled,delay,&QWidget::setEnabled);
+        auto *buttons=new QDialogButtonBox(QDialogButtonBox::Save|QDialogButtonBox::Cancel,&dialog);
+        outer->addWidget(buttons);
+        connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);
+        connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
+        dialog.resize(parent->size());
+        if(dialog.exec()!=QDialog::Accepted)return;
+
+        m_layerCorner=layerCorner->currentIndex();
+        m_layerWidth=layerWidth->value();
+        m_layerHeight=layerHeight->value();
+        m_sliderCorners={sizeCorner->currentIndex(),opacityCorner->currentIndex()};
+        m_sliderWidths={sizeWidth->value(),opacityWidth->value()};
+        m_fadePanels=fade->isChecked();
+        m_idleOpacity=opacity->value();
+        m_fadeDelay=delay->value();
+        QSettings settings;
+        settings.setValue(QStringLiteral("MobileStudio/layerCorner"),m_layerCorner);
+        settings.setValue(QStringLiteral("MobileStudio/layerWidth"),m_layerWidth);
+        settings.setValue(QStringLiteral("MobileStudio/layerHeight"),m_layerHeight);
+        for(int i=0;i<2;++i) {
+            const QString key=sliderLayoutKey(i);
+            settings.setValue(key+QStringLiteral("Corner"),m_sliderCorners[i]);
+            settings.setValue(key+QStringLiteral("Width"),m_sliderWidths[i]);
+        }
+        settings.setValue(QStringLiteral("MobileStudio/fadePanels"),m_fadePanels);
+        settings.setValue(QStringLiteral("MobileStudio/idlePanelOpacity"),m_idleOpacity);
+        settings.setValue(QStringLiteral("MobileStudio/panelFadeDelay"),m_fadeDelay);
+        if(m_fadePanels)m_fadeTimer->start();
+        else m_fadeTimer->stop();
+        for(auto *panel:fadeTargets())wakePanel(panel);
+        placeDrawingOverlays();
+    }
+
+    std::array<QWidget*,4> fadeTargets() const
+    {
+        return {m_layers.data(),m_color.data(),m_brush.data(),m_opacityStrip.data()};
+    }
+
+    QWidget *panelAt(QWidget *target) const
+    {
+        if(!target)return nullptr;
+        for(auto *panel:fadeTargets())
+            if(panel && panel->isVisible() && (target==panel || panel->isAncestorOf(target)))
+                return panel;
+        return nullptr;
+    }
+
+    void wakePanel(QWidget *panel)
+    {
+        if(!panel)return;
+        m_lastPanelInput[panel]=m_fadeClock.elapsed();
+        if(auto *effect=qobject_cast<QGraphicsOpacityEffect*>(panel->graphicsEffect())) {
+            if(auto *animation=effect->findChild<QPropertyAnimation*>())animation->stop();
+            effect->setOpacity(1);
+            if(!m_fadePanels)panel->setGraphicsEffect(nullptr);
+        }
+    }
+
+    void endPanelInput(int channel)
+    {
+        wakePanel(m_fadeHeld[channel]);
+        m_fadeHeld[channel].clear();
+    }
+
+    void updatePanelFades()
+    {
+        if(!m_fadePanels || QApplication::activeModalWidget() || QApplication::activePopupWidget())return;
+        const auto targets=fadeTargets();
+        const qint64 now=m_fadeClock.elapsed();
+        for(int i=0;i<int(targets.size());++i) {
+            auto *panel=targets[i];
+            if(!panel || !panel->isVisible())continue;
+            if((i==0 && !m_keepLayers) || (i==1 && !m_keepColor)) {
+                wakePanel(panel);
+                continue;
+            }
+            bool held=false;
+            for(const auto &source:m_fadeHeld)held|=source==panel;
+            if(held)continue;
+            if(!m_lastPanelInput.contains(panel))m_lastPanelInput[panel]=now;
+            if(now-m_lastPanelInput.value(panel)<m_fadeDelay*1000)continue;
+
+            auto *effect=qobject_cast<QGraphicsOpacityEffect*>(panel->graphicsEffect());
+            if(!effect) {
+                effect=new QGraphicsOpacityEffect(panel);
+                effect->setOpacity(1);
+                panel->setGraphicsEffect(effect);
+            }
+            const qreal target=m_idleOpacity/100.0;
+            auto *animation=effect->findChild<QPropertyAnimation*>();
+            if(qFuzzyCompare(effect->opacity(),target) ||
+               (animation && animation->state()==QAbstractAnimation::Running))continue;
+            if(!animation)animation=new QPropertyAnimation(effect,"opacity",effect);
+            animation->setDuration(180);
+            animation->setStartValue(effect->opacity());
+            animation->setEndValue(target);
+            animation->start();
+        }
+    }
+
     void syncPanelActions()
     {
         const bool active=m_engine.hasDocument();
@@ -1155,74 +1358,119 @@ private:
 
     void updateBrushSliders()
     {
-        if((m_showSize || m_showOpacity) && !m_canvasOnly &&
-           m_engine.hasDocument() && ensureBrushControls()) {
-            m_brush->setSliderVisibility(m_showSize,m_showOpacity);
+        const bool available=!m_canvasOnly && m_engine.hasDocument();
+        if(available && m_showSize && ensureBrushControls()) {
+            m_brush->setSliderVisibility(true,false);
             m_brush->show();
             m_brush->raise();
         } else if(m_brush) {
             m_brush->hide();
         }
+        if(available && m_showOpacity && m_host && m_host->nativeCanvas()) {
+            if(!m_opacityStrip) {
+                m_opacityStrip=new KritaMobileBrushWorkspace(m_engine,m_host->nativeCanvas(),true);
+                m_opacityStrip->setSliderVisibility(false,true);
+            }
+            m_opacityStrip->show();
+            m_opacityStrip->raise();
+        } else if(m_opacityStrip) {
+            m_opacityStrip->hide();
+        }
         placeDrawingOverlays();
+    }
+
+    QRect placeSliders(QRect available)
+    {
+        const std::array<QWidget*,2> panels{m_brush.data(),m_opacityStrip.data()};
+        for(int band=0;band<2;++band) {
+            std::array<int,2> widths{0,0};
+            int total=0;
+            int height=0;
+            int count=0;
+            for(int i=0;i<2;++i) {
+                if(!panels[i] || !panels[i]->isVisible() || m_sliderCorners[i]/2!=band)continue;
+                widths[i]=qMin(m_sliderWidths[i],available.width());
+                height=qMax(height,panels[i]->sizeHint().height());
+                total+=widths[i];
+                ++count;
+            }
+            if(!count)continue;
+            height=qBound(0,height,qMax(0,available.height()));
+            const int gap=count==2?2:0;
+            const int capacity=qMax(0,available.width()-gap);
+            if(total>capacity && count==2) {
+                widths[0]=capacity*widths[0]/total;
+                widths[1]=capacity-widths[0];
+            }
+            int left=available.left(),right=available.right()+1;
+            const int y=band==0?available.top():available.bottom()-height+1;
+            for(int i=0;i<2;++i) {
+                if(!widths[i])continue;
+                const bool atRight=m_sliderCorners[i]%2;
+                const int x=atRight?right-widths[i]:left;
+                panels[i]->setGeometry(x,y,widths[i],height);
+                if(atRight)right=x-gap;
+                else left=x+widths[i]+gap;
+            }
+            if(band==0)available.setTop(available.top()+height+2);
+            else available.setBottom(available.bottom()-height-2);
+        }
+        return available;
     }
 
     void placeLayerOverlay()
     {
-        if(!m_layers)return;
-        QWidget *canvas=m_layers->parentWidget();
-        if(canvas->width()<140 || canvas->height()<180)return;
-        const QRect available=MobileNativeCommandLayout::overlayBounds(canvas);
-        const int top=overlayTop(canvas);
-        const int bottom=m_brush && m_brush->isVisible() ?
-            m_brush->y() : available.bottom()+1;
-        const int panelHeight=qMin(bottom-top-2,m_layers->contentHeight());
-        m_layers->setGeometry(available.left(),top,m_layers->width(),qMax(0,panelHeight));
+        if(m_layers && m_layers->isVisible())placeDrawingOverlays();
     }
 
     void placeDrawingOverlays()
     {
-        QWidget *canvas=m_host ? m_host->nativeCanvas() : nullptr;
+        QWidget *canvas=m_host?m_host->nativeCanvas():nullptr;
         if(!canvas)return;
-        const QRect viewport=MobileNativeCommandLayout::overlayBounds(canvas);
+        QRect viewport=MobileNativeCommandLayout::overlayBounds(canvas);
         if(m_contextToolBar && !m_contextToolBar->isHidden())
             m_contextToolBar->setGeometry(viewport.left(),viewport.top(),
                 qMin(760,qMax(0,viewport.width())),48);
-        const int top=overlayTop(canvas);
-        const int width=viewport.width();
-        const int height=viewport.bottom()+1-top;
-        if(width<=0 || height<=0)return;
-        if(m_brush) {
-            const int panelHeight=qMin(height,m_brush->sizeHint().height());
-            m_brush->setGeometry(viewport.left(),viewport.bottom()-panelHeight+1,
-                                 qMin(m_showSize && m_showOpacity?340:190,width),panelHeight);
+        viewport.setTop(overlayTop(canvas));
+        if(!viewport.isValid())return;
+        viewport=placeSliders(viewport);
+        if(!viewport.isValid())return;
+
+        QRect besideLayers=viewport;
+        if(m_layers && m_layers->isVisible()) {
+            const int width=qMin(m_layerWidth,qMax(82,viewport.width()-90));
+            const bool resized=width!=m_layers->width();
+            if(resized)m_layers->setFixedWidth(width);
+            const int height=qMin(viewport.height()*m_layerHeight/100,m_layers->contentHeight());
+            const bool right=m_layerCorner%2;
+            const int x=right?viewport.right()-width+1:viewport.left();
+            const int y=m_layerCorner>=2?viewport.bottom()-height+1:viewport.top();
+            m_layers->setGeometry(x,y,width,height);
+            if(right)besideLayers.setRight(x-2);
+            else besideLayers.setLeft(x+width+2);
+            if(resized)QTimer::singleShot(0,m_layers.data(),[this]() {
+                if(m_layers && m_layers->isVisible())m_layers->refreshNow();
+            });
         }
         if(m_toolOptions || m_textFormatting || m_brushOptions) {
-            const int besideLayers=width-(m_layers?m_layers->width()+5:0);
-            const int available=m_layers && m_layers->isVisible() &&
-                besideLayers>=240 ? besideLayers : width;
-            const int optionsWidth=qMin(340,available);
-            const QRect bounds(viewport.right()-optionsWidth+1,top,
-                               optionsWidth,qMin(440,height));
+            const QRect room=besideLayers.width()>=240?besideLayers:viewport;
+            const int optionsWidth=qMin(340,room.width());
+            const QRect bounds(room.right()-optionsWidth+1,room.top(),
+                               optionsWidth,qMin(440,room.height()));
             if(m_toolOptions)m_toolOptions->setGeometry(bounds.x(),bounds.y(),bounds.width(),
-                qMin(height,qBound(44,m_toolOptions->sizeHint().height(),440)));
+                qMin(room.height(),qBound(44,m_toolOptions->sizeHint().height(),440)));
             if(m_brushOptions)m_brushOptions->setGeometry(bounds.x(),bounds.y(),bounds.width(),
-                qMin(height,m_brushOptions->sizeHint().height()));
+                qMin(room.height(),m_brushOptions->sizeHint().height()));
             if(m_textFormatting)m_textFormatting->setGeometry(bounds);
         }
-        placeLayerOverlay();
-        if(m_color) {
-            QRect colorArea=viewport;
-            colorArea.setTop(top);
-            if(m_brush && m_brush->isVisible())colorArea.setBottom(m_brush->y()-1);
-            if(m_layers && m_layers->isVisible())colorArea.setLeft(m_layers->geometry().right()+2);
-            m_color->setWheelArea(colorArea);
-        }
+        if(m_color)m_color->setWheelArea(besideLayers);
     }
 
     void raiseOverlays()
     {
         if(m_layers && m_layers->isVisible())m_layers->raise();
         for(QWidget *panel:{static_cast<QWidget*>(m_brush.data()),
+                            static_cast<QWidget*>(m_opacityStrip.data()),
                             static_cast<QWidget*>(m_color.data()),
                             static_cast<QWidget*>(m_toolOptions.data()),
                             static_cast<QWidget*>(m_brushOptions.data()),
@@ -1238,7 +1486,6 @@ private:
         if(m_textFormatting && m_textFormatting.data()!=panel)m_textFormatting->hide();
         panel->show();
         placeDrawingOverlays();
-        placeLayerOverlay();
         raiseOverlays();
     }
 
@@ -1265,7 +1512,15 @@ private:
     MobileEngineBridge m_engine;
     QPointer<KoToolDocker> m_toolOptions;
     QPointer<QDockWidget> m_textFormatting;
-    QPointer<KritaMobileBrushWorkspace> m_brush,m_brushOptions;
+    QPointer<KritaMobileBrushWorkspace> m_brush,m_opacityStrip,m_brushOptions;
+    std::array<int,2> m_sliderCorners{2,2},m_sliderWidths{168,168};
+    int m_layerCorner=0,m_layerWidth=82,m_layerHeight=100;
+    bool m_fadePanels=false;
+    int m_idleOpacity=35,m_fadeDelay=3;
+    QElapsedTimer m_fadeClock;
+    QTimer *m_fadeTimer=nullptr;
+    QHash<QWidget*,qint64> m_lastPanelInput;
+    std::array<QPointer<QWidget>,3> m_fadeHeld;
     QPointer<QAction> m_layersAction,m_colorAction,m_optionsAction;
     QList<QAction*> m_brushModes;
     QPointer<KritaMobileLayersPanel> m_layers;

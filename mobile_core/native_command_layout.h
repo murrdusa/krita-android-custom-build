@@ -271,7 +271,7 @@ private:
             qMin(pinnedWidth+stripWidth+6,qMax(0,usable.width())),main.target+4);
         if(!m_canvasOnly)usable.setTop(m_toolbar->geometry().bottom()+3);
         const int minimumWidth=qMax(140,usable.width()*2/3);
-        const int minimumHeight=qMax(120,usable.height()*2/3);
+        const int minimumHeight=qMax(190,usable.height()*2/3);
         // Horizontal bars reserve their rows before the side rails are placed.
         for(const auto edge:{Top,Bottom,Left,Right}) {
             const bool vertical=edge==Left || edge==Right;

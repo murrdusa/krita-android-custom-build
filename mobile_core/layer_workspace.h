@@ -2169,7 +2169,7 @@ private:
         const bool group=node->inherits("KisGroupLayer");
         const bool mask=node->inherits("KisMask");
         const bool clipped=inheritsAlpha(node);
-        const int tileSize=73;
+        const int tileSize=m_compactRail?qBound(73,width()-9,111):73;
         const int tileHeight=(group||mask)?54:tileSize;
         const int rowHeight=tileHeight+3;
         item->setSizeHint(0,QSize(0,rowHeight));
@@ -2179,11 +2179,11 @@ private:
         frame->setAttribute(Qt::WA_AcceptTouchEvents,true);
         frame->installEventFilter(this);
         auto *tile=new QToolButton(frame);
-        const int tileWidth=group && m_compactRail?54:tileSize;
+        const int tileWidth=group && m_compactRail?tileSize-19:tileSize;
         tile->setGeometry(clipped?7:2,1,tileWidth-(clipped?5:0),tileHeight);
         if(group && m_compactRail) {
             auto *drop=new QLabel(QStringLiteral("↳"),frame);
-            drop->setGeometry(56,1,20,tileHeight);
+            drop->setGeometry(tileWidth+2,1,20,tileHeight);
             drop->setAlignment(Qt::AlignCenter);
             drop->setAccessibleName(i18n("Drop a layer here to nest it in the group"));
             drop->setAttribute(Qt::WA_TransparentForMouseEvents);
