@@ -1315,7 +1315,8 @@ void KisToolFreehand::beginPrimaryAction(KoPointerEvent *event)
                   "Studio Transform retarget API")
     transform=one(transform,"    KisStrokeId m_strokeId;",
                   """    ToolTransformArgs::TransformMode m_mobileStrokeMode = ToolTransformArgs::FREE_TRANSFORM;
-    KisStrokeId m_strokeId;""","remember Transform mode during stroke initialization")
+    bool m_mobileTransformHasExternalSource = false;
+    KisStrokeId m_strokeId;""","remember Transform mode and source during stroke initialization")
     transform_header.write_text(transform,encoding="utf-8")
 
     transform_source=transform_dir/"kis_tool_transform.cc"
@@ -1354,11 +1355,20 @@ void KisToolFreehand::beginPrimaryAction(KoPointerEvent *event)
         "void KisToolTransform::startStroke(ToolTransformArgs::TransformMode mode, bool forceReset)\n{",
         """void KisToolTransform::startStroke(ToolTransformArgs::TransformMode mode, bool forceReset)
 {
-    m_mobileStrokeMode = mode;""","capture initial Transform mode for retarget")
+    m_mobileStrokeMode = mode;
+    m_mobileTransformHasExternalSource = bool(m_externalSourceForNextActivation);""",
+        "capture initial Transform mode and external source for retarget")
     transform=one(transform,"void KisToolTransform::slotRestartTransform()",
         """bool KisToolTransform::mobileCanRetargetLayers() const
 {
-    return mode() == HOVER_MODE && (!m_strokeId || m_currentArgs.isIdentity());
+    if (mode() != HOVER_MODE) return false;
+    if (!m_strokeId) return true;
+    if (m_mobileTransformHasExternalSource) return false;
+
+    // Krita can reopen the last committed transform as the starting
+    // preview. Compare against that baseline before checking identity.
+    const auto *continued = m_currentArgs.continuedTransform();
+    return continued ? m_currentArgs == *continued : m_currentArgs.isUnchanging();
 }
 
 void KisToolTransform::mobileRetargetLayers()
@@ -1371,6 +1381,10 @@ void KisToolTransform::mobileRetargetLayers()
 }
 
 void KisToolTransform::slotRestartTransform()""","retarget only an untouched Transform stroke")
+    transform=one(transform,
+        "m_optionsWidget->setApplyResetDisabled(m_currentArgs.isIdentity());",
+        "m_optionsWidget->setApplyResetDisabled(m_currentArgs.isUnchanging());",
+        "allow Apply for externally supplied pixels even at identity")
     transform_source.write_text(transform,encoding="utf-8")
     node_manager_header=root/"libs/ui/kis_node_manager.h"
     node_manager=one(node_manager_header.read_text(encoding="utf-8"),
