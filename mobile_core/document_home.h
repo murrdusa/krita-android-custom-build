@@ -297,7 +297,7 @@ public:
         m_message->setWordWrap(true);
         m_message->setStyleSheet(QStringLiteral("font-size:12px;color:#c3ccd7;"));
         layout->addWidget(m_message);
-        m_versionPrompt=new QLabel(i18n("Tap a project to see its saved versions."),this);
+        m_versionPrompt=new QLabel(i18n("Tap a drawing to see its saved versions."),this);
         m_versionPrompt->setWordWrap(true);
         m_versionPrompt->hide();
         layout->addWidget(m_versionPrompt);
@@ -383,7 +383,30 @@ public:
             if(m_mode==OpenCanvases) {
                 const int index=item->data(Qt::UserRole).toInt();
                 const auto view=m_views.value(index);
-                if(view && m_engine.activateDocumentView(view))hide();
+                if(m_versions->isChecked()) {
+                    m_versions->setChecked(false);
+                    if(!view)return;
+                    QString identity;
+                    // Live canvases need the canonical KRA project identity.
+                    // Untitled canvases keep their historical autosaves under
+                    // the allocated private draft path until their first Save As.
+                    for(const auto &entry:m_engine.openDocuments()) {
+                        if(entry.nativeView!=view)continue;
+                        const auto *document=qobject_cast<KisDocument*>(
+                            entry.document.data());
+                        if(document) {
+                            const QString path=document->path();
+                            identity=MobileSavedVersionArchive::canonicalIdentity(path).isEmpty()?
+                                document->property("_mobileDraftPath").toString():path;
+                        }
+                        break;
+                    }
+                    QTimer::singleShot(0,this,[this,identity]() {
+                        if(isVisible())showSavedVersions(identity);
+                    });
+                } else if(m_engine.activateDocumentView(view)) {
+                    hide();
+                }
                 return;
             }
             const QString path=item->data(Qt::UserRole).toString();
@@ -755,7 +778,7 @@ private:
         // Drafts now retain older completed autosaves as private versions.
         // History stays separate from the latest recoverable draft.
         m_versions->setVisible(mode==Recent || mode==AllProjects ||
-                               mode==RecoveryDrafts);
+                               mode==OpenCanvases || mode==RecoveryDrafts);
         m_discardDraft->setChecked(false);
         m_discardDraft->setVisible(mode==RecoveryDrafts && !drafts.isEmpty());
         m_search->setVisible(mode!=OpenCanvases);
