@@ -375,16 +375,41 @@ private:
         }
 
         if(!QDir().mkpath(to))return;
-        const auto entries=fromDir.entryInfoList(QDir::Files|QDir::Readable|QDir::Hidden);
-        for(const QFileInfo &entry:entries) {
-            const QString targetPath=QDir(to).filePath(entry.fileName());
-            if(!QFile::exists(targetPath)) {
-                QFile::rename(entry.absoluteFilePath(),targetPath);
-            } else {
-                QFile::remove(entry.absoluteFilePath());
+        // Move complete KRA/sidecar pairs first. Legacy and canonical
+        // folders may contain the same checkpoint name; never delete a
+        // source version merely because a destination entry exists.
+        const auto versions=fromDir.entryInfoList({QStringLiteral("*.kra")},
+            QDir::Files|QDir::Readable|QDir::NoSymLinks);
+        for(const QFileInfo &entry:versions) {
+            QString targetPath=QDir(to).filePath(entry.fileName());
+            const QString oldDigest=entry.absoluteFilePath()+
+                                    QStringLiteral(".sha256");
+            if(QFile::exists(targetPath) ||
+               (QFile::exists(oldDigest) &&
+                QFile::exists(targetPath+QStringLiteral(".sha256")))) {
+                do {
+                    targetPath=QDir(to).filePath(entry.completeBaseName()+
+                        QLatin1Char('-')+
+                        QUuid::createUuid().toString(QUuid::WithoutBraces)+
+                        QStringLiteral(".kra"));
+                } while(QFile::exists(targetPath) ||
+                        QFile::exists(targetPath+QStringLiteral(".sha256")));
             }
+            if(!QFile::rename(entry.absoluteFilePath(),targetPath))
+                continue; // retain source if moving fails
+            if(QFile::exists(oldDigest))
+                QFile::rename(oldDigest,targetPath+QStringLiteral(".sha256"));
         }
-        fromDir.rmdir(from);
+        // Preserve any other metadata files; never overwrite unrelated
+        // destination content, even if migration is retried.
+        const auto leftovers=fromDir.entryInfoList(
+            QDir::Files|QDir::Readable|QDir::Hidden|QDir::NoSymLinks);
+        for(const QFileInfo &entry:leftovers) {
+            const QString targetPath=QDir(to).filePath(entry.fileName());
+            if(!QFile::exists(targetPath))
+                QFile::rename(entry.absoluteFilePath(),targetPath);
+        }
+        fromDir.rmdir(from); // succeeds only if fully migrated
         prune(to);
     }
 
