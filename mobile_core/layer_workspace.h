@@ -909,14 +909,28 @@ private:
             while(ancestor && ancestor!=image->root())
                 ancestor=ancestor->parent();
             if(ancestor!=image->root())return;
-            if(view->activeNode()!=node)
-                m_engine.selectLayer(node);
+            if(auto *transform=activeTransform()) {
+                if(!canRetarget(transform))return;
+                m_engine.freehandBrush();
+            }
+            if(!m_engine.selectLayer(node) ||
+               !m_engine.manager() ||
+               m_engine.manager()->image().toStrongRef()!=image)return;
+            m->slotSetSelectedNodes(KisNodeList{node});
             if(!m_engine.run(chosen==merge?"merge_layer":"flatten_layer"))
                 qWarning() << "Mobile Studio: Krita layer operation unavailable";
         } else if(chosen==group) {
             chooseGroupLayers(node,originalImage);
         } else if(chosen==ungroup) {
-            m_engine.selectLayer(node);
+            if(!node->inherits("KisGroupLayer"))return;
+            if(auto *transform=activeTransform()) {
+                if(!canRetarget(transform))return;
+                m_engine.freehandBrush();
+            }
+            if(!m_engine.selectLayer(node) ||
+               !m_engine.manager() ||
+               m_engine.manager()->image().toStrongRef()!=originalImage)return;
+            m->slotSetSelectedNodes(KisNodeList{node});
             m->quickUngroup();
         } else if(chosen==remove) {
             if(QMessageBox::question(this,i18n("Delete layer"),
