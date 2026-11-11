@@ -330,6 +330,21 @@ public:
                m_engine.manager()->image().toStrongRef()!=original)
                 return;
             if(masks->actions().contains(chosen)) {
+                // A mask belongs to one layer. Do not inherit the current
+                // multi-transform selection (or a stale layer from a prior
+                // canvas) when creating it from the global Add menu.
+                const KisNodeList current=selectedTargets();
+                KisNodeSP target=m_active;
+                if(!target || !current.contains(target) ||
+                   !target->inherits("KisLayer") ||
+                   !target->isEditable() || !inImage(target,original))
+                    return;
+                if(auto *transform=activeTransform()) {
+                    if(!canRetarget(transform))return;
+                    m_engine.freehandBrush();
+                }
+                if(!m_engine.selectLayer(target))return;
+                nodes->slotSetSelectedNodes(KisNodeList{target});
                 if(nodes->createNode(chosen->data().toString()))reload();
                 return;
             }
@@ -1925,9 +1940,15 @@ private:
             if(m_engine.activeTool()==QStringLiteral("KisToolTransform") &&
                (!transform || !canRetarget(transform)))return;
             if(m_selected.contains(node)) {
+                // Native transform requires at least one target. A second
+                // tap on the last selected layer opens its actions instead
+                // of clearing the selection and leaving a stale active node.
+                if(m_selected.size()==1) {
+                    showLayerActions(node,item);
+                    return;
+                }
                 m_selected.removeAll(node);
-                if(m_active==node && !m_selected.isEmpty())
-                    m_active=m_selected.last();
+                if(m_active==node)m_active=m_selected.last();
             } else {
                 m_selected.append(node);
                 m_active=node;
