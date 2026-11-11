@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "mobile_core/layer_rail_geometry.h"
+#include "mobile_core/overlay_placement.h"
 
 int main()
 {
@@ -20,4 +21,14 @@ int main()
         qFatal("bottom-anchored rail did not stop above its first blocker");
     if(expand(rail,bounds,500,false,false,{bounds}).height()!=0)
         qFatal("rail overlapped an occupied viewport");
+    const QRect toolbar(2,2,398,48);
+    const auto panel=MobileOverlayPlacement::nearest(QRect(12,12,150,160),bounds,
+                                                     {toolbar},QSize(100,80));
+    if(panel.top()!=52 || panel.intersects(toolbar) || panel.size()!=QSize(150,160))
+        qFatal("panel did not move off the toolbar after resizing");
+    const QRect right(250,2,150,596);
+    const auto smaller=MobileOverlayPlacement::nearest(QRect(90,60,300,48),bounds,
+                                                       {right},QSize(80,48));
+    if(!smaller.isValid() || smaller.intersects(right) || smaller.height()!=48)
+        qFatal("toolbar could not shorten on a crowded viewport");
 }

@@ -284,6 +284,8 @@ public:
         // Actions absent from the standalone native registry are
         // intentionally hidden rather than replaced by shortcuts.
         auto *viewMenu=new QMenu(QObject::tr("Canvas View"),window);
+        viewMenu->addAction(canvasOnlyAction);
+        viewMenu->addSeparator();
         for(const char *id:{
             "view_zoom_in",
             "view_zoom_out",
@@ -346,7 +348,7 @@ public:
         documentMenu->addSeparator();
         documentMenu->addAction(closeAction);
         QList<QAction*> moreActions{
-            documentMenu->menuAction(),canvasOnlyAction
+            documentMenu->menuAction()
         };
         if(!viewMenu->isEmpty())
             moreActions.append(viewMenu->menuAction());

@@ -16,6 +16,7 @@
 #include <QDialog>
 #include "touch_scroll.h"
 #include "recent_colors.h"
+#include "overlay_placement.h"
 #include <QEvent>
 #include <QFrame>
 #include <QHBoxLayout>
@@ -384,6 +385,12 @@ public:
         dialog.exec();
     }
 
+    void clearWheelGeometry()
+    {
+        m_manualWheelPlacement={};
+        setGeometry(QRect());
+    }
+
     void setManualWheelPlacement(const QRect &geometry)
     {
         if(geometry==m_manualWheelPlacement)return;
@@ -539,10 +546,17 @@ private:
                     }
                 }
             }
-            if(!placement.isValid())placement=corner;
-            const int wheelSide=placement.width();
-            if(wheelSide<=0)return;
-            applyWheelGeometry(placement,wheelSide,history);
+            if(!placement.isValid())
+                placement=MobileOverlayPlacement::nearest(corner,bounds,m_wheelObstacles,
+                                                          QSize(96,96),true);
+            if(!placement.isValid()) {
+                clearWheelGeometry();
+                return;
+            }
+            const int historyHeight=history?qBound(18,placement.width()/7,42)+2:0;
+            const int wheelSide=qMin(placement.width(),placement.height()-historyHeight);
+            if(wheelSide>0)applyWheelGeometry(
+                QRect(placement.topLeft(),QSize(wheelSide,wheelSide+historyHeight)),wheelSide,history);
             return;
         }
         // Prefer the requested size, then progressively smaller sizes.

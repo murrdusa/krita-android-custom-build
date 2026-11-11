@@ -989,18 +989,25 @@ public:
             auto *fadeDetails=new QWidget(body);
             auto *fadeForm=new QFormLayout(fadeDetails);
             fadeForm->setContentsMargins(0,0,0,0);
-            auto *idleOpacity=new QSpinBox(fadeDetails);
-            idleOpacity->setRange(15,90);
-            idleOpacity->setSuffix(QStringLiteral("%"));
-            idleOpacity->setValue(m_idleOpacity);
-            idleOpacity->setMinimumHeight(44);
-            fadeForm->addRow(QObject::tr("Idle opacity"),idleOpacity);
-            auto *fadeDelay=new QSpinBox(fadeDetails);
-            fadeDelay->setRange(1,30);
-            fadeDelay->setSuffix(QObject::tr(" s"));
-            fadeDelay->setValue(m_fadeDelay);
-            fadeDelay->setMinimumHeight(44);
-            fadeForm->addRow(QObject::tr("Fade after"),fadeDelay);
+            const auto fadeSlider=[fadeForm,fadeDetails](const QString &label,int low,int high,
+                                                         int value,const QString &suffix) {
+                auto *slider=new QSlider(Qt::Horizontal,fadeDetails);
+                slider->setRange(low,high);
+                slider->setValue(value);
+                slider->setMinimumHeight(42);
+                slider->setAccessibleName(label);
+                auto *caption=new QLabel(fadeDetails);
+                const auto update=[caption,label,suffix](int current) {
+                    caption->setText(QStringLiteral("%1  %2%3").arg(label).arg(current).arg(suffix));
+                };
+                update(value);
+                connect(slider,&QSlider::valueChanged,caption,update);
+                fadeForm->addRow(caption);
+                fadeForm->addRow(slider);
+                return slider;
+            };
+            auto *idleOpacity=fadeSlider(tr("Idle opacity"),15,90,m_idleOpacity,QStringLiteral("%"));
+            auto *fadeDelay=fadeSlider(tr("Fade after"),1,30,m_fadeDelay,tr(" s"));
             fadeDetails->setVisible(fade->isChecked());
             connect(fade,&QCheckBox::toggled,fadeDetails,&QWidget::setVisible);
             layout->addWidget(fadeDetails);
@@ -1197,16 +1204,25 @@ private:
         return false;
     }
 
-    void placeEditedPanels(const QRect &bounds)
+    QRect preferredPanel(const QWidget *panel,const QRect &bounds,const QRect &fallback) const
     {
-        for(const auto &entry:editablePanels()) {
-            auto *panel=entry.second;
-            const auto placement=m_panelPlacements.value(entry.first).toRectF();
-            if(!panel || panel==m_layers || !panel->isVisible() || !placement.isValid())continue;
-            const QRect geometry=MobileCanvasLayoutEditor::absolute(placement,bounds);
-            if(panel==m_color)m_color->setManualWheelPlacement(geometry);
-            else panel->setGeometry(geometry);
-        }
+        if(!hasEditedPlacement(panel))return fallback;
+        for(const auto &entry:editablePanels())
+            if(panel==entry.second)
+                return MobileCanvasLayoutEditor::absolute(
+                    m_panelPlacements.value(entry.first).toRectF(),bounds);
+        return fallback;
+    }
+
+    QRect placePanel(QWidget *panel,const QRect &preferred,const QRect &bounds,
+                     QList<QRect> &occupied,const QSize &minimum)
+    {
+        if(!panel || !panel->isVisible())return {};
+        const QRect geometry=MobileOverlayPlacement::nearest(
+            preferred,bounds,occupied,minimum.boundedTo(preferred.size()));
+        panel->setGeometry(geometry);
+        if(geometry.isValid())occupied.append(geometry);
+        return geometry;
     }
 
     MobileToolbarDragPreview *toolbarPreview()
@@ -1567,10 +1583,14 @@ private:
         placeDrawingOverlays();
     }
 
-    QRect placeSliders(QRect available)
+    QRect placeSliders(QRect available,const QRect &bounds,QList<QRect> &occupied)
     {
         const std::array<QWidget*,2> panels{m_brush.data(),m_opacityStrip.data()};
-        for(int band=0;band<2;++band) {
+        for(auto *panel:panels) {
+            if(hasEditedPlacement(panel))
+                placePanel(panel,preferredPanel(panel,bounds,{}),bounds,occupied,QSize(120,36));
+        }
+        for(int band=0;band<2 && available.isValid();++band) {
             std::array<int,2> widths{0,0};
             int total=0;
             int height=0;
@@ -1597,7 +1617,7 @@ private:
                 if(!widths[i])continue;
                 const bool atRight=m_sliderCorners[i]%2;
                 const int x=atRight?right-widths[i]:left;
-                panels[i]->setGeometry(x,y,widths[i],height);
+                placePanel(panels[i],QRect(x,y,widths[i],height),available,occupied,QSize(120,36));
                 if(atRight)right=x-gap;
                 else left=x+widths[i]+gap;
             }
@@ -1617,16 +1637,24 @@ private:
         QWidget *canvas=m_host?m_host->nativeCanvas():nullptr;
         if(!canvas || m_canvasLayoutEditing)return;
         const QRect canvasBounds=canvas->rect().adjusted(2,2,-2,-2);
-        placeEditedPanels(canvasBounds);
+        if(!canvasBounds.isValid())return;
+        QList<QRect> obstacles;
+        for(auto *toolbar:canvas->findChildren<QFrame*>(QString(),Qt::FindDirectChildrenOnly))
+            if(toolbar->isVisible() && toolbar->property("mobileCommandToolbar").toBool())
+                obstacles.append(toolbar->geometry());
         QRect viewport=MobileNativeCommandLayout::overlayBounds(canvas);
-        if(m_contextToolBar && !m_contextToolBar->isHidden() && !hasEditedPlacement(m_contextToolBar))
-            m_contextToolBar->setGeometry(viewport.left(),viewport.top(),
-                qMin(760,qMax(0,viewport.width())),48);
-        viewport.setTop(overlayTop(canvas));
-        if(!viewport.isValid())return;
+        if(!viewport.isValid())viewport=canvasBounds;
+        const bool customContext=hasEditedPlacement(m_contextToolBar);
+        const auto context=placePanel(m_contextToolBar,
+            preferredPanel(m_contextToolBar,canvasBounds,
+                QRect(viewport.left(),viewport.top(),qMin(760,viewport.width()),48)),
+            customContext?canvasBounds:viewport,obstacles,QSize(120,40));
+        if(!customContext && context.isValid() && context.top()==viewport.top())
+            viewport.setTop(context.bottom()+3);
+        if(!viewport.isValid())viewport=canvasBounds;
         const QRect wheelBounds=viewport;
-        viewport=placeSliders(viewport);
-        if(!viewport.isValid())return;
+        viewport=placeSliders(viewport,canvasBounds,obstacles);
+        if(!viewport.isValid())viewport=wheelBounds;
 
         QRect besideLayers=viewport;
         QRect layerAnchor;
@@ -1661,32 +1689,32 @@ private:
             const int optionsWidth=qMin(340,room.width());
             const QRect bounds(room.right()-optionsWidth+1,room.top(),
                                optionsWidth,qMin(440,room.height()));
-            // KoToolDocker::sizeHint() can remain a 44px header even
-            // after its native option widgets are attached. The panel
-            // must occupy usable canvas space rather than collapse into
-            // an unclickable one-line strip.
-            if(m_toolOptions && !hasEditedPlacement(m_toolOptions))m_toolOptions->setGeometry(
-                bounds.x(),bounds.y(),bounds.width(),bounds.height());
-            if(m_brushOptions && !hasEditedPlacement(m_brushOptions))m_brushOptions->setGeometry(bounds.x(),bounds.y(),bounds.width(),
-                qMin(room.height(),m_brushOptions->sizeHint().height()));
-            if(m_textFormatting && !hasEditedPlacement(m_textFormatting))m_textFormatting->setGeometry(bounds);
+            const auto placeOptions=[&](QWidget *panel,const QRect &fallback) {
+                placePanel(panel,preferredPanel(panel,canvasBounds,fallback),
+                           hasEditedPlacement(panel)?canvasBounds:viewport,
+                           obstacles,QSize(170,80));
+            };
+            placeOptions(m_toolOptions,bounds);
+            if(m_brushOptions)
+                placeOptions(m_brushOptions,QRect(bounds.x(),bounds.y(),bounds.width(),
+                    qMin(room.height(),m_brushOptions->sizeHint().height())));
+            placeOptions(m_textFormatting,bounds);
         }
-        QList<QRect> obstacles;
-        for(auto *toolbar:canvas->findChildren<QFrame*>(QString(),Qt::FindDirectChildrenOnly))
-            if(toolbar->isVisible() && toolbar->property("mobileCommandToolbar").toBool())
-                obstacles.append(toolbar->geometry());
-        for(const auto &entry:editablePanels()) {
-            auto *panel=entry.second;
-            if(panel && panel!=m_layers && panel!=m_color && panel->isVisible())
-                obstacles.append(panel->geometry());
-        }
-        if(m_color && !hasEditedPlacement(m_color)) {
-            m_color->setManualWheelPlacement({});
+        if(m_color && m_color->isVisible()) {
             auto wheelObstacles=obstacles;
             if(layerAnchor.isValid())
                 wheelObstacles.append(MobileLayerRailGeometry::expand(
                     layerAnchor,railBounds,qMin(layerLength,115),m_layersHorizontal,layerReverse,obstacles));
-            m_color->setWheelArea(wheelBounds,wheelObstacles);
+            if(hasEditedPlacement(m_color)) {
+                const QRect preferred=preferredPanel(m_color,canvasBounds,{});
+                const QRect geometry=MobileOverlayPlacement::nearest(
+                    preferred,canvasBounds,wheelObstacles,QSize(96,96),true);
+                if(geometry.isValid())m_color->setManualWheelPlacement(geometry);
+                else m_color->clearWheelGeometry();
+            } else {
+                m_color->setManualWheelPlacement({});
+                m_color->setWheelArea(wheelBounds,wheelObstacles);
+            }
         }
         if(layerAnchor.isValid()) {
             if(m_color && m_color->isVisible())obstacles.append(m_color->geometry());

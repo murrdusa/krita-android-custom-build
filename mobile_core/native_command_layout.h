@@ -33,6 +33,7 @@
 #include "touch_scroll.h"
 #include "recent_colors.h"
 #include "canvas_layout_editor.h"
+#include "overlay_placement.h"
 #include "toolbar_drag_gesture.h"
 
 class MobileNativeCommandLayout final : public QObject
@@ -356,7 +357,7 @@ private:
             history->setObjectName(QStringLiteral("_mobileToolbarColorHistory"));
             history->setAccessibleName(QObject::tr("Toolbar color history"));
             history->setStyleSheet(QStringLiteral(
-                "QFrame#_mobileToolbarColorHistory{background:#252529;border-radius:5px;}"));
+                "QFrame#_mobileToolbarColorHistory{background:transparent;border:0;}"));
             auto *row=new QBoxLayout(vertical?QBoxLayout::TopToBottom:
                                              QBoxLayout::LeftToRight,history);
             row->setContentsMargins(2,2,2,2);
@@ -411,20 +412,28 @@ private:
         }
     }
 
-    void placeEditedBar(QFrame *frame,const Bar &bar,const QRect &bounds,bool history)
+    QRect editedBarGeometry(QFrame *frame,const Bar &bar,const QRect &bounds,
+                            bool history,const QList<QRect> &occupied) const
     {
         QRect rect=MobileCanvasLayoutEditor::absolute(bar.placement,bounds);
         const bool vertical=verticalEdge(bar.edge);
         const int breadth=bar.target+4+(history?historyThickness:0);
         const int minimumLength=frame==m_toolbar?2*bar.target+6:bar.target+4;
         const int available=vertical?bounds.height():bounds.width();
-        const int length=qBound(qMin(minimumLength,available),
-                                vertical?rect.height():rect.width(),available);
-        rect.setSize(vertical?QSize(qMin(breadth,bounds.width()),length):
-                              QSize(length,qMin(breadth,bounds.height())));
+        const auto *scroll=frame==m_toolbar?m_scroll:
+            static_cast<QScrollArea*>(frame->layout()->itemAt(0)->widget());
+        const auto *commands=scroll->widget();
+        const int commandLength=commands?(vertical?commands->height():commands->width()):0;
+        const int preferredLength=qMax(vertical?rect.height():rect.width(),
+                                       minimumLength+commandLength);
+        const int length=qMin(preferredLength,available);
+        const int cross=qMin(breadth,vertical?bounds.width():bounds.height());
+        rect.setSize(vertical?QSize(cross,length):QSize(length,cross));
         rect.moveTo(bounds.x()+qRound(bar.placement.x()*(bounds.width()-rect.width())),
                     bounds.y()+qRound(bar.placement.y()*(bounds.height()-rect.height())));
-        frame->setGeometry(rect);
+        const int minimum=qMin(minimumLength,available);
+        return MobileOverlayPlacement::nearest(rect,bounds,occupied,
+            vertical?QSize(cross,minimum):QSize(minimum,cross));
     }
 
     void editCanvasLayout()
@@ -485,14 +494,18 @@ private:
         const int stripLength=commands?(mainVertical?commands->height():commands->width()):0;
         const bool history=m_historyEnabled && !m_canvasOnly && !m_recentColors.isEmpty();
         if(main.placement.isValid()) {
-            placeEditedBar(m_toolbar,main,bounds,history);
+            m_toolbar->setGeometry(editedBarGeometry(m_toolbar,main,bounds,history,{}));
         } else {
             m_toolbar->setGeometry(usable.x(),usable.y(),
                 qMin(pinned+stripLength+6,qMax(0,usable.width())),
                 main.target+4+(history?historyThickness:0));
         }
         placeHistory(m_toolbar,main.edge,1,history);
-        if(!m_canvasOnly)reserveEdge(usable,m_toolbar->geometry(),main.edge);
+        QList<QRect> occupied;
+        if(!m_canvasOnly) {
+            occupied.append(m_toolbar->geometry());
+            reserveEdge(usable,m_toolbar->geometry(),main.edge);
+        }
         const int minimumWidth=qMax(140,usable.width()*2/3);
         const int minimumHeight=qMax(190,usable.height()*2/3);
         // Horizontal bars reserve their rows before the side rails are placed.
@@ -503,12 +516,22 @@ private:
                 if(spec.edge!=edge)continue;
                 auto *frame=m_extra.at(i);
                 if(spec.placement.isValid()) {
-                    frame->setVisible(!m_canvasOnly);
+                    bool showHistory=history;
+                    QRect geometry;
                     if(!m_canvasOnly) {
-                        placeEditedBar(frame,spec,bounds,history);
-                        placeHistory(frame,edge,2,history);
+                        geometry=editedBarGeometry(frame,spec,bounds,showHistory,occupied);
+                        if(!geometry.isValid() && showHistory) {
+                            showHistory=false;
+                            geometry=editedBarGeometry(frame,spec,bounds,false,occupied);
+                        }
+                    }
+                    frame->setVisible(geometry.isValid());
+                    if(geometry.isValid()) {
+                        frame->setGeometry(geometry);
+                        placeHistory(frame,edge,2,showHistory);
                         frame->raise();
-                        reserveEdge(usable,frame->geometry(),edge);
+                        occupied.append(geometry);
+                        reserveEdge(usable,geometry,edge);
                     }
                     continue;
                 }
@@ -529,15 +552,16 @@ private:
                                      usable.left()+offset;
                 const int y=vertical?usable.top()+offset:
                     (edge==Top?usable.top():usable.bottom()-breadth+1);
-                frame->setGeometry(x,y,vertical?breadth:length,vertical?length:breadth);
+                const QRect geometry=MobileOverlayPlacement::nearest(
+                    QRect(x,y,vertical?breadth:length,vertical?length:breadth),usable,occupied,
+                    vertical?QSize(breadth,toolbarBreadth):QSize(toolbarBreadth,breadth));
+                frame->setVisible(geometry.isValid());
+                if(!geometry.isValid())continue;
+                frame->setGeometry(geometry);
+                occupied.append(geometry);
                 placeHistory(frame,edge,2,showHistory);
                 frame->raise();
-                switch(edge) {
-                case Top:usable.setTop(usable.top()+breadth+2);break;
-                case Bottom:usable.setBottom(usable.bottom()-breadth-2);break;
-                case Left:usable.setLeft(usable.left()+breadth+2);break;
-                case Right:usable.setRight(usable.right()-breadth-2);break;
-                }
+                reserveEdge(usable,geometry,edge);
             }
         }
         m_toolbar->raise();
