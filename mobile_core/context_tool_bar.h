@@ -513,6 +513,7 @@ private:
             styleMenu(menu);
             const quint64 generation=m_generation;
             const QPointer<MobileContextToolBar> alive=this;
+            const QPointer<KoToolBase> invokedTool=m_nativeTool;
             for(int i=0;i<choices.size();++i) {
                 const auto &choice=choices.at(i);
                 if(!choice.action)continue;
@@ -530,8 +531,16 @@ private:
             auto *picked=menu.exec(control->mapToGlobal(QPoint(0,control->height())));
             if(picked && alive) {
                 const auto action=choices.at(picked->data().toInt()).action;
-                QTimer::singleShot(0,alive.data(),[this,generation,action]() {
-                    if(generation==m_generation && isVisible() && action && action->isEnabled())
+                QTimer::singleShot(0,alive.data(),
+                    [this,generation,invokedTool,action]() {
+                    // Android can briefly hide the floating toolbar while
+                    // closing a QMenu. Visibility is not proof the active
+                    // native tool changed; dropping these callbacks made
+                    // selection/shape commands intermittently do nothing.
+                    // Reject stale callbacks by tool identity and generation.
+                    if(generation==m_generation && invokedTool &&
+                       m_nativeTool==invokedTool.data() &&
+                       action && action->isEnabled())
                         action->trigger();
                 });
             }
