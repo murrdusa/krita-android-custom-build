@@ -410,6 +410,13 @@ public:
         if(drafts.size()!=1 || !m_files)return false;
         const auto &draft=drafts.first();
         if(!MobileDraftRecovery::projectFor(draft.absoluteFilePath()).isEmpty())return false;
+        // A damaged or interrupted private KRA must not be the first
+        // automatic document opened during startup. Keep it visible
+        // under Recover drafts for manual handling instead.
+        QFile candidate(draft.absoluteFilePath());
+        if(!candidate.open(QIODevice::ReadOnly) ||
+           candidate.peek(4)!=QByteArray::fromHex("504b0304"))
+            return false;
         const QString attempt=draft.fileName()+QLatin1Char(':')+
             QString::number(draft.lastModified().toMSecsSinceEpoch());
         const QString key=QStringLiteral("MobileStudio/lastAutomaticDraft");
