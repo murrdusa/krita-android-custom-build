@@ -107,6 +107,16 @@ int main(int argc,char **argv)
                 versions.first(),recover).isEmpty(),
             "invalid snapshot header must not be recovered");
     save(newestSnapshot,newestOriginal);
+    // An existing sidecar must not cause a damaged latest KRA to be
+    // treated as identical to the current good saved file.
+    save(newestSnapshot,QByteArray::fromHex("504b0304")+"damaged-copy");
+    require(MobileSavedVersionArchive::snapshot(source,store),
+            "failed to repair history after a damaged checkpoint");
+    versions=MobileSavedVersionArchive::list(source,store);
+    require(versions.size()==3 && load(versions.first().path)==second &&
+            !MobileSavedVersionArchive::materializeRecovery(
+                versions.first(),recover).isEmpty(),
+            "damaged latest archive incorrectly suppressed a fresh save");
 
     // Draft autosave snapshots are immutable and keyed by the intended
     // project, not the temporary draft file's location.
