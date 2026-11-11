@@ -191,7 +191,9 @@ public:
                         const QString identity=
                             MobileSavedVersionArchive::canonicalIdentity(project).isEmpty()?
                             draft:project;
-                        MobileSavedVersionArchive::enqueueDraftCheckpoint(draft,identity);
+                        MobileSavedVersionArchive::enqueueDraftCheckpoint(
+                            draft,identity,
+                            QGuiApplication::applicationState()!=Qt::ApplicationActive);
                     });
                 }
                 if(!m_pendingDrafts.isEmpty())

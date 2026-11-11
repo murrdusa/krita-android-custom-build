@@ -105,11 +105,20 @@ public:
     // project's identity (or under the private draft path if unsaved).
     // This does not modify the original project or its autosave file.
     static bool snapshotFrom(const QString &source,const QString &identity,
-                             const QString &rootOverride=QString())
+                             const QString &rootOverride=QString(),
+                             qint64 minGapMs=0)
     {
         QMutexLocker guard(&lock());
         const QString folder=folderFor(identity,rootOverride);
         if(folder.isEmpty())return false;
+        if(minGapMs>0) {
+            const auto versions=scan(folder);
+            if(!versions.isEmpty()) {
+                const qint64 elapsed=versions.first().createdUtc.msecsTo(
+                    QDateTime::currentDateTimeUtc());
+                if(elapsed>=0 && elapsed<minGapMs)return true;
+            }
+        }
         constexpr qint64 copyLimit=8LL*1024*1024*1024;
         const bool provider=isProviderUri(source);
         QFileInfo original;
@@ -184,12 +193,19 @@ public:
     }
 
     static void enqueueDraftCheckpoint(const QString &draft,
-                                       const QString &identity)
+                                       const QString &identity,
+                                       bool backgroundCheckpoint=false)
     {
         if(folderFor(identity).isEmpty())return;
-        QThreadPool::globalInstance()->start([draft,identity]() {
-            snapshotFrom(draft,identity);
-        });
+        QThreadPool::globalInstance()->start(
+            [draft,identity,backgroundCheckpoint]() {
+                // The latest recovery draft continues updating every
+                // 30 seconds. Space full historical copies at least
+                // two minutes apart while painting; allow one when
+                // backgrounded so an interrupted session has a version.
+                snapshotFrom(draft,identity,QString(),
+                             backgroundCheckpoint?0:2LL*60*1000);
+            });
     }
 
     // Move history created while an untitled drawing was still a draft
