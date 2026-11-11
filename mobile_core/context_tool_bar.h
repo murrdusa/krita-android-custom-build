@@ -746,11 +746,23 @@ private:
     {
         if(!strip)return;
         const auto buttons=strip->buttons();
-        if(buttons.size()!=labels.size())return;
+        if(buttons.isEmpty())return;
         QList<Choice> choices;
         for(int i=0;i<buttons.size();++i) {
-            choices.append({labels.at(i),buttons.at(i)});
-            m_used.insert(buttons.at(i));
+            auto *native=buttons.at(i);
+            if(!native)continue;
+            // Krita tool versions can add/reorder option-strip buttons.
+            // Never drop the entire control just because our short-label
+            // table differs: retain the native label and QAction behavior.
+            QString caption;
+            if(buttons.size()==labels.size())caption=labels.at(i);
+            if(caption.isEmpty())caption=native->text().trimmed();
+            if(caption.isEmpty())caption=native->toolTip().trimmed();
+            if(caption.isEmpty())caption=native->accessibleName().trimmed();
+            if(caption.isEmpty())
+                caption=QObject::tr("Option %1").arg(i+1);
+            choices.append({caption,native});
+            m_used.insert(native);
         }
         addChoices(label,choices);
     }
