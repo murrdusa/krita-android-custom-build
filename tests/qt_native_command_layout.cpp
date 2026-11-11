@@ -94,5 +94,39 @@ int main(int argc,char **argv)
            "restoring the toolbar changed canvas geometry");
     verify(!MobileNativeCommandLayout::install(&host,&home,icon,commands,defaults,{}),
            "duplicate toolbar installation accepted");
+    const QVariantMap mainBar{{QStringLiteral("name"),QStringLiteral("Main")},
+                              {QStringLiteral("commands"),saved}};
+    const QVariantMap sideBar{{QStringLiteral("name"),QStringLiteral("Side")},
+                              {QStringLiteral("commands"),QStringList{"brush","undo"}},
+                              {QStringLiteral("edge"),3},
+                              {QStringLiteral("target"),56}};
+    QSettings().setValue(QStringLiteral("MobileStudio/toolbars"),QVariantList{mainBar,sideBar});
+    QMainWindow second;
+    second.resize(420,600);
+    auto *secondCanvas=new QWidget(&second);
+    second.setCentralWidget(secondCanvas);
+    verify(MobileNativeCommandLayout::install(
+        &second,&home,icon,commands,defaults,{},&canvasOnly),"could not reload multiple toolbars");
+    second.show();
+    QApplication::processEvents();
+    auto *side=secondCanvas->findChild<QFrame*>(QStringLiteral("_mobileCustomToolbar"));
+    verify(side && side->isVisible() && side->height()>side->width() &&
+           side->geometry().right()==secondCanvas->rect().right()-2,
+           "saved right rail did not restore vertically at the edge");
+    verify(MobileNativeCommandLayout::overlayBounds(secondCanvas).right()<side->geometry().left(),
+           "right rail did not reserve space for floating panels");
+    canvasOnly.trigger();
+    verify(!side->isVisible(),"Canvas Only left an extra toolbar visible");
+    canvasOnly.trigger();
+    second.resize(160,280);
+    QApplication::processEvents();
+    verify(!side->isVisible(),"oversized rail crowded a small canvas");
+    auto *gear=secondCanvas->findChild<QToolButton*>(QStringLiteral("_mobileNativeMoreButton"));
+    bool fallback=false;
+    for(auto *action:gear->menu()->actions())
+        if(auto *menu=action->menu())
+            for(auto *entry:menu->actions())
+                if(entry->menu() && entry->menu()->actions().contains(&brush))fallback=true;
+    verify(fallback,"the gear menu lost commands from an overflow toolbar");
     return 0;
 }

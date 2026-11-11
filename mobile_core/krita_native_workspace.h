@@ -905,8 +905,10 @@ protected:
                      event->type()==QEvent::TabletPress || event->type()==QEvent::TouchBegin))
             dismissTemporaryPanels(pressTarget(watched,event));
         if(m_host && watched==m_host->nativeCanvas() &&
-           (event->type()==QEvent::Resize ||
-            event->type()==QEvent::Show)) {
+           (event->type()==QEvent::Resize || event->type()==QEvent::Show ||
+            (event->type()==QEvent::DynamicPropertyChange &&
+             static_cast<QDynamicPropertyChangeEvent*>(event)->propertyName()==
+                MobileNativeCommandLayout::overlayBoundsProperty()))) {
             placeLayerOverlay();
             placeDrawingOverlays();
         }
@@ -1169,31 +1171,29 @@ private:
         if(!m_layers)return;
         QWidget *canvas=m_layers->parentWidget();
         if(canvas->width()<140 || canvas->height()<180)return;
-        const int inset=2;
+        const QRect available=MobileNativeCommandLayout::overlayBounds(canvas);
         const int top=overlayTop(canvas);
         const int bottom=m_brush && m_brush->isVisible() ?
-            m_brush->y() : canvas->height();
-        const int panelHeight=qMin(bottom-top-inset,m_layers->contentHeight());
-        m_layers->setGeometry(inset,top,m_layers->width(),qMax(0,panelHeight));
+            m_brush->y() : available.bottom()+1;
+        const int panelHeight=qMin(bottom-top-2,m_layers->contentHeight());
+        m_layers->setGeometry(available.left(),top,m_layers->width(),qMax(0,panelHeight));
     }
 
     void placeDrawingOverlays()
     {
         QWidget *canvas=m_host ? m_host->nativeCanvas() : nullptr;
         if(!canvas)return;
-        const int inset=2;
-        if(m_contextToolBar && !m_contextToolBar->isHidden()) {
-            const int toolbarWidth=qMin(760,qMax(0,canvas->width()-2*inset));
-            m_contextToolBar->setGeometry(inset,
-                MobileNativeCommandLayout::panelTopInset(canvas),toolbarWidth,48);
-        }
+        const QRect viewport=MobileNativeCommandLayout::overlayBounds(canvas);
+        if(m_contextToolBar && !m_contextToolBar->isHidden())
+            m_contextToolBar->setGeometry(viewport.left(),viewport.top(),
+                qMin(760,qMax(0,viewport.width())),48);
         const int top=overlayTop(canvas);
-        const int width=canvas->width()-2*inset;
-        const int height=canvas->height()-top-inset;
+        const int width=viewport.width();
+        const int height=viewport.bottom()+1-top;
         if(width<=0 || height<=0)return;
         if(m_brush) {
             const int panelHeight=qMin(height,m_brush->sizeHint().height());
-            m_brush->setGeometry(inset,canvas->height()-panelHeight-inset,
+            m_brush->setGeometry(viewport.left(),viewport.bottom()-panelHeight+1,
                                  qMin(m_showSize && m_showOpacity?340:190,width),panelHeight);
         }
         if(m_toolOptions || m_textFormatting || m_brushOptions) {
@@ -1201,7 +1201,7 @@ private:
             const int available=m_layers && m_layers->isVisible() &&
                 besideLayers>=240 ? besideLayers : width;
             const int optionsWidth=qMin(340,available);
-            const QRect bounds(canvas->width()-optionsWidth-inset,top,
+            const QRect bounds(viewport.right()-optionsWidth+1,top,
                                optionsWidth,qMin(440,height));
             if(m_toolOptions)m_toolOptions->setGeometry(bounds.x(),bounds.y(),bounds.width(),
                 qMin(height,qBound(44,m_toolOptions->sizeHint().height(),440)));
@@ -1209,13 +1209,14 @@ private:
                 qMin(height,m_brushOptions->sizeHint().height()));
             if(m_textFormatting)m_textFormatting->setGeometry(bounds);
         }
-        if(m_color) {
-            m_color->avoidBottom(m_brush && m_brush->isVisible() ?
-                                m_brush->height()+inset : 0);
-            m_color->setOverlayClearance(top,
-                m_layers && m_layers->isVisible()?m_layers->geometry().right()+2:0);
-        }
         placeLayerOverlay();
+        if(m_color) {
+            QRect colorArea=viewport;
+            colorArea.setTop(top);
+            if(m_brush && m_brush->isVisible())colorArea.setBottom(m_brush->y()-1);
+            if(m_layers && m_layers->isVisible())colorArea.setLeft(m_layers->geometry().right()+2);
+            m_color->setWheelArea(colorArea);
+        }
     }
 
     void raiseOverlays()

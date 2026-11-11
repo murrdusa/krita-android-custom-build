@@ -407,6 +407,13 @@ public:
         dialog.exec();
     }
 
+    void setWheelArea(const QRect &area)
+    {
+        if(m_wheelArea==area)return;
+        m_wheelArea=area;
+        updateForViewport();
+    }
+
     bool expanded() const {return m_expanded;}
     void setOverlayClearance(int top,int right)
     {
@@ -498,17 +505,16 @@ private:
         auto *parent=parentWidget();
         if(!parent)return;
         if(m_wheelOnly) {
-            const int edge=2;
-            const int left=m_avoidRight+edge;
+            const QRect bounds=(m_wheelArea.isNull()?parent->rect():m_wheelArea)
+                .intersected(parent->rect()).adjusted(2,2,-2,-2);
             const int preferred[]={184,212,252};
-            const int side=qMax(0,qMin(preferred[m_sizeLevel],qMin(parent->width()-left-edge,
-                parent->height()-m_avoidTop-m_avoidBottom-2*edge)));
+            const int side=qMax(0,qMin(preferred[m_sizeLevel],qMin(bounds.width(),bounds.height())));
             if(size()!=QSize(side,side)) {
                 setFixedSize(side,side);
                 setMask(QRegion(rect(),QRegion::Ellipse));
             }
-            const int x=(m_corner%2)?left:parent->width()-side-edge;
-            const int y=m_corner>=2?m_avoidTop+edge:parent->height()-m_avoidBottom-side-edge;
+            const int x=(m_corner%2)?bounds.left():bounds.right()-side+1;
+            const int y=m_corner>=2?bounds.top():bounds.bottom()-side+1;
             move(x,y);
             return;
         }
@@ -613,6 +619,7 @@ private:
     QString m_lastSwatchColor;
     bool m_expanded=true,m_wantsExpanded=true,m_dragging=false;
     int m_sizeLevel=1,m_corner=0,m_rightInset=7,m_bottomInset=7;
+    QRect m_wheelArea;
     int m_avoidBottom=0,m_avoidTop=0,m_avoidRight=0;
     bool m_wheelOnly=false;
     QPoint m_dragStart,m_positionAtStart;
