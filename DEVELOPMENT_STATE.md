@@ -4,6 +4,8 @@
 
 ## Resume here
 
+- **Menu contrast:** Studio applies a consistent widget palette at Android startup, with paired foreground and background colors for menus, combo popups, and plain dialogs. Existing local panel styles still apply. Check Issue #1 for the exact build.
+
 - **UI feedback fixes:** Settings opens its styled menu directly. A toolbar collapses a shortcut duplicate when it already shows the same action, without changing the saved shortcut assignment. Brush Tool Settings shows Size and Opacity only when their respective floating sliders are hidden. The color wheel uses a continuous antialiased hue ring, rounded saturation/value edges and clearance around both markers. Check Issue #1 for the exact build.
 
 - **Custom toolbars:** Settings → Edit UI Layout supports named additional toolbars, independent command lists, edge alignment, button and icon sizes, spacing and opacity. Top and bottom toolbars run horizontally, while left and right toolbars run vertically. Existing primary toolbar settings migrate automatically. Saved bars reserve space for floating panels and hide from the canvas if the viewport becomes too small. Their commands remain available from the gear. The main toolbar keeps Home and Settings pinned. WSL compiled and packaged `89021227a44a2af97ee715bea8870a4ea6379cec`.

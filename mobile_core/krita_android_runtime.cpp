@@ -11,6 +11,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QMetaObject>
+#include <QPalette>
 #include <QSettings>
 #include <jni.h>
 #include "KisApplication.h"
@@ -25,6 +26,42 @@
 #include "android_document_intents.h"
 #include "krita_native_workspace.h"
 #include <config-qt-patches-present.h>
+
+namespace {
+void applyStudioWidgetColors(QApplication &app)
+{
+    // Use the same foreground/background pairs for plain Qt dialogs,
+    // popup lists and menus, regardless of the Android system theme.
+    app.setStyle(QStringLiteral("Fusion"));
+    QPalette palette=app.palette();
+    palette.setColor(QPalette::Window,QColor("#252529"));
+    palette.setColor(QPalette::Base,QColor("#2c2c32"));
+    palette.setColor(QPalette::AlternateBase,QColor("#34343c"));
+    palette.setColor(QPalette::Button,QColor("#383840"));
+    palette.setColor(QPalette::ToolTipBase,QColor("#383840"));
+    const QColor text("#f4f4f5");
+    for(auto role:{QPalette::WindowText,QPalette::Text,QPalette::ButtonText,
+                   QPalette::ToolTipText,QPalette::HighlightedText,QPalette::BrightText})
+        palette.setColor(role,text);
+    palette.setColor(QPalette::Highlight,QColor("#365c78"));
+    palette.setColor(QPalette::Link,QColor("#a7def1"));
+    palette.setColor(QPalette::LinkVisited,QColor("#d4bafb"));
+    palette.setColor(QPalette::PlaceholderText,QColor("#b4b7c1"));
+    for(auto role:{QPalette::WindowText,QPalette::Text,QPalette::ButtonText,
+                   QPalette::PlaceholderText})
+        palette.setColor(QPalette::Disabled,role,QColor("#a6a8b2"));
+    app.setPalette(palette);
+
+    // These popup surfaces can be separate windows and need explicit pairs
+    // even when the parent widget already has its own stylesheet.
+    app.setStyleSheet(QStringLiteral(
+        "QMenu{background:#252529;color:#f4f4f5;border:1px solid #55555c;}"
+        "QMenu::item:selected{background:#365c78;color:#ffffff;}"
+        "QMenu::item:disabled{color:#a6a8b2;}"
+        "QComboBox QAbstractItemView{background:#2c2c32;color:#f4f4f5;"
+        "selection-background-color:#365c78;selection-color:#ffffff;}"));
+}
+}
 
 MobileKritaAndroidRuntime::Result MobileKritaAndroidRuntime::launch(
     KisApplication &app,const KisApplicationArguments &args)
@@ -55,6 +92,7 @@ MobileKritaAndroidRuntime::Result MobileKritaAndroidRuntime::launch(
 
     app.initializeGlobals(args);
     app.initializeAndroidScaling(cfg);
+    applyStudioWidgetColors(app);
     app.addResourceTypes();
     app.loadPlugins();
     if(!app.registerResources()) {
