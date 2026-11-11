@@ -446,7 +446,7 @@ public:
         }
         if(m_shortcuts.isEmpty())return;
         const QString saved=QSettings().value(
-            QStringLiteral("MobileStudio/toolbarShortcut")).toString();
+            QStringLiteral("MobileStudio/toolbarShortcut"),QStringLiteral("fit")).toString();
         for(int i=0;i<m_shortcuts.size();++i)
             if(m_shortcuts.at(i).id==saved)m_shortcutIndex=i;
         connect(slot,&QAction::triggered,this,[this]() {
@@ -1133,9 +1133,10 @@ private:
             return;
         }
         m_shortcutSlot->setText(choice.action->text());
-        m_shortcutSlot->setToolTip(choice.action->text());
-        m_shortcutSlot->setIcon(choice.icon);
+        m_shortcutSlot->setToolTip(choice.action->toolTip());
+        m_shortcutSlot->setIcon(choice.action->icon().isNull()?choice.icon:choice.action->icon());
         m_shortcutSlot->setEnabled(choice.action->isEnabled());
+        m_shortcutSlot->setVisible(choice.action->isVisible());
         m_shortcutSlot->setCheckable(choice.action->isCheckable());
         m_shortcutSlot->setChecked(choice.action->isChecked());
     }

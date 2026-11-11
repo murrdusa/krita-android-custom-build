@@ -391,7 +391,7 @@ public:
         };
         for(const auto &entry:studioCommands)
             toolbarCommands.insert(QString::fromLatin1(entry.first),entry.second);
-        setStudioIcon(optionsAction,"configure");
+        setStudioIcon(optionsAction,"paintop_settings_02");
         if(!MobileNativeCommandLayout::install(window,homeAction,studioIcon("configure"),
             toolbarCommands,{"paint","erase","blend","tool-settings","color","layers",
                              "tools","undo","redo","save","shortcut"},

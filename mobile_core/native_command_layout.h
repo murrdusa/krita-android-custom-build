@@ -212,6 +212,8 @@ private:
             });
         }
         m_scroll->setWidget(strip);
+        // QScrollArea enables auto-fill on its child when it takes ownership.
+        strip->setAutoFillBackground(false);
         m_scroll->setMinimumSize(0,44);
         resizeStrip();
     }

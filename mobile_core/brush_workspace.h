@@ -289,7 +289,7 @@ public:
                 m_compositeSpace=space;
                 m_composite->clear();
                 if(space) {
-                    const auto modes=KoCompositeOpRegistry::instance()->getCompositeOps(space);
+                    const auto modes=KoCompositeOpRegistry::instance().getCompositeOps(space);
                     for(const auto &mode:modes)m_composite->addItem(mode.name(),mode.id());
                 }
             }
