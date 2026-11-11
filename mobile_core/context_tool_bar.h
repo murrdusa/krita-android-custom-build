@@ -609,6 +609,7 @@ private:
             QMenu menu;
             styleMenu(menu);
             const quint64 generation=m_generation;
+            const QPointer<QObject> invokedTool=m_nativeTool;
             for(int i=0;i<choices.size();++i) {
                 const auto &choice=choices.at(i);
                 auto *item=menu.addAction(choice.label);
@@ -623,11 +624,12 @@ private:
             const int index=picked->data().toInt();
             if(index<0 || index>=choices.size())return;
             const Choice choice=choices.at(index);
-            QTimer::singleShot(0,this,[this,generation,choice]() {
+            QTimer::singleShot(0,this,[this,generation,invokedTool,choice]() {
                 // QMenu may briefly hide the floating bar while Android
                 // transfers focus. Visibility is NOT proof that the native
                 // Transform tool was deactivated, and was dropping taps.
-                if(generation!=m_generation ||
+                if(generation!=m_generation || !invokedTool ||
+                   m_nativeTool!=invokedTool.data() ||
                    m_id.section(QLatin1Char('/'),-1)!=QStringLiteral("KisToolTransform") ||
                    !choice.config || !choice.button ||
                    !choice.button->isEnabled()) {
