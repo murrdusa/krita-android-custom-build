@@ -954,10 +954,16 @@ public:
             scroll->setWidget(body);
             outer->addWidget(scroll,1);
             dialog.resize(qMin(400,m_host->width()),qMin(520,m_host->height()));
-            auto *layers=new QCheckBox(QObject::tr("Keep Layers open"),body);
-            auto *color=new QCheckBox(QObject::tr("Keep Color Wheel open"),body);
-            // One control preserves all four former independent
-            // Size/Opacity combinations without requiring two toggles.
+            // Combine the two panel-retention checkboxes into a
+            // single choice. All historical preference combinations
+            // remain representable and use the same persisted keys.
+            auto *persistentPanels=new MobileTouchComboBox(body);
+            persistentPanels->addItem(QObject::tr("Neither"),0);
+            persistentPanels->addItem(QObject::tr("Layers only"),1);
+            persistentPanels->addItem(QObject::tr("Color Wheel only"),2);
+            persistentPanels->addItem(QObject::tr("Layers + Color Wheel"),3);
+            persistentPanels->setCurrentIndex(
+                (m_keepLayers?1:0)|(m_keepColor?2:0));
             auto *floatingSliders=new MobileTouchComboBox(body);
             floatingSliders->addItem(QObject::tr("Hidden"),0);
             floatingSliders->addItem(QObject::tr("Size only"),1);
@@ -965,10 +971,8 @@ public:
             floatingSliders->addItem(QObject::tr("Size + Opacity"),3);
             floatingSliders->setCurrentIndex(
                 (m_showSize?1:0)|(m_showOpacity?2:0));
-            layers->setChecked(m_keepLayers);
-            color->setChecked(m_keepColor);
-            layout->addWidget(layers);
-            layout->addWidget(color);
+            layout->addWidget(new QLabel(QObject::tr("Keep panels open"),body));
+            layout->addWidget(persistentPanels);
             layout->addWidget(new QLabel(QObject::tr("Floating brush sliders"),body));
             layout->addWidget(floatingSliders);
             auto *fade=new QCheckBox(QObject::tr("Fade idle panels"),body);
@@ -1039,8 +1043,9 @@ public:
             connect(done,&QPushButton::clicked,&dialog,&QDialog::accept);
             outer->addWidget(done);
             if(dialog.exec()!=QDialog::Accepted)return;
-            m_keepLayers=layers->isChecked();
-            m_keepColor=color->isChecked();
+            const int panelMode=persistentPanels->currentData().toInt();
+            m_keepLayers=bool(panelMode&1);
+            m_keepColor=bool(panelMode&2);
             const int sliderMode=floatingSliders->currentData().toInt();
             m_showSize=bool(sliderMode&1);
             m_showOpacity=bool(sliderMode&2);
