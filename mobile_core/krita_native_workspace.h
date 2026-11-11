@@ -59,6 +59,8 @@
 #include "kis_image.h"
 #include "kis_paint_device.h"
 #include "kis_coordinates_converter.h"
+#include <KisReferenceImagesLayer.h>
+#include <KisReferenceImagesDecoration.h>
 
 #include "KisDocument.h"
 #include "input/KisTouchGestureAction.h"
@@ -871,6 +873,23 @@ public:
         if(!canvas->canvasWidget()->rect().contains(widgetPoint))return;
         const QPoint point=canvas->coordinatesConverter()->widgetToImage(
             widgetPoint).toPoint();
+        // Native Krita samples overlaid reference images *before* the
+        // composited projection. Reuse that behavior so dragging the
+        // toolbar swatch onto a floating reference works too.
+        if(auto *view=canvas->imageView().data()) {
+            if(view->document() && canvas->referenceImagesDecoration() &&
+               canvas->referenceImagesDecoration()->visible()) {
+                const auto refs=view->document()->referenceImagesLayer();
+                if(refs) {
+                    const QColor referenceColor=refs->getPixel(point);
+                    if(referenceColor.isValid()) {
+                        provider->setFGColor(KoColor(referenceColor,
+                                                    image->colorSpace()));
+                        return;
+                    }
+                }
+            }
+        }
         if(!image->bounds().contains(point))return;
         KoColor sampled;
         image->projection()->pixel(point.x(),point.y(),&sampled);
