@@ -75,6 +75,7 @@ def main(root:Path):
     native_workspace=own/"mobile_core/krita_native_workspace.h"
     native_reorder_policy=own/"mobile_core/native_layer_reorder_policy.h"
     native_command_layout=own/"mobile_core/native_command_layout.h"
+    toolbar_drag_gesture=own/"mobile_core/toolbar_drag_gesture.h"
     deferred_view_command=own/"mobile_core/deferred_view_command.h"
     document_navigation=own/"mobile_core/document_navigation.h"
     switcher=own/"mobile_core/document_switcher.h"
@@ -668,6 +669,8 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
         native_reorder_policy.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/native_command_layout.h").write_text(
         native_command_layout.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/toolbar_drag_gesture.h").write_text(
+        toolbar_drag_gesture.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/context_tool_bar.h").write_text(
         (own/"mobile_core/context_tool_bar.h").read_text(encoding="utf-8"),
         encoding="utf-8")
