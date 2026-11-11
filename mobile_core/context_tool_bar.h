@@ -513,7 +513,7 @@ private:
             styleMenu(menu);
             const quint64 generation=m_generation;
             const QPointer<MobileContextToolBar> alive=this;
-            const QPointer<KoToolBase> invokedTool=m_nativeTool;
+            const QPointer<QObject> invokedTool=m_nativeTool;
             for(int i=0;i<choices.size();++i) {
                 const auto &choice=choices.at(i);
                 if(!choice.action)continue;
@@ -811,7 +811,7 @@ private:
                 QMenu menu;
                 styleMenu(menu);
                 const quint64 generation=m_generation;
-                const QPointer<KoToolBase> invokedTool=m_nativeTool;
+                const QPointer<QObject> invokedTool=m_nativeTool;
                 for(int i=0;i<native->count();++i) {
                     const QString text=native->itemText(i);
                     if(text.isEmpty())continue;
