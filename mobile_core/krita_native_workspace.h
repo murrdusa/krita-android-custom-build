@@ -713,10 +713,38 @@ public:
                     QSettings().setValue(
                         QStringLiteral("TabletUi/referenceTwoFinger"),enabled);
                 });
+            auto *referenceFlip=new QCheckBox(QObject::tr(
+                "Double-tap reference image to flip horizontally"),body);
+            referenceFlip->setChecked(settings.value(
+                QStringLiteral("TabletUi/referenceDoubleTapEnabled"),
+                true).toBool());
+            form->addRow(referenceFlip);
+            QObject::connect(referenceFlip,&QCheckBox::toggled,&dialog,
+                [](bool enabled) {
+                    QSettings().setValue(
+                        QStringLiteral("TabletUi/referenceDoubleTapEnabled"),
+                        enabled);
+                });
+            auto *referenceFlipInterval=new QSpinBox(body);
+            referenceFlipInterval->setRange(120,650);
+            referenceFlipInterval->setSuffix(QObject::tr(" ms"));
+            referenceFlipInterval->setValue(qBound(120,settings.value(
+                QStringLiteral("TabletUi/referenceDoubleTapMs"),350).toInt(),650));
+            referenceFlipInterval->setEnabled(referenceFlip->isChecked());
+            form->addRow(QObject::tr("Reference image double-tap interval"),
+                         referenceFlipInterval);
+            QObject::connect(referenceFlip,&QCheckBox::toggled,
+                             referenceFlipInterval,&QWidget::setEnabled);
+            QObject::connect(referenceFlipInterval,
+                QOverload<int>::of(&QSpinBox::valueChanged),
+                &dialog,[](int value) {
+                    QSettings().setValue(
+                        QStringLiteral("TabletUi/referenceDoubleTapMs"),value);
+                });
             auto *referenceFlipInfo=new QLabel(QObject::tr(
-                "Double-tap a reference image to flip it horizontally. "
-                "Only touches on the image are intercepted; other touches "
-                "keep their normal painting and canvas gestures."),body);
+                "Reference-image double-tap is enabled by default. "
+                "It flips only the reference, even while painting. "
+                "Small finger movement does not move a reference."),body);
             referenceFlipInfo->setWordWrap(true);
             form->addRow(referenceFlipInfo);
 
