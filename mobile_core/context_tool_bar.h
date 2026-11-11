@@ -855,6 +855,7 @@ private:
             if(!optionAvailable(native))return;
             const quint64 generation=m_generation;
             const QPointer<MobileContextToolBar> alive=this;
+            const QPointer<QObject> invokedTool=m_nativeTool;
             QDialog dialog(window());
             dialog.setWindowTitle(label);
             dialog.setStyleSheet(QStringLiteral(
@@ -882,7 +883,8 @@ private:
             connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
             layout->addWidget(buttons);
             if(dialog.exec()==QDialog::Accepted && alive &&
-               generation==alive->m_generation && alive->isVisible() &&
+               generation==alive->m_generation && invokedTool &&
+               alive->m_nativeTool==invokedTool.data() &&
                alive->optionAvailable(native)) {
                 native->setValue(editor->value());
                 if constexpr(!std::is_same<SpinBox,QSlider>::value) {
