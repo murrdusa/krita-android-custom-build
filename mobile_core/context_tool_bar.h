@@ -811,6 +811,7 @@ private:
                 QMenu menu;
                 styleMenu(menu);
                 const quint64 generation=m_generation;
+                const QPointer<KoToolBase> invokedTool=m_nativeTool;
                 for(int i=0;i<native->count();++i) {
                     const QString text=native->itemText(i);
                     if(text.isEmpty())continue;
@@ -820,8 +821,10 @@ private:
                     item->setEnabled(index.flags().testFlag(Qt::ItemIsEnabled));
                     item->setCheckable(true);
                     item->setChecked(i==native->currentIndex());
-                    connect(item,&QAction::triggered,this,[this,generation,native,i,text]() {
-                        if(generation!=m_generation || !isVisible() ||
+                    connect(item,&QAction::triggered,this,
+                            [this,generation,invokedTool,native,i,text]() {
+                        if(generation!=m_generation || !invokedTool ||
+                           m_nativeTool!=invokedTool.data() ||
                            !optionAvailable(native) || i>=native->count() ||
                            native->itemText(i)!=text)return;
                         native->setCurrentIndex(i);
