@@ -840,6 +840,7 @@ private:
             properties->setVisible(!properties->isVisible());
             if(properties->isVisible())updateProperties();
         });
+        propertiesButton->setCheckable(true);
         propertiesButton->setToolTip(QObject::tr(
             "Toolbar name, spacing and background opacity"));
         deleteBar=addButton(barRow,QObject::tr("Delete"),[&]() {
