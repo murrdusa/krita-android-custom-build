@@ -89,6 +89,24 @@ int main(int argc,char **argv)
     require(copy!=source && copy!=firstSnapshot &&
             load(copy)==initial && load(source)==second,
             "recovery touched the original or historical copy");
+    // A checksum sidecar may be missing after interrupted publication,
+    // but a present checksum must prevent damaged data being restored.
+    require(QFileInfo(firstSnapshot+QStringLiteral(".sha256")).exists()==false &&
+            !MobileSavedVersionArchive::materializeRecovery(
+                versions.last(),recover).isEmpty(),
+            "legacy checkpoint without checksum should still restore");
+    const QString newestSnapshot=versions.first().path;
+    const QByteArray newestOriginal=load(newestSnapshot);
+    save(newestSnapshot,QByteArray::fromHex("504b0304")+"corrupted");
+    require(MobileSavedVersionArchive::materializeRecovery(
+                versions.first(),recover).isEmpty(),
+            "damaged snapshot must fail checksum validation");
+    save(newestSnapshot,newestOriginal);
+    save(newestSnapshot,"broken header");
+    require(MobileSavedVersionArchive::materializeRecovery(
+                versions.first(),recover).isEmpty(),
+            "invalid snapshot header must not be recovered");
+    save(newestSnapshot,newestOriginal);
 
     // Draft autosave snapshots are immutable and keyed by the intended
     // project, not the temporary draft file's location.
