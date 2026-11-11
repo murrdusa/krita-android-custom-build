@@ -1226,7 +1226,8 @@ private:
         auto *controller=tools ? tools->activeCanvasController() : nullptr;
         const QString id=tools ? tools->activeToolId() : QString();
         if(m_textFormatting && m_textFormatting->isVisible()) {
-            if(id==QStringLiteral("SvgTextTool") && controller && m_host &&
+            if(id.section(QLatin1Char('/'),-1)==QStringLiteral("SvgTextTool") &&
+               controller && m_host &&
                m_host->nativeViewPort() &&
                m_host->nativeViewPort()->currentDocument())
                 bindTextFormatting(controller->canvas());
@@ -1281,7 +1282,8 @@ private:
     void toggleTextFormatting()
     {
         if(!m_host || !m_host->nativeViewPort() || m_canvasOnly ||
-           m_engine.activeTool()!=QStringLiteral("SvgTextTool") ||
+           m_engine.activeTool().section(QLatin1Char('/'),-1)!=
+               QStringLiteral("SvgTextTool") ||
            !m_host->nativeViewPort()->currentDocument())return;
         auto *canvas=m_host->nativeCanvas();
         auto *controller=KoToolManager::instance()->activeCanvasController();
