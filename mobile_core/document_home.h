@@ -502,7 +502,7 @@ public:
         }
         QDialog dialog(window());
         dialog.setWindowTitle(i18n("Saved versions"));
-        dialog.setMinimumWidth(300);
+        dialog.setMinimumWidth(qMin(300,qMax(1,window()->width()-24)));
         auto *layout=new QVBoxLayout(&dialog);
         auto *explanation=new QLabel(i18n(
             "Open a saved copy as a new canvas. Use Save As to keep it."),&dialog);

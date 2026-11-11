@@ -134,8 +134,9 @@ public:
         QObject::connect(dismiss,&QPushButton::clicked,
                          &dialog,&QDialog::reject);
         const QSize bounds=parent->window()->size();
-        dialog.resize(qMax(310,qMin(500,bounds.width()-24)),
-                      qMax(330,qMin(620,bounds.height()-50)));
+        dialog.resize(qMin(500,qMax(1,bounds.width()-24)),
+                      qMin(620,qMax(1,bounds.height()-24)));
+        dialog.setMaximumSize(qMax(1,bounds.width()-12),qMax(1,bounds.height()-12));
         if(dialog.exec()!=QDialog::Accepted)return;
         // End the chooser before opening a native Krita document dialog.
         if(choice==Create)MobileDocumentWorkflow::create(engine,parent);

@@ -227,8 +227,9 @@ public:
                          [&refill](const QString &) {refill();});
         refill();
         const QSize bounds=parent->window()->size();
-        dialog.resize(qMax(260,qMin(520,bounds.width()-20)),
-                      qMax(220,qMin(710,bounds.height()-26)));
+        dialog.resize(qMin(520,qMax(1,bounds.width()-20)),
+                      qMin(710,qMax(1,bounds.height()-26)));
+        dialog.setMaximumSize(qMax(1,bounds.width()-12),qMax(1,bounds.height()-12));
         close->setFocus();
         const int result=dialog.exec();
         if(result==showOptions)return true;

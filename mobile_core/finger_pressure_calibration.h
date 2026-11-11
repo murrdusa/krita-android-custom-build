@@ -258,7 +258,9 @@ public:
         : QDialog(parent)
     {
         setWindowTitle(tr("Calibrate finger pressure"));
-        setMinimumWidth(280);
+        // Calibration must still open on narrow Android displays.
+        const int usable=parent?parent->window()->width()-24:280;
+        setMinimumWidth(qMin(280,qMax(1,usable)));
         setStyleSheet(QStringLiteral(
             "QPushButton,QDoubleSpinBox,QCheckBox{min-height:44px;}"
             "QDoubleSpinBox{padding-left:8px;padding-right:40px;}"

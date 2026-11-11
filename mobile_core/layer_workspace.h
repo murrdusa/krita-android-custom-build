@@ -720,8 +720,10 @@ private:
         footer->addWidget(more);
         footer->addWidget(done);
         outer->addLayout(footer);
-        sheet.resize(qMin(360,qMax(240,window()->width()-24)),
-                     qMin(430,qMax(200,window()->height()-48)));
+        sheet.resize(qMin(360,qMax(1,window()->width()-24)),
+                     qMin(430,qMax(1,window()->height()-24)));
+        sheet.setMaximumSize(qMax(1,window()->width()-12),
+                             qMax(1,window()->height()-12));
         const QPoint point=m_tree->viewport()->mapToGlobal(
             m_tree->visualItemRect(item).bottomLeft());
         const int result=sheet.exec();

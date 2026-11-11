@@ -235,8 +235,9 @@ public:
         });
         render();
         const QSize bounds=parent->window()->size();
-        dialog.resize(qMax(300,qMin(535,bounds.width()-24)),
-                      qMax(350,qMin(725,bounds.height()-42)));
+        dialog.resize(qMin(535,qMax(1,bounds.width()-24)),
+                      qMin(725,qMax(1,bounds.height()-24)));
+        dialog.setMaximumSize(qMax(1,bounds.width()-12),qMax(1,bounds.height()-12));
         dialog.exec();
 
         // Let the chooser close completely before invoking a native Krita

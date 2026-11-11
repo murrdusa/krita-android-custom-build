@@ -424,8 +424,9 @@ private:
                          [&](QListWidgetItem*){acceptChoice();});
         refill();
         const QSize bounds=parent->window()->size();
-        dlg.resize(qMax(300,qMin(520,bounds.width()-24)),
-                   qMax(340,qMin(700,bounds.height()-45)));
+        dlg.resize(qMin(520,qMax(1,bounds.width()-24)),
+                   qMin(700,qMax(1,bounds.height()-24)));
+        dlg.setMaximumSize(qMax(1,bounds.width()-12),qMax(1,bounds.height()-12));
         if(dlg.exec()!=QDialog::Accepted)return {};
         return chosen;
     }
@@ -537,8 +538,9 @@ private:
         QObject::connect(cancel,&QPushButton::clicked,&dlg,&QDialog::reject);
         QObject::connect(saveButton,&QPushButton::clicked,&dlg,&QDialog::accept);
         const QSize bounds=window()->size();
-        dlg.resize(qMax(315,qMin(535,bounds.width()-24)),
-                   qMax(370,qMin(760,bounds.height()-35)));
+        dlg.resize(qMin(535,qMax(1,bounds.width()-24)),
+                   qMin(760,qMax(1,bounds.height()-24)));
+        dlg.setMaximumSize(qMax(1,bounds.width()-12),qMax(1,bounds.height()-12));
         if(dlg.exec()!=QDialog::Accepted)return;
         const QStringList updated=currentIds();
         if(updated==m_ids)return; // No rebuild for an unchanged toolbar.

@@ -415,7 +415,8 @@ public:
             if(!host)return;
             QDialog dialog(host);
             dialog.setWindowTitle(QObject::tr("Touch, Pressure & Buttons"));
-            dialog.setMinimumWidth(300);
+            // Do not demand a width greater than the folded phone viewport.
+            dialog.setMinimumWidth(qMin(300,qMax(1,host->width()-24)));
             dialog.setStyleSheet(QStringLiteral(
                 "QDialog,QScrollArea,QWidget#mobileInputSettingsBody{"
                 "background:#252529;color:#f4f4f5;}"
