@@ -252,6 +252,43 @@ int main(int argc,char **argv)
             migratedTreeVersions.first().path==migratedDocVersions.first().path,
             "migrated version must match across tree and document listing");
 
+    // Legacy and canonical folders may already contain different KRA
+    // snapshots bearing exactly the same filename after interrupted
+    // migrations. Both must survive with their own checksum sidecars.
+    const QString collisions=QDir(temp.path()).filePath(
+        QStringLiteral("colliding-history"));
+    const QString canonicalFolder=MobileSavedVersionArchive::folderFor(
+        docUri,collisions);
+    const QString oldFolder=QDir(collisions).filePath(legacyDigest);
+    require(QDir().mkpath(canonicalFolder) && QDir().mkpath(oldFolder),
+            "cannot arrange colliding archive folders");
+    const QString sameName=QStringLiteral(
+        "20261110T000000000-00000000000000000000000000000002.kra");
+    const QByteArray oldBytes=QByteArray::fromHex("504b0304")+"old-collision";
+    const QByteArray newBytes=QByteArray::fromHex("504b0304")+"new-collision";
+    const QString oldPath=QDir(oldFolder).filePath(sameName);
+    const QString canonicalPath=QDir(canonicalFolder).filePath(sameName);
+    save(oldPath,oldBytes);
+    save(oldPath+QStringLiteral(".sha256"),
+         QCryptographicHash::hash(oldBytes,QCryptographicHash::Sha256).toHex());
+    save(canonicalPath,newBytes);
+    save(canonicalPath+QStringLiteral(".sha256"),
+         QCryptographicHash::hash(newBytes,QCryptographicHash::Sha256).toHex());
+    const auto collisionVersions=MobileSavedVersionArchive::list(treeUri1,collisions);
+    require(collisionVersions.size()==2,
+            "colliding canonical and legacy versions must both survive");
+    bool foundOld=false,foundNew=false;
+    for(const auto &version:collisionVersions) {
+        const QByteArray bytes=load(version.path);
+        foundOld|=bytes==oldBytes;
+        foundNew|=bytes==newBytes;
+        require(!MobileSavedVersionArchive::materializeRecovery(
+                    version,recover).isEmpty(),
+                "migrated collision must retain its correct checksum");
+    }
+    require(foundOld && foundNew && !QDir(oldFolder).exists(),
+            "colliding migration lost a snapshot or left an incomplete folder");
+
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
                " provider identity, SAF tree normalization and legacy migration";
     return 0;
