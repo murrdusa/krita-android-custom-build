@@ -218,6 +218,18 @@ int main(int argc,char **argv)
             MobileDraftRecovery::latestFor(source,draftTime-1).absoluteFilePath()==draft &&
             !MobileDraftRecovery::latestFor(source,draftTime).exists(),
             "only a newer checkpoint should replace the saved project");
+    QThread::msleep(12);
+    const QString damagedDraft=MobileDraftRecovery::allocate(
+        QStringLiteral("newer-damaged"));
+    save(damagedDraft,"truncated recovery");
+    MobileDraftRecovery::setProject(damagedDraft,source);
+    require(MobileDraftRecovery::latestFor(source,draftTime-1).absoluteFilePath()==draft,
+            "invalid latest recovery must fall back to an earlier intact draft");
+    save(damagedDraft,QByteArray::fromHex("504b0304")+"newer-complete");
+    require(MobileDraftRecovery::latestFor(source,draftTime-1).absoluteFilePath()==damagedDraft,
+            "newer valid project draft should supersede an older draft");
+    QFile::remove(damagedDraft);
+    QFile::remove(damagedDraft+QStringLiteral(".project"));
     MobileDraftRecovery::setProject(draft,QString());
     require(MobileDraftRecovery::projectFor(draft).isEmpty(),
             "an untitled draft must have no project association");
