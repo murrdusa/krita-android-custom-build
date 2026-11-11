@@ -73,6 +73,9 @@ int main(int argc,char **argv)
     require(MobileSavedVersionArchive::snapshot(source,store) &&
             MobileSavedVersionArchive::list(source,store).size()==1,
             "sidecar loss must not evict older history with duplicates");
+    require(load(firstSnapshot+QStringLiteral(".sha256"))==
+            QCryptographicHash::hash(initial,QCryptographicHash::Sha256).toHex(),
+            "unchanged archive should recreate a missing checksum sidecar");
     QThread::msleep(3);
     const QByteArray second=QByteArray::fromHex("504b0304")+"saved-B";
     save(source,second);
@@ -91,7 +94,7 @@ int main(int argc,char **argv)
             "recovery touched the original or historical copy");
     // A checksum sidecar may be missing after interrupted publication,
     // but a present checksum must prevent damaged data being restored.
-    require(QFileInfo(firstSnapshot+QStringLiteral(".sha256")).exists()==false &&
+    require(QFile::remove(firstSnapshot+QStringLiteral(".sha256")) &&
             !MobileSavedVersionArchive::materializeRecovery(
                 versions.last(),recover).isEmpty(),
             "legacy checkpoint without checksum should still restore");
