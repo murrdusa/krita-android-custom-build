@@ -501,8 +501,10 @@ public:
                 home->showHome();
                 return;
             }
-            deferViewCommand([home,documents](const QPointer<QObject> &selected) {
-                if(documents->closeDocumentView(selected))home->showHome();
+            deferViewCommand([alive,home,documents](const QPointer<QObject> &selected) {
+                if(documents->returnHome(selected))home->showHome();
+                else if(alive)QMessageBox::warning(alive.data(),QObject::tr("Drawing kept open"),
+                    QObject::tr("Studio could not save the drawing or its recovery draft."));
             });
         });
 

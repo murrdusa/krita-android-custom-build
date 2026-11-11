@@ -23,6 +23,10 @@ Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1]
 - Native drawing tools exposed: freehand smoothing, selection combinations and refinements, transform modes/parameters, Fill/Enclose and Fill, gradients, shapes/path Finish/Cancel, Assistants, Colorize, Smart Patch, Measure, Reference Images, SVG text, and Clone source selection. The Clone source action was newly exposed as `mobile_set_clone_source` in searchable Tools.
 - Recovery: every dirty canvas has a private completed KRA draft, periodically refreshed and requested on app background. Previous completed saves/drafts have atomic private versions, SHA-256 checksum sidecars, duplicate suppression and up to 12 versions / 512 MiB per project. History is keyed by canonical local/SAF document identity and migrated on first Save As. Old copies open as a separate unsaved canvas; explicit Discard removes the working draft. Background process death cannot guarantee a final save beyond the most recently completed checkpoint.
 
+## Fold 6 stability batch (November 11)
+
+- Group/layer removal targets the live image and lets Krita finish its native remove/Undo stroke before rebuilding and validating rail selection. Group deletion uses Krita's subtree removal. Document activation restacks the command toolbar and dismisses its old menu. Home saves named native projects and writes a complete private KRA draft for unsaved drawings before closing. Explicit Close still uses native Discard. Tools uses a normal touch-scrolling dialog. Check Issue #1 for the exact WSL build. Fold validation remains pending.
+
 ## Latest changes (November 11)
 
 - Archive restoration and version listing now serialize with archive pruning/migration; migrated filename collisions preserve both documents. Restore verifies ZIP header, byte count and stored SHA-256; damaged copies cannot suppress fresh checkpoints. Missing valid checksum sidecars can be repaired atomically.

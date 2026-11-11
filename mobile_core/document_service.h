@@ -145,6 +145,23 @@ public:
         }
         return 1;
     }
+    bool returnHome(const QPointer<QObject> &identity) const
+    {
+        QPointer<KisDocument> document=documentForView(identity);
+        if(!document)return false;
+        if(!document->isModified())return closeDocumentView(identity);
+        if(!m_host->prepareHomeClose(document) || !document ||
+           documentForView(identity)!=document.data())return false;
+
+        // A completed private draft can close without running the native
+        // Discard branch, which would delete the recovery file.
+        const bool draft=document->isModified();
+        if(draft)document->setModified(false);
+        if(closeDocumentView(identity))return true;
+        if(document && draft)document->setModified(true);
+        return false;
+    }
+
     bool saveCurrentDocument(bool saveAs=false) const
     {
         if(!m_host || !m_host->available() || !m_viewHost)return false;

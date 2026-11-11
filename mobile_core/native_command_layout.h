@@ -12,6 +12,7 @@
 #include <QEvent>
 #include <QFormLayout>
 #include <QSpinBox>
+#include <QStackedWidget>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLineEdit>
@@ -118,6 +119,12 @@ public:
             });
         }
         canvas->installEventFilter(layout);
+        if(auto *stack=qobject_cast<QStackedWidget*>(canvas)) {
+            QObject::connect(stack,&QStackedWidget::currentChanged,layout,[layout,menu](int) {
+                if(menu->isVisible())menu->hide();
+                layout->requestPosition();
+            });
+        }
         layout->m_canvasOnly=canvasOnly && canvasOnly->isChecked();
         layout->m_toolbar->setVisible(!layout->m_canvasOnly);
         layout->rebuild();

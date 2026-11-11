@@ -35,6 +35,7 @@
 #include <QSet>
 #include <QVector>
 #include <QSignalBlocker>
+#include <QScopedValueRollback>
 #include <QSizePolicy>
 #include <QAction>
 #include <QTimer>
@@ -261,37 +262,7 @@ public:
             }
         });
         addButton(creation,i18n("Delete"),[this]() {
-            auto *m=manager();
-            const KisNodeList selection=selectedTargets();
-            if(!m || selection.isEmpty())return;
-            if(QMessageBox::question(this,i18n("Delete layers"),
-                   i18np("Delete selected layer?", "Delete %1 selected layers?",
-                         selection.size()),
-                   QMessageBox::Yes|QMessageBox::No,
-                   QMessageBox::No)!=QMessageBox::Yes)return;
-            const auto image=m_engine.manager()?
-                m_engine.manager()->image().toStrongRef():KisImageSP();
-            if(!image)return;
-            for(const KisNodeSP &node:selection)
-                if(!inImage(node,image))return;
-            // Destructive commands must receive the *visible* selected
-            // nodes, not an outdated native selection from another tool.
-            // This matters when the transform tool selects several layers.
-            if(auto *transform=activeTransform()) {
-                if(!canRetarget(transform))return;
-                m_engine.freehandBrush();
-            }
-            // The warning dialog and native tool switch can process
-            // other Qt events; do not delete nodes from a changed canvas.
-            if(!m_engine.manager() ||
-               m_engine.manager()->image().toStrongRef()!=image ||
-               m_reorderPending)return;
-            for(const KisNodeSP &node:selection)
-                if(!inImage(node,image))return;
-            m->slotUiActivatedNode(selection.last());
-            m->slotSetSelectedNodes(selection);
-            m->removeNode();
-            reload();
+            deleteLayers(selectedTargets());
         });
         layout->addLayout(creation);
 
@@ -456,10 +427,13 @@ public:
     }
     void syncSelectionContext()
     {
+        if(m_deleteImage || m_reloading)return;
         auto *m=manager();
-        if(m && !allowsMultiple()) {
+        auto *view=m_engine.manager();
+        if(m && view && !allowsMultiple()) {
             const KisNodeSP active=m->activeNode();
-            if(active && !KisNodeManager::isNodeHidden(active,true) &&
+            if(inImage(active,view->image().toStrongRef()) &&
+               !KisNodeManager::isNodeHidden(active,true) &&
                m->selectedNodes()!=KisNodeList{active}) {
                 m_active=active;
                 m_selected=KisNodeList{active};
@@ -470,7 +444,7 @@ public:
     }
     void refreshFromEngine()
     {
-        if(!isVisible() || m_reorderPending || m_clipBusy ||
+        if(!isVisible() || m_deleteImage || m_reorderPending || m_clipBusy ||
            m_clipPropertyPending || m_mouseNode ||
            !m_touches.isEmpty())return;
         if(engineSignature()!=m_signature)reload();
@@ -483,6 +457,59 @@ public:
     }
 
 private:
+    void deleteLayers(const KisNodeList &targets)
+    {
+        auto *view=m_engine.manager();
+        const KisImageSP image=view?view->image().toStrongRef():KisImageSP();
+        if(!image || targets.isEmpty() || m_deleteImage || m_reorderPending ||
+           m_clipBusy || m_clipPropertyPending)return;
+        const QString prompt=targets.size()==1?
+            i18n("Delete %1 and any layers or masks inside it?",targets.first()->name()):
+            i18np("Delete %1 selected item and its contents?",
+                  "Delete %1 selected items and their contents?",targets.size());
+        if(QMessageBox::question(this,i18n("Delete layers"),prompt,
+            QMessageBox::Yes|QMessageBox::No,QMessageBox::No)!=QMessageBox::Yes)return;
+        if(auto *transform=activeTransform()) {
+            if(!canRetarget(transform))return;
+            m_engine.freehandBrush();
+        }
+        auto *nodes=manager();
+        if(!nodes || !m_engine.manager() ||
+           m_engine.manager()->image().toStrongRef()!=image ||
+           m_deleteImage || m_reorderPending || m_clipBusy || m_clipPropertyPending)return;
+        for(const auto &node:targets)
+            if(!inImage(node,image) || !node->parent())return;
+        if(!nodes->canModifyLayers(targets))return;
+
+        // Krita owns child removal, clone dependencies, replacement of the
+        // last paint layer and Undo. Keep the compact tree out of the graph
+        // while the native removal and its reselection are in flight.
+        m_deleteImage=image;
+        setEnabled(false);
+        if(targets.size()==1)nodes->removeSingleNode(targets.first());
+        else {
+            nodes->slotSetSelectedNodes(targets);
+            nodes->removeNode();
+        }
+        image->requestStrokeEnd();
+        QTimer::singleShot(0,this,[this]() {finishDelete();});
+    }
+
+    void finishDelete()
+    {
+        auto *view=m_engine.manager();
+        if(!view || view->image().toStrongRef()!=m_deleteImage) {
+            m_deleteImage.clear();
+        } else if(!m_deleteImage->isIdle()) {
+            QTimer::singleShot(24,this,[this]() {finishDelete();});
+            return;
+        } else {
+            m_deleteImage.clear();
+        }
+        setEnabled(true);
+        QTimer::singleShot(0,this,[this]() {refreshNow();});
+    }
+
     // Reordering mutates Krita's real node hierarchy. Never move a
     // transform target while an uncommitted preview is active, and
     // recheck document identity after switching back to the brush.
@@ -961,25 +988,8 @@ private:
             m->slotSetSelectedNodes(KisNodeList{node});
             m->quickUngroup();
         } else if(chosen==remove) {
-            if(QMessageBox::question(this,i18n("Delete layer"),
-                    i18n("Delete %1?").arg(node->name()),
-                    QMessageBox::Yes|QMessageBox::No,
-                    QMessageBox::No)==QMessageBox::Yes) {
-                if(m_reorderPending || !inImage(node,originalImage) ||
-                   !m_engine.manager() ||
-                   m_engine.manager()->image().toStrongRef()!=originalImage)
-                    return;
-                if(auto *transform=activeTransform()) {
-                    if(!canRetarget(transform))return;
-                    m_engine.freehandBrush();
-                }
-                if(!m_engine.manager() ||
-                   m_engine.manager()->image().toStrongRef()!=originalImage ||
-                   !inImage(node,originalImage) ||
-                   !m_engine.selectLayer(node))return;
-                m->slotSetSelectedNodes(KisNodeList{node});
-                m->removeNode();
-            }
+            deleteLayers({node});
+            return;
         } else if(chosen==moveUp || chosen==moveDown) {
             reorderNode(node,chosen==moveUp);
             return; // Rebuild after the undoable move, not during it.
@@ -2353,8 +2363,9 @@ private:
 
     void reload()
     {
-        if(m_reorderPending || m_clipBusy || m_clipPropertyPending ||
+        if(m_reloading || m_deleteImage || m_reorderPending || m_clipBusy || m_clipPropertyPending ||
            m_mouseNode || !m_touches.isEmpty())return;
+        const QScopedValueRollback<bool> refreshing(m_reloading,true);
         auto *m=manager();
         auto *view=m_engine.manager();
         if(!m || !view)return;
@@ -2392,8 +2403,10 @@ private:
                !KisNodeManager::isNodeHidden(previousActive,true))
                 m_active=previousActive;
             if(!m_active) {
-                for(KisNodeSP node=image->root()->lastChild();node;
-                    node=node->prevSibling()) {
+                KisNodeList visible;
+                logicalChildren(image->root(),visible);
+                for(auto it=visible.crbegin();it!=visible.crend();++it) {
+                    const auto &node=*it;
                     if(node->inherits("KisLayer") &&
                        !isCompactClipWrapper(node) &&
                        !KisNodeManager::isNodeHidden(node,true)) {
@@ -2525,6 +2538,7 @@ private:
     KisNodeSP m_suppressedClickNode;
     qint64 m_suppressedClickUntil=0;
     QString m_signature;
-    bool m_reorderPending=false;
+    bool m_reorderPending=false,m_reloading=false;
+    KisImageSP m_deleteImage;
 };
 #endif // Q_OS_ANDROID

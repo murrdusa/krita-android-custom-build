@@ -13,6 +13,7 @@
 #include <QAndroidJniObject>
 #include <QFile>
 #include <QFileInfo>
+#include <cstdio>
 #include <QMessageBox>
 #include <QPointer>
 #include <QScopedValueRollback>
@@ -24,6 +25,7 @@
 #include <KisMimeDatabase.h>
 #include <KisRecentFilesManager.h>
 #include "KisDocument.h"
+#include "kis_image.h"
 #include "KisImportExportManager.h"
 #include "KisPart.h"
 #include "dialogs/kis_delayed_save_dialog.h"
@@ -151,6 +153,52 @@ public:
     bool save(KisDocument *document,bool saveAs) const override
     {
         return writeDocument(document,saveAs,false);
+    }
+
+    bool prepareHomeClose(KisDocument *document) const override
+    {
+        if(!available() || m_saving || m_opening || m_replacing ||
+           !document || !m_runtime->ownsDocument(document))return false;
+        QPointer<KisDocument> guarded=document;
+        const QString path=document->path();
+        const QByteArray mime=document->mimeType();
+        if(!document->isRecovered() && !path.isEmpty() &&
+           (mime==document->nativeFormatMimeType() || mime=="application/x-krita-archive")) {
+            if(!MobileNativeDocumentPathPolicy::mayAttemptOpen(path))return false;
+            return save(document,false) && guarded && !guarded->isModified();
+        }
+
+        const QScopedValueRollback<bool> saving(m_saving,true);
+        document->waitForSavingToComplete();
+        if(!guarded || !m_runtime->ownsDocument(guarded))return false;
+        KisDelayedSaveDialog idle(guarded->image(),KisDelayedSaveDialog::SaveDialog,0,
+                                  m_runtime->window());
+        idle.blockIfImageIsBusy();
+        if(idle.result()!=KisDelayedSaveDialog::Accepted || !guarded ||
+           !m_runtime->ownsDocument(guarded))return false;
+        const QString draft=guarded->property("_mobileDraftPath").toString();
+        if(draft.isEmpty())return false;
+        const QString staging=draft+QStringLiteral(".home.pending.kra");
+        bool completed=false,changed=false;
+        const auto image=guarded->image().toStrongRef();
+        if(!image)return false;
+        const auto modified=QObject::connect(image.data(),&KisImage::sigImageModified,
+            guarded.data(),[&changed]() {changed=true;});
+        const auto connection=QObject::connect(guarded.data(),&KisDocument::sigSavingFinished,
+            guarded.data(),[&](const QString &saved) {completed=saved==staging;});
+        const bool started=guarded->exportDocument(staging,guarded->nativeFormatMimeType(),false,true);
+        if(started && guarded)guarded->waitForSavingToComplete();
+        QObject::disconnect(connection);
+        QObject::disconnect(modified);
+        if(!completed || changed || !guarded || !m_runtime->ownsDocument(guarded) ||
+           !image->isIdle() || std::rename(QFile::encodeName(staging).constData(),
+                       QFile::encodeName(draft).constData())!=0) {
+            QFile::remove(staging);
+            return false;
+        }
+        MobileDraftRecovery::setProject(draft,QString());
+        MobileSavedVersionArchive::enqueueDraftCheckpoint(draft,draft,true);
+        return true;
     }
 
     bool exportCopy(KisDocument *document) const override

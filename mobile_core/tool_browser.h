@@ -205,7 +205,7 @@ public:
 
         QDialog dialog(parent);
         dialog.setWindowTitle(i18n("Tools"));
-        dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
+        dialog.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
         dialog.setStyleSheet(QStringLiteral(
             "QDialog,QWidget#toolTiles{background:#272729;color:#efeff0;}"
             "QLabel{color:#efeff0;}"
