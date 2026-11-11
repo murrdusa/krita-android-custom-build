@@ -121,8 +121,13 @@ def main(root:Path):
                 canvas->referenceImagesDecoration()->visible()) {
                 KisReferenceImagesLayerSP refs =
                     window->activeView()->document()->referenceImagesLayer();""",
-        """        if (QSettings().value(QStringLiteral("TabletUi/referenceFingerDrag"), true).toBool()
-            && !referenceTouch->touchPoints().isEmpty()) {
+        """        if ((QSettings().value(
+                 QStringLiteral("TabletUi/referenceFingerDrag"),true).toBool() ||
+             QSettings().value(
+                 QStringLiteral("TabletUi/referenceDoubleTapEnabled"),true).toBool() ||
+             QSettings().value(
+                 QStringLiteral("TabletUi/referenceTwoFinger"),true).toBool()) &&
+            !referenceTouch->touchPoints().isEmpty()) {
             KisCanvas2 *canvas = this->canvas();
             KisView *activeView = canvas ? canvas->imageView().data() : nullptr;
             if (canvas && activeView && activeView->document() &&
