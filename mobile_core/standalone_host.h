@@ -18,6 +18,7 @@
 #include <QColorDialog>
 #include <QDialog>
 #include <QFrame>
+#include <QFontMetrics>
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -105,16 +106,15 @@ public:
         connect(home,&QToolButton::clicked,this,[this](){requestExit();});
         top->addWidget(home);
 
-        auto *title=new QLabel(i18n("Mobile Studio"),header);
-        title->setStyleSheet(QStringLiteral("font-weight:600;font-size:14px;"));
-        top->addWidget(title);
-
+        // The window title already identifies Studio. An extra title
+        // consumes scarce width and makes the header overflow on phones.
         m_document=new QToolButton(header);
         m_document->setText(i18n("Canvases"));
         m_document->setToolTip(i18n("Tap to switch open canvases"));
         m_document->setMinimumHeight(42);
-        m_document->setSizePolicy(QSizePolicy::Expanding,
+        m_document->setSizePolicy(QSizePolicy::Ignored,
                                   QSizePolicy::Preferred);
+        m_document->setMinimumWidth(0);
         connect(m_document,&QToolButton::clicked,this,[this]() {
             MobileDocumentSwitcher::open(m_engine,this);
             refresh();
@@ -349,16 +349,17 @@ public:
         }
         updateLayerPresentation();
         const QString node=m_engine.activeLayerName();
-        if(!has) {
-            m_document->setText(i18n("No document"));
-        } else {
-            const QString title=m_engine.activeDocumentTitle();
-            const QString modified=m_engine.documentModified()?
-                QStringLiteral(" *"):QString();
-            m_document->setText(title+modified+
-                (node.isEmpty()?QString():QStringLiteral(" · ")+node.left(18)));
-            m_document->setToolTip(i18n("Document · Active layer"));
-        }
+        const QString fullTitle=has?
+            m_engine.activeDocumentTitle()+
+                (m_engine.documentModified()?QStringLiteral(" *"):QString())+
+                (node.isEmpty()?QString():QStringLiteral(" · ")+node.left(18)):
+            i18n("No document");
+        // Elide long file/layer names; never let their sizeHint force
+        // header buttons into a second row or outside the phone viewport.
+        const int textWidth=qMax(0,m_document->width()-24);
+        m_document->setText(m_document->fontMetrics().elidedText(
+            fullTitle,Qt::ElideMiddle,textWidth));
+        m_document->setToolTip(fullTitle);
         if(m_brushWorkspace && has)m_brushWorkspace->refresh();
         if(m_layers && m_layers->isVisible())m_layers->refreshFromEngine();
     }

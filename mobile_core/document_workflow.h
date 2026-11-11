@@ -11,6 +11,11 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QGuiApplication>
+#include <QScreen>
+#include <QScrollArea>
+#include <QSizePolicy>
+#include "touch_scroll.h"
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -42,9 +47,11 @@ public:
             "border:1px solid #8aafc9;border-radius:7px;"
             "min-height:46px;padding:5px;}"
             "QCheckBox{color:#e9f3fa;font-size:14px;min-height:42px;}");
+        // Keep actions visible even on short portrait phones and with
+        // Android display scaling. Only the form itself scrolls.
         auto *layout=new QVBoxLayout(&dialog);
-        layout->setContentsMargins(12,12,12,12);
-        layout->setSpacing(9);
+        layout->setContentsMargins(10,10,10,10);
+        layout->setSpacing(6);
         auto *heading=new QLabel(i18n("Create canvas"),&dialog);
         heading->setStyleSheet(
             QStringLiteral("font-size:19px;font-weight:600;"));
@@ -52,8 +59,20 @@ public:
         auto *description=new QLabel(
             i18n("Native Krita document · RGB 8-bit"),&dialog);
         layout->addWidget(description);
+        auto *scroll=new QScrollArea(&dialog);
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setMinimumSize(0,0);
+        scroll->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Expanding);
+        MobileTouchScroll::configure(scroll);
+        auto *formContents=new QWidget(scroll);
+        auto *formLayout=new QVBoxLayout(formContents);
+        formLayout->setContentsMargins(2,2,2,2);
+        formLayout->setSpacing(8);
         auto *form=new QFormLayout;
-        form->setSpacing(10);
+        form->setSpacing(8);
+        form->setRowWrapPolicy(QFormLayout::WrapLongRows);
+        form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
         auto *name=new QLineEdit(&dialog);
         name->setText(i18n("Untitled"));
         form->addRow(i18n("Name"),name);
@@ -87,13 +106,16 @@ public:
         white->setChecked(settings.value(
             QStringLiteral("MobileStudio/newWhite"),true).toBool());
         form->addRow(i18n("Background"),white);
-        layout->addLayout(form);
+        formLayout->addLayout(form);
         auto *note=new QLabel(
             i18n("White creates a locked background and an empty paint layer. "
                  "Turning it off creates one transparent paint layer."),
-            &dialog);
+            formContents);
         note->setWordWrap(true);
-        layout->addWidget(note);
+        formLayout->addWidget(note);
+        formLayout->addStretch(1);
+        scroll->setWidget(formContents);
+        layout->addWidget(scroll,1);
         QObject::connect(preset,QOverload<int>::of(&QComboBox::currentIndexChanged),
                          &dialog,[preset,width,height](int){
             const QSize size=preset->currentData().toSize();
@@ -117,9 +139,17 @@ public:
             }
             dialog.accept();
         });
-        const QSize screen=owner->window()->size();
-        dialog.resize(qMax(315,qMin(525,screen.width()-20)),
-                      qMax(440,qMin(600,screen.height()-35)));
+        const QScreen *display=QGuiApplication::primaryScreen();
+        const QSize available=display?display->availableGeometry().size():
+            owner->window()->size();
+        // Never impose a 315px minimum width or 440px minimum height:
+        // both can exceed the actual app viewport on narrow devices.
+        const int usableWidth=qMax(1,qMin(available.width(),
+                                         owner->window()->width())-16);
+        const int usableHeight=qMax(1,qMin(available.height(),
+                                          owner->window()->height())-16);
+        dialog.resize(qMin(525,usableWidth),qMin(600,usableHeight));
+        dialog.setMaximumSize(usableWidth,usableHeight);
         if(dialog.exec()!=QDialog::Accepted)return false;
         settings.setValue(QStringLiteral("MobileStudio/newWidth"),
                           width->value());
