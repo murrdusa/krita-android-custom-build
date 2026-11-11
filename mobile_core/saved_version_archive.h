@@ -207,24 +207,23 @@ public:
             QByteArray oldSha;
             if(sidecar.open(QIODevice::ReadOnly))
                 oldSha=sidecar.readAll().trimmed();
-            if(oldSha.size()!=64) {
-                // A crash can interrupt the checksum sidecar after the
-                // atomic KRA checkpoint has already been committed. Hash
-                // that last copy instead of evicting an older version
-                // with a second, identical checkpoint.
+            // A checksum sidecar alone is not proof that the archived
+            // bytes are intact. If it matches the new source (or is
+            // missing), hash the actual previous KRA before deduplicating.
+            // A damaged latest version must never suppress a new copy.
+            if(oldSha.size()!=64 || oldSha==sha) {
                 QFile last(previous.first().path);
                 if(last.open(QIODevice::ReadOnly)) {
-                    QCryptographicHash fallback(QCryptographicHash::Sha256);
+                    QCryptographicHash actual(QCryptographicHash::Sha256);
                     QByteArray chunk(256*1024,Qt::Uninitialized);
                     qint64 got=0;
                     while((got=last.read(chunk.data(),chunk.size()))>0)
-                        fallback.addData(chunk.constData(),got);
-                    if(got==0)oldSha=fallback.result().toHex();
+                        actual.addData(chunk.constData(),got);
+                    if(got==0 && actual.result().toHex()==sha) {
+                        output.cancelWriting(); // unchanged intact save
+                        return true;
+                    }
                 }
-            }
-            if(oldSha==sha) {
-                output.cancelWriting(); // unchanged save, no duplicate
-                return true;
             }
         }
         if(!output.commit())return false;
