@@ -758,11 +758,14 @@ private:
             // Krita tool versions can add/reorder option-strip buttons.
             // Never drop the entire control just because our short-label
             // table differs: retain the native label and QAction behavior.
-            QString caption;
-            if(buttons.size()==labels.size())caption=labels.at(i);
-            if(caption.isEmpty())caption=native->text().trimmed();
+            QString caption=native->text().trimmed();
             if(caption.isEmpty())caption=native->toolTip().trimmed();
             if(caption.isEmpty())caption=native->accessibleName().trimmed();
+            // Only use the abbreviated mobile name when Krita does not
+            // provide a native label. A plugin may reorder its options
+            // without changing their count; positional labels then lie.
+            if(caption.isEmpty() && i<labels.size())
+                caption=labels.at(i);
             if(caption.isEmpty())
                 caption=QObject::tr("Option %1").arg(i+1);
             choices.append({caption,native});
