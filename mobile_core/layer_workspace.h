@@ -1478,7 +1478,12 @@ private:
             if(p==source)return;
 
         if(!prepareLayerReorder(image) || !inImage(source,image) ||
-           !inImage(target,image))return;
+           !inImage(target,image) || !inImage(destination,image) ||
+           logicalParent(source)!=oldParent ||
+           destination!=(intoGroup?target:logicalParent(target)) ||
+           !destination->allowAsChild(source))return;
+        for(KisNodeSP p=destination;p;p=p->parent())
+            if(p==source)return;
         // Plain layer moves do not need the asynchronous clip wrapper
         // teardown/rebuild. Use the same native undoable image stroke
         // as Up/Down, only regroup when a clipping run is involved.
