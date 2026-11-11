@@ -683,6 +683,10 @@ private:
                 i18n("The recovery file could not be removed."));
             return;
         }
+        // The document is no longer open, so any interrupted staging
+        // file belongs to this discarded draft. Do not leave a stale
+        // .pending.kra consuming space or a project association behind.
+        QFile::remove(path+QStringLiteral(".pending.kra"));
         QFile::remove(path+QStringLiteral(".project"));
         m_cache.remove(path);
         showList(RecoveryDrafts);
