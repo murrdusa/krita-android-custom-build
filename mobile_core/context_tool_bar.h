@@ -149,9 +149,19 @@ public:
                 chooseFillResource(gradient);
             });
         };
-        if(id==QStringLiteral("KisToolPolygon") || id==QStringLiteral("KisToolPolyline") ||
-           id==QStringLiteral("KisToolPath") || id==QStringLiteral("KisToolSelectPolygonal") ||
-           id==QStringLiteral("KisToolSelectPath") || id==QStringLiteral("KisToolSelectMagnetic")) {
+        // Shape tools may register with their plugin prefix, unlike the
+        // selection tools. Both forms use Krita's native stroke completion.
+        const bool finishablePath=id==QStringLiteral("KisToolPolygon") ||
+            id==QStringLiteral("KisToolPolyline") ||
+            id==QStringLiteral("KisToolPath") ||
+            id==QStringLiteral("KritaShape/KisToolPolygon") ||
+            id==QStringLiteral("KritaShape/KisToolPolyline") ||
+            id==QStringLiteral("KritaShape/KisToolPath") ||
+            id==QStringLiteral("KritaShape/KisToolBezierCurve") ||
+            id==QStringLiteral("KisToolSelectPolygonal") ||
+            id==QStringLiteral("KisToolSelectPath") ||
+            id==QStringLiteral("KisToolSelectMagnetic");
+        if(finishablePath) {
             const QPointer<KoToolBase> path=nativeTool;
             connect(button(QObject::tr("Finish")),&QToolButton::clicked,this,[this,path]() {
                 if(path && m_nativeTool==path.data())path->requestStrokeEnd();
