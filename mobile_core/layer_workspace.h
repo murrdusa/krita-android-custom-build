@@ -790,7 +790,11 @@ private:
             return button;
         };
         sheetLayout->addWidget(makeButton(rename,node->name()));
-        sheetLayout->addWidget(makeButton(blendAction,i18n("Blending mode…")));
+        const QString blendName=KoCompositeOpRegistry::instance()
+            .getCompositeOpDisplayName(node->compositeOpId());
+        auto *blendButton=makeButton(blendAction,blendName.isEmpty()?blendAction->text():blendName);
+        blendButton->setAccessibleDescription(i18n("Change layer blending mode"));
+        sheetLayout->addWidget(blendButton);
         auto *opacityLabel=new QLabel(&sheet);
         auto *opacitySlider=new QSlider(Qt::Horizontal,&sheet);
         opacitySlider->setRange(0,100);
