@@ -796,6 +796,10 @@ private:
         const auto drafts=MobileDraftRecovery::list();
         m_latestDrafts.clear();
         for(const auto &draft:drafts) {
+            // Keep invalid draft files in Recover Drafts but do not
+            // let them replace a valid named project's Home preview.
+            if(!MobileDraftRecovery::hasKraHeader(draft.absoluteFilePath()))
+                continue;
             const auto path=MobileDraftRecovery::projectFor(draft.absoluteFilePath());
             if(!path.isEmpty() && !m_latestDrafts.contains(projectKey(path)))
                 m_latestDrafts.insert(projectKey(path),draft);
