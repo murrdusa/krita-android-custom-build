@@ -246,12 +246,9 @@ public:
                     if(oldSha.toLower()!=sha) {
                         QSaveFile repair(previous.first().path+
                                          QStringLiteral(".sha256"));
-                        if(repair.open(QIODevice::WriteOnly)) {
-                            if(repair.write(sha)==sha.size())
-                                repair.commit();
-                            else
-                                repair.cancelWriting();
-                        }
+                        if(!repair.open(QIODevice::WriteOnly))return false;
+                        if(repair.write(sha)!=sha.size() ||
+                           !repair.commit())return false;
                     }
                     output.cancelWriting(); // unchanged intact save
                     return true;
