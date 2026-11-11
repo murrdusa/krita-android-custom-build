@@ -958,6 +958,20 @@ public:
             };
             fillDragChoices(opacityDrag,MobileToolbarDrag::assignment("opacity"));
             fillDragChoices(sizeDrag,MobileToolbarDrag::assignment("size"));
+            // Visually resolve conflicts at selection time rather than
+            // silently disabling one of the assignments on Save.
+            connect(opacityDrag,QOverload<int>::of(&QComboBox::currentIndexChanged),
+                    &dialog,[opacityDrag,sizeDrag](int) {
+                if(opacityDrag->currentIndex()>0 &&
+                   opacityDrag->currentData()==sizeDrag->currentData())
+                    sizeDrag->setCurrentIndex(0);
+            });
+            connect(sizeDrag,QOverload<int>::of(&QComboBox::currentIndexChanged),
+                    &dialog,[opacityDrag,sizeDrag](int) {
+                if(sizeDrag->currentIndex()>0 &&
+                   opacityDrag->currentData()==sizeDrag->currentData())
+                    opacityDrag->setCurrentIndex(0);
+            });
             layout->addWidget(new QLabel(QObject::tr(
                 "Toolbar drag gestures (along the toolbar)"),body));
             layout->addWidget(new QLabel(QObject::tr("Opacity button"),body));
