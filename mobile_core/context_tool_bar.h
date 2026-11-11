@@ -192,14 +192,28 @@ public:
             }
             // Keep everyday selection controls visible; preserve the full
             // native command set in a single touch-friendly menu.
-            nativeMenu(QObject::tr("More"),{
+            nativeMenu(QObject::tr("Selection"),{
                 {"select_all",QObject::tr("Select all")},
+                {"reselect",QObject::tr("Reselect")},
                 {"invert_selection",QObject::tr("Invert")},
+                {"edit_selection",QObject::tr("Edit selection")}
+            });
+            nativeMenu(QObject::tr("Edges"),{
                 {"growselection",QObject::tr("Grow")},
                 {"shrinkselection",QObject::tr("Shrink")},
                 {"featherselection",QObject::tr("Feather")},
+                {"borderselection",QObject::tr("Border")},
+                {"smoothselection",QObject::tr("Smooth")}
+            });
+            nativeMenu(QObject::tr("Convert"),{
+                {"convert_to_vector_selection",QObject::tr("Vector selection")},
+                {"convert_to_raster_selection",QObject::tr("Raster selection")},
+                {"colorrange",QObject::tr("Color range")}
+            });
+            nativeMenu(QObject::tr("Extract"),{
                 {"copy_merged",QObject::tr("Copy merged")},
-                {"copy_selection_to_new_layer",QObject::tr("Copy to layer")}
+                {"copy_selection_to_new_layer",QObject::tr("Copy to layer")},
+                {"cut_selection_to_new_layer",QObject::tr("Cut to layer")}
             });
         } else if(id==QStringLiteral("KisToolTransform")) {
             // Krita's full Tool Options panel switches mode by calling
