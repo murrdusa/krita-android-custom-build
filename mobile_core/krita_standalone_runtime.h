@@ -208,14 +208,16 @@ private:
     void checkpointDrafts()
     {
         if(!m_root)return;
-        if(m_pendingDrafts.isEmpty()) {
-            for(const auto &view:m_root->openViews()) {
-                auto *document=qobject_cast<KisDocument*>(view.document.data());
-                if(document && document->isModified() &&
-                   !document->property("_mobileDraftPath").toString().isEmpty() &&
-                   !m_pendingDrafts.contains(document))
-                    m_pendingDrafts.append(document);
-            }
+        // A previous draft may still be queued while another canvas
+        // finishes saving. Always collect newly dirty documents: an
+        // app-background event must not be lost merely because the queue
+        // was already nonempty.
+        for(const auto &view:m_root->openViews()) {
+            auto *document=qobject_cast<KisDocument*>(view.document.data());
+            if(document && document->isModified() &&
+               !document->property("_mobileDraftPath").toString().isEmpty() &&
+               !m_pendingDrafts.contains(document))
+                m_pendingDrafts.append(document);
         }
         continueDrafts();
     }
