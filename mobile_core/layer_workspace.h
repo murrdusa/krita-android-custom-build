@@ -1922,6 +1922,12 @@ private:
 
     void chooseGroupLayers(KisNodeSP origin,const KisImageSP &image)
     {
+        if(m_reorderPending || m_clipBusy || m_clipPropertyPending ||
+           !inImage(origin,image) || !origin->parent())return;
+        // createQuickGroup operates on one native sibling list. A compact
+        // clip wrapper is a real Krita group even when hidden in our UI:
+        // never pass nodes from different parents to one grouping command.
+        const KisNodeSP parent=origin->parent();
         QDialog dialog(window());
         dialog.setWindowTitle(i18n("Group layers"));
         auto *layout=new QVBoxLayout(&dialog);
@@ -1932,7 +1938,9 @@ private:
         MobileTouchScroll::configureList(list);
         KisNodeList candidates;
         for(const auto &node:m_nodes) {
-            if(!node || !node->inherits("KisLayer") || !node->isEditable())continue;
+            if(!node || node->parent()!=parent ||
+               !inImage(node,image) || !node->inherits("KisLayer") ||
+               !node->isEditable())continue;
             candidates.append(node);
             auto *entry=new QListWidgetItem(node->name(),list);
             entry->setCheckState(node==origin || m_selected.contains(node)?
@@ -1958,12 +1966,17 @@ private:
         });
         layout->addWidget(buttons);
         if(dialog.exec()!=QDialog::Accepted || !manager() ||
-           m_engine.manager()->image().toStrongRef()!=image)return;
+           m_reorderPending || m_clipBusy || m_clipPropertyPending ||
+           m_engine.manager()->image().toStrongRef()!=image ||
+           !inImage(origin,image) || origin->parent()!=parent)return;
         KisNodeList chosen;
-        for(int row=0;row<candidates.size();++row)
+        for(int row=0;row<candidates.size();++row) {
+            const KisNodeSP node=candidates.at(row);
             if(list->item(row)->checkState()==Qt::Checked &&
-               inImage(candidates.at(row),image) && candidates.at(row)->isEditable())
-                chosen.append(candidates.at(row));
+               inImage(node,image) && node->parent()==parent &&
+               node->inherits("KisLayer") && node->isEditable())
+                chosen.append(node);
+        }
         if(chosen.isEmpty())return;
         if(auto *transform=activeTransform()) {
             if(!canRetarget(transform))return;
