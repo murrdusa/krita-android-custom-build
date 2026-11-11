@@ -240,6 +240,14 @@ public:
                 }
             }
         }
+        // The caller may have discarded/removed the private draft while
+        // we were hashing the previous version. Do not publish the newly
+        // copied edits after their source has disappeared or changed.
+        if(!provider) {
+            original.refresh();
+            if(!original.isFile() || original.size()!=expected ||
+               original.lastModified()!=before)return false;
+        }
         if(!output.commit())return false;
         QSaveFile digestFile(target+QStringLiteral(".sha256"));
         if(digestFile.open(QIODevice::WriteOnly)) {
