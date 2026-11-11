@@ -11,9 +11,12 @@
 
 #include <QColor>
 #include <QColorDialog>
+#include <QDialog>
+#include "touch_scroll.h"
 #include <QEvent>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QGridLayout>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QResizeEvent>
@@ -68,10 +71,14 @@ protected:
         p.setRenderHint(QPainter::Antialiasing,true);
         const QPointF center=rect().center();
         const qreal radius=qMin(width(),height())/2.0-11.0;
+        if(radius<=0)return;
         const QRectF circle(center.x()-radius,center.y()-radius,
                             radius*2,radius*2);
         // Hue is expressed as an angle in Krita's familiar HSV model,
         // with 0/red at the right and increasing counter-clockwise.
+        p.setBrush(Qt::NoBrush);
+        p.setPen(QPen(QColor(18,19,22,220),20));
+        p.drawEllipse(circle);
         for(int hue=0;hue<360;hue+=3) {
             QPen pen(QColor::fromHsv(hue,255,255),17,Qt::SolidLine,Qt::FlatCap);
             p.setPen(pen);
@@ -178,15 +185,21 @@ public:
         setObjectName(QStringLiteral("MobileColorWorkspace"));
         setAttribute(Qt::WA_StyledBackground,true);
         if(m_wheelOnly) {
+            setAttribute(Qt::WA_TranslucentBackground);
             setStyleSheet(QStringLiteral(
-                "QFrame#MobileColorWorkspace{background:#252529;border:0;}"));
+                "QFrame#MobileColorWorkspace{background:transparent;border:0;}"));
+            QSettings settings;
+            m_sizeLevel=qBound(0,settings.value(QStringLiteral("MobileStudio/colorWheelSize"),1).toInt(),2);
+            m_corner=qBound(0,settings.value(QStringLiteral("MobileStudio/colorWheelCorner"),0).toInt(),3);
+            m_history=settings.value(QStringLiteral("MobileStudio/recentColors")).toStringList();
+            while(m_history.size()>8)m_history.removeLast();
             auto *layout=new QVBoxLayout(this);
             layout->setContentsMargins(0,0,0,0);
             m_wheel=new MobileHueWheel(this);
             m_wheel->setMinimumSize(0,0);
             layout->addWidget(m_wheel);
-            m_wheel->onChosen=[this](const QColor &color,bool) {
-                setNativeColor(color,false);
+            m_wheel->onChosen=[this](const QColor &color,bool final) {
+                setNativeColor(color,final);
             };
             if(auto *provider=m_engine.brushResources()) {
                 connect(provider,&KisCanvasResourceProvider::sigFGColorChanged,
@@ -326,6 +339,74 @@ public:
                                          QStringLiteral("#202934")));
         }
     }
+    void openWheelOptions()
+    {
+        QDialog dialog(window());
+        dialog.setWindowTitle(i18n("Color options"));
+        auto *layout=new QVBoxLayout(&dialog);
+        if(!m_history.isEmpty()) {
+            layout->addWidget(new QLabel(i18n("Recent colors"),&dialog));
+            auto *swatches=new QGridLayout;
+            for(int i=0;i<m_history.size();++i) {
+                const QColor color(m_history.at(i));
+                if(!color.isValid())continue;
+                auto *swatch=new QToolButton(&dialog);
+                swatch->setMinimumSize(44,44);
+                swatch->setAccessibleName(color.name());
+                swatch->setStyleSheet(QStringLiteral(
+                    "QToolButton{background:%1;border:1px solid #7e8995;border-radius:4px;}")
+                    .arg(color.name()));
+                swatches->addWidget(swatch,i/4,i%4);
+                connect(swatch,&QToolButton::clicked,&dialog,[this,color,&dialog]() {
+                    setNativeColor(color,true);
+                    dialog.accept();
+                });
+            }
+            layout->addLayout(swatches);
+        }
+        layout->addWidget(new QLabel(i18n("Wheel size"),&dialog));
+        auto *size=new MobileTouchComboBox(&dialog);
+        size->addItems({i18n("Small"),i18n("Medium"),i18n("Large")});
+        size->setMinimumHeight(44);
+        size->setCurrentIndex(m_sizeLevel);
+        layout->addWidget(size);
+        connect(size,QOverload<int>::of(&QComboBox::currentIndexChanged),&dialog,[this](int value) {
+            m_sizeLevel=value;
+            QSettings().setValue(QStringLiteral("MobileStudio/colorWheelSize"),value);
+            updateForViewport();
+        });
+        layout->addWidget(new QLabel(i18n("Wheel position"),&dialog));
+        auto *position=new MobileTouchComboBox(&dialog);
+        position->addItems({i18n("Bottom right"),i18n("Bottom left"),
+                            i18n("Top right"),i18n("Top left")});
+        position->setMinimumHeight(44);
+        position->setCurrentIndex(m_corner);
+        layout->addWidget(position);
+        connect(position,QOverload<int>::of(&QComboBox::currentIndexChanged),&dialog,[this](int value) {
+            m_corner=value;
+            QSettings().setValue(QStringLiteral("MobileStudio/colorWheelCorner"),value);
+            updateForViewport();
+        });
+        auto *advanced=new QPushButton(i18n("Advanced color…"),&dialog);
+        advanced->setMinimumHeight(44);
+        layout->addWidget(advanced);
+        connect(advanced,&QPushButton::clicked,&dialog,[this,&dialog]() {
+            if(auto *provider=m_engine.brushResources()) {
+                const QColor color=QColorDialog::getColor(provider->fgColor().toQColor(),
+                    &dialog,i18n("Foreground color"),QColorDialog::ShowAlphaChannel);
+                if(color.isValid()) {
+                    setNativeColor(color,true);
+                    dialog.accept();
+                }
+            }
+        });
+        auto *done=new QPushButton(i18n("Done"),&dialog);
+        done->setMinimumHeight(44);
+        layout->addWidget(done);
+        connect(done,&QPushButton::clicked,&dialog,&QDialog::accept);
+        dialog.exec();
+    }
+
     bool expanded() const {return m_expanded;}
     void setOverlayClearance(int top,int right)
     {
@@ -417,13 +498,18 @@ private:
         auto *parent=parentWidget();
         if(!parent)return;
         if(m_wheelOnly) {
-            const int side=qMax(0,qMin(212,qMin(parent->width()-12,
-                parent->height()-m_avoidTop-m_avoidBottom-12)));
+            const int edge=2;
+            const int left=m_avoidRight+edge;
+            const int preferred[]={184,212,252};
+            const int side=qMax(0,qMin(preferred[m_sizeLevel],qMin(parent->width()-left-edge,
+                parent->height()-m_avoidTop-m_avoidBottom-2*edge)));
             if(size()!=QSize(side,side)) {
                 setFixedSize(side,side);
                 setMask(QRegion(rect(),QRegion::Ellipse));
             }
-            move(parent->width()-side-6,parent->height()-m_avoidBottom-side-6);
+            const int x=(m_corner%2)?left:parent->width()-side-edge;
+            const int y=m_corner>=2?m_avoidTop+edge:parent->height()-m_avoidBottom-side-edge;
+            move(x,y);
             return;
         }
         // Prefer the requested size, then progressively smaller sizes.
@@ -526,7 +612,7 @@ private:
     QStringList m_history;
     QString m_lastSwatchColor;
     bool m_expanded=true,m_wantsExpanded=true,m_dragging=false;
-    int m_sizeLevel=1,m_rightInset=7,m_bottomInset=7;
+    int m_sizeLevel=1,m_corner=0,m_rightInset=7,m_bottomInset=7;
     int m_avoidBottom=0,m_avoidTop=0,m_avoidRight=0;
     bool m_wheelOnly=false;
     QPoint m_dragStart,m_positionAtStart;

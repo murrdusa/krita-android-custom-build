@@ -33,12 +33,17 @@
 #include <KisResourceModel.h>
 #include <brushengine/kis_paintop_preset.h>
 #include <KoToolManager.h>
+#include <KoCompositeOpRegistry.h>
+#include "kis_node.h"
+#include <brushengine/kis_paintop_settings.h>
+#include <QScrollArea>
 #include <klocalizedstring.h>
 
 class KritaMobileBrushWorkspace final : public QFrame {
 public:
     explicit KritaMobileBrushWorkspace(const MobileEngineBridge &engine,
-                                       QWidget *parent,bool slidersOnly=false)
+                                       QWidget *parent,bool slidersOnly=false,
+                                       bool toolSettings=false)
         : QFrame(parent),m_engine(engine),m_hasSelectedMode(!slidersOnly)
     {
         setObjectName(QStringLiteral("mobileBrushWorkspace"));
@@ -130,7 +135,58 @@ public:
             }
         }
         details->addLayout(controlRow);
-        root->addWidget(m_controls);
+        if(toolSettings) {
+            m_flow=new KisDoubleSliderSpinBox(m_controls);
+            m_flow->setRange(0,100,0);
+            m_flow->setPrefix(i18n("Flow: "));
+            m_flow->setSuffix(QStringLiteral("%"));
+            m_flow->setMinimumHeight(44);
+            details->addWidget(m_flow);
+            connect(m_flow,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),
+                    this,[this](qreal percent) {
+                auto *provider=resources();
+                if(m_syncing || !provider)return;
+                const auto preset=provider->currentPreset();
+                if(!supportsFlow(preset))return;
+                preset->settings()->setPaintOpFlow(percent/100.0);
+                provider->setFlow(percent/100.0);
+            });
+
+            m_composite=new MobileTouchComboBox(m_controls);
+            m_composite->setAccessibleName(i18n("Brush blending mode"));
+            m_composite->setToolTip(i18n("Brush blending mode"));
+            m_composite->setMinimumHeight(44);
+            details->addWidget(m_composite);
+            connect(m_composite,QOverload<int>::of(&QComboBox::activated),
+                    this,[this](int index) {
+                const QString mode=m_composite->itemData(index).toString();
+                if(auto *provider=resources(); provider && !mode.isEmpty() && !provider->eraserMode())
+                    provider->setCurrentCompositeOp(mode);
+            });
+            if(auto *editor=m_engine.action("show_brush_editor")) {
+                auto *advanced=new QPushButton(i18n("Advanced Brush Settings"),m_controls);
+                advanced->setMinimumHeight(44);
+                advanced->setEnabled(editor->isEnabled());
+                connect(editor,&QAction::changed,advanced,[advanced,editor]() {
+                    advanced->setEnabled(editor->isEnabled());
+                });
+                connect(advanced,&QPushButton::clicked,this,[this,editor]() {
+                    hide();
+                    if(editor->isEnabled())editor->trigger();
+                });
+                details->addWidget(advanced);
+            }
+        }
+        if(toolSettings) {
+            auto *scroll=new QScrollArea(this);
+            scroll->setFrameShape(QFrame::NoFrame);
+            scroll->setWidgetResizable(true);
+            MobileTouchScroll::configure(scroll);
+            scroll->setWidget(m_controls);
+            root->addWidget(scroll);
+        } else {
+            root->addWidget(m_controls);
+        }
         if(slidersOnly) {
             root->setContentsMargins(2,2,2,2);
         } else {
@@ -208,6 +264,12 @@ public:
     void activateMode(int slot) { switchMode(slot); }
     void browsePresets(int slot) { openPresetBrowser(slot); }
 
+    void setSliderVisibility(bool size,bool opacity)
+    {
+        m_size->setVisible(size);
+        m_opacity->setVisible(opacity);
+    }
+
     void refresh()
     {
         auto *provider=resources();
@@ -215,6 +277,25 @@ public:
         m_syncing=true;
         m_size->setValue(provider->size());
         m_opacity->setValue(provider->opacity()*100.0);
+        if(m_flow) {
+            m_flow->setVisible(supportsFlow(provider->currentPreset()));
+            m_flow->setValue(provider->flow()*100.0);
+        }
+        if(m_composite) {
+            auto *view=m_engine.manager();
+            const auto node=view?view->activeNode():KisNodeSP();
+            const auto *space=node?node->colorSpace():nullptr;
+            if(space!=m_compositeSpace) {
+                m_compositeSpace=space;
+                m_composite->clear();
+                if(space) {
+                    const auto modes=KoCompositeOpRegistry::instance()->getCompositeOps(space);
+                    for(const auto &mode:modes)m_composite->addItem(mode.name(),mode.id());
+                }
+            }
+            m_composite->setVisible(m_composite->count()>0 && !provider->eraserMode());
+            m_composite->setCurrentIndex(m_composite->findData(provider->currentCompositeOp()));
+        }
         if(m_presetName) {
             if(auto preset=provider->currentPreset()) {
                 m_presetName->setText(preset->name().left(26));
@@ -227,6 +308,11 @@ public:
     }
 
 private:
+    static bool supportsFlow(const KisPaintOpPresetSP &preset)
+    {
+        return preset && (preset->paintOp().id()==QStringLiteral("paintbrush") || isSmudge(preset));
+    }
+
     static bool isSmudge(const KisPaintOpPresetSP &preset)
     {
         return preset && preset->paintOp().id()==QStringLiteral("colorsmudge");
@@ -512,7 +598,9 @@ private:
     QWidget *m_controls=nullptr;
     QToolButton *m_detailToggle=nullptr;
     bool m_detailsExpanded=true;
-    KisDoubleSliderSpinBox *m_size=nullptr,*m_opacity=nullptr;
+    KisDoubleSliderSpinBox *m_size=nullptr,*m_opacity=nullptr,*m_flow=nullptr;
+    MobileTouchComboBox *m_composite=nullptr;
+    const KoColorSpace *m_compositeSpace=nullptr;
     KisResourceModel *m_model=nullptr;
     QTimer *m_refresh=nullptr;
     bool m_syncing=false,m_internalChange=false,m_hasSelectedMode=true;

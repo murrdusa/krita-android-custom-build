@@ -33,6 +33,9 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QTimer>
+#include <QMouseEvent>
+#include <QTabletEvent>
+#include <QTouchEvent>
 #include <QTabWidget>
 #include <resources/KoAbstractGradient.h>
 #include <resources/KoPattern.h>
@@ -83,13 +86,21 @@ public:
         const QSettings settings;
         m_keepLayers=settings.value(QStringLiteral("MobileStudio/keepLayersOpen"),true).toBool();
         m_keepColor=settings.value(QStringLiteral("MobileStudio/keepColorOpen"),true).toBool();
-        m_showBrushSliders=settings.value(QStringLiteral("MobileStudio/showBrushSliders"),true).toBool();
+        const bool oldSliders=settings.value(QStringLiteral("MobileStudio/showBrushSliders"),true).toBool();
+        m_showSize=settings.value(QStringLiteral("MobileStudio/showSizeSlider"),oldSliders).toBool();
+        m_showOpacity=settings.value(QStringLiteral("MobileStudio/showOpacitySlider"),oldSliders).toBool();
         qApp->installEventFilter(this);
         auto *contextRefresh=new QTimer(this);
         contextRefresh->setSingleShot(true);
         connect(contextRefresh,&QTimer::timeout,this,
                 [this]() {syncContextToolBar();});
         if(auto *tools=KoToolManager::instance()) {
+            connect(tools,&KoToolManager::aboutToChangeTool,this,
+                    [this,tools](KoCanvasController *controller) {
+                if(controller!=tools->activeCanvasController())return;
+                if(m_toolOptions)m_toolOptions->hide();
+                if(m_brushOptions)m_brushOptions->hide();
+            });
             connect(tools,&KoToolManager::toolOptionWidgetsChanged,contextRefresh,
                     [tools,contextRefresh](KoCanvasController *controller,
                                             const QList<QPointer<QWidget>> &) {
@@ -177,6 +188,41 @@ public:
         });
     }
 
+    void bindPanelActions(QAction *layers,QAction *color,QAction *options)
+    {
+        m_layersAction=layers;
+        m_colorAction=color;
+        m_optionsAction=options;
+        for(auto *action:{layers,color,options})action->setCheckable(true);
+        syncPanelActions();
+    }
+
+    void toggleToolSettings()
+    {
+        if(!m_host || !m_engine.hasDocument() || m_canvasOnly)return;
+        if(m_engine.activeTool().section(QLatin1Char('/'),-1)!=QStringLiteral("KisToolBrush")) {
+            toggleToolOptions();
+            return;
+        }
+        if(!m_brushOptions) {
+            m_brushOptions=new KritaMobileBrushWorkspace(m_engine,m_host->nativeCanvas(),true,true);
+            m_brushOptions->installEventFilter(this);
+        } else if(m_brushOptions->isVisible()) {
+            m_brushOptions->hide();
+            return;
+        }
+        m_brushOptions->refresh();
+        showOverlay(m_brushOptions);
+    }
+
+    void openColorOptions()
+    {
+        if(!m_host || !m_engine.hasDocument())return;
+        if(!m_color && !ensureColorPanel())return;
+        m_color->openWheelOptions();
+        placeDrawingOverlays();
+    }
+
     void toggleLayers()
     {
         if(!m_host || !m_engine.hasDocument())return;
@@ -190,7 +236,8 @@ public:
             m_layers=new KritaMobileLayersPanel(m_engine,canvas,true);
             // Keep the panel's own object name: its stylesheet uses
             // QFrame#MobileStudioLayersPanel for the dark floating rail.
-            m_layers->setFixedWidth(94);
+            m_layers->setFixedWidth(KritaMobileLayersPanel::compactRailWidth());
+            m_layers->installEventFilter(this);
             m_layers->onContentHeightChanged=[this]() { placeLayerOverlay(); };
             m_layers->show();
             checkpoint("Layers: floating overlay ready");
@@ -208,7 +255,7 @@ public:
     // desktop Tool Options docker. They are live engine controls,
     // not copies or reverse-engineered equivalents. This also exposes
     // selection, transform, perspective and fill configuration.
-    void toggleToolOptions(bool keepOpen=false)
+    void toggleToolOptions()
     {
         if(!m_host || !m_engine.hasDocument())return;
         KoToolManager *tools=KoToolManager::instance();
@@ -241,10 +288,10 @@ public:
                 "QDockWidget#_mobileNativeToolOptions QRadioButton,"
                 "QDockWidget#_mobileNativeToolOptions QCheckBox{"
                 "color:#f3f7fc;}"));
-            auto *dismiss=new QPushButton(QObject::tr("Close Tool Options"),dock);
-            dismiss->setMinimumHeight(44);
-            dock->setTitleBarWidget(dismiss);
-            connect(dismiss,&QPushButton::clicked,dock,&QWidget::hide);
+            auto *titleBar=new QWidget(dock);
+            titleBar->setFixedHeight(0);
+            dock->setTitleBarWidget(titleBar);
+            dock->installEventFilter(this);
             if(auto *scroll=qobject_cast<QScrollArea*>(dock->widget())) {
                 QScroller::ungrabGesture(scroll);
                 MobileTouchScroll::configure(scroll);
@@ -262,7 +309,7 @@ public:
                 dock->setOptionWidgets(widgets);
             });
             checkpoint("Krita native tool options: overlay connected");
-        } else if(m_toolOptions->isVisible() && !keepOpen) {
+        } else if(m_toolOptions->isVisible()) {
             m_toolOptions->hide();
             return;
         }
@@ -285,14 +332,11 @@ public:
             checkpoint("Color wheel: no native canvas root");
             return;
         }
-        if(!m_color) {
-            checkpoint("Color wheel: creating on native canvas root");
-            m_color=new MobileColorWorkspace(m_engine,canvas,true);
-            checkpoint("Color wheel: constructed");
-        } else if(m_color->isVisible()) {
+        if(m_color && m_color->isVisible()) {
             m_color->hide();
             return;
         }
+        if(!ensureColorPanel())return;
         m_color->refresh();
         showOverlay(m_color);
     }
@@ -305,7 +349,7 @@ public:
             if(host) {
                 checkpoint("Tool chooser: opening");
                 if(MobileToolBrowser::open(m_engine,host,true) && host)
-                    toggleToolOptions(true);
+                    toggleToolSettings();
                 checkpoint("Tool chooser: closed");
             }
         });
@@ -757,18 +801,21 @@ public:
             outer->addWidget(scroll,1);
             dialog.resize(qMin(400,m_host->width()),qMin(380,m_host->height()));
             auto *description=new QLabel(QObject::tr(
-                "Keep panels open when you touch the canvas"),body);
+                "Keep these panels open while working elsewhere"),body);
             description->setWordWrap(true);
             layout->addWidget(description);
             auto *layers=new QCheckBox(QObject::tr("Layers"),body);
             auto *color=new QCheckBox(QObject::tr("Color wheel"),body);
-            auto *brush=new QCheckBox(QObject::tr("Show Size and Opacity at the bottom"),body);
+            auto *size=new QCheckBox(QObject::tr("Show Size slider"),body);
+            auto *opacity=new QCheckBox(QObject::tr("Show Opacity slider"),body);
             layers->setChecked(m_keepLayers);
             color->setChecked(m_keepColor);
-            brush->setChecked(m_showBrushSliders);
+            size->setChecked(m_showSize);
+            opacity->setChecked(m_showOpacity);
             layout->addWidget(layers);
             layout->addWidget(color);
-            layout->addWidget(brush);
+            layout->addWidget(size);
+            layout->addWidget(opacity);
             auto *shortcut=new MobileTouchComboBox(body);
             if(!m_shortcuts.isEmpty()) {
                 layout->addWidget(new QLabel(QObject::tr("Toolbar shortcut"),body));
@@ -786,11 +833,13 @@ public:
             if(dialog.exec()!=QDialog::Accepted)return;
             m_keepLayers=layers->isChecked();
             m_keepColor=color->isChecked();
-            m_showBrushSliders=brush->isChecked();
+            m_showSize=size->isChecked();
+            m_showOpacity=opacity->isChecked();
             QSettings settings;
             settings.setValue(QStringLiteral("MobileStudio/keepLayersOpen"),m_keepLayers);
             settings.setValue(QStringLiteral("MobileStudio/keepColorOpen"),m_keepColor);
-            settings.setValue(QStringLiteral("MobileStudio/showBrushSliders"),m_showBrushSliders);
+            settings.setValue(QStringLiteral("MobileStudio/showSizeSlider"),m_showSize);
+            settings.setValue(QStringLiteral("MobileStudio/showOpacitySlider"),m_showOpacity);
             if(shortcut->currentIndex()>=0) {
                 m_shortcutIndex=shortcut->currentIndex();
                 settings.setValue(QStringLiteral("MobileStudio/toolbarShortcut"),
@@ -804,6 +853,7 @@ public:
     void refresh()
     {
         if(!m_host)return;
+        syncPanelActions();
         if(!m_engine.hasDocument()) {
             syncBrushModes();
             hidePanels();
@@ -826,6 +876,7 @@ public:
         if(m_layers)m_layers->hide();
         if(m_brush)m_brush->hide();
         if(m_toolOptions)m_toolOptions->hide();
+        if(m_brushOptions)m_brushOptions->hide();
         if(m_textFormatting)m_textFormatting->hide();
         if(m_color)m_color->hide();
         if(m_contextToolBar)m_contextToolBar->hide();
@@ -844,30 +895,106 @@ public:
 protected:
     bool eventFilter(QObject *watched,QEvent *event) override
     {
-        if(m_host && (!m_keepLayers || !m_keepColor) &&
-           (event->type()==QEvent::MouseButtonPress ||
-            event->type()==QEvent::TabletPress || event->type()==QEvent::TouchBegin)) {
-            auto *stack=qobject_cast<QStackedWidget*>(m_host->nativeCanvas());
-            auto *target=qobject_cast<QWidget*>(watched);
-            QWidget *view=stack?stack->currentWidget():nullptr;
-            if(view && target && (target==view || view->isAncestorOf(target))) {
-                if(m_layers && !m_keepLayers)m_layers->hide();
-                if(m_color && !m_keepColor)m_color->hide();
-                placeDrawingOverlays();
-            }
+        if((watched==m_layers || watched==m_color || watched==m_toolOptions ||
+            watched==m_brushOptions) &&
+           (event->type()==QEvent::Show || event->type()==QEvent::Hide)) {
+            syncPanelActions();
+            QTimer::singleShot(0,this,[this]() {placeDrawingOverlays();});
         }
+        if(m_host && (event->type()==QEvent::MouseButtonPress ||
+                     event->type()==QEvent::TabletPress || event->type()==QEvent::TouchBegin))
+            dismissTemporaryPanels(pressTarget(watched,event));
         if(m_host && watched==m_host->nativeCanvas() &&
            (event->type()==QEvent::Resize ||
             event->type()==QEvent::Show)) {
             placeLayerOverlay();
             placeDrawingOverlays();
         }
-        if(watched==m_brush && event->type()==QEvent::LayoutRequest)
+        if((watched==m_brush || watched==m_brushOptions) && event->type()==QEvent::LayoutRequest)
             placeDrawingOverlays();
         return QObject::eventFilter(watched,event);
     }
 
 private:
+    void syncPanelActions()
+    {
+        const bool active=m_engine.hasDocument();
+        const auto sync=[active](QAction *action,bool open) {
+            if(!action)return;
+            action->setEnabled(active);
+            action->setChecked(open);
+        };
+        sync(m_layersAction,m_layers && m_layers->isVisible());
+        sync(m_colorAction,m_color && m_color->isVisible());
+        sync(m_optionsAction,(m_toolOptions && m_toolOptions->isVisible()) ||
+                             (m_brushOptions && m_brushOptions->isVisible()));
+    }
+
+    static QWidget *pressTarget(QObject *watched,QEvent *event)
+    {
+        auto *fallback=qobject_cast<QWidget*>(watched);
+        QPoint global;
+        switch(event->type()) {
+        case QEvent::TouchBegin: {
+            const auto *touch=static_cast<QTouchEvent*>(event);
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+            if(touch->points().isEmpty())return fallback;
+            global=touch->points().first().globalPosition().toPoint();
+#else
+            if(touch->touchPoints().isEmpty())return fallback;
+            global=touch->touchPoints().first().screenPos().toPoint();
+#endif
+            break;
+        }
+        case QEvent::TabletPress:
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+            global=static_cast<QTabletEvent*>(event)->globalPosition().toPoint();
+#else
+            global=static_cast<QTabletEvent*>(event)->globalPos();
+#endif
+            break;
+        default:
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+            global=static_cast<QMouseEvent*>(event)->globalPosition().toPoint();
+#else
+            global=static_cast<QMouseEvent*>(event)->globalPos();
+#endif
+            break;
+        }
+        if(auto *hit=QApplication::widgetAt(global))return hit;
+        return fallback;
+    }
+
+    void dismissTemporaryPanels(QWidget *target)
+    {
+        if(!target || target->window()!=m_host || QApplication::activePopupWidget() ||
+           QApplication::activeModalWidget())return;
+        auto *canvas=m_host->nativeCanvas();
+        if(!canvas || (target!=canvas && !canvas->isAncestorOf(target)))return;
+        auto *button=qobject_cast<QToolButton*>(target);
+        QAction *action=button?button->defaultAction():nullptr;
+        if(action && action==m_shortcutSlot && !m_shortcuts.isEmpty())
+            action=m_shortcuts.at(m_shortcutIndex).action;
+        const auto dismiss=[target,action](QWidget *panel,QAction *opener) {
+            if(panel && panel->isVisible() && panel!=target &&
+               !panel->isAncestorOf(target) && action!=opener)panel->hide();
+        };
+        if(!m_keepLayers)dismiss(m_layers,m_layersAction);
+        if(!m_keepColor)dismiss(m_color,m_colorAction);
+        dismiss(m_brushOptions,m_optionsAction);
+        dismiss(m_toolOptions,m_optionsAction);
+    }
+
+    bool ensureColorPanel()
+    {
+        if(m_color)return true;
+        QWidget *canvas=m_host?m_host->nativeCanvas():nullptr;
+        if(!canvas)return false;
+        m_color=new MobileColorWorkspace(m_engine,canvas,true);
+        m_color->installEventFilter(this);
+        return true;
+    }
+
     void syncBrushModes()
     {
         int active=-1;
@@ -922,9 +1049,8 @@ private:
             return;
         }
         if(!m_contextToolBar) {
-            m_contextToolBar=new MobileContextToolBar(canvas);
+            m_contextToolBar=new MobileContextToolBar(canvas,m_optionsAction);
             m_contextToolBar->chooseTool=[this]() {chooseTool();};
-            m_contextToolBar->openOptions=[this]() {toggleToolOptions();};
             m_contextToolBar->chooseFillResource=[this](bool gradient) {
                 chooseFillResource(gradient);
             };
@@ -994,7 +1120,7 @@ private:
     int overlayTop(QWidget *canvas) const
     {
         if(m_contextToolBar && !m_contextToolBar->isHidden())
-            return m_contextToolBar->geometry().bottom()+6;
+            return m_contextToolBar->geometry().bottom()+3;
         return MobileNativeCommandLayout::panelTopInset(canvas);
     }
 
@@ -1026,8 +1152,9 @@ private:
 
     void updateBrushSliders()
     {
-        if(m_showBrushSliders && !m_canvasOnly &&
+        if((m_showSize || m_showOpacity) && !m_canvasOnly &&
            m_engine.hasDocument() && ensureBrushControls()) {
+            m_brush->setSliderVisibility(m_showSize,m_showOpacity);
             m_brush->show();
             m_brush->raise();
         } else if(m_brush) {
@@ -1041,7 +1168,7 @@ private:
         if(!m_layers)return;
         QWidget *canvas=m_layers->parentWidget();
         if(canvas->width()<140 || canvas->height()<180)return;
-        const int inset=5;
+        const int inset=2;
         const int top=overlayTop(canvas);
         const int bottom=m_brush && m_brush->isVisible() ?
             m_brush->y() : canvas->height();
@@ -1053,11 +1180,11 @@ private:
     {
         QWidget *canvas=m_host ? m_host->nativeCanvas() : nullptr;
         if(!canvas)return;
-        const int inset=5;
+        const int inset=2;
         if(m_contextToolBar && !m_contextToolBar->isHidden()) {
             const int toolbarWidth=qMin(760,qMax(0,canvas->width()-2*inset));
-            m_contextToolBar->setGeometry((canvas->width()-toolbarWidth)/2,
-                MobileNativeCommandLayout::panelTopInset(canvas),toolbarWidth,54);
+            m_contextToolBar->setGeometry(inset,
+                MobileNativeCommandLayout::panelTopInset(canvas),toolbarWidth,48);
         }
         const int top=overlayTop(canvas);
         const int width=canvas->width()-2*inset;
@@ -1066,22 +1193,26 @@ private:
         if(m_brush) {
             const int panelHeight=qMin(height,m_brush->sizeHint().height());
             m_brush->setGeometry(inset,canvas->height()-panelHeight-inset,
-                                 qMin(340,width),panelHeight);
+                                 qMin(m_showSize && m_showOpacity?340:190,width),panelHeight);
         }
-        if(m_toolOptions || m_textFormatting) {
+        if(m_toolOptions || m_textFormatting || m_brushOptions) {
             const int besideLayers=width-(m_layers?m_layers->width()+5:0);
             const int available=m_layers && m_layers->isVisible() &&
                 besideLayers>=240 ? besideLayers : width;
             const int optionsWidth=qMin(340,available);
             const QRect bounds(canvas->width()-optionsWidth-inset,top,
                                optionsWidth,qMin(440,height));
-            if(m_toolOptions)m_toolOptions->setGeometry(bounds);
+            if(m_toolOptions)m_toolOptions->setGeometry(bounds.x(),bounds.y(),bounds.width(),
+                qMin(height,qBound(44,m_toolOptions->sizeHint().height(),440)));
+            if(m_brushOptions)m_brushOptions->setGeometry(bounds.x(),bounds.y(),bounds.width(),
+                qMin(height,m_brushOptions->sizeHint().height()));
             if(m_textFormatting)m_textFormatting->setGeometry(bounds);
         }
         if(m_color) {
             m_color->avoidBottom(m_brush && m_brush->isVisible() ?
                                 m_brush->height()+inset : 0);
-            m_color->setOverlayClearance(top,0);
+            m_color->setOverlayClearance(top,
+                m_layers && m_layers->isVisible()?m_layers->geometry().right()+2:0);
         }
         placeLayerOverlay();
     }
@@ -1090,9 +1221,10 @@ private:
     {
         if(m_layers && m_layers->isVisible())m_layers->raise();
         for(QWidget *panel:{static_cast<QWidget*>(m_brush.data()),
+                            static_cast<QWidget*>(m_color.data()),
                             static_cast<QWidget*>(m_toolOptions.data()),
-                            static_cast<QWidget*>(m_textFormatting.data()),
-                            static_cast<QWidget*>(m_color.data())}) {
+                            static_cast<QWidget*>(m_brushOptions.data()),
+                            static_cast<QWidget*>(m_textFormatting.data())}) {
             if(panel && panel->isVisible())panel->raise();
         }
     }
@@ -1100,10 +1232,10 @@ private:
     void showOverlay(QWidget *panel)
     {
         if(m_toolOptions && m_toolOptions.data()!=panel)m_toolOptions->hide();
+        if(m_brushOptions && m_brushOptions.data()!=panel)m_brushOptions->hide();
         if(m_textFormatting && m_textFormatting.data()!=panel)m_textFormatting->hide();
-        if(m_color && m_color.data()!=panel)m_color->hide();
-        placeDrawingOverlays();
         panel->show();
+        placeDrawingOverlays();
         placeLayerOverlay();
         raiseOverlays();
     }
@@ -1131,7 +1263,8 @@ private:
     MobileEngineBridge m_engine;
     QPointer<KoToolDocker> m_toolOptions;
     QPointer<QDockWidget> m_textFormatting;
-    QPointer<KritaMobileBrushWorkspace> m_brush;
+    QPointer<KritaMobileBrushWorkspace> m_brush,m_brushOptions;
+    QPointer<QAction> m_layersAction,m_colorAction,m_optionsAction;
     QList<QAction*> m_brushModes;
     QPointer<KritaMobileLayersPanel> m_layers;
     QPointer<MobileColorWorkspace> m_color;
@@ -1141,7 +1274,7 @@ private:
     QPointer<QAction> m_volumeRedo;
     QVector<ToolbarShortcut> m_shortcuts;
     int m_shortcutIndex=0;
-    bool m_keepLayers=true,m_keepColor=true,m_showBrushSliders=true;
+    bool m_keepLayers=true,m_keepColor=true,m_showSize=true,m_showOpacity=true;
     bool m_canvasOnly=false;
 };
 #endif

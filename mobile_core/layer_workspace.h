@@ -78,19 +78,21 @@
 class KritaMobileLayersPanel final : public QFrame
 {
 public:
+    static constexpr int compactRailWidth() {return 82;}
+
     KritaMobileLayersPanel(const MobileEngineBridge &engine,
                            QWidget *parent=nullptr,bool compactRail=false)
-        : QFrame(parent),m_engine(engine)
+        : QFrame(parent),m_engine(engine),m_compactRail(compactRail)
     {
         setObjectName(QStringLiteral("MobileStudioLayersPanel"));
         // Match the earlier TabletCompactSkin rail, not Krita's
         // full-width desktop layer docker. Additional operations live
         // behind the selected tile and the hold-to-open Add menu.
-        setMinimumWidth(110);
+        setMinimumWidth(compactRail?compactRailWidth():110);
         setMaximumWidth(166);
         setSizePolicy(QSizePolicy::Preferred,QSizePolicy::Expanding);
         setStyleSheet(
-            "QFrame#MobileStudioLayersPanel{background:#252529;"
+            "QFrame#MobileStudioLayersPanel{background:rgba(28,31,37,174);"
             "border:1px solid #48484e;border-radius:13px;}"
             "QLabel{color:#ecf3fc;font-size:14px;}"
             "QTreeWidget{background:transparent;color:#f4f4f5;"
@@ -126,7 +128,9 @@ public:
         m_tree->setColumnCount(1);
         m_tree->setHeaderHidden(true);
         m_tree->setRootIsDecorated(false);
-        m_tree->setIndentation(4);
+        // Row stripes already encode group depth, leaving the full tile
+        // width available to nested layers and their inline controls.
+        m_tree->setIndentation(compactRail?0:4);
         m_tree->setSelectionMode(QAbstractItemView::NoSelection);
         m_tree->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
         m_tree->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -2175,7 +2179,15 @@ private:
         frame->setAttribute(Qt::WA_AcceptTouchEvents,true);
         frame->installEventFilter(this);
         auto *tile=new QToolButton(frame);
-        tile->setGeometry(clipped?7:2,1,tileSize-(clipped?5:0),tileHeight);
+        const int tileWidth=group && m_compactRail?54:tileSize;
+        tile->setGeometry(clipped?7:2,1,tileWidth-(clipped?5:0),tileHeight);
+        if(group && m_compactRail) {
+            auto *drop=new QLabel(QStringLiteral("↳"),frame);
+            drop->setGeometry(56,1,20,tileHeight);
+            drop->setAlignment(Qt::AlignCenter);
+            drop->setAccessibleName(i18n("Drop a layer here to nest it in the group"));
+            drop->setAttribute(Qt::WA_TransparentForMouseEvents);
+        }
         tile->setToolButtonStyle(group||mask?
             Qt::ToolButtonTextOnly:Qt::ToolButtonIconOnly);
         tile->setText(group?QStringLiteral("▣"):
@@ -2423,6 +2435,7 @@ private:
         });
     }
     MobileEngineBridge m_engine;
+    const bool m_compactRail;
     QTreeWidget *m_tree=nullptr;
     QLabel *m_summary=nullptr;
     QVector<KisNodeSP> m_nodes;

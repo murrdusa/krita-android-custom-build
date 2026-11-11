@@ -47,13 +47,13 @@
 class MobileContextToolBar final : public QFrame
 {
 public:
-    explicit MobileContextToolBar(QWidget *parent) : QFrame(parent)
+    explicit MobileContextToolBar(QWidget *parent,QAction *options) : QFrame(parent)
     {
         setObjectName(QStringLiteral("mobileContextToolBar"));
         setStyleSheet(QStringLiteral(
-            "QFrame#mobileContextToolBar{background:#252529;"
+            "QFrame#mobileContextToolBar{background:rgba(26,29,34,175);"
             "border:1px solid #48484e;border-radius:10px;}"
-            "QWidget#mobileContextControls,QScrollArea{background:#252529;border:0;}"
+            "QWidget#mobileContextControls,QScrollArea{background:transparent;border:0;}"
             "QToolButton{color:#f4f4f5;background:#34343a;border:0;"
             "border-radius:6px;padding:0 5px;}"
             "QToolButton:checked,QToolButton:pressed{background:#536278;}"
@@ -77,14 +77,12 @@ public:
         MobileTouchScroll::configure(m_scroll);
         layout->addWidget(m_scroll,1);
         auto *gear=new QToolButton(this);
-        gear->setIcon(QIcon(QStringLiteral(":/light_configure.svg")));
+        gear->setDefaultAction(options);
+        gear->setToolButtonStyle(Qt::ToolButtonIconOnly);
         gear->setIconSize(QSize(22,22));
         gear->setFixedSize(44,44);
         gear->setAccessibleName(QObject::tr("Advanced Tool Options"));
         gear->setToolTip(gear->accessibleName());
-        connect(gear,&QToolButton::clicked,this,[this]() {
-            if(openOptions)openOptions();
-        });
         layout->addWidget(gear);
         m_sync=new QTimer(this);
         m_sync->setInterval(180);
@@ -94,7 +92,6 @@ public:
     }
 
     std::function<void()> chooseTool;
-    std::function<void()> openOptions;
     std::function<void()> openTextFormatting;
     std::function<void(bool)> chooseFillResource;
 

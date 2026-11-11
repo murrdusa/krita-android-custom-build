@@ -105,7 +105,8 @@ public:
         auto *layersAction=makeAction("Layers");
         auto *colorAction=makeAction("Color");
         auto *toolsAction=makeAction("Tools");
-        auto *optionsAction=makeAction("Tool Options");
+        auto *optionsAction=makeAction("Tool Settings");
+        auto *colorOptionsAction=makeAction("Color options…");
         auto *commandsAction=makeAction("All Krita Commands");
         commandsAction->setObjectName(QStringLiteral("mobileBrowseCommands"));
         auto *settingsAction=makeAction("Workspace Settings");
@@ -169,6 +170,7 @@ public:
         QObject::connect(canvasOnlyAction,&QAction::toggled,workspace,
                          &MobileKritaNativeWorkspace::setCanvasOnly);
         workspace->bindBrushModes(brushesAction,eraserAction,blendBrushAction);
+        workspace->bindPanelActions(layersAction,colorAction,optionsAction);
         QObject::connect(brushesAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleBrushes(0);});
         QObject::connect(eraserAction,&QAction::triggered,window,
@@ -182,7 +184,10 @@ public:
         QObject::connect(toolsAction,&QAction::triggered,window,
                          [workspace]() {workspace->chooseTool();});
         QObject::connect(optionsAction,&QAction::triggered,window,
-                         [workspace]() {workspace->toggleToolOptions();});
+                         [workspace]() {workspace->toggleToolSettings();});
+        QObject::connect(colorOptionsAction,&QAction::triggered,window,[workspace]() {
+            QTimer::singleShot(0,workspace,[workspace]() {workspace->openColorOptions();});
+        });
         QObject::connect(commandsAction,&QAction::triggered,window,
                          [workspace]() {workspace->browseCommands();});
         QObject::connect(settingsAction,&QAction::triggered,window,
@@ -363,6 +368,7 @@ public:
             moreActions.append(filtersMenu->menuAction());
         moreActions.append(commandsAction);
         moreActions.append(settingsAction);
+        moreActions.append(colorOptionsAction);
         moreActions.append(inputAction);
         moreActions.append(exitAction);
         MobileNativeCommandLayout::Commands toolbarCommands;
@@ -380,7 +386,8 @@ public:
             {"save-as",saveAsAction},{"export",exportAction},{"versions",versionsAction},
             {"close",closeAction},{"canvas-only",canvasOnlyAction},
             {"clone-source",cloneSourceAction},{"input-settings",inputAction},
-            {"workspace-settings",settingsAction},{"commands",commandsAction}
+            {"workspace-settings",settingsAction},{"color-options",colorOptionsAction},
+            {"commands",commandsAction}
         };
         for(const auto &entry:studioCommands)
             toolbarCommands.insert(QString::fromLatin1(entry.first),entry.second);
