@@ -772,8 +772,9 @@ private:
                 if(!canRetarget(transform))return;
                 m_engine.freehandBrush();
             }
-            m_engine.selectLayer(node);
-            if(m_engine.manager()->activeNode()!=node)return;
+            if(!m_engine.selectLayer(node) || !m_engine.manager() ||
+               m_engine.manager()->image().toStrongRef()!=originalImage ||
+               m_engine.manager()->activeNode()!=node)return;
             // Masks and Clear target one specific layer even if a previous
             // multi-layer transform left several nodes selected.
             m->slotSetSelectedNodes(KisNodeList{node});
@@ -1177,6 +1178,15 @@ private:
                 return;
             }
         }
+        // Clipping changes the native node tree, so an unfinished
+        // transform must not be retargeted underneath it.
+        if(auto *transform=activeTransform()) {
+            if(!canRetarget(transform))return;
+            m_engine.freehandBrush();
+        }
+        if(!m_engine.manager() ||
+           m_engine.manager()->image().toStrongRef()!=image ||
+           !inImage(node,image) || logicalParent(node)!=parent)return;
         if(!setLayerProperty(node,KisLayerPropertiesIcons::inheritAlpha,on))
             return;
         // Property edits are undoable Krita image strokes. Starting a
