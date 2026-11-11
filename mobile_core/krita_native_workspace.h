@@ -54,6 +54,10 @@
 #include <KoToolBase.h>
 #include <KoToolDocker.h>
 #include <KoToolManager.h>
+#include "kis_canvas2.h"
+#include "kis_image.h"
+#include "kis_paint_device.h"
+#include "kis_coordinates_converter.h"
 
 #include "KisDocument.h"
 #include "input/KisTouchGestureAction.h"
@@ -830,6 +834,48 @@ public:
         return true;
     }
 
+    // The gesture callback is supplied to the command toolbar. It
+    // reads current native brush settings on every incremental move,
+    // so tool/preset changes do not leave stale slider baselines.
+    void adjustToolbarDrag(const QString &button,qreal inlinePixels)
+    {
+        if(!m_engine.hasDocument())return;
+        auto *provider=m_engine.brushResources();
+        if(!provider)return;
+        const QString opacityButton=MobileToolbarDrag::assignment("opacity");
+        const QString sizeButton=MobileToolbarDrag::assignment("size");
+        if(button==opacityButton) {
+            provider->setOpacity(qBound(qreal(0),
+                provider->opacity()+inlinePixels/220.0,qreal(1)));
+        } else if(button==sizeButton) {
+            // Relative adjustments scale to the existing brush size,
+            // retaining fine control on small presets and allowing
+            // larger presets to change without excessive dragging.
+            provider->setSize(qBound(qreal(0.01),
+                provider->size()*qPow(2.0,inlinePixels/180.0),
+                qreal(KisImageConfig(true).maxBrushSize())));
+        }
+    }
+
+    void sampleToolbarColor(const QPoint &global)
+    {
+        if(!m_engine.hasDocument())return;
+        auto *manager=m_engine.manager();
+        auto *provider=m_engine.brushResources();
+        if(!manager || !provider)return;
+        auto *canvas=manager->canvasBase();
+        const KisImageSP image=manager->image().toStrongRef();
+        if(!canvas || !canvas->canvasWidget() || !image)return;
+        const QPoint widgetPoint=canvas->canvasWidget()->mapFromGlobal(global);
+        if(!canvas->canvasWidget()->rect().contains(widgetPoint))return;
+        const QPoint point=canvas->coordinatesConverter()->widgetToImage(
+            widgetPoint).toPoint();
+        if(!image->bounds().contains(point))return;
+        KoColor sampled;
+        image->projection()->pixel(point.x(),point.y(),&sampled);
+        provider->setFGColor(sampled);
+    }
+
     void openSettings()
     {
         if(!m_host)return;
@@ -873,6 +919,43 @@ public:
             layout->addWidget(color);
             layout->addWidget(size);
             layout->addWidget(opacity);
+            auto *opacityDrag=new MobileTouchComboBox(body);
+            auto *sizeDrag=new MobileTouchComboBox(body);
+            const auto fillDragChoices=[](MobileTouchComboBox *combo,
+                                          const QString &selected) {
+                combo->addItem(QObject::tr("Off"),QString());
+                for(const auto &pair:QList<QPair<QString,QString>>{
+                    {QStringLiteral("color"),QObject::tr("Color wheel button")},
+                    {QStringLiteral("tool-settings"),QObject::tr("Brush / Tool Settings button")},
+                    {QStringLiteral("paint"),QObject::tr("Paint button")},
+                    {QStringLiteral("erase"),QObject::tr("Erase button")},
+                    {QStringLiteral("blend"),QObject::tr("Blend button")},
+                    {QStringLiteral("tools"),QObject::tr("Tools button")},
+                    {QStringLiteral("shortcut"),QObject::tr("Custom shortcut button")}})
+                    combo->addItem(pair.second,pair.first);
+                const int index=combo->findData(selected);
+                combo->setCurrentIndex(index>=0?index:0);
+            };
+            fillDragChoices(opacityDrag,MobileToolbarDrag::assignment("opacity"));
+            fillDragChoices(sizeDrag,MobileToolbarDrag::assignment("size"));
+            layout->addWidget(new QLabel(QObject::tr(
+                "Toolbar drag gestures (along the toolbar)"),body));
+            layout->addWidget(new QLabel(QObject::tr("Opacity button"),body));
+            layout->addWidget(opacityDrag);
+            layout->addWidget(new QLabel(QObject::tr("Brush size button"),body));
+            layout->addWidget(sizeDrag);
+            auto *sampleColor=new QCheckBox(QObject::tr(
+                "Drag Color button away from toolbar to sample canvas color"),body);
+            sampleColor->setChecked(QSettings().value(
+                MobileToolbarDrag::preference("sample"),true).toBool());
+            layout->addWidget(sampleColor);
+            auto *gestureHelp=new QLabel(QObject::tr(
+                "A tap opens the button normally. Drag along its toolbar "
+                "to adjust; right/down increases the value. Drag the Color "
+                "button across the canvas to select the color at release. "
+                "The direction follows horizontal or vertical toolbars."),body);
+            gestureHelp->setWordWrap(true);
+            layout->addWidget(gestureHelp);
             auto *panelLayout=new QPushButton(QObject::tr("Panel placement and fading…"),body);
             layout->addWidget(panelLayout);
             connect(panelLayout,&QPushButton::clicked,&dialog,[this,&dialog]() {
@@ -902,6 +985,15 @@ public:
             settings.setValue(QStringLiteral("MobileStudio/keepColorOpen"),m_keepColor);
             settings.setValue(QStringLiteral("MobileStudio/showSizeSlider"),m_showSize);
             settings.setValue(QStringLiteral("MobileStudio/showOpacitySlider"),m_showOpacity);
+            QString selectedOpacity=opacityDrag->currentData().toString();
+            QString selectedSize=sizeDrag->currentData().toString();
+            // One button cannot control two independent parameters.
+            if(!selectedOpacity.isEmpty() && selectedOpacity==selectedSize)
+                selectedSize.clear();
+            settings.setValue(MobileToolbarDrag::preference("opacity"),selectedOpacity);
+            settings.setValue(MobileToolbarDrag::preference("size"),selectedSize);
+            settings.setValue(MobileToolbarDrag::preference("sample"),
+                              sampleColor->isChecked());
             if(shortcut->currentIndex()>=0) {
                 m_shortcutIndex=shortcut->currentIndex();
                 settings.setValue(QStringLiteral("MobileStudio/toolbarShortcut"),
