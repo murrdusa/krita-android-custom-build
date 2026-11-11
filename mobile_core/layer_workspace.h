@@ -958,11 +958,18 @@ private:
                     i18n("Delete %1?").arg(node->name()),
                     QMessageBox::Yes|QMessageBox::No,
                     QMessageBox::No)==QMessageBox::Yes) {
+                if(m_reorderPending || !inImage(node,originalImage) ||
+                   !m_engine.manager() ||
+                   m_engine.manager()->image().toStrongRef()!=originalImage)
+                    return;
                 if(auto *transform=activeTransform()) {
                     if(!canRetarget(transform))return;
                     m_engine.freehandBrush();
                 }
-                if(!m_engine.selectLayer(node))return;
+                if(!m_engine.manager() ||
+                   m_engine.manager()->image().toStrongRef()!=originalImage ||
+                   !inImage(node,originalImage) ||
+                   !m_engine.selectLayer(node))return;
                 m->slotSetSelectedNodes(KisNodeList{node});
                 m->removeNode();
             }
@@ -977,7 +984,10 @@ private:
                     if(!canRetarget(transform))return;
                     m_engine.freehandBrush();
                 }
-                if(!m_engine.selectLayer(node))return;
+                if(!m_engine.manager() ||
+                   m_engine.manager()->image().toStrongRef()!=originalImage ||
+                   !inImage(node,originalImage) ||
+                   !m_engine.selectLayer(node))return;
                 m->slotSetSelectedNodes(KisNodeList{node});
                 m->duplicateActiveNode();
             } else {
