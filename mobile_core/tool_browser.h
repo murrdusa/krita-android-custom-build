@@ -161,6 +161,9 @@ public:
         layout->addLayout(buttons);
 
         Tile requested;
+        // Use two columns on very narrow displays instead of squeezing
+        // four full tool tiles into unreadable touch targets.
+        const int columns=parent->window()->width()<390?2:4;
         const auto refill=[&]() {
             const QString phrase=search->text().trimmed();
             auto *content=new QWidget(scroll);
@@ -205,14 +208,14 @@ public:
                         requested=tile;
                         dialog.accept();
                     });
-                    grid->addWidget(button,count/4,count%4);
+                    grid->addWidget(button,count/columns,count%columns);
                     ++count;
                 }
                 if(count==0) {
                     delete grid;
                     continue;
                 }
-                for(int column=0;column<4;++column)grid->setColumnStretch(column,1);
+                for(int column=0;column<columns;++column)grid->setColumnStretch(column,1);
                 auto *heading=new QLabel(group.label,content);
                 heading->setStyleSheet(QStringLiteral("font-weight:600;padding:4px;"));
                 sections->addWidget(heading);
