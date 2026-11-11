@@ -682,6 +682,37 @@ public:
                 openTouchGestures(&dialog);
             });
 
+            // Reference-image gestures reuse Krita's native image shape
+            // hit testing even while Paint/Erase/Blend is active.
+            // Expose the same persisted preferences used by the
+            // independent-canvas input patch.
+            auto *referenceDrag=new QCheckBox(QObject::tr(
+                "Drag reference images with one finger in any tool"),body);
+            referenceDrag->setChecked(settings.value(
+                QStringLiteral("TabletUi/referenceFingerDrag"),true).toBool());
+            form->addRow(referenceDrag);
+            QObject::connect(referenceDrag,&QCheckBox::toggled,&dialog,
+                [](bool enabled) {
+                    QSettings().setValue(
+                        QStringLiteral("TabletUi/referenceFingerDrag"),enabled);
+                });
+            auto *referenceResize=new QCheckBox(QObject::tr(
+                "Two-finger resize and rotate reference images"),body);
+            referenceResize->setChecked(settings.value(
+                QStringLiteral("TabletUi/referenceTwoFinger"),true).toBool());
+            form->addRow(referenceResize);
+            QObject::connect(referenceResize,&QCheckBox::toggled,&dialog,
+                [](bool enabled) {
+                    QSettings().setValue(
+                        QStringLiteral("TabletUi/referenceTwoFinger"),enabled);
+                });
+            auto *referenceFlipInfo=new QLabel(QObject::tr(
+                "Double-tap a reference image to flip it horizontally. "
+                "Only touches on the image are intercepted; other touches "
+                "keep their normal painting and canvas gestures."),body);
+            referenceFlipInfo->setWordWrap(true);
+            form->addRow(referenceFlipInfo);
+
             auto *doubleTap=new QSpinBox(body);
             doubleTap->setRange(120,600);
             doubleTap->setSuffix(QObject::tr(" ms"));
