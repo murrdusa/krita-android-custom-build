@@ -281,6 +281,13 @@ public:
                 if(!canRetarget(transform))return;
                 m_engine.freehandBrush();
             }
+            // The warning dialog and native tool switch can process
+            // other Qt events; do not delete nodes from a changed canvas.
+            if(!m_engine.manager() ||
+               m_engine.manager()->image().toStrongRef()!=image ||
+               m_reorderPending)return;
+            for(const KisNodeSP &node:selection)
+                if(!inImage(node,image))return;
             m->slotUiActivatedNode(selection.last());
             m->slotSetSelectedNodes(selection);
             m->removeNode();
