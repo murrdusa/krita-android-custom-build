@@ -18,6 +18,9 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLabel>
+#include <QListWidget>
+#include <QMap>
+#include <QSignalBlocker>
 #include <QScrollArea>
 #include "touch_scroll.h"
 #include <QSpinBox>
@@ -46,6 +49,10 @@
 #include <KoToolManager.h>
 
 #include "KisDocument.h"
+#include "input/KisTouchGestureAction.h"
+#include "input/kis_input_manager.h"
+#include "input/kis_input_profile_manager.h"
+#include "input/kis_shortcut_configuration.h"
 #include "engine_bridge.h"
 #include "brush_workspace.h"
 #include "layer_workspace.h"
@@ -407,12 +414,142 @@ public:
 
 
     // Use the same settings and input profile as the earlier Android UI.
+    void openTouchGestures(QWidget *parent)
+    {
+        using Shortcut=KisShortcutConfiguration;
+        using Touch=KisTouchGestureAction;
+        using Choices=QMap<QString,QStringList>;
+        const auto binding=[](const QString &action,int mode=0) {
+            return QStringList{action,QString::number(mode)};
+        };
+        const auto command=[&](Touch::Shortcut mode) {
+            return binding(QStringLiteral("Touch Gestures"),mode);
+        };
+        Choices moreCommands;
+        for(const auto *action:KisInputProfileManager::instance()->actions()) {
+            if(action->id()!=QStringLiteral("Touch Gestures"))continue;
+            const auto modes=action->shortcutIndexes();
+            for(auto mode=modes.cbegin();mode!=modes.cend();++mode)
+                moreCommands.insert(mode.key(),binding(action->id(),mode.value()));
+        }
+
+        QDialog dialog(parent);
+        dialog.setWindowTitle(QObject::tr("Touch gestures"));
+        dialog.resize(qMin(440,qMax(1,m_host->width()-24)),
+                      qMin(620,qMax(1,m_host->height()-48)));
+        auto *layout=new QVBoxLayout(&dialog);
+        auto *scroll=new QScrollArea(&dialog);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setWidgetResizable(true);
+        MobileTouchScroll::configure(scroll);
+        auto *body=new QWidget(scroll);
+        auto *form=new QFormLayout(body);
+        form->setRowWrapPolicy(QFormLayout::WrapAllRows);
+        scroll->setWidget(body);
+        layout->addWidget(scroll,1);
+        auto *note=new QLabel(QObject::tr(
+            "Profile defaults follow Krita’s active input profile. "
+            "One-finger taps and drags follow Krita’s touch-painting setting."),body);
+        note->setWordWrap(true);
+        form->addRow(note);
+
+        QSettings settings;
+        settings.beginGroup(QStringLiteral("MobileStudio/touchGestures"));
+        QVector<QPair<QString,QComboBox*>> rows;
+        for(const auto gesture:{Shortcut::OneFingerDoubleTap,Shortcut::OneFingerTap,
+            Shortcut::OneFingerHold,Shortcut::TwoFingerTap,Shortcut::ThreeFingerTap,
+            Shortcut::FourFingerTap,Shortcut::FiveFingerTap,Shortcut::OneFingerDrag,
+            Shortcut::TwoFingerDrag,Shortcut::ThreeFingerDrag,Shortcut::FourFingerDrag,
+            Shortcut::FiveFingerDrag}) {
+            const QString key=QString::number(gesture);
+            const QString label=Shortcut::gestureToText(gesture);
+            auto *combo=new MobileTouchComboBox(body);
+            combo->addItem(QObject::tr("Krita profile default"));
+            combo->addItem(QObject::tr("Disabled"),QStringList{QStringLiteral("disabled")});
+            combo->addItem(QObject::tr("Undo"),command(Touch::UndoActionShortcut));
+            combo->addItem(QObject::tr("Redo"),command(Touch::RedoActionShortcut));
+            combo->addItem(QObject::tr("Flip Canvas"),command(Touch::MirrorView));
+            combo->addItem(QObject::tr("Reset view"),command(Touch::ResetDisplay));
+            combo->addItem(QObject::tr("Canvas Only"),command(Touch::ToggleCanvasOnlyShortcut));
+            Choices more=moreCommands;
+            if(gesture>=Shortcut::OneFingerDrag && gesture<=Shortcut::FiveFingerDrag) {
+                combo->addItem(QObject::tr("Pan canvas"),binding(QStringLiteral("Pan Canvas")));
+                if(gesture!=Shortcut::OneFingerDrag) {
+                    combo->addItem(QObject::tr("Zoom and rotate"),
+                                   binding(QStringLiteral("Zoom and Rotate Canvas")));
+                    more.insert(QObject::tr("Zoom canvas"),binding(QStringLiteral("Zoom Canvas")));
+                    more.insert(QObject::tr("Rotate canvas"),binding(QStringLiteral("Rotate Canvas")));
+                }
+            } else if(gesture==Shortcut::OneFingerHold) {
+                combo->addItem(QObject::tr("Sample color"),binding(QStringLiteral("Alternate Invocation"),4));
+            }
+            if(gesture>=Shortcut::OneFingerTap && gesture<=Shortcut::FiveFingerTap)
+                more.insert(QObject::tr("Show popup palette"),binding(QStringLiteral("Show Popup Widget")));
+            const int moreIndex=combo->count();
+            combo->addItem(QObject::tr("More actions…"));
+            const auto setChoice=[combo,moreIndex,more](const QVariant &value) {
+                int index=value.isValid()?combo->findData(value):0;
+                if(index<0) {
+                    index=combo->count();
+                    combo->addItem(more.key(value.toStringList(),QObject::tr("Custom action")),value);
+                }
+                combo->setCurrentIndex(index==moreIndex?0:index);
+            };
+            setChoice(settings.value(key));
+            auto previous=std::make_shared<int>(combo->currentIndex());
+            connect(combo,QOverload<int>::of(&QComboBox::currentIndexChanged),
+                &dialog,[combo,moreIndex,more,setChoice,previous,label](int index) {
+                    if(index!=moreIndex) {
+                        *previous=index;
+                        return;
+                    }
+                    QSignalBlocker blocker(combo);
+                    combo->setCurrentIndex(*previous);
+                    QDialog picker(combo);
+                    picker.setWindowTitle(label);
+                    picker.resize(qMax(260,combo->width()),400);
+                    auto *pickerLayout=new QVBoxLayout(&picker);
+                    auto *list=new QListWidget(&picker);
+                    list->setStyleSheet(QStringLiteral("QListWidget::item{min-height:44px;padding:5px;}"));
+                    MobileTouchScroll::configureList(list);
+                    for(auto option=more.cbegin();option!=more.cend();++option) {
+                        if(combo->findData(option.value())>=0)continue;
+                        auto *item=new QListWidgetItem(option.key(),list);
+                        item->setData(Qt::UserRole,option.value());
+                    }
+                    pickerLayout->addWidget(list,1);
+                    connect(list,&QListWidget::itemClicked,&picker,&QDialog::accept);
+                    auto *cancel=new QPushButton(QObject::tr("Cancel"),&picker);
+                    pickerLayout->addWidget(cancel);
+                    connect(cancel,&QPushButton::clicked,&picker,&QDialog::reject);
+                    if(picker.exec()==QDialog::Accepted && list->currentItem()) {
+                        setChoice(list->currentItem()->data(Qt::UserRole));
+                        *previous=combo->currentIndex();
+                    }
+                });
+            form->addRow(label,combo);
+            rows.append(qMakePair(key,static_cast<QComboBox*>(combo)));
+        }
+        auto *buttons=new QDialogButtonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel,&dialog);
+        layout->addWidget(buttons);
+        connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);
+        connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
+        if(dialog.exec()!=QDialog::Accepted)return;
+        for(const auto &row:rows) {
+            if(row.second->currentIndex()==0)settings.remove(row.first);
+            else settings.setValue(row.first,row.second->currentData());
+        }
+        if(auto *manager=m_engine.manager()) {
+            QMetaObject::invokeMethod(manager->inputManager(),"profileChanged",Qt::QueuedConnection);
+        }
+    }
+
     // Qt's native brush input still decides which gestures are painting.
     void openInputSettings()
     {
         if(!m_host)return;
         QPointer<MobileLightweightCanvasHost> host=m_host;
-        QTimer::singleShot(0,this,[host]() {
+        QTimer::singleShot(0,this,[this,host]() {
             if(!host)return;
             QDialog dialog(host);
             dialog.setWindowTitle(QObject::tr("Touch, Pressure & Buttons"));
@@ -469,6 +606,12 @@ public:
                 calibration.exec();
             });
 
+            auto *gestures=new QPushButton(QObject::tr("Touch gestures…"),body);
+            form->insertRow(0,gestures);
+            connect(gestures,&QPushButton::clicked,&dialog,[this,&dialog]() {
+                openTouchGestures(&dialog);
+            });
+
             auto *doubleTap=new QSpinBox(body);
             doubleTap->setRange(120,600);
             doubleTap->setSuffix(QObject::tr(" ms"));
@@ -479,16 +622,10 @@ public:
                 &dialog,[](int value) {
                     QSettings().setValue(QStringLiteral("TabletUi/doubleTapMs"),value);
                 });
-            auto *doubleInfo=new QLabel(QObject::tr(
-                "Double tap is assigned to Mirror View in Krita's "
-                "mobile input profile. Normal painting still uses Krita's "
-                "native gesture recognizer."),body);
-            doubleInfo->setWordWrap(true);
-            form->addRow(doubleInfo);
             auto *pinch=new QCheckBox(QObject::tr(
                 "Quick two-finger pinch: reset canvas view"),body);
             pinch->setChecked(settings.value(
-                QStringLiteral("TabletUi/quickPinch"),true).toBool());
+                QStringLiteral("TabletUi/quickPinch"),false).toBool());
             form->addRow(pinch);
             QObject::connect(pinch,&QCheckBox::toggled,&dialog,[](bool checked) {
                 QSettings().setValue(QStringLiteral("TabletUi/quickPinch"),checked);

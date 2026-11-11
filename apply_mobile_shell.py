@@ -892,7 +892,141 @@ install(FILES org.kde.krita.desktop''',
                 }
                 QAction *rotation = window->actionCollection()->action(""",
         "standalone quick pinch reset")
+    # Gesture preferences override touch bindings only; mouse, stylus and
+    # keyboard shortcuts continue to come from Krita's active profile.
+    migration_start=pinch_source.index(
+        '#ifdef Q_OS_ANDROID\n        QSettings tabletSettings;',
+        pinch_source.index("void KisInputManager::profileChanged()"))
+    migration_end=pinch_source.index("        const QList<KisShortcutConfiguration*> shortcuts", migration_start)
+    pinch_source=pinch_source[:migration_start]+"""#ifdef Q_OS_ANDROID
+        QSettings touchSettings;
+        touchSettings.beginGroup(QStringLiteral("MobileStudio/touchGestures"));
+        bool profileHasDoubleTap = false;
+#endif
+"""+pinch_source[migration_end:]
+    pinch_source=one(pinch_source,
+        """            case KisShortcutConfiguration::GestureType:
+                if (!d->addNativeGestureShortcut""",
+        """            case KisShortcutConfiguration::GestureType:
+#ifdef Q_OS_ANDROID
+                if (touchSettings.contains(QString::number(shortcut->gesture()))) break;
+                profileHasDoubleTap |= shortcut->gesture() == KisShortcutConfiguration::OneFingerDoubleTap;
+#endif
+                if (!d->addNativeGestureShortcut""","apply Studio overrides to gesture bindings only")
+    profile_start=pinch_source.index("void KisInputManager::profileChanged()")
+    profile_end=pinch_source.index('    }\n    else {\n        dbgInput << "No Input Profile Found',profile_start)
+    pinch_source=pinch_source[:profile_end]+"""#ifdef Q_OS_ANDROID
+        const auto actions = KisInputProfileManager::instance()->actions();
+        for (int index = 1; index < KisShortcutConfiguration::MaxGesture; ++index) {
+            const auto gesture = static_cast<KisShortcutConfiguration::GestureAction>(index);
+            const QString key = QString::number(index);
+            QStringList binding = touchSettings.value(key).toStringList();
+            if (!touchSettings.contains(key) &&
+                gesture == KisShortcutConfiguration::OneFingerDoubleTap && !profileHasDoubleTap) {
+                binding = QStringList{QStringLiteral("Touch Gestures"),
+                           QString::number(KisTouchGestureAction::MirrorView)};
+            }
+            if (binding.size() != 2) continue;
+            bool validMode = false;
+            const int mode = binding.at(1).toInt(&validMode);
+            if (!validMode) continue;
+            for (auto *action : actions) {
+                if (action->id() == binding.first() && action->shortcutIndexes().values().contains(mode)) {
+                    d->addTouchShortcut(action, mode, gesture);
+                    break;
+                }
+            }
+        }
+#endif
+"""+pinch_source[profile_end:]
+    pinch_source=one(pinch_source,
+        'QSettings().value(QStringLiteral("TabletUi/quickPinch"), true)',
+        'QSettings().value(QStringLiteral("TabletUi/quickPinch"), false)',
+        "default to Krita pinch handling without the optional quick reset")
     pinchfile.write_text(pinch_source,encoding="utf-8")
+
+    gesture_file=root/"libs/ui/input/KisTouchGestureAction.cpp"
+    gestures=gesture_file.read_text(encoding="utf-8")
+    gestures=one(gestures,'#include <QAction>',
+        """#include <QAction>
+#include <QPointer>
+#include <QTimer>
+#include <KisViewManager.h>
+#include <kis_canvas2.h>
+#include "kis_input_manager.h" """.rstrip(),
+        "resolve gesture commands through the event canvas")
+    gestures=one(gestures,
+        """    if (actionName.isEmpty()) {
+        qWarning("KisTouchGestureAction: Unhandled shortcut %d", m_shortcut);
+    } else {
+        KisKActionCollection *actionCollection = KisPart::instance()->currentMainwindow()->actionCollection();
+        QAction *action = actionCollection->action(actionName);
+        if (action) {
+            action->trigger();
+        } else {
+            qWarning("KisTouchGestureAction: unable to find action '%s' for shortcut %d",
+                     qUtf8Printable(actionName),
+                     m_shortcut);
+        }
+    }""",
+        """    // A drag may send end() on finger release and again on TouchEnd.
+#ifdef Q_OS_ANDROID
+    const int shortcut = m_shortcut;
+#endif
+    m_shortcut = -1;
+    if (actionName.isEmpty()) return;
+
+    auto *manager = inputManager();
+    QPointer<KisCanvas2> canvas = manager ? manager->canvas() : nullptr;
+    auto *view = canvas ? canvas->viewManager() : nullptr;
+    if (!view) return;
+#ifdef Q_OS_ANDROID
+    if (!view->mainWindow()) {
+        switch (shortcut) {
+        case UndoActionShortcut: actionName = QStringLiteral("mobile_gesture_undo"); break;
+        case RedoActionShortcut: actionName = QStringLiteral("mobile_gesture_redo"); break;
+        case ToggleCanvasOnlyShortcut: actionName = QStringLiteral("mobile_canvas_only"); break;
+        default: break;
+        }
+    }
+#endif
+    // Undo, layer changes and tool switches can reenter the input matcher.
+    // Dispatch after it finishes the current gesture and verify the canvas.
+    QTimer::singleShot(0, view, [view, canvas, actionName]() {
+        if (!canvas || view->canvasBase() != canvas.data()) return;
+        auto *collection = view->actionCollection();
+        auto *action = collection->action(actionName);
+        if (!action) {
+            const QString family = actionName.section(QLatin1Char('/'), -1);
+            if (family.startsWith(QStringLiteral("KisTool"))) {
+                for (auto *candidate : collection->actions()) {
+                    if (candidate->objectName().section(QLatin1Char('/'), -1) == family) {
+                        action = candidate;
+                        break;
+                    }
+                }
+            }
+        }
+        if (action && action->isEnabled()) action->trigger();
+    });""","dispatch touch commands without a desktop window or input reentry")
+    gesture_file.write_text(gestures,encoding="utf-8")
+
+    popup_file=root/"libs/ui/input/KisPopupWidgetAction.cpp"
+    popup=one(popup_file.read_text(encoding="utf-8"),"#include <QMenu>",
+              "#include <QMenu>\n#include <QPointer>","keep a guarded reference to the touch menu")
+    popup=one(popup,
+        """    if (QMenu *popupMenu = inputManager()->toolProxy()->popupActionsMenu()) { // Handle popup menus...""",
+        """    if (!inputManager() || !inputManager()->toolProxy()) return;
+    if (event && (event->type() == QEvent::TouchBegin ||
+                  event->type() == QEvent::TouchUpdate ||
+                  event->type() == QEvent::TouchEnd ||
+                  event->type() == QEvent::TouchCancel) &&
+        static_cast<QTouchEvent *>(event)->touchPoints().isEmpty()) return;
+    if (QPointer<QMenu> popupMenu = inputManager()->toolProxy()->popupActionsMenu()) {""",
+        "guard touch popup position and lifetime")
+    popup=one(popup,"                popupMenu->clear();",
+        "                if (popupMenu) popupMenu->clear();","guard popup after its modal loop")
+    popup_file.write_text(popup,encoding="utf-8")
 
     # Preserve MainActivity's native Qt/JNI intent delivery; only widen
     # URI extraction to include Android's single-file Share operation.

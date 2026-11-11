@@ -143,6 +143,11 @@ public:
         }
         auto *canvasOnlyAction=makeAction("Canvas Only");
         canvasOnlyAction->setCheckable(true);
+        if(auto *collection=engineSession->viewManager()->actionCollection()) {
+            collection->addAction(QStringLiteral("mobile_gesture_undo"),undoAction);
+            collection->addAction(QStringLiteral("mobile_gesture_redo"),redoAction);
+            collection->addAction(QStringLiteral("mobile_canvas_only"),canvasOnlyAction);
+        }
         auto *cloneSourceAction=makeAction("Set Clone Source");
         cloneSourceAction->setIcon(studioIcon("krita_tool_color_sampler"));
         QObject::connect(cloneSourceAction,&QAction::triggered,workspace,[workspace]() {
