@@ -64,7 +64,12 @@ public:
                 }
                 if(found)continue;
                 const QString family=id.section(QLatin1Char('/'),-1);
-                if(!family.startsWith(QStringLiteral("KisTool")))continue;
+                // Reference Images and SVG Text are registered native
+                // tools but do not use the KisTool prefix. Resolve their
+                // plugin-qualified IDs just like the ordinary tool families.
+                if(!family.startsWith(QStringLiteral("KisTool")) &&
+                   family!=QStringLiteral("ToolReferenceImages") &&
+                   family!=QStringLiteral("SvgTextTool"))continue;
                 for(const auto &tool:available) {
                     if(used.contains(tool.id) ||
                        tool.id.section(QLatin1Char('/'),-1)!=family)
