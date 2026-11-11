@@ -332,8 +332,16 @@ public:
             return;
         }
 
+        // KoToolDocker initially reports only its collapsed title-frame
+        // size until the active tool widgets have been installed. Populate
+        // the native option widgets *before* determining overlay geometry.
+        m_toolOptions->setOptionWidgets(
+            tools->toolById(tools->activeCanvasController()->canvas(),
+                            tools->activeToolId()) ?
+            tools->toolById(tools->activeCanvasController()->canvas(),
+                            tools->activeToolId())->optionWidgets() :
+            QList<QPointer<QWidget>>{});
         showOverlay(m_toolOptions);
-        syncActiveToolOptions();
     }
 
     void toggleColor()
@@ -1466,8 +1474,12 @@ private:
             const int optionsWidth=qMin(340,room.width());
             const QRect bounds(room.right()-optionsWidth+1,room.top(),
                                optionsWidth,qMin(440,room.height()));
-            if(m_toolOptions)m_toolOptions->setGeometry(bounds.x(),bounds.y(),bounds.width(),
-                qMin(room.height(),qBound(44,m_toolOptions->sizeHint().height(),440)));
+            // KoToolDocker::sizeHint() can remain a 44px header even
+            // after its native option widgets are attached. The panel
+            // must occupy usable canvas space rather than collapse into
+            // an unclickable one-line strip.
+            if(m_toolOptions)m_toolOptions->setGeometry(
+                bounds.x(),bounds.y(),bounds.width(),bounds.height());
             if(m_brushOptions)m_brushOptions->setGeometry(bounds.x(),bounds.y(),bounds.width(),
                 qMin(room.height(),m_brushOptions->sizeHint().height()));
             if(m_textFormatting)m_textFormatting->setGeometry(bounds);
