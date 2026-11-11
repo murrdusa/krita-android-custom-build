@@ -200,6 +200,10 @@ int main(int argc,char **argv)
             "draft paths must be private and unique");
     save(draft,QByteArray::fromHex("504b0304")+"draft");
     save(draft+QStringLiteral(".pending.kra"),"incomplete");
+    require(MobileDraftRecovery::hasKraHeader(draft) &&
+            !MobileDraftRecovery::hasKraHeader(
+                draft+QStringLiteral(".pending.kra")),
+            "only completed ZIP-header drafts qualify for automatic restore");
     const auto drafts=MobileDraftRecovery::list();
     require(drafts.size()==1 && drafts.first().absoluteFilePath()==draft &&
             MobileDraftRecovery::title(drafts.first())==QStringLiteral("a_b") &&
