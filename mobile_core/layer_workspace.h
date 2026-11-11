@@ -49,6 +49,9 @@
 #include <QToolButton>
 #include <QPixmap>
 #include <QPainter>
+#include <QMap>
+#include <QRegion>
+#include <algorithm>
 #include <QStyle>
 #include <QIcon>
 #include <QMetaObject>
@@ -2419,10 +2422,9 @@ private:
     {
     public:
         struct Edge { int depth; bool top; bool bottom; };
-        LayerGuides(QWidget *parent,QVector<Edge> edges,int clipX,
-                    bool above,bool below,bool clipped,bool base)
-            : QWidget(parent),m_edges(std::move(edges)),m_clipX(clipX),
-              m_above(above),m_below(below),m_clipped(clipped),m_base(base)
+        struct Clip { int depth; bool above; bool below; bool clipped; bool base; };
+        LayerGuides(QWidget *parent,QVector<Edge> edges,QVector<Clip> clips,const QRect &tile)
+            : QWidget(parent),m_edges(std::move(edges)),m_clips(std::move(clips)),m_tile(tile)
         {
             setAttribute(Qt::WA_TransparentForMouseEvents);
         }
@@ -2432,7 +2434,8 @@ private:
             static const QColor colors[]={QColor("#d3f3ff"),QColor("#ffd985"),
                                           QColor("#dbbcff"),QColor("#ffaec8")};
             QPainter painter(this);
-
+            painter.save();
+            painter.setClipRegion(QRegion(rect()).subtracted(QRegion(m_tile)));
             for(const auto &edge:m_edges) {
                 const int left=2+qMin(5,edge.depth)*3+qMax(0,edge.depth-5);
                 const int right=width()-1-left;
@@ -2442,25 +2445,27 @@ private:
                 if(edge.top)painter.drawLine(left,1,right,1);
                 if(edge.bottom)painter.drawLine(left,height()-2,right,height()-2);
             }
+            painter.restore();
             const int middle=height()/2;
             const QColor clipColor("#65f3db");
             painter.setPen(QPen(clipColor,2));
-            if(m_above)painter.drawLine(m_clipX,0,m_clipX,middle);
-            if(m_below)painter.drawLine(m_clipX,middle,m_clipX,height());
-            if(m_clipped) {
-                painter.drawLine(m_clipX,middle,m_clipX+9,middle);
-                painter.drawLine(m_clipX+5,middle-4,m_clipX+9,middle);
-                painter.drawLine(m_clipX+5,middle+4,m_clipX+9,middle);
-            }
-            if(m_base) {
-                painter.setBrush(clipColor);
-                painter.drawEllipse(QPoint(m_clipX,middle),3,3);
+            painter.setBrush(clipColor);
+            for(const auto &clip:m_clips) {
+                const int x=width()/4+qMin(6,clip.depth)*4;
+                if(clip.above)painter.drawLine(x,0,x,middle);
+                if(clip.below)painter.drawLine(x,middle,x,height());
+                if(clip.clipped) {
+                    painter.drawLine(x,middle,x+9,middle);
+                    painter.drawLine(x+5,middle-4,x+9,middle);
+                    painter.drawLine(x+5,middle+4,x+9,middle);
+                }
+                if(clip.base)painter.drawEllipse(QPoint(x,middle),3,3);
             }
         }
     private:
         QVector<Edge> m_edges;
-        int m_clipX;
-        bool m_above,m_below,m_clipped,m_base;
+        QVector<Clip> m_clips;
+        QRect m_tile;
     };
 
     QList<QTreeWidgetItem*> visibleGroups(QTreeWidgetItem *item) const
@@ -2485,22 +2490,30 @@ private:
             indexForNode.insert(m_nodes.at(index).data(),visible.size());
             visible.append(item);
         }
-        QVector<int> links(visible.size()+1,0);
-        QSet<int> clippedRows,baseRows;
+        struct ClipRun { int depth=0; QSet<int> clipped; };
+        QMap<int,ClipRun> runsByBase;
+        QVector<QVector<LayerGuides::Clip>> clips(visible.size());
         for(int i=0;i<visible.size();++i) {
-            const auto node=m_nodes.at(visible.at(i)->data(0,Qt::UserRole).toInt());
+            const int index=visible.at(i)->data(0,Qt::UserRole).toInt();
+            const auto node=m_nodes.at(index);
             if(!inheritsAlpha(node))continue;
-            clippedRows.insert(i);
             const auto base=clipBaseFor(node);
             const int end=indexForNode.value(base.data(),-1);
-            if(end<=i)continue;
+            if(end<=i) {
+                clips[i].append({m_rowDepths.value(index),false,false,true,false});
+                continue;
+            }
             m_clipBases.insert(base.data());
-            baseRows.insert(end);
-            ++links[i];
-            --links[end];
+            auto &run=runsByBase[end];
+            run.depth=m_rowDepths.value(index);
+            run.clipped.insert(i);
         }
-
-        int activeLinks=0;
+        for(auto run=runsByBase.cbegin();run!=runsByBase.cend();++run) {
+            const int first=*std::min_element(run->clipped.cbegin(),run->clipped.cend());
+            const int last=run.key();
+            for(int i=first;i<=last;++i)
+                clips[i].append({run->depth,i>first,i<last,run->clipped.contains(i),i==last});
+        }
         for(int i=0;i<visible.size();++i) {
             auto *item=visible.at(i);
             const auto groups=visibleGroups(item);
@@ -2508,18 +2521,13 @@ private:
             QVector<LayerGuides::Edge> edges;
             for(int depth=0;depth<groups.size();++depth)
                 edges.append({depth,groups.at(depth)==item,!next.contains(groups.at(depth))});
-            const bool above=activeLinks>0;
-            activeLinks+=links[i];
-            const bool below=activeLinks>0;
-            const bool clipped=clippedRows.contains(i);
-            const bool base=baseRows.contains(i);
-            if(edges.isEmpty() && !above && !below && !clipped && !base)continue;
+            if(edges.isEmpty() && clips.at(i).isEmpty())continue;
             const int index=item->data(0,Qt::UserRole).toInt();
             auto *frame=m_rowFrames.value(index).data();
-            if(!frame)continue;
+            auto *tile=m_rowButtons.value(index).data();
+            if(!frame || !tile)continue;
             const int guideWidth=(m_compactRail?qBound(73,width()-9,111):73)+4;
-            auto *guides=new LayerGuides(frame,edges,qMax(10,guideWidth/4),
-                                        above,below,clipped,base);
+            auto *guides=new LayerGuides(frame,edges,clips.at(i),tile->geometry());
             guides->setGeometry(0,0,guideWidth,frame->height());
             guides->show();
         }

@@ -9,6 +9,7 @@
 #pragma once
 #ifdef Q_OS_ANDROID
 
+#include <QCheckBox>
 #include <QColor>
 #include <QColorDialog>
 #include <QConicalGradient>
@@ -31,6 +32,7 @@
 #include <QVBoxLayout>
 #include <QVector>
 #include <QtMath>
+#include <algorithm>
 #include <functional>
 
 #include "engine_bridge.h"
@@ -42,7 +44,8 @@
 class MobileHueWheel final : public QWidget
 {
 public:
-    explicit MobileHueWheel(QWidget *parent=nullptr) : QWidget(parent)
+    explicit MobileHueWheel(QWidget *parent=nullptr,int rimInset=15)
+        : QWidget(parent),m_rimInset(rimInset)
     {
         setMinimumSize(170,170);
         setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Expanding);
@@ -145,7 +148,7 @@ protected:
 private:
     enum DragMode {None,Hue,SV};
     QPointF wheelCenter() const {return QRectF(rect()).center();}
-    qreal wheelRadius() const {return qMin(width(),height())/2.0-15.0;}
+    qreal wheelRadius() const {return qMin(width(),height())/2.0-m_rimInset;}
     QRectF squareRect() const
     {
         const qreal size=qMax(0.0,(wheelRadius()-14.0)*qSqrt(2.0));
@@ -173,6 +176,7 @@ private:
     }
     int m_hue=0,m_sat=255,m_val=255;
     DragMode m_dragMode=None;
+    int m_rimInset;
 };
 
 class MobileColorWorkspace final : public QFrame
@@ -193,11 +197,11 @@ public:
             m_corner=qBound(0,settings.value(QStringLiteral("MobileStudio/colorWheelCorner"),0).toInt(),3);
             m_history=settings.value(QStringLiteral("MobileStudio/recentColors")).toStringList();
             while(m_history.size()>8)m_history.removeLast();
-            auto *layout=new QVBoxLayout(this);
-            layout->setContentsMargins(0,0,0,0);
-            m_wheel=new MobileHueWheel(this);
+            m_showHistory=settings.value(QStringLiteral("MobileStudio/colorWheelHistory"),false).toBool();
+            m_wheel=new MobileHueWheel(this,12);
             m_wheel->setMinimumSize(0,0);
-            layout->addWidget(m_wheel);
+            m_historyRow=createHistoryRow(this);
+            refreshHistory();
             m_wheel->onChosen=[this](const QColor &color,bool final) {
                 setNativeColor(color,final);
             };
@@ -271,23 +275,7 @@ public:
         m_wheel->onChosen=[this](const QColor &color,bool final) {
             setNativeColor(color,final);
         };
-        auto *bottom=new QHBoxLayout;
-        bottom->setContentsMargins(0,0,0,0);
-        bottom->setSpacing(2);
-        for(int i=0;i<8;++i) {
-            auto *swatch=new QToolButton(m_contents);
-            swatch->setMinimumSize(18,28);
-            swatch->setMaximumHeight(32);
-            swatch->setToolTip(i18n("Recent color"));
-            bottom->addWidget(swatch,1);
-            m_recents.append(swatch);
-            connect(swatch,&QToolButton::clicked,this,[this,i]() {
-                if(i>=m_history.size())return;
-                const QColor color(m_history.at(i));
-                if(color.isValid())setNativeColor(color,true);
-            });
-        }
-        inner->addLayout(bottom);
+        inner->addWidget(createHistoryRow(m_contents));
         auto *advanced=new QToolButton(m_contents);
         advanced->setText(i18n("Advanced color…"));
         advanced->setToolTip(i18n("Native color dialog for precise values"));
@@ -364,6 +352,17 @@ public:
             }
             layout->addLayout(swatches);
         }
+        if(m_wheelOnly) {
+            auto *history=new QCheckBox(i18n("Show recent colors below the wheel"),&dialog);
+            history->setChecked(m_showHistory);
+            history->setMinimumHeight(44);
+            layout->addWidget(history);
+            connect(history,&QCheckBox::toggled,&dialog,[this](bool enabled) {
+                m_showHistory=enabled;
+                QSettings().setValue(QStringLiteral("MobileStudio/colorWheelHistory"),enabled);
+                updateForViewport();
+            });
+        }
         layout->addWidget(new QLabel(i18n("Wheel size"),&dialog));
         auto *size=new MobileTouchComboBox(&dialog);
         size->addItems({i18n("Small"),i18n("Medium"),i18n("Large")});
@@ -407,10 +406,11 @@ public:
         dialog.exec();
     }
 
-    void setWheelArea(const QRect &area)
+    void setWheelArea(const QRect &area,const QList<QRect> &obstacles)
     {
-        if(m_wheelArea==area)return;
+        if(m_wheelArea==area && m_wheelObstacles==obstacles)return;
         m_wheelArea=area;
+        m_wheelObstacles=obstacles;
         updateForViewport();
     }
 
@@ -506,16 +506,60 @@ private:
         if(!parent)return;
         if(m_wheelOnly) {
             const QRect bounds=(m_wheelArea.isNull()?parent->rect():m_wheelArea)
-                .intersected(parent->rect()).adjusted(2,2,-2,-2);
+                .intersected(parent->rect()).adjusted(1,1,-1,-1);
+            const bool history=m_showHistory && !m_history.isEmpty();
             const int preferred[]={184,212,252};
-            const int side=qMax(0,qMin(preferred[m_sizeLevel],qMin(bounds.width(),bounds.height())));
-            if(size()!=QSize(side,side)) {
-                setFixedSize(side,side);
-                setMask(QRegion(rect(),QRegion::Ellipse));
+            const bool left=m_corner%2;
+            const bool top=m_corner>=2;
+            QRect placement;
+            QRect corner;
+            for(int level=m_sizeLevel;level>=0 && !placement.isValid();--level) {
+                const int historyReserve=history?30:0;
+                const int side=qMin(preferred[level],qMin(bounds.width(),bounds.height()-historyReserve));
+                if(side<1)continue;
+                const int historyHeight=history?qBound(28,side/7,42)+2:0;
+                const int height=qMin(bounds.height(),side+historyHeight);
+                const int wheelSize=qMin(side,height-historyHeight);
+                if(wheelSize<1)continue;
+                const int x=left?bounds.left():bounds.right()-wheelSize+1;
+                const int y=top?bounds.top():bounds.bottom()-height+1;
+                if(!corner.isValid())corner=QRect(x,y,wheelSize,height);
+                QList<int> xs{x},ys{y};
+                for(const auto &obstacle:m_wheelObstacles) {
+                    xs.append(obstacle.left()-wheelSize-2);
+                    xs.append(obstacle.right()+3);
+                    ys.append(obstacle.top()-height-2);
+                    ys.append(obstacle.bottom()+3);
+                }
+                int distance=bounds.width()+bounds.height()+1;
+                for(int candidateX:xs) {
+                    for(int candidateY:ys) {
+                        const QRect candidate(candidateX,candidateY,wheelSize,height);
+                        const int offset=qAbs(candidateX-x)+qAbs(candidateY-y);
+                        if(offset>=distance || !bounds.contains(candidate))continue;
+                        if(std::any_of(m_wheelObstacles.cbegin(),m_wheelObstacles.cend(),
+                            [&candidate](const QRect &obstacle) {
+                                return obstacle.intersects(candidate);
+                            }))continue;
+                        placement=candidate;
+                        distance=offset;
+                    }
+                }
             }
-            const int x=(m_corner%2)?bounds.left():bounds.right()-side+1;
-            const int y=m_corner>=2?bounds.top():bounds.bottom()-side+1;
-            move(x,y);
+            if(!placement.isValid())placement=corner;
+            const int wheelSide=placement.width();
+            if(wheelSide<=0)return;
+            setGeometry(placement);
+            m_wheel->setGeometry(0,0,wheelSide,wheelSide);
+            m_historyRow->setVisible(history);
+            m_visibleSwatches=qBound(1,wheelSide/32,8);
+            refreshHistory();
+            QRegion shape(m_wheel->geometry(),QRegion::Ellipse);
+            if(history) {
+                m_historyRow->setGeometry(0,wheelSide+2,wheelSide,placement.height()-wheelSide-2);
+                shape=shape.united(QRegion(m_historyRow->geometry()));
+            }
+            setMask(shape);
             return;
         }
         // Prefer the requested size, then progressively smaller sizes.
@@ -581,6 +625,28 @@ private:
         if(final)remember(color);
         refresh();
     }
+    QWidget *createHistoryRow(QWidget *parent)
+    {
+        auto *row=new QWidget(parent);
+        auto *layout=new QHBoxLayout(row);
+        layout->setContentsMargins(0,0,0,0);
+        layout->setSpacing(2);
+        for(int i=0;i<8;++i) {
+            auto *swatch=new QToolButton(row);
+            swatch->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Expanding);
+            if(m_wheelOnly)swatch->setMaximumWidth(44);
+            else swatch->setMinimumHeight(28);
+            layout->addWidget(swatch,1);
+            m_recents.append(swatch);
+            connect(swatch,&QToolButton::clicked,this,[this,i]() {
+                if(i>=m_history.size())return;
+                const QColor color(m_history.at(i));
+                if(color.isValid())setNativeColor(color,true);
+            });
+        }
+        return row;
+    }
+
     void remember(const QColor &color)
     {
         const QString code=color.name(QColor::HexArgb);
@@ -590,11 +656,13 @@ private:
         QSettings().setValue(QStringLiteral("MobileStudio/recentColors"),
                              m_history);
         refreshHistory();
+        if(m_wheelOnly && m_showHistory && m_history.size()==1)updateForViewport();
     }
     void refreshHistory()
     {
         for(int i=0;i<m_recents.size();++i) {
             auto *button=m_recents.at(i);
+            if(m_wheelOnly)button->setVisible(i<m_history.size() && i<m_visibleSwatches);
             if(i>=m_history.size()) {
                 button->setEnabled(false);
                 button->setStyleSheet(QStringLiteral(
@@ -604,6 +672,7 @@ private:
             const QColor color(m_history.at(i));
             button->setEnabled(color.isValid());
             button->setToolTip(color.name(QColor::HexArgb));
+            button->setAccessibleName(i18n("Recent color %1",color.name()));
             button->setStyleSheet(QStringLiteral(
                 "QToolButton{background:%1;border:1px solid #9bb2c4;"
                 "border-radius:5px;}").arg(color.name()));
@@ -612,7 +681,7 @@ private:
     MobileEngineBridge m_engine;
     QToolButton *m_swatch=nullptr,*m_collapse=nullptr;
     QToolButton *m_resize=nullptr,*m_move=nullptr;
-    QWidget *m_contents=nullptr;
+    QWidget *m_contents=nullptr,*m_historyRow=nullptr;
     MobileHueWheel *m_wheel=nullptr;
     QVector<QToolButton*> m_recents;
     QStringList m_history;
@@ -620,8 +689,10 @@ private:
     bool m_expanded=true,m_wantsExpanded=true,m_dragging=false;
     int m_sizeLevel=1,m_corner=0,m_rightInset=7,m_bottomInset=7;
     QRect m_wheelArea;
+    QList<QRect> m_wheelObstacles;
     int m_avoidBottom=0,m_avoidTop=0,m_avoidRight=0;
-    bool m_wheelOnly=false;
+    bool m_wheelOnly=false,m_showHistory=false;
+    int m_visibleSwatches=8;
     QPoint m_dragStart,m_positionAtStart;
 };
 #endif // Q_OS_ANDROID

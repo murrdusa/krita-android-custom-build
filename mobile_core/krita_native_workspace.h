@@ -1441,6 +1441,7 @@ private:
                 qMin(760,qMax(0,viewport.width())),48);
         viewport.setTop(overlayTop(canvas));
         if(!viewport.isValid())return;
+        const QRect wheelBounds=viewport;
         viewport=placeSliders(viewport);
         if(!viewport.isValid())return;
 
@@ -1471,7 +1472,18 @@ private:
                 qMin(room.height(),m_brushOptions->sizeHint().height()));
             if(m_textFormatting)m_textFormatting->setGeometry(bounds);
         }
-        if(m_color)m_color->setWheelArea(besideLayers);
+        if(m_color) {
+            QList<QRect> obstacles;
+            for(QWidget *panel:{static_cast<QWidget*>(m_brush.data()),
+                                static_cast<QWidget*>(m_opacityStrip.data()),
+                                static_cast<QWidget*>(m_layers.data()),
+                                static_cast<QWidget*>(m_toolOptions.data()),
+                                static_cast<QWidget*>(m_brushOptions.data()),
+                                static_cast<QWidget*>(m_textFormatting.data())}) {
+                if(panel && panel->isVisible())obstacles.append(panel->geometry());
+            }
+            m_color->setWheelArea(wheelBounds,obstacles);
+        }
     }
 
     void raiseOverlays()

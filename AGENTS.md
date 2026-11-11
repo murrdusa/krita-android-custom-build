@@ -17,7 +17,7 @@
 
 The target is a **phone, especially a Galaxy Z Fold**, not a mouse/keyboard desktop. Every normal action must be discoverable and operable with finger touch, and should behave consistently with a pen. Use comfortably sized tap targets, touch scrolling and drag interactions; never require hover, right-click, keyboard shortcuts or microscopic scrollbars. When scrollbars are necessary make their grab area wide. Avoid wasted screen area, large headers, redundant text, permanent controls that can be contextual, and desktop-style docks. These requirements are for later UI decisions; do not spend time building a complex UI before the engine is stable.
 
-- Use `MobileTouchScroll::configure` or `configureList` from `mobile_core/touch_scroll.h` for scrollable mobile menus. The shared handler distinguishes taps from swipes starting on controls. Keep canvas, layer drag and slider input in their specialized handlers.
+- Use `MobileTouchScroll::configure` or `configureList` from `mobile_core/touch_scroll.h` for scrollable mobile menus. Use `MobileTouchComboBox` for custom touch selectors. The shared handler distinguishes taps from swipes starting on controls. Keep canvas, layer drag and slider input in their specialized handlers.
 
 ## Project state and next work
 

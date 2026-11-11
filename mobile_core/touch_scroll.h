@@ -53,11 +53,14 @@ protected:
                 if(area && area->property("_mobileMenuScroll").toBool())break;
                 area=nullptr;
             }
-            const bool combo=widget->property("_mobileTapCombo").toBool();
+            const auto *combo=qobject_cast<QComboBox*>(widget);
+            const bool mobileCombo=combo && !combo->isEditable() &&
+                widget->property("_mobileTapCombo").toBool();
             const bool button=qobject_cast<QAbstractButton*>(widget);
             const bool itemView=area && area->viewport()==widget &&
                 qobject_cast<QAbstractItemView*>(area);
-            if(!combo && (!area || (!button && !itemView)))return false;
+            const bool scrollControl=button || itemView || (combo && !combo->isEditable());
+            if(!mobileCombo && (!area || !scrollControl))return false;
             m_target=widget;
             m_area=area;
             m_start=mouse->globalPos();
