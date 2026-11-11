@@ -4,6 +4,8 @@
 
 ## Resume here
 
+- **Home and one canvas:** Home keeps New Canvas, Browse Files, searchable Recent and All Projects, and Recover Drafts when needed. A project opens a sheet with Open, Duplicate (an unsaved KRA copy), Version History, Star and confirmed Delete. All Projects remembers Newest, Name or Starred ordering. The separate Folders and Open Canvases controls are gone. Opening or creating another drawing goes through the native Save/Discard/Cancel close flow. Check Issue #1 for the matching Android build.
+
 - **Native selection and transform:** Edit Selection now activates its native mask in the standalone view. Raster selections use Transform and vector selections use the native shape tool. The Layers rail shows “Editing selection” while keeping the canvas-wide mask off the layer list. Tap a layer to return to layer targeting after applying or resetting any pending transform. WSL compiled and packaged exact revision `60cd949f8e45ad1bc56b20e02cf06147bab01d2d` in 162.5 s.
 - **Transform retarget follow-up:** When Krita reopens a committed transform, layer taps compare the preview against that saved transform. An untouched preview can switch layers, while an edited preview still requires Apply or Reset. A fresh transform with externally supplied pixels stays on its original target and offers Apply even at its initial position. Check the exact WSL build in Issue #1. Device verification remains deferred.
 

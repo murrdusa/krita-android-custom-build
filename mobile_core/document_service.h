@@ -10,7 +10,6 @@
 #pragma once
 #ifdef Q_OS_ANDROID
 
-#include <QAndroidJniObject>
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QPointer>
@@ -130,33 +129,22 @@ public:
     int openFiles(QWidget *parent) const
     {
         if(!m_host || !m_host->available() || !parent)return 0;
-        KoFileDialog dialog(parent,KoFileDialog::ImportFiles,
+        KoFileDialog dialog(parent,KoFileDialog::ImportFile,
                             QStringLiteral("MobileOpenDocument"));
         dialog.setDefaultDir(QStandardPaths::writableLocation(
             QStandardPaths::PicturesLocation));
         dialog.setMimeTypeFilters(
             KisImportExportManager::supportedMimeTypes(
                 KisImportExportManager::Import));
-        dialog.setCaption(QObject::tr("Open drawings"));
-        QStringList paths=dialog.filenames();
-        paths.sort();
-        int successful=0;
-        for(const QString &path:paths) {
-            if(path.isEmpty())continue;
-            if(m_host->openFile(path)) {
-                ++successful;
-                if(path.startsWith(QStringLiteral("content://"))) {
-                    const auto uri=QAndroidJniObject::fromString(path);
-                    QAndroidJniObject::callStaticMethod<void>(
-                        "org/krita/android/MainActivity","tabletRememberProjectAccess",
-                        "(Ljava/lang/String;)V",uri.object<jstring>());
-                }
-            } else
-                QMessageBox::warning(parent,QObject::tr("Open failed"),
-                    QObject::tr("Could not open %1").arg(
-                        QFileInfo(path).fileName()));
+        dialog.setCaption(QObject::tr("Open drawing"));
+        const QString path=dialog.filename();
+        if(path.isEmpty())return 0;
+        if(!m_host->openFile(path)) {
+            QMessageBox::warning(parent,QObject::tr("Drawing not opened"),
+                QObject::tr("Could not open %1.").arg(QFileInfo(path).fileName()));
+            return 0;
         }
-        return successful;
+        return 1;
     }
     bool saveCurrentDocument(bool saveAs=false) const
     {

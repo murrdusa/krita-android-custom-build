@@ -941,6 +941,18 @@ install(FILES org.kde.krita.desktop''',
         }
     }
 
+    public static boolean tabletDeleteProject(String location) {
+        MainActivity activity = tabletPermissionActivity;
+        if (activity == null) return false;
+        Uri uri = Uri.parse(location);
+        try {
+            return android.provider.DocumentsContract.isDocumentUri(activity, uri) &&
+                android.provider.DocumentsContract.deleteDocument(activity.getContentResolver(), uri);
+        } catch (java.io.FileNotFoundException | RuntimeException ignored) {
+            return false;
+        }
+    }
+
     public static boolean tabletRememberProjectFolder(Intent result) {
         MainActivity activity = tabletPermissionActivity;
         if (activity == null || result == null || result.getData() == null) return false;

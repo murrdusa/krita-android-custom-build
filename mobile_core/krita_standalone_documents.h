@@ -10,6 +10,7 @@
  */
 #pragma once
 #ifdef Q_OS_ANDROID
+#include <QAndroidJniObject>
 #include <QFile>
 #include <QFileInfo>
 #include <QMessageBox>
@@ -58,17 +59,26 @@ public:
     // that service can roll back the document registration.
     bool attachNewDocument(KisDocument *document) const override
     {
-        if(!available() || !document || !document->image() ||
-           !isRegistered(document))return false;
-        return m_runtime->attachDocument(document,m_saver)!=nullptr;
+        return !m_opening && replaceCanvas(document);
     }
 
     bool openFile(const QString &path) const override
     {
-        if(!available() || m_opening ||
+        if(!available() || m_opening || m_replacing || m_saving ||
            !MobileNativeDocumentPathPolicy::mayAttemptOpen(path))
             return false;
         const QScopedValueRollback<bool> transaction(m_opening,true);
+
+        // Opening the current document again must keep its unsaved edits.
+        const auto current=m_runtime->documentRoot()->currentDocument();
+        if(auto *existing=qobject_cast<KisDocument*>(current.data())) {
+            if(existing->path()==path ||
+               existing->property("_mobileDraftPath").toString()==path)return true;
+            const QString identity=MobileSavedVersionArchive::canonicalIdentity(path);
+            if(!identity.isEmpty() &&
+               identity==MobileSavedVersionArchive::canonicalIdentity(existing->path()))
+                return true;
+        }
 
         KisDocument *document=KisPart::instance()->createDocument();
         if(!document)return false;
@@ -91,7 +101,7 @@ public:
 
         KisPart::instance()->addDocument(document);
         QPointer<KisDocument> guardedDocument=document;
-        if(!attachNewDocument(document)) {
+        if(!replaceCanvas(document)) {
             MobileFailedDocumentAttach::rollback(
                 guardedDocument,
                 [](KisDocument *candidate) {
@@ -102,7 +112,15 @@ public:
                 });
             return false;
         }
-        if(!draft && !savedVersion)rememberPath(path);
+        if(!draft && !savedVersion) {
+            rememberPath(path);
+            if(path.startsWith(QStringLiteral("content://"))) {
+                const auto uri=QAndroidJniObject::fromString(path);
+                QAndroidJniObject::callStaticMethod<void>(
+                    "org/krita/android/MainActivity","tabletRememberProjectAccess",
+                    "(Ljava/lang/String;)V",uri.object<jstring>());
+            }
+        }
         return true;
     }
 
@@ -117,6 +135,20 @@ public:
     }
 
 private:
+    bool replaceCanvas(KisDocument *document) const
+    {
+        if(!available() || m_replacing || m_saving || !document ||
+           !document->image() || !isRegistered(document))return false;
+        const QScopedValueRollback<bool> replacing(m_replacing,true);
+        auto *root=m_runtime->documentRoot();
+        const auto views=root->openViews();
+        for(const auto &view:views) {
+            if(!root->closeView(view.nativeView))return false;
+        }
+        return root->openViews().isEmpty() &&
+               m_runtime->attachDocument(document,m_saver)!=nullptr;
+    }
+
     bool writeDocument(KisDocument *document,bool saveAs,bool exporting) const
     {
         if(!available() || m_saving || !document ||
@@ -239,6 +271,7 @@ private:
     QPointer<MobileKritaStandaloneRuntime> m_runtime;
     QPointer<MobileKritaNativeSaveHost> m_saver;
     mutable bool m_opening=false;
+    mutable bool m_replacing=false;
     mutable bool m_saving=false;
 };
 

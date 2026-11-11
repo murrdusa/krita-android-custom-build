@@ -33,9 +33,7 @@
 #include "document_home.h"
 #include "android_document_intents.h"
 #include "deferred_view_command.h"
-#include "document_navigation.h"
 #include "document_workflow.h"
-#include "document_switcher.h"
 #include "krita_engine_session.h"
 #include "krita_native_workspace.h"
 #include "native_command_layout.h"
@@ -92,11 +90,8 @@ public:
         };
         auto *newAction=makeAction("New");
         auto *openAction=makeAction("Open");
-        auto *canvasesAction=makeAction("Canvases");
         auto *homeAction=makeAction("Home");
-        auto *shortcutSlot=makeAction("Canvases");
-        auto *previousAction=makeAction("Previous canvas");
-        auto *nextAction=makeAction("Next canvas");
+        auto *shortcutSlot=makeAction("Tool Options");
         auto *undoAction=makeAction("Undo");
         auto *redoAction=makeAction("Redo");
         auto *saveAction=makeAction("Save");
@@ -121,7 +116,6 @@ public:
         const auto setStudioIcon=[&studioIcon](QAction *action,const char *name) {
             action->setIcon(studioIcon(name));
         };
-        setStudioIcon(canvasesAction,"folder-documents");
         setStudioIcon(homeAction,"go-home");
         setStudioIcon(undoAction,"edit-undo");
         setStudioIcon(redoAction,"edit-redo");
@@ -155,7 +149,6 @@ public:
             workspace->pickCloneSource();
         });
         workspace->configureToolbarShortcut(shortcutSlot,{
-            {QStringLiteral("canvases"),canvasesAction,studioIcon("folder-documents")},
             {QStringLiteral("options"),optionsAction,studioIcon("configure")},
             {QStringLiteral("brush-editor"),nativeBridge.action("show_brush_editor"),
              studioIcon("paintop_settings_02")},
@@ -351,7 +344,7 @@ public:
         documentMenu->addActions({newAction,openAction,saveAsAction,exportAction,
                                   versionsAction});
         documentMenu->addSeparator();
-        documentMenu->addActions({canvasesAction,previousAction,nextAction,closeAction});
+        documentMenu->addAction(closeAction);
         QList<QAction*> moreActions{
             documentMenu->menuAction(),optionsAction,canvasOnlyAction
         };
@@ -390,14 +383,6 @@ public:
                     nativeBridge,alive.data());
             });
         });
-        QObject::connect(canvasesAction,&QAction::triggered,window,
-                         [alive,nativeBridge]() {
-            if(!alive)return;
-            QTimer::singleShot(0,alive.data(),[alive,nativeBridge]() {
-                if(alive)MobileDocumentSwitcher::open(
-                    nativeBridge,alive.data());
-            });
-        });
         QObject::connect(openAction,&QAction::triggered,window,
                          [alive,documents]() {
             // Android native file pickers should not appear while Qt
@@ -406,16 +391,6 @@ public:
             QTimer::singleShot(0,alive.data(),[alive,documents]() {
                 if(alive)documents->openFiles(alive.data());
             });
-        });
-        // Independent host must be able to switch among real KisViews
-        // without using the desktop MDI tab index.
-        QObject::connect(previousAction,&QAction::triggered,window,
-                         [views=services.views]() {
-            MobileDocumentNavigation::cycle(views,-1);
-        });
-        QObject::connect(nextAction,&QAction::triggered,window,
-                         [views=services.views]() {
-            MobileDocumentNavigation::cycle(views,1);
         });
         // Exercise Krita's own undo stack, never a mobile shadow
         // history. Defer outside the toolbar callback, just like Save,

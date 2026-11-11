@@ -154,6 +154,7 @@ public:
                             MobileKritaNativeSaveHost *saver)
     {
         if(!m_host || !m_root || !m_manager || !m_actions ||
+           !m_root->openViews().isEmpty() ||
            !document || !saver || !m_host->isVisible() ||
            !KisPart::instance())return nullptr;
         bool inPart=false;

@@ -252,8 +252,7 @@ public:
         auto *tabs=new QHBoxLayout;
         m_recent=new QPushButton(i18n("Recent"),this);
         m_library=new QPushButton(i18n("All Projects"),this);
-        m_open=new QPushButton(i18n("Open Canvases"),this);
-        for(QPushButton *button:{m_recent,m_library,m_open}) {
+        for(QPushButton *button:{m_recent,m_library}) {
             button->setCheckable(true);
             tabs->addWidget(button);
         }
@@ -271,36 +270,35 @@ public:
         tools->addWidget(m_search,1);
         tools->addWidget(m_refresh);
         m_sort=new QPushButton(this);
-        m_sortByName=QSettings().value(QStringLiteral("MobileStudio/projectSortByName"),false).toBool();
-        updateSortLabel();
+        QSettings settings;
+        const int previousSort=settings.value(
+            QStringLiteral("MobileStudio/projectSortByName"),false).toBool()?Name:Newest;
+        m_sortOrder=SortOrder(qBound(int(Newest),settings.value(
+            QStringLiteral("MobileStudio/projectSortOrder"),previousSort).toInt(),int(Starred)));
+        const auto favorites=settings.value(QStringLiteral("MobileStudio/starredProjects")).toStringList();
+        for(const auto &identity:favorites)m_starred.insert(identity);
+        auto *sortMenu=new QMenu(m_sort);
+        sortMenu->setStyleSheet(QStringLiteral("QMenu::item{min-height:32px;padding:8px 14px;}"));
+        for(const auto order:{Newest,Name,Starred}) {
+            auto *choice=sortMenu->addAction(sortLabel(order));
+            connect(choice,&QAction::triggered,this,[this,order]() {
+                m_sortOrder=order;
+                QSettings().setValue(QStringLiteral("MobileStudio/projectSortOrder"),int(order));
+                m_sort->setText(sortLabel(order));
+                sortProjects();
+            });
+        }
+        m_sort->setMenu(sortMenu);
+        m_sort->setText(sortLabel(m_sortOrder));
         tools->addWidget(m_sort);
-        m_versions=new QPushButton(i18n("Versions…"),this);
-        m_versions->setCheckable(true);
-        tools->addWidget(m_versions);
-        m_discardDraft=new QPushButton(i18n("Discard…"),this);
-        m_discardDraft->setCheckable(true);
-        tools->addWidget(m_discardDraft);
         layout->addLayout(tools);
 
-        auto *locations=new QHBoxLayout;
-        m_access=new QPushButton(i18n("Allow all local files"),this);
-        m_addFolder=new QPushButton(i18n("Folders…"),this);
-        auto *folderMenu=new QMenu(m_addFolder);
-        folderMenu->setStyleSheet(QStringLiteral("QMenu::item{min-height:30px;padding:8px 14px;}"));
-        auto *addFolderAction=folderMenu->addAction(i18n("Add folder…"));
-        auto *removeFolderAction=folderMenu->addAction(i18n("Remove linked folder…"));
-        m_addFolder->setMenu(folderMenu);
-        locations->addWidget(m_access);
-        locations->addWidget(m_addFolder);
-        layout->addLayout(locations);
+        m_access=new QPushButton(i18n("Allow file search"),this);
+        layout->addWidget(m_access);
         m_message=new QLabel(this);
         m_message->setWordWrap(true);
         m_message->setStyleSheet(QStringLiteral("font-size:12px;color:#c3ccd7;"));
         layout->addWidget(m_message);
-        m_versionPrompt=new QLabel(i18n("Tap a drawing to see its saved versions."),this);
-        m_versionPrompt->setWordWrap(true);
-        m_versionPrompt->hide();
-        layout->addWidget(m_versionPrompt);
 
         m_list=new QListWidget(this);
         m_list->setViewMode(QListView::IconMode);
@@ -329,128 +327,35 @@ public:
                 [this]() {showList(Recent);});
         connect(m_library,&QPushButton::clicked,this,
                 [this]() {showList(AllProjects);});
-        connect(m_open,&QPushButton::clicked,this,
-                [this]() {showList(OpenCanvases);});
         connect(m_drafts,&QPushButton::clicked,this,
                 [this]() {showList(RecoveryDrafts);});
         connect(m_refresh,&QPushButton::clicked,this,[this]() {
             m_cache.clear();
             showList(m_mode,true); // explicit Refresh always scans
         });
-        connect(m_sort,&QPushButton::clicked,this,[this]() {
-            m_sortByName=!m_sortByName;
-            QSettings().setValue(QStringLiteral("MobileStudio/projectSortByName"),m_sortByName);
-            updateSortLabel();
-            sortProjects();
-        });
-        connect(addFolderAction,&QAction::triggered,this,[this]() {
-            QTimer::singleShot(0,this,[this]() {addFolder();});
-        });
-        connect(removeFolderAction,&QAction::triggered,this,[this]() {
-            QTimer::singleShot(0,this,[this]() {removeFolder();});
-        });
-        connect(m_versions,&QPushButton::toggled,this,[this](bool armed) {
-            m_message->setVisible(!armed);
-            m_versionPrompt->setVisible(armed);
-        });
-        connect(m_discardDraft,&QPushButton::toggled,this,[this](bool armed) {
-            if(m_mode!=RecoveryDrafts)return;
-            m_message->setText(armed?i18n("Choose an unopened draft to discard."):
-                i18n("Recovered drafts open as unsaved drawings."));
-        });
         connect(m_search,&QLineEdit::textChanged,this,
                 [this](const QString &) {filterItems();});
-        connect(m_access,&QPushButton::clicked,this,[this]() {
-            if(hasAllFilesAccess()) {
-                showList(AllProjects,true);
-                return;
-            }
-            if(QMessageBox::question(this,i18n("All Krita documents"),
-                i18n("Android's optional All files access allows reading "
-                     "shared storage. For fast project browsing, the app "
-                     "automatically scans only Downloads. Use Folders to "
-                     "add other locations. Access does not include other "
-                     "apps' private folders and can be revoked in Android "
-                     "settings. Open permission settings?"))
-                !=QMessageBox::Yes)return;
-            QAndroidJniObject::callStaticMethod<void>(
-                "org/krita/android/MainActivity",
-                "tabletRequestAllFilesAccess","()V");
-        });
-        connect(m_list,&QListWidget::itemClicked,this,
-                [this](QListWidgetItem *item) {
+        connect(m_access,&QPushButton::clicked,this,[this]() {requestSearchAccess();});
+        connect(m_list,&QListWidget::itemClicked,this,[this](QListWidgetItem *item) {
             if(!item || !item->flags().testFlag(Qt::ItemIsEnabled))return;
-            if(m_mode==OpenCanvases) {
-                const int index=item->data(Qt::UserRole).toInt();
-                const auto view=m_views.value(index);
-                if(m_versions->isChecked()) {
-                    m_versions->setChecked(false);
-                    if(!view)return;
-                    QString identity;
-                    // Live canvases need the canonical KRA project identity.
-                    // Untitled canvases keep their historical autosaves under
-                    // the allocated private draft path until their first Save As.
-                    for(const auto &entry:m_engine.openDocuments()) {
-                        if(entry.nativeView!=view)continue;
-                        const auto *document=qobject_cast<KisDocument*>(
-                            entry.document.data());
-                        if(document) {
-                            const QString path=document->path();
-                            identity=MobileSavedVersionArchive::canonicalIdentity(path).isEmpty()?
-                                document->property("_mobileDraftPath").toString():path;
-                        }
-                        break;
-                    }
-                    QTimer::singleShot(0,this,[this,identity]() {
-                        if(isVisible())showSavedVersions(identity);
-                    });
-                } else if(m_engine.activateDocumentView(view)) {
-                    hide();
-                }
-                return;
-            }
             const QString path=item->data(Qt::UserRole).toString();
-            if(m_versions->isChecked()) {
-                m_versions->setChecked(false);
-                QTimer::singleShot(0,this,[this,path]() {
-                    if(isVisible())showSavedVersions(path);
-                });
-                return;
-            }
-            if(m_mode==RecoveryDrafts && m_discardDraft->isChecked()) {
-                m_discardDraft->setChecked(false);
-                QTimer::singleShot(0,this,[this,path]() {discardDraft(path);});
-                return;
-            }
-            QTimer::singleShot(0,this,[this,path]() {
-                if(!isVisible() || !m_files || path.isEmpty())return;
-                for(const auto &entry:m_engine.openDocuments()) {
-                    const auto *doc=qobject_cast<KisDocument*>(
-                        entry.document.data());
-                    const QString docPath=doc?doc->path():QString();
-                    const bool sameDoc=doc && (docPath==path ||
-                        (!docPath.isEmpty() &&
-                         MobileSavedVersionArchive::canonicalIdentity(docPath)==
-                         MobileSavedVersionArchive::canonicalIdentity(path)) ||
-                        doc->property("_mobileDraftPath").toString()==path);
-                    if(sameDoc && m_engine.activateDocumentView(entry.nativeView)) {
-                        hide();
-                        return;
-                    }
-                }
-                if(m_files->openFile(path))hide();
-                else QMessageBox::warning(this,i18n("Open failed"),
-                    i18n("Could not open this drawing. Use Browse Files "
-                         "if Android needs you to grant access again."));
+            const QString title=item->data(Qt::UserRole+3).toString();
+            const Mode mode=m_mode;
+            QTimer::singleShot(0,this,[this,path,title,mode]() {
+                if(isVisible() && m_mode==mode && !path.isEmpty())
+                    projectActions(path,title,mode==RecoveryDrafts);
             });
         });
         connect(m_list->verticalScrollBar(),&QScrollBar::valueChanged,
                 this,[this](int) {scheduleThumbnails();});
         connect(qApp,&QGuiApplication::applicationStateChanged,
                 this,[this](Qt::ApplicationState state) {
-            if(state==Qt::ApplicationActive && isVisible() &&
-               m_mode==AllProjects && hasAllFilesAccess()!=m_lastAccess)
-                showList(AllProjects,true);
+            if(state!=Qt::ApplicationActive || !isVisible())return;
+            const bool access=hasAllFilesAccess();
+            if(access==m_lastAccess)return;
+            QSettings().remove(QStringLiteral("MobileStudio/projectIndexLastScanMs"));
+            if(m_mode==AllProjects)showList(AllProjects,true);
+            else m_lastAccess=access;
         });
         parent->installEventFilter(this);
         hide();
@@ -465,11 +370,19 @@ public:
 
     void showHome()
     {
-        showList(MobileDraftRecovery::list().isEmpty()?Recent:RecoveryDrafts);
+        showList(m_mode==AllProjects?AllProjects:Recent);
         setGeometry(parentWidget()->rect());
         show();
         raise();
         scheduleThumbnails();
+        const QString key=QStringLiteral("MobileStudio/askedForProjectSearch");
+        QSettings settings;
+        if(!hasAllFilesAccess() && !settings.value(key,false).toBool()) {
+            settings.setValue(key,true);
+            QTimer::singleShot(0,this,[this]() {
+                if(isVisible() && !hasAllFilesAccess())requestSearchAccess();
+            });
+        }
     }
 
     bool restoreSingleDraft()
@@ -526,21 +439,7 @@ public:
         layout->addWidget(buttons);
         if(dialog.exec()!=QDialog::Accepted || list->currentRow()<0)return;
 
-        m_restoringVersion=true;
-        const auto version=versions.at(list->currentRow());
-        QPointer<MobileDocumentHome> home(this);
-        QThreadPool::globalInstance()->start([home,version]() {
-            const QString copy=MobileSavedVersionArchive::materializeRecovery(version);
-            QMetaObject::invokeMethod(qApp,[home,copy]() {
-                const bool opened=home && !copy.isEmpty() && home->m_files->openFile(copy);
-                if(!copy.isEmpty())QFile::remove(copy);
-                if(!home)return;
-                home->m_restoringVersion=false;
-                if(opened)home->hide();
-                else QMessageBox::warning(home->window(),i18n("Saved versions"),
-                    i18n("Could not open that saved copy."));
-            },Qt::QueuedConnection);
-        });
+        openCopy(versions.at(list->currentRow()));
     }
 
 protected:
@@ -554,7 +453,8 @@ protected:
     }
 
 private:
-    enum Mode {Recent,AllProjects,OpenCanvases,RecoveryDrafts};
+    enum Mode {Recent,AllProjects,RecoveryDrafts};
+    enum SortOrder {Newest,Name,Starred};
     struct Project {
         QString path;
         QString title;
@@ -562,81 +462,155 @@ private:
         QString folder;
     };
 
-    void addFolder()
+    static QString sortLabel(SortOrder order)
     {
-        const auto action=QAndroidJniObject::fromString(
-            QStringLiteral("android.intent.action.OPEN_DOCUMENT_TREE"));
-        const QAndroidJniObject intent("android/content/Intent",
-            "(Ljava/lang/String;)V",action.object<jstring>());
-        if(!intent.isValid())return;
+        switch(order) {
+        case Newest:return i18n("Newest");
+        case Name:return i18n("Name");
+        case Starred:return i18n("Starred");
+        }
+        return {};
+    }
+
+    static QString projectKey(const QString &path)
+    {
+        const QString identity=MobileSavedVersionArchive::canonicalIdentity(path);
+        return identity.isEmpty()?path:identity;
+    }
+
+    void requestSearchAccess()
+    {
+        if(hasAllFilesAccess())return;
+        if(QMessageBox::question(this,i18n("Search for projects?"),
+            i18n("Allow Android file access to find Krita projects in shared storage. "
+                 "You can also open individual documents with Browse Files."),
+            QMessageBox::Yes|QMessageBox::No,QMessageBox::Yes)!=QMessageBox::Yes)return;
+        QAndroidJniObject::callStaticMethod<void>(
+            "org/krita/android/MainActivity","tabletRequestAllFilesAccess","()V");
+    }
+
+    void projectActions(const QString &path,const QString &title,bool draft)
+    {
+        if(m_restoringVersion)return;
+        QDialog dialog(window());
+        dialog.setWindowTitle(title);
+        auto *layout=new QVBoxLayout(&dialog);
+        enum Action {Open=1,Duplicate,History,Star,Delete};
+        const auto add=[&](const QString &label,Action action) {
+            auto *button=new QPushButton(label,&dialog);
+            button->setMinimumHeight(44);
+            layout->addWidget(button);
+            connect(button,&QPushButton::clicked,&dialog,[&dialog,action]() {dialog.done(action);});
+        };
+        const QString key=projectKey(path);
+        add(i18n("Open"),Open);
+        if(!draft && isKra(title))add(i18n("Duplicate"),Duplicate);
+        add(i18n("Version history"),History);
+        if(!draft)add(m_starred.contains(key)?i18n("Remove star"):i18n("Star project"),Star);
+        add(draft?i18n("Discard draft…"):i18n("Delete…"),Delete);
+        auto *cancel=new QPushButton(i18n("Cancel"),&dialog);
+        cancel->setMinimumHeight(44);
+        layout->addWidget(cancel);
+        connect(cancel,&QPushButton::clicked,&dialog,&QDialog::reject);
+        switch(dialog.exec()) {
+        case Open:
+            if(m_files && m_files->openFile(path))hide();
+            else QMessageBox::warning(this,i18n("Drawing not opened"),
+                i18n("Could not open this drawing. Browse Files can renew Android file access."));
+            break;
+        case Duplicate: {
+            MobileSavedVersionArchive::Version source;
+            source.path=path;
+            openCopy(source);
+            break;
+        }
+        case History:showSavedVersions(path);break;
+        case Star:
+            if(!m_starred.remove(key))m_starred.insert(key);
+            saveStars();
+            if(auto *item=m_projectItems.value(key))updateProjectLabel(item);
+            if(m_mode==AllProjects && m_sortOrder==Starred)sortProjects();
+            break;
+        case Delete:
+            if(draft)discardDraft(path);
+            else deleteProject(path,title);
+            break;
+        }
+    }
+
+    void openCopy(const MobileSavedVersionArchive::Version &version)
+    {
+        m_restoringVersion=true;
         QPointer<MobileDocumentHome> home(this);
-        QtAndroid::startActivity(intent,0,[home](int,int result,const QAndroidJniObject &data) {
-            if(result!=-1 || !data.isValid())return; // Android Activity.RESULT_OK
-            const bool granted=QAndroidJniObject::callStaticMethod<jboolean>(
-                "org/krita/android/MainActivity","tabletRememberProjectFolder",
-                "(Landroid/content/Intent;)Z",data.object());
-            QMetaObject::invokeMethod(qApp,[home,granted]() {
-                if(!home || !home->isVisible())return;
-                if(granted)home->showList(AllProjects,true);
-                else QMessageBox::warning(home,i18n("Folder access unavailable"),
-                    i18n("Android could not keep access to this folder. Try a different folder."));
+        QThreadPool::globalInstance()->start([home,version]() {
+            const QString copy=MobileSavedVersionArchive::materializeRecovery(version);
+            QMetaObject::invokeMethod(qApp,[home,copy]() {
+                const bool opened=home && !copy.isEmpty() && home->m_files &&
+                    home->m_files->openFile(copy);
+                if(!copy.isEmpty())QFile::remove(copy);
+                if(!home)return;
+                home->m_restoringVersion=false;
+                if(opened)home->hide();
+                else QMessageBox::warning(home->window(),i18n("Drawing not opened"),
+                    i18n("Could not open the project copy."));
             },Qt::QueuedConnection);
         });
     }
 
-    void removeFolder()
+    void saveStars() const
     {
-        const auto grants=QAndroidJniObject::callStaticObjectMethod(
-            "org/krita/android/MainActivity","tabletProjectFolders","()Ljava/lang/String;");
-        const auto folders=QJsonDocument::fromJson(grants.toString().toUtf8()).array();
-        if(folders.isEmpty()) {
-            QMessageBox::information(this,i18n("Linked folders"),
-                i18n("No folders have been linked."));
-            return;
-        }
-        QDialog dialog(this);
-        dialog.setWindowTitle(i18n("Remove linked folder"));
-        auto *layout=new QVBoxLayout(&dialog);
-        auto *list=new QListWidget(&dialog);
-        list->setStyleSheet(QStringLiteral("QListWidget::item{min-height:44px;padding:5px;}"));
-        MobileTouchScroll::configureList(list);
-        for(const auto &folder:folders) {
-            const auto entry=folder.toObject();
-            auto *item=new QListWidgetItem(entry.value(QStringLiteral("name")).toString(),list);
-            item->setData(Qt::UserRole,entry.value(QStringLiteral("uri")).toString());
-        }
-        list->setCurrentRow(0);
-        layout->addWidget(list);
-        auto *buttons=new QDialogButtonBox(QDialogButtonBox::Cancel,&dialog);
-        auto *remove=buttons->addButton(i18n("Remove link"),QDialogButtonBox::AcceptRole);
-        buttons->setStyleSheet(QStringLiteral("QPushButton{min-height:44px;}"));
-        connect(remove,&QPushButton::clicked,&dialog,&QDialog::accept);
-        connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
-        layout->addWidget(buttons);
-        if(dialog.exec()!=QDialog::Accepted || !list->currentItem())return;
-
-        const QString path=list->currentItem()->data(Qt::UserRole).toString();
-        for(const auto &entry:m_engine.openDocuments()) {
-            const auto *doc=qobject_cast<KisDocument*>(entry.document.data());
-            if(doc && doc->path().startsWith(path+QLatin1Char('/'))) {
-                QMessageBox::information(this,i18n("Folder has an open drawing"),
-                    i18n("Close drawings opened from this folder before removing its link."));
-                return;
-            }
-        }
-        const auto uri=QAndroidJniObject::fromString(path);
-        const bool removed=QAndroidJniObject::callStaticMethod<jboolean>(
-            "org/krita/android/MainActivity","tabletForgetProjectFolder",
-            "(Ljava/lang/String;)Z",uri.object<jstring>());
-        if(removed)showList(AllProjects,true);
-        else QMessageBox::warning(this,i18n("Linked folders"),
-            i18n("Android could not remove that folder link."));
+        QStringList identities;
+        for(const auto &identity:m_starred)identities.append(identity);
+        QSettings().setValue(QStringLiteral("MobileStudio/starredProjects"),identities);
     }
 
-    void updateSortLabel()
+    void deleteProject(const QString &path,const QString &title)
     {
-        m_sort->setText(m_sortByName?i18n("Name"):i18n("Newest"));
-        m_sort->setToolTip(i18n("Switch project sort order"));
+        const QString key=projectKey(path);
+        for(const auto &entry:m_engine.openDocuments()) {
+            const auto *document=qobject_cast<KisDocument*>(entry.document.data());
+            if(document && projectKey(document->path())==key)return;
+        }
+        if(QMessageBox::question(this,i18n("Delete drawing?"),
+            i18n("Permanently delete %1 from storage?",title),
+            QMessageBox::Yes|QMessageBox::Cancel,QMessageBox::Cancel)!=QMessageBox::Yes)return;
+        const bool provider=path.startsWith(QStringLiteral("content://"));
+        const auto uri=QAndroidJniObject::fromString(path);
+        const bool removed=provider?QAndroidJniObject::callStaticMethod<jboolean>(
+            "org/krita/android/MainActivity","tabletDeleteProject","(Ljava/lang/String;)Z",
+            uri.object<jstring>()):QFile::remove(path);
+        if(!removed) {
+            QMessageBox::warning(this,i18n("Could not delete drawing"),
+                i18n("Android or the file provider did not allow deletion."));
+            return;
+        }
+        auto *recent=KisRecentFilesManager::instance();
+        for(const auto &entry:recent->recentFiles()) {
+            const QString candidate=entry.m_url.isLocalFile()?
+                entry.m_url.toLocalFile():entry.m_url.toString();
+            if(projectKey(candidate)==key)recent->remove(entry.m_url);
+        }
+        if(m_scanCancel)m_scanCancel->store(true);
+        m_starred.remove(key);
+        saveStars();
+        m_cache.remove(path);
+        if(auto *item=m_projectItems.take(key))delete item;
+        // Serialize removal after any queued index save.
+        m_scanner.start([key]() {
+            auto entries=MobileProjectIndex::load();
+            entries.erase(std::remove_if(entries.begin(),entries.end(),[&](const auto &entry) {
+                return projectKey(entry.path)==key;
+            }),entries.end());
+            MobileProjectIndex::save(entries);
+        });
+        m_message->setText(i18n("Drawing deleted."));
+    }
+
+    void updateProjectLabel(QListWidgetItem *item) const
+    {
+        const QString title=item->data(Qt::UserRole+3).toString();
+        const bool starred=m_starred.contains(projectKey(item->data(Qt::UserRole).toString()));
+        item->setText(starred?QStringLiteral("★ ")+title:title);
     }
 
     bool draftIsOpen(const QString &path) const
@@ -770,44 +744,21 @@ private:
         if(forceScan)m_cache.clear();
         m_recent->setChecked(mode==Recent);
         m_library->setChecked(mode==AllProjects);
-        m_open->setChecked(mode==OpenCanvases);
         const auto drafts=MobileDraftRecovery::list();
         m_drafts->setChecked(mode==RecoveryDrafts);
         m_drafts->setVisible(mode==RecoveryDrafts || !drafts.isEmpty());
-        m_versions->setChecked(false);
-        // Drafts now retain older completed autosaves as private versions.
-        // History stays separate from the latest recoverable draft.
-        m_versions->setVisible(mode==Recent || mode==AllProjects ||
-                               mode==OpenCanvases || mode==RecoveryDrafts);
-        m_discardDraft->setChecked(false);
-        m_discardDraft->setVisible(mode==RecoveryDrafts && !drafts.isEmpty());
-        m_search->setVisible(mode!=OpenCanvases);
-        m_refresh->setVisible(mode!=OpenCanvases);
+        m_refresh->setVisible(mode==AllProjects);
         m_lastAccess=hasAllFilesAccess();
         m_access->setVisible(mode==AllProjects && !m_lastAccess);
-        m_addFolder->setVisible(mode==AllProjects);
         m_sort->setVisible(mode==AllProjects);
-        m_list->setViewMode(mode==OpenCanvases?
-                            QListView::ListMode:QListView::IconMode);
-        m_list->setGridSize(mode==OpenCanvases?QSize():QSize(148,164));
-        m_list->setIconSize(QSize(124,124));
         m_projectItems.clear();
         m_list->clear();
-        m_views.clear();
         ++m_previewGeneration;
         m_thumbnails.clear();
         m_pending.clear();
         m_attempted.clear();
         if(m_scanCancel)m_scanCancel->store(true);
-        if(mode==OpenCanvases) {
-            m_message->setText(i18n("Switch between open drawings"));
-            for(const auto &entry:m_engine.openDocuments()) {
-                auto *item=new QListWidgetItem(entry.title+
-                    (entry.modified?QStringLiteral(" *"):QString()),m_list);
-                item->setData(Qt::UserRole,m_views.size());
-                m_views.append(entry.nativeView);
-            }
-        } else if(mode==Recent) {
+        if(mode==Recent) {
             m_message->setText(i18n("Recently opened drawings"));
             const auto recent=KisRecentFilesManager::instance()->recentFiles();
             for(auto it=recent.crbegin();it!=recent.crend();++it) {
@@ -880,25 +831,19 @@ private:
             }
         }
         if(mode!=AllProjects && m_list->count()==0) {
-            auto *empty=new QListWidgetItem(mode==OpenCanvases?
-                i18n("No open canvases"):mode==RecoveryDrafts?
+            auto *empty=new QListWidgetItem(mode==RecoveryDrafts?
                 i18n("No recoverable drafts"):i18n("No recent Krita drawings"),
                 m_list);
             empty->setFlags(Qt::NoItemFlags);
         }
-        filterItems();
-        scheduleThumbnails();
+        if(mode==AllProjects)sortProjects();
+        else filterItems();
     }
 
     void addProject(const Project &project)
     {
         if(project.path.isEmpty())return;
-        const QString canonical=MobileSavedVersionArchive::canonicalIdentity(
-            project.path);
-        // Canonical SAF identity unifies direct and tree-grant URIs. For
-        // images and other paths the KRA identity policy doesn't handle,
-        // retain the unmodified path as the key.
-        const QString key=canonical.isEmpty()?project.path:canonical;
+        const QString key=projectKey(project.path);
         auto found=m_projectItems.find(key);
         if(found!=m_projectItems.end()) {
             // Scanned results can be newer than the persisted index. Update
@@ -939,6 +884,8 @@ private:
         m_projectItems.insert(key,item);
         item->setData(Qt::UserRole,project.path);
         item->setData(Qt::UserRole+1,project.timestamp);
+        item->setData(Qt::UserRole+3,project.title);
+        updateProjectLabel(item);
         const QString location=project.folder.isEmpty()?
             project.path:project.folder;
         item->setData(Qt::UserRole+2,location);
@@ -1066,7 +1013,7 @@ private:
             if(!item || item->data(Qt::UserRole).toString().isEmpty())continue;
             MobileProjectIndexEntry entry;
             entry.path=item->data(Qt::UserRole).toString();
-            entry.title=item->text();
+            entry.title=item->data(Qt::UserRole+3).toString();
             entry.modified=item->data(Qt::UserRole+1).toLongLong();
             entry.source=QStringLiteral("index");
             entries.append(entry);
@@ -1086,7 +1033,7 @@ private:
                      "to 12 seconds; tap Refresh for a complete search.",count));
         } else {
             m_message->setText(count==0?
-                i18n("No Krita projects found. Add a folder or use Browse Files."):
+                i18n("No Krita projects found. Try Browse Files."):
                 i18np("%1 Krita project found", "%1 Krita projects found",count));
         }
         QSettings().setValue(
@@ -1103,9 +1050,15 @@ private:
             [this](QListWidgetItem *a,QListWidgetItem *b) {
                 const qint64 am=a->data(Qt::UserRole+1).toLongLong();
                 const qint64 bm=b->data(Qt::UserRole+1).toLongLong();
-                if(!m_sortByName && am!=bm)return am>bm;
-                const int name=QString::localeAwareCompare(a->text().toCaseFolded(),
-                                                            b->text().toCaseFolded());
+                if(m_sortOrder==Starred) {
+                    const bool aStar=m_starred.contains(projectKey(a->data(Qt::UserRole).toString()));
+                    const bool bStar=m_starred.contains(projectKey(b->data(Qt::UserRole).toString()));
+                    if(aStar!=bStar)return aStar;
+                }
+                if(m_sortOrder!=Name && am!=bm)return am>bm;
+                const int name=QString::localeAwareCompare(
+                    a->data(Qt::UserRole+3).toString().toCaseFolded(),
+                    b->data(Qt::UserRole+3).toString().toCaseFolded());
                 return name==0?am>bm:name<0;
             });
         for(QListWidgetItem *item:sorted)m_list->addItem(item);
@@ -1114,9 +1067,8 @@ private:
 
     void filterItem(QListWidgetItem *item,const QString &query) const
     {
-        item->setHidden(!query.isEmpty() && m_mode!=OpenCanvases &&
-            !item->text().contains(query,Qt::CaseInsensitive) &&
-            !item->data(Qt::UserRole+2).toString().contains(query,Qt::CaseInsensitive));
+        item->setHidden(!query.isEmpty() &&
+            !item->data(Qt::UserRole+3).toString().contains(query,Qt::CaseInsensitive));
     }
 
     void filterItems()
@@ -1128,7 +1080,7 @@ private:
 
     void scheduleThumbnails()
     {
-        if(!isVisible() || m_mode==OpenCanvases || !m_list)return;
+        if(!isVisible() || !m_list)return;
         if(m_thumbnailScheduled)return;
         m_thumbnailScheduled=true;
         QTimer::singleShot(50,this,[this]() {
@@ -1139,7 +1091,7 @@ private:
 
     void requestVisibleThumbnails()
     {
-        if(!isVisible() || m_mode==OpenCanvases)return;
+        if(!isVisible())return;
         const QRect region=m_list->viewport()->rect().adjusted(0,-170,0,170);
         int budget=10;
         for(int i=0;i<m_list->count() && budget>0;++i) {
@@ -1201,15 +1153,15 @@ private:
     MobileEngineBridge m_engine;
     QSharedPointer<MobileDocumentHostPort> m_files;
     QListWidget *m_list=nullptr;
-    QPushButton *m_recent=nullptr,*m_library=nullptr,*m_open=nullptr,*m_drafts=nullptr;
-    QPushButton *m_refresh=nullptr,*m_access=nullptr,*m_discardDraft=nullptr;
-    QPushButton *m_addFolder=nullptr,*m_sort=nullptr,*m_versions=nullptr;
+    QPushButton *m_recent=nullptr,*m_library=nullptr,*m_drafts=nullptr;
+    QPushButton *m_refresh=nullptr,*m_access=nullptr,*m_sort=nullptr;
     QLineEdit *m_search=nullptr;
-    QLabel *m_message=nullptr,*m_versionPrompt=nullptr;
+    QLabel *m_message=nullptr;
     QIcon m_placeholder;
     Mode m_mode=Recent;
     bool m_lastAccess=false;
-    bool m_sortByName=false;
+    SortOrder m_sortOrder=Newest;
+    QSet<QString> m_starred;
     bool m_restoringVersion=false;
     bool m_thumbnailScheduled=false;
     bool m_forceThumbnailRefresh=false;
@@ -1217,7 +1169,6 @@ private:
     int m_scanDiscoveredCount=0;
     std::shared_ptr<std::atomic_bool> m_scanCancel;
     QThreadPool m_scanner,m_thumbnails;
-    QVector<QPointer<QObject>> m_views;
     QHash<QString,QListWidgetItem*> m_projectItems;
     QSet<QString> m_pending,m_attempted;
     struct CachedPreview {QIcon icon; qint64 modified=0;};
