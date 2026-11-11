@@ -398,7 +398,13 @@ public:
         if(!MobileNativeCommandLayout::install(window,homeAction,studioIcon("configure-thicker"),
             toolbarCommands,{"paint","erase","blend","tool-settings","color","layers",
                              "tools","undo","redo","save","shortcut"},
-            moreActions,canvasOnlyAction)) {
+            moreActions,canvasOnlyAction,
+            [workspace](const QString &button,qreal delta) {
+                workspace->adjustToolbarDrag(button,delta);
+            },
+            [workspace](const QPoint &global) {
+                workspace->sampleToolbarColor(global);
+            })) {
             qWarning() << "Independent Krita command layout unavailable";
         }
 
