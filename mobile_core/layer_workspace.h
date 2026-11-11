@@ -1019,18 +1019,26 @@ private:
         if(!inImage(target,image) ||
            KisNodeManager::isNodeHidden(target,true))
             target=nodes->activeNode();
-        if(!inImage(target,image) ||
-           KisNodeManager::isNodeHidden(target,true))return false;
-        if(mask && (!target->inherits("KisLayer") ||
+        const bool validTarget=inImage(target,image) &&
+            !KisNodeManager::isNodeHidden(target,true);
+        // Newly created or emptied canvases can have no selectable layer
+        // yet. Native Krita still allows creating their first paint layer.
+        if(mask && (!validTarget || !target->inherits("KisLayer") ||
                     !target->isEditable()))return false;
         if(auto *transform=activeTransform()) {
             if(!canRetarget(transform))return false;
             m_engine.freehandBrush();
         }
         if(!m_engine.manager() ||
-           m_engine.manager()->image().toStrongRef()!=image ||
-           !m_engine.selectLayer(target))return false;
-        nodes->slotSetSelectedNodes(KisNodeList{target});
+           m_engine.manager()->image().toStrongRef()!=image)return false;
+        if(validTarget) {
+            if(!m_engine.selectLayer(target))return false;
+            nodes->slotSetSelectedNodes(KisNodeList{target});
+        } else {
+            // An empty document has no layer to target. Leave insertion
+            // placement to Krita's native node manager.
+            nodes->slotSetSelectedNodes(KisNodeList());
+        }
         return true;
     }
 
