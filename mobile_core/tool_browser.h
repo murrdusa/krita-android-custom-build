@@ -78,6 +78,22 @@ public:
             {"KisToolSelectElliptical",i18n("Ellipse")},
             {"KisToolSelectSimilar",i18n("Color")}
         },{{"deselect",i18n("Deselect"),"edit-clear"}});
+        // Selection modifiers are native document commands, not separate
+        // tools. Keep them available even when the user is currently
+        // painting with the freehand brush.
+        addGroup(i18n("Selection actions"),{},{
+            {"select_all",i18n("Select all"),"select-all"},
+            {"reselect",i18n("Reselect"),"select-all"},
+            {"invert_selection",i18n("Invert"),"select-invert"},
+            {"growselection",i18n("Grow"),"select-all"},
+            {"shrinkselection",i18n("Shrink"),"select-all"},
+            {"featherselection",i18n("Feather"),"select-all"},
+            {"borderselection",i18n("Border"),"select-all"},
+            {"smoothselection",i18n("Smooth"),"select-all"},
+            {"selectopaque",i18n("Select opaque"),"select-all"},
+            {"copy_selection_to_new_layer",i18n("Copy to layer"),"edit-copy"},
+            {"cut_selection_to_new_layer",i18n("Cut to layer"),"edit-cut"}
+        });
         addGroup(i18n("Transform"),{
             {"KritaTransform/KisToolMove",i18n("Move")},
             {"KisToolTransform",i18n("Transform")},
