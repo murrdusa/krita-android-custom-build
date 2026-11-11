@@ -64,6 +64,7 @@ public:
             {"KritaShape/KisToolBrush",i18n("Brush")},
             {"KritaFill/KisToolFill",i18n("Fill")},
             {"KritaFill/KisToolGradient",i18n("Gradient")},
+            {"KisToolEncloseAndFill",i18n("Enclose and fill")},
             {"SvgTextTool",i18n("Text")},
             {"KritaSelected/KisToolColorSampler",i18n("Eyedropper")}
         });
@@ -82,6 +83,12 @@ public:
             {"KisToolTransform",i18n("Transform")},
             {"KisToolCrop",i18n("Crop")}
         });
+        addGroup(i18n("Retouch and color"),{
+            {"KritaShape/KisToolSmartPatch",i18n("Smart Patch")},
+            {"KritaShape/KisToolLazyBrush",i18n("Colorize Mask")},
+            {"KritaShape/KisToolDyna",i18n("Dynamic Brush")},
+            {"KritaSelected/KisToolColorSampler",i18n("Sample Color")}
+        });
         addGroup(i18n("Edit"),{},{
             {"krita_filter_colorbalance",i18n("Color balance"),"preferences-desktop-color"},
             {"krita_filter_perchannel",i18n("Curves"),"filter-color-curves"},
@@ -91,11 +98,17 @@ public:
             {"KritaShape/KisToolLine",i18n("Line")},
             {"KritaShape/KisToolRectangle",i18n("Rectangle")},
             {"KritaShape/KisToolEllipse",i18n("Ellipse")},
+            {"KisToolPolygon",i18n("Polygon")},
+            {"KisToolPolyline",i18n("Polyline")},
+            {"KisToolPath",i18n("Bézier")},
             {"KritaShape/KisToolPath",i18n("Path")}
         });
         addGroup(i18n("Guides and symmetry"),{
             {"KisAssistantTool",i18n("Assistants")},
-            {"KritaShape/KisToolMultiBrush",i18n("Multibrush")}
+            {"KritaShape/KisToolMultiBrush",i18n("Multibrush")},
+            {"ToolReferenceImages",i18n("Reference images")},
+            {"KritaShape/KisToolMeasure",i18n("Measure")},
+            {"KritaShape/KisToolKnife",i18n("Knife")}
         },{
             {"hmirror_action",i18n("Horizontal"),"symmetry-horizontal"},
             {"vmirror_action",i18n("Vertical"),"symmetry-vertical"},
