@@ -589,7 +589,9 @@ private:
                 home->m_restoringVersion=false;
                 if(opened)home->hide();
                 else if(sameCanvas)QMessageBox::warning(home->window(),i18n("Drawing not opened"),
-                    i18n("Could not open the project copy."));
+                    copy.isEmpty()?
+                        i18n("This copy could not be recovered. Its archive may be damaged or unreadable. The original drawing and other versions were not changed."):
+                        i18n("Could not open the project copy."));
             },Qt::QueuedConnection);
         });
     }
