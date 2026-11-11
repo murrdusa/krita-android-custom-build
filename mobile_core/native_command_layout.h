@@ -828,7 +828,7 @@ private:
             refresh(0);
             updateProperties();
         };
-        addButton(barRow,QObject::tr("New toolbar"),[&]() {
+        addButton(barRow,QObject::tr("New"),[&]() {
             Bar bar;
             bar.name=QObject::tr("Toolbar %1").arg(bars.size()+1);
             bar.edge=Right;
@@ -836,13 +836,13 @@ private:
             current=bars.size()-1;
             refillBars();
         });
-        auto *propertiesButton=addButton(barRow,QObject::tr("Properties"),[&]() {
+        auto *propertiesButton=addButton(barRow,QObject::tr("Details"),[&]() {
             properties->setVisible(!properties->isVisible());
             if(properties->isVisible())updateProperties();
         });
         propertiesButton->setToolTip(QObject::tr(
             "Toolbar name, spacing and background opacity"));
-        deleteBar=addButton(barRow,QObject::tr("Delete toolbar"),[&]() {
+        deleteBar=addButton(barRow,QObject::tr("Delete"),[&]() {
             if(current==0)return;
             bars.removeAt(current);
             current=qMin(current,bars.size()-1);
