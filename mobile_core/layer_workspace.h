@@ -848,8 +848,9 @@ private:
         footer->addWidget(more);
         footer->addWidget(done);
         outer->addLayout(footer);
+        const int sheetHeight=body->sizeHint().height()+footer->sizeHint().height()+36;
         sheet.resize(qMin(360,qMax(1,window()->width()-24)),
-                     qMin(430,qMax(1,window()->height()-24)));
+                     qMin(sheetHeight,qMax(1,window()->height()-24)));
         sheet.setMaximumSize(qMax(1,window()->width()-12),
                              qMax(1,window()->height()-12));
         const QPoint point=m_tree->viewport()->mapToGlobal(

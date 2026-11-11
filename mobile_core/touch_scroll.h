@@ -9,7 +9,8 @@
 #include <QListView>
 #include <QMouseEvent>
 #include <QScrollBar>
-#include <QToolButton>
+#include <QAbstractButton>
+#include <QPointer>
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QScroller>
@@ -17,8 +18,101 @@
 
 namespace MobileTouchScroll
 {
+// Keep native touch inertia. Android also delivers mouse events from
+// touch and pen, including when the starting widget is a child control.
+class MenuPointerFilter final : public QObject
+{
+public:
+    using QObject::QObject;
+
+    static void install()
+    {
+        static QPointer<MenuPointerFilter> filter;
+        if(!filter) {
+            filter=new MenuPointerFilter(qApp);
+            qApp->installEventFilter(filter);
+        }
+    }
+
+protected:
+    bool eventFilter(QObject *object,QEvent *event) override
+    {
+        if(event==m_replay)return false;
+        const auto type=event->type();
+        if(type!=QEvent::MouseButtonPress && type!=QEvent::MouseButtonDblClick &&
+           type!=QEvent::MouseMove && type!=QEvent::MouseButtonRelease)return false;
+        auto *mouse=static_cast<QMouseEvent*>(event);
+        if(type==QEvent::MouseButtonPress || type==QEvent::MouseButtonDblClick) {
+            if(mouse->button()!=Qt::LeftButton)return false;
+            m_target.clear();
+            auto *widget=qobject_cast<QWidget*>(object);
+            if(!widget || !widget->rect().contains(mouse->pos()))return false;
+            QAbstractScrollArea *area=nullptr;
+            for(auto *parent=widget->parentWidget();parent;parent=parent->parentWidget()) {
+                area=qobject_cast<QAbstractScrollArea*>(parent);
+                if(area && area->property("_mobileMenuScroll").toBool())break;
+                area=nullptr;
+            }
+            const bool combo=widget->property("_mobileTapCombo").toBool();
+            const bool button=qobject_cast<QAbstractButton*>(widget);
+            const bool itemView=area && area->viewport()==widget &&
+                qobject_cast<QAbstractItemView*>(area);
+            if(!combo && (!area || (!button && !itemView)))return false;
+            m_target=widget;
+            m_area=area;
+            m_start=mouse->globalPos();
+            m_pressType=type;
+            m_dragging=false;
+            if(area) {
+                m_scrollStart=QPoint(area->horizontalScrollBar()->value(),
+                                     area->verticalScrollBar()->value());
+            }
+            return true;
+        }
+        if(!m_target)return false;
+        if(type==QEvent::MouseMove && !(mouse->buttons() & Qt::LeftButton))return false;
+        if(type==QEvent::MouseButtonRelease && mouse->button()!=Qt::LeftButton)return false;
+        const QPoint delta=mouse->globalPos()-m_start;
+        m_dragging=m_dragging || delta.manhattanLength()>=QApplication::startDragDistance();
+        if(m_dragging && m_area && m_area->isVisible() &&
+           QScroller::scroller(m_area->viewport())->state()==QScroller::Inactive) {
+            m_area->horizontalScrollBar()->setValue(m_scrollStart.x()-delta.x());
+            m_area->verticalScrollBar()->setValue(m_scrollStart.y()-delta.y());
+        }
+        if(type!=QEvent::MouseButtonRelease)return true;
+        const auto target=m_target;
+        m_target.clear();
+        m_area.clear();
+        if(m_dragging || !target->isVisible() || !target->isEnabled() ||
+           !target->rect().contains(target->mapFromGlobal(mouse->globalPos())))return true;
+        QMouseEvent press(m_pressType,target->mapFromGlobal(m_start),m_start,
+                          Qt::LeftButton,Qt::LeftButton,mouse->modifiers());
+        m_replay=&press;
+        QApplication::sendEvent(target,&press);
+        m_replay=nullptr;
+        if(!target)return true;
+        if(target.data()==object)return false;
+        QMouseEvent release(type,target->mapFromGlobal(mouse->globalPos()),mouse->globalPos(),
+                            Qt::LeftButton,mouse->buttons(),mouse->modifiers());
+        m_replay=&release;
+        QApplication::sendEvent(target,&release);
+        m_replay=nullptr;
+        return true;
+    }
+
+private:
+    QPointer<QWidget> m_target;
+    QPointer<QAbstractScrollArea> m_area;
+    QEvent *m_replay=nullptr;
+    QPoint m_start,m_scrollStart;
+    QEvent::Type m_pressType=QEvent::MouseButtonPress;
+    bool m_dragging=false;
+};
+
 inline void configure(QAbstractScrollArea *area)
 {
+    MenuPointerFilter::install();
+    area->setProperty("_mobileMenuScroll",true);
     area->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     area->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     auto *viewport=area->viewport();
@@ -34,76 +128,16 @@ inline void configureList(QAbstractItemView *view)
     configure(view);
 }
 
-class TapDrag
-{
-public:
-    void press(QWidget *widget,const QPoint &global)
-    {
-        m_start=global;
-        m_dragged=false;
-        m_area=nullptr;
-        for(auto *parent=widget->parentWidget();parent;parent=parent->parentWidget()) {
-            if((m_area=qobject_cast<QAbstractScrollArea*>(parent)))break;
-        }
-        if(m_area)m_scrollStart=m_area->verticalScrollBar()->value();
-    }
-
-    bool move(const QPoint &global)
-    {
-        const QPoint delta=global-m_start;
-        m_dragged=m_dragged || delta.manhattanLength()>=QApplication::startDragDistance();
-        if(m_dragged && m_area &&
-           QScroller::scroller(m_area->viewport())->state()==QScroller::Inactive)
-            m_area->verticalScrollBar()->setValue(m_scrollStart-delta.y());
-        return m_dragged;
-    }
-
-private:
-    QAbstractScrollArea *m_area=nullptr;
-    QPoint m_start;
-    int m_scrollStart=0;
-    bool m_dragged=false;
-};
-
-class ToolTile final : public QToolButton
-{
-public:
-    using QToolButton::QToolButton;
-
-protected:
-    void mousePressEvent(QMouseEvent *event) override
-    {
-        if(event->button()==Qt::LeftButton)m_drag.press(this,event->globalPos());
-        QToolButton::mousePressEvent(event);
-    }
-
-    void mouseMoveEvent(QMouseEvent *event) override
-    {
-        if((event->buttons() & Qt::LeftButton) && m_drag.move(event->globalPos())) {
-            setDown(false);
-            event->accept();
-            return;
-        }
-        QToolButton::mouseMoveEvent(event);
-    }
-
-    void mouseReleaseEvent(QMouseEvent *event) override
-    {
-        if(event->button()==Qt::LeftButton && m_drag.move(event->globalPos()))
-            setDown(false);
-        QToolButton::mouseReleaseEvent(event);
-    }
-
-private:
-    TapDrag m_drag;
-};
-
 }
 
 class MobileTouchComboBox final : public QComboBox
 {
 public:
-    using QComboBox::QComboBox;
+    explicit MobileTouchComboBox(QWidget *parent=nullptr) : QComboBox(parent)
+    {
+        setProperty("_mobileTapCombo",true);
+        MobileTouchScroll::MenuPointerFilter::install();
+    }
 
     void showPopup() override
     {
@@ -154,39 +188,26 @@ public:
 protected:
     void mousePressEvent(QMouseEvent *event) override
     {
-        if(event->button()!=Qt::LeftButton || isEditable()) {
-            QComboBox::mousePressEvent(event);
-            return;
-        }
-        m_pressed=true;
-        m_drag.press(this,event->globalPos());
-        event->accept();
-    }
-
-    void mouseMoveEvent(QMouseEvent *event) override
-    {
-        if(m_pressed && (event->buttons() & Qt::LeftButton)) {
-            m_drag.move(event->globalPos());
+        if(event->button()==Qt::LeftButton && !isEditable()) {
+            m_tapPending=true;
             event->accept();
-            return;
+        } else {
+            QComboBox::mousePressEvent(event);
         }
-        QComboBox::mouseMoveEvent(event);
     }
 
     void mouseReleaseEvent(QMouseEvent *event) override
     {
-        if(m_pressed && event->button()==Qt::LeftButton) {
-            m_pressed=false;
-            if(!m_drag.move(event->globalPos()) && rect().contains(event->pos()))
-                showPopup();
+        if(event->button()==Qt::LeftButton && !isEditable()) {
+            const bool open=m_tapPending && rect().contains(event->pos());
+            m_tapPending=false;
             event->accept();
-            return;
+            if(open)showPopup();
+        } else {
+            QComboBox::mouseReleaseEvent(event);
         }
-        QComboBox::mouseReleaseEvent(event);
     }
 
 private:
-    MobileTouchScroll::TapDrag m_drag;
-    bool m_pressed=false;
-
+    bool m_tapPending=false;
 };
