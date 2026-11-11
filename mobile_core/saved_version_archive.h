@@ -218,36 +218,43 @@ public:
             QByteArray oldSha;
             if(sidecar.open(QIODevice::ReadOnly))
                 oldSha=sidecar.readAll().trimmed();
-            // A checksum sidecar alone is not proof that the archived
-            // bytes are intact. If it matches the new source (or is
-            // missing), hash the actual previous KRA before deduplicating.
-            // A damaged latest version must never suppress a new copy.
-            if(oldSha.size()!=64 || oldSha==sha) {
-                QFile last(previous.first().path);
-                if(last.open(QIODevice::ReadOnly)) {
-                    QCryptographicHash actual(QCryptographicHash::Sha256);
-                    QByteArray chunk(256*1024,Qt::Uninitialized);
-                    qint64 got=0;
-                    while((got=last.read(chunk.data(),chunk.size()))>0)
-                        actual.addData(chunk.constData(),got);
-                    if(got==0 && actual.result().toHex()==sha) {
-                        if(oldSha!=sha) {
-                            // A prior interrupted publication can leave
-                            // the KRA intact but without its checksum.
-                            // Repair the sidecar atomically while the
-                            // verified content still matches the source.
-                            QSaveFile repair(previous.first().path+
-                                             QStringLiteral(".sha256"));
-                            if(repair.open(QIODevice::WriteOnly)) {
-                                if(repair.write(sha)==sha.size())
-                                    repair.commit();
-                                else
-                                    repair.cancelWriting();
-                            }
-                        }
-                        output.cancelWriting(); // unchanged intact save
-                        return true;
+            // Always verify the archived *bytes*, even if its SHA-256
+            // sidecar contains a different valid-looking digest. A bad
+            // sidecar must not fork identical versions or permanently
+            // render intact history unrecoverable.
+            QFile last(previous.first().path);
+            if(last.open(QIODevice::ReadOnly)) {
+                QCryptographicHash actual(QCryptographicHash::Sha256);
+                QByteArray chunk(256*1024,Qt::Uninitialized);
+                qint64 got=0;
+                qint64 hashed=0;
+                while((got=last.read(chunk.data(),chunk.size()))>0) {
+                    hashed+=got;
+                    actual.addData(chunk.constData(),got);
+                }
+                if(got==0 && hashed==copied &&
+                   actual.result().toHex()==sha) {
+                    // A private draft can disappear while we inspect its
+                    // prior archive. Never acknowledge a discarded or
+                    // concurrently overwritten draft as successfully
+                    // checkpointed.
+                    if(!provider) {
+                        original.refresh();
+                        if(!original.isFile() || original.size()!=expected ||
+                           original.lastModified()!=before)return false;
                     }
+                    if(oldSha.toLower()!=sha) {
+                        QSaveFile repair(previous.first().path+
+                                         QStringLiteral(".sha256"));
+                        if(repair.open(QIODevice::WriteOnly)) {
+                            if(repair.write(sha)==sha.size())
+                                repair.commit();
+                            else
+                                repair.cancelWriting();
+                        }
+                    }
+                    output.cancelWriting(); // unchanged intact save
+                    return true;
                 }
             }
         }
