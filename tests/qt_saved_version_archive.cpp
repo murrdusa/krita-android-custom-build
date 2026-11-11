@@ -104,6 +104,11 @@ int main(int argc,char **argv)
     require(copy!=source && copy!=firstSnapshot &&
             load(copy)==initial && load(source)==second,
             "recovery touched the original or historical copy");
+    auto staleVersion=versions.last();
+    ++staleVersion.bytes;
+    require(MobileSavedVersionArchive::materializeRecovery(
+                staleVersion,recover).isEmpty(),
+            "stale version metadata must not start an invalid recovery copy");
     // A checksum sidecar may be missing after interrupted publication,
     // but a present checksum must prevent damaged data being restored.
     require(QFile::remove(firstSnapshot+QStringLiteral(".sha256")) &&
