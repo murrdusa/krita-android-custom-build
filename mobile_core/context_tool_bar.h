@@ -142,6 +142,10 @@ public:
                     choices.append({entry.label,action});
             addActionMenu(caption,choices);
         };
+        // Match known Krita tool families by their suffix, while keeping
+        // m_id and the native KoToolBase unchanged for dispatch/refresh.
+        // Plugin namespaces differ between builds and tool registrations.
+        const QString shortId=id.section(QLatin1Char('/'),-1);
         const auto addFillResource=[this](bool gradient) {
             if(!chooseFillResource)return;
             auto *control=button(gradient?QObject::tr("Gradient"):QObject::tr("Pattern"));
@@ -170,7 +174,7 @@ public:
                 if(path && m_nativeTool==path.data())path->requestStrokeCancellation();
             });
         }
-        if(id.startsWith(QStringLiteral("KisToolSelect"))) {
+        if(shortId.startsWith(QStringLiteral("KisToolSelect"))) {
             addSectionChoices("sectionAction",QObject::tr("Combine"),{
                 QObject::tr("Replace"),QObject::tr("Intersect"),QObject::tr("Add"),
                 QObject::tr("Subtract"),QObject::tr("Symmetric difference")
@@ -180,7 +184,7 @@ public:
             addSectionChoices("sectionMode",QObject::tr("Type"),
                               {QObject::tr("Pixel"),QObject::tr("Vector")});
             native("deselect",QObject::tr("Deselect"));
-            if(id==QStringLiteral("KisToolSelectMagnetic")) {
+            if(shortId==QStringLiteral("KisToolSelectMagnetic")) {
                 named("radius",QObject::tr("Radius"));
                 named("threshold",QObject::tr("Edge"));
                 named("frequency",QObject::tr("Search"));
@@ -215,7 +219,7 @@ public:
                 {"copy_selection_to_new_layer",QObject::tr("Copy to layer")},
                 {"cut_selection_to_new_layer",QObject::tr("Cut to layer")}
             });
-        } else if(id==QStringLiteral("KritaShape/KisToolBrush")) {
+        } else if(shortId==QStringLiteral("KisToolBrush")) {
             // Use Krita's actual freehand smoothing actions. Selecting a
             // mode changes its native paint tool configuration, not the
             // mobile brush engine or the drawing input stream.
@@ -268,7 +272,7 @@ public:
                 {"rotateCCWButton",QObject::tr("Rotate left")},
                 {"rotateCWButton",QObject::tr("Rotate right")}
             });
-        } else if(id==QStringLiteral("KritaFill/KisToolFill")) {
+        } else if(shortId==QStringLiteral("KisToolFill")) {
             addSectionChoices("sectionWhatToFill",QObject::tr("Fill area"),
                 {QObject::tr("Selection"),QObject::tr("Contiguous"),QObject::tr("Similar color")});
             addSectionChoices("sectionFillWith",QObject::tr("Source"),
@@ -279,7 +283,7 @@ public:
             addSectionChoices("sectionReference",QObject::tr("Reference"),
                 {QObject::tr("Current layer"),QObject::tr("All layers"),QObject::tr("Color labels")});
             named("checkBoxAntiAlias",QObject::tr("Anti-alias"));
-        } else if(id==QStringLiteral("KisToolEncloseAndFill")) {
+        } else if(shortId==QStringLiteral("KisToolEncloseAndFill")) {
             addSectionChoices("sectionEnclosingMethod",QObject::tr("Enclose with"),
                 {QObject::tr("Rectangle"),QObject::tr("Ellipse"),QObject::tr("Path"),
                  QObject::tr("Lasso"),QObject::tr("Brush")});
@@ -318,7 +322,7 @@ public:
                 {"object_transform_mirror_vertically",QObject::tr("Flip V")},
                 {"object_transform_reset",QObject::tr("Reset transform")}
             });
-        } else if(id==QStringLiteral("KritaShape/KisToolLazyBrush")) {
+        } else if(shortId==QStringLiteral("KisToolLazyBrush")) {
             named("btnUpdate",QObject::tr("Update colorize"));
             named("chkAutoUpdates",QObject::tr("Auto update"));
             named("chkShowKeyStrokes",QObject::tr("Strokes"));
@@ -327,7 +331,7 @@ public:
             named("intEdgeDetectionSize",QObject::tr("Edge size"));
             named("intRadius",QObject::tr("Gap"));
             named("intCleanUp",QObject::tr("Clean up"));
-        } else if(id==QStringLiteral("KritaShape/KisToolKnife")) {
+        } else if(shortId==QStringLiteral("KisToolKnife")) {
             addStripChoices(qobject_cast<KisOptionButtonStrip*>(
                 findOption("optionButtonStripToolMode")),QObject::tr("Gutter"),
                 {QObject::tr("Add"),QObject::tr("Remove")});
@@ -341,24 +345,24 @@ public:
             named("thickGapWidth",QObject::tr("Thick width"));
             named("thinGapWidth",QObject::tr("Thin width"));
             named("customGapWidth",QObject::tr("Custom width"));
-        } else if(id==QStringLiteral("KritaShape/KisToolDyna")) {
+        } else if(shortId==QStringLiteral("KisToolDyna")) {
             named("mobileDynaMass",QObject::tr("Mass"));
             named("mobileDynaDrag",QObject::tr("Drag"));
-        } else if(id==QStringLiteral("KritaShape/KisToolSmartPatch")) {
+        } else if(shortId==QStringLiteral("KisToolSmartPatch")) {
             named("accuracySlider",QObject::tr("Accuracy"));
             named("patchRadius",QObject::tr("Radius"));
-        } else if(id==QStringLiteral("KritaShape/KisToolMeasure")) {
+        } else if(shortId==QStringLiteral("KisToolMeasure")) {
             addReadout("mobileMeasureDistance",QObject::tr("Distance"));
             addReadout("mobileMeasureAngle",QObject::tr("Angle"));
             named("mobileMeasureUnits",QObject::tr("Units"));
-        } else if(id==QStringLiteral("KritaFill/KisToolGradient")) {
+        } else if(shortId==QStringLiteral("KisToolGradient")) {
             addFillResource(true);
             named("shape_combo",QObject::tr("Shape"));
             named("repeat_combo",QObject::tr("Repeat"));
             named("reverse_check",QObject::tr("Reverse"));
             named("dither_check",QObject::tr("Dither"));
             named("threshold_slider",QObject::tr("Anti-alias"));
-        } else if(id==QStringLiteral("KritaTransform/KisToolMove")) {
+        } else if(shortId==QStringLiteral("KisToolMove")) {
             addNamedChoices(QObject::tr("Move target"),{
                 {"radioSelectedLayer",QObject::tr("Selected layer")},
                 {"radioFirstLayer",QObject::tr("Layer under pointer")},
@@ -386,12 +390,12 @@ public:
             });
             native("view_toggle_painting_assistants",QObject::tr("Guides"));
             native("view_toggle_assistant_previews",QObject::tr("Preview"));
-        } else if(id==QStringLiteral("KritaSelected/KisToolColorSampler")) {
+        } else if(shortId==QStringLiteral("KisToolColorSampler")) {
             named("cmbSources",QObject::tr("Sample from"));
             named("radius",QObject::tr("Radius"));
             named("blend",QObject::tr("Blend"));
             named("cbUpdateCurrentColor",QObject::tr("Update color"));
-        } else if(id==QStringLiteral("KritaShape/KisToolMultiBrush")) {
+        } else if(shortId==QStringLiteral("KisToolMultiBrush")) {
             named("multihandTypeCombobox",QObject::tr("Symmetry"));
             named("showAxesCheckbox",QObject::tr("Show axes"));
             named("brushCountSpinBox",QObject::tr("Copies"));
