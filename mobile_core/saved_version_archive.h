@@ -136,6 +136,9 @@ public:
     static QVector<Version> list(const QString &source,
                                 const QString &rootOverride=QString())
     {
+        // Keep the version browser's file list consistent with concurrent
+        // background checkpoint commits and retention cleanup.
+        QMutexLocker guard(&lock());
         return scan(folderFor(source,rootOverride));
     }
 
