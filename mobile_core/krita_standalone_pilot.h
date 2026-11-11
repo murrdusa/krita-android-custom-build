@@ -346,7 +346,7 @@ public:
         documentMenu->addSeparator();
         documentMenu->addAction(closeAction);
         QList<QAction*> moreActions{
-            documentMenu->menuAction(),optionsAction,canvasOnlyAction
+            documentMenu->menuAction(),canvasOnlyAction
         };
         if(!viewMenu->isEmpty())
             moreActions.append(viewMenu->menuAction());
@@ -357,9 +357,9 @@ public:
         if(!filtersMenu->isEmpty())
             moreActions.append(filtersMenu->menuAction());
         moreActions.append(commandsAction);
-        moreActions.append(settingsAction);
-        moreActions.append(colorOptionsAction);
-        moreActions.append(inputAction);
+        auto *preferences=new QMenu(QObject::tr("Settings"),window);
+        preferences->addActions({settingsAction,colorOptionsAction,inputAction});
+        moreActions.append(preferences->menuAction());
         moreActions.append(exitAction);
         MobileNativeCommandLayout::Commands toolbarCommands;
         for(auto *action:nativeBridge.availableActions()) {

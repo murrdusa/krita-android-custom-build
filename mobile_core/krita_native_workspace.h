@@ -953,13 +953,9 @@ public:
             auto *layout=new QVBoxLayout(body);
             scroll->setWidget(body);
             outer->addWidget(scroll,1);
-            dialog.resize(qMin(400,m_host->width()),qMin(380,m_host->height()));
-            auto *description=new QLabel(QObject::tr(
-                "Keep these panels open while working elsewhere"),body);
-            description->setWordWrap(true);
-            layout->addWidget(description);
-            auto *layers=new QCheckBox(QObject::tr("Layers"),body);
-            auto *color=new QCheckBox(QObject::tr("Color wheel"),body);
+            dialog.resize(qMin(400,m_host->width()),qMin(520,m_host->height()));
+            auto *layers=new QCheckBox(QObject::tr("Keep Layers open"),body);
+            auto *color=new QCheckBox(QObject::tr("Keep Color Wheel open"),body);
             auto *size=new QCheckBox(QObject::tr("Show Size slider"),body);
             auto *opacity=new QCheckBox(QObject::tr("Show Opacity slider"),body);
             layers->setChecked(m_keepLayers);
@@ -970,6 +966,27 @@ public:
             layout->addWidget(color);
             layout->addWidget(size);
             layout->addWidget(opacity);
+            auto *fade=new QCheckBox(QObject::tr("Fade idle panels"),body);
+            fade->setChecked(m_fadePanels);
+            layout->addWidget(fade);
+            auto *fadeDetails=new QWidget(body);
+            auto *fadeForm=new QFormLayout(fadeDetails);
+            fadeForm->setContentsMargins(0,0,0,0);
+            auto *idleOpacity=new QSpinBox(fadeDetails);
+            idleOpacity->setRange(15,90);
+            idleOpacity->setSuffix(QStringLiteral("%"));
+            idleOpacity->setValue(m_idleOpacity);
+            idleOpacity->setMinimumHeight(44);
+            fadeForm->addRow(QObject::tr("Idle opacity"),idleOpacity);
+            auto *fadeDelay=new QSpinBox(fadeDetails);
+            fadeDelay->setRange(1,30);
+            fadeDelay->setSuffix(QObject::tr(" s"));
+            fadeDelay->setValue(m_fadeDelay);
+            fadeDelay->setMinimumHeight(44);
+            fadeForm->addRow(QObject::tr("Fade after"),fadeDelay);
+            fadeDetails->setVisible(fade->isChecked());
+            connect(fade,&QCheckBox::toggled,fadeDetails,&QWidget::setVisible);
+            layout->addWidget(fadeDetails);
             auto *opacityDrag=new MobileTouchComboBox(body);
             auto *sizeDrag=new MobileTouchComboBox(body);
             const auto fillDragChoices=[](MobileTouchComboBox *combo,
@@ -1012,16 +1029,6 @@ public:
             sampleColor->setChecked(QSettings().value(
                 MobileToolbarDrag::preference("sample"),true).toBool());
             layout->addWidget(sampleColor);
-            auto *gestureHelp=new QLabel(QObject::tr(
-                "Drag an assigned button up to increase its value or down to decrease it. "
-                "Drag Color toward the canvas to preview and pick a color."),body);
-            gestureHelp->setWordWrap(true);
-            layout->addWidget(gestureHelp);
-            auto *panelLayout=new QPushButton(QObject::tr("Panel placement and fading…"),body);
-            layout->addWidget(panelLayout);
-            connect(panelLayout,&QPushButton::clicked,&dialog,[this,&dialog]() {
-                openPanelLayout(&dialog);
-            });
             layout->addStretch(1);
             auto *done=new QPushButton(QObject::tr("Done"),&dialog);
             connect(done,&QPushButton::clicked,&dialog,&QDialog::accept);
@@ -1036,6 +1043,15 @@ public:
             settings.setValue(QStringLiteral("MobileStudio/keepColorOpen"),m_keepColor);
             settings.setValue(QStringLiteral("MobileStudio/showSizeSlider"),m_showSize);
             settings.setValue(QStringLiteral("MobileStudio/showOpacitySlider"),m_showOpacity);
+            m_fadePanels=fade->isChecked();
+            m_idleOpacity=idleOpacity->value();
+            m_fadeDelay=fadeDelay->value();
+            settings.setValue(QStringLiteral("MobileStudio/fadePanels"),m_fadePanels);
+            settings.setValue(QStringLiteral("MobileStudio/idlePanelOpacity"),m_idleOpacity);
+            settings.setValue(QStringLiteral("MobileStudio/panelFadeDelay"),m_fadeDelay);
+            if(m_fadePanels)m_fadeTimer->start();
+            else m_fadeTimer->stop();
+            for(auto *panel:fadeTargets())wakePanel(panel);
             QString selectedOpacity=opacityDrag->currentData().toString();
             QString selectedSize=sizeDrag->currentData().toString();
             // One button cannot control two independent parameters.
@@ -1228,91 +1244,6 @@ private:
     {
         return index==0?QStringLiteral("MobileStudio/sizeSlider"):
                         QStringLiteral("MobileStudio/opacitySlider");
-    }
-
-    void openPanelLayout(QWidget *parent)
-    {
-        QDialog dialog(parent);
-        dialog.setWindowTitle(QObject::tr("Panel placement and fading"));
-        auto *outer=new QVBoxLayout(&dialog);
-        auto *scroll=new QScrollArea(&dialog);
-        scroll->setWidgetResizable(true);
-        scroll->setFrameShape(QFrame::NoFrame);
-        MobileTouchScroll::configure(scroll);
-        auto *body=new QWidget(scroll);
-        auto *form=new QFormLayout(body);
-        form->setRowWrapPolicy(QFormLayout::WrapAllRows);
-        scroll->setWidget(body);
-        outer->addWidget(scroll,1);
-        const auto corner=[form,body](const QString &label,int current) {
-            auto *choice=new MobileTouchComboBox(body);
-            choice->addItems({QObject::tr("Top left"),QObject::tr("Top right"),
-                              QObject::tr("Bottom left"),QObject::tr("Bottom right")});
-            choice->setCurrentIndex(current);
-            form->addRow(label,choice);
-            return choice;
-        };
-        const auto range=[form,body](const QString &label,int value,int low,int high,
-                                     const QString &suffix=QString()) {
-            auto *field=new QSpinBox(body);
-            field->setMinimumHeight(44);
-            field->setRange(low,high);
-            field->setValue(value);
-            field->setSuffix(suffix);
-            form->addRow(label,field);
-            return field;
-        };
-        auto *colorLayout=new QPushButton(QObject::tr("Color wheel…"),body);
-        colorLayout->setMinimumHeight(44);
-        connect(colorLayout,&QPushButton::clicked,&dialog,[this]() {openColorOptions();});
-        form->addRow(colorLayout);
-        auto *layerCorner=corner(QObject::tr("Layers position"),m_layerCorner);
-        auto *layerWidth=range(QObject::tr("Layers width"),m_layerWidth,82,120);
-        auto *layerHeight=range(QObject::tr("Layers maximum height"),m_layerHeight,25,100,QStringLiteral("%"));
-        auto *sizeCorner=corner(QObject::tr("Size slider position"),m_sliderCorners[0]);
-        auto *sizeWidth=range(QObject::tr("Size slider width"),m_sliderWidths[0],120,360);
-        auto *opacityCorner=corner(QObject::tr("Opacity slider position"),m_sliderCorners[1]);
-        auto *opacityWidth=range(QObject::tr("Opacity slider width"),m_sliderWidths[1],120,360);
-        auto *fade=new QCheckBox(QObject::tr("Fade idle persistent panels"),body);
-        fade->setChecked(m_fadePanels);
-        form->addRow(fade);
-        auto *opacity=range(QObject::tr("Idle opacity"),m_idleOpacity,15,90,QStringLiteral("%"));
-        auto *delay=range(QObject::tr("Fade after"),m_fadeDelay,1,30,QObject::tr(" s"));
-        opacity->setEnabled(fade->isChecked());
-        delay->setEnabled(fade->isChecked());
-        connect(fade,&QCheckBox::toggled,opacity,&QWidget::setEnabled);
-        connect(fade,&QCheckBox::toggled,delay,&QWidget::setEnabled);
-        auto *buttons=new QDialogButtonBox(QDialogButtonBox::Save|QDialogButtonBox::Cancel,&dialog);
-        outer->addWidget(buttons);
-        connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);
-        connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
-        dialog.resize(parent->size());
-        if(dialog.exec()!=QDialog::Accepted)return;
-
-        m_layerCorner=layerCorner->currentIndex();
-        m_layerWidth=layerWidth->value();
-        m_layerHeight=layerHeight->value();
-        m_sliderCorners={sizeCorner->currentIndex(),opacityCorner->currentIndex()};
-        m_sliderWidths={sizeWidth->value(),opacityWidth->value()};
-        m_fadePanels=fade->isChecked();
-        m_idleOpacity=opacity->value();
-        m_fadeDelay=delay->value();
-        QSettings settings;
-        settings.setValue(QStringLiteral("MobileStudio/layerCorner"),m_layerCorner);
-        settings.setValue(QStringLiteral("MobileStudio/layerWidth"),m_layerWidth);
-        settings.setValue(QStringLiteral("MobileStudio/layerHeight"),m_layerHeight);
-        for(int i=0;i<2;++i) {
-            const QString key=sliderLayoutKey(i);
-            settings.setValue(key+QStringLiteral("Corner"),m_sliderCorners[i]);
-            settings.setValue(key+QStringLiteral("Width"),m_sliderWidths[i]);
-        }
-        settings.setValue(QStringLiteral("MobileStudio/fadePanels"),m_fadePanels);
-        settings.setValue(QStringLiteral("MobileStudio/idlePanelOpacity"),m_idleOpacity);
-        settings.setValue(QStringLiteral("MobileStudio/panelFadeDelay"),m_fadeDelay);
-        if(m_fadePanels)m_fadeTimer->start();
-        else m_fadeTimer->stop();
-        for(auto *panel:fadeTargets())wakePanel(panel);
-        placeDrawingOverlays();
     }
 
     std::array<QWidget*,4> fadeTargets() const

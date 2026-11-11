@@ -145,9 +145,16 @@ int main(int argc,char **argv)
            "right rail did not reserve space for floating panels");
     auto *secondMenu=secondCanvas->findChild<QMenu*>(QStringLiteral("_mobileNativeSettingsMenu"));
     verify(secondMenu,"second toolbar lost its Settings menu");
-    QAction *historyToggle=nullptr;
+    QMenu *toolbarMenu=nullptr;
     for(auto *action:secondMenu->actions())
+        if(action->text()==QStringLiteral("Toolbars"))toolbarMenu=action->menu();
+    verify(toolbarMenu,"gear menu did not group toolbar settings");
+    QAction *historyToggle=nullptr;
+    QMenu *fallbackMenu=nullptr;
+    for(auto *action:toolbarMenu->actions()) {
         if(action->text()==QStringLiteral("Toolbar color history"))historyToggle=action;
+        if(action->text()==QStringLiteral("Drawing commands"))fallbackMenu=action->menu();
+    }
     verify(historyToggle && !historyToggle->isChecked(),"history should start off");
     historyToggle->trigger();
     auto *secondBar=secondCanvas->findChild<QFrame*>(QStringLiteral("_mobileNativeToolbar"));
@@ -172,11 +179,12 @@ int main(int argc,char **argv)
     second.resize(160,280);
     QApplication::processEvents();
     verify(!side->isVisible(),"oversized rail crowded a small canvas");
+    verify(fallbackMenu && fallbackMenu->actions().contains(&brush),
+           "the gear menu lost default drawing commands");
     bool fallback=false;
-    for(auto *action:secondMenu->actions())
-        if(auto *menu=action->menu())
-            for(auto *entry:menu->actions())
-                if(entry->menu() && entry->menu()->actions().contains(&brush))fallback=true;
+    for(auto *action:toolbarMenu->actions())
+        if(action->menu() && action->text()==QStringLiteral("Side") &&
+           action->menu()->actions().contains(&brush))fallback=true;
     verify(fallback,"the gear menu lost commands from an overflow toolbar");
     second.resize(460,650);
     auto *panel=new QPushButton(QStringLiteral("Panel"),secondCanvas);

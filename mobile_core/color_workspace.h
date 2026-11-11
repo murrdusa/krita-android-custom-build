@@ -364,29 +364,6 @@ public:
                 updateForViewport();
             });
         }
-        layout->addWidget(new QLabel(i18n("Wheel size"),&dialog));
-        auto *size=new MobileTouchComboBox(&dialog);
-        size->addItems({i18n("Small"),i18n("Medium"),i18n("Large")});
-        size->setMinimumHeight(44);
-        size->setCurrentIndex(m_sizeLevel);
-        layout->addWidget(size);
-        connect(size,QOverload<int>::of(&QComboBox::currentIndexChanged),&dialog,[this](int value) {
-            m_sizeLevel=value;
-            QSettings().setValue(QStringLiteral("MobileStudio/colorWheelSize"),value);
-            updateForViewport();
-        });
-        layout->addWidget(new QLabel(i18n("Wheel position"),&dialog));
-        auto *position=new MobileTouchComboBox(&dialog);
-        position->addItems({i18n("Bottom right"),i18n("Bottom left"),
-                            i18n("Top right"),i18n("Top left")});
-        position->setMinimumHeight(44);
-        position->setCurrentIndex(m_corner);
-        layout->addWidget(position);
-        connect(position,QOverload<int>::of(&QComboBox::currentIndexChanged),&dialog,[this](int value) {
-            m_corner=value;
-            QSettings().setValue(QStringLiteral("MobileStudio/colorWheelCorner"),value);
-            updateForViewport();
-        });
         auto *advanced=new QPushButton(i18n("Advanced color…"),&dialog);
         advanced->setMinimumHeight(44);
         layout->addWidget(advanced);

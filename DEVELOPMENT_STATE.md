@@ -6,7 +6,11 @@ Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1]
 
 ## Toolbar color history
 
-The toolbar gear menu has a persistent **Toolbar color history** toggle, off by default. The strip spans each toolbar's inward edge, including custom side rails when space permits. It shares the wheel's eight-color history and records settled foreground choices, including toolbar sampling. Tap a swatch to apply it in the current Krita foreground color space. Canvas Only hides the strips with the toolbars.
+The gear menu's **Toolbars** submenu has a persistent **Toolbar color history** toggle, off by default. The strip spans each toolbar's inward edge, including custom side rails when space permits. It shares the wheel's eight-color history and records settled foreground choices, including toolbar sampling. Tap a swatch to apply it in the current Krita foreground color space. Canvas Only hides the strips with the toolbars.
+
+## Menu consolidation
+
+**Edit UI Layout** is the canvas entry for moving or resizing panels, the wheel and toolbars. Older numeric size and corner menus were removed while existing placements remain readable. Panel fading is in **Settings → Workspace Settings**. Toolbar customization, history, and fallback commands are grouped under **Toolbars**. The command editor has a single **Restore default toolbars** action.
 
 ## Reference image double-tap flip regression (November 11, 2026)
 

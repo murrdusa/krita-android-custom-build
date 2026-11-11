@@ -104,12 +104,15 @@ public:
         QObject::connect(edit,&QAction::triggered,layout,[layout]() {
             QTimer::singleShot(0,layout,[layout]() {layout->editCanvasLayout();});
         });
-        auto *commandsAction=menu->addAction(QObject::tr("Customize toolbar commands…"));
+        auto *toolbars=menu->addMenu(QObject::tr("Toolbars"));
+        layout->m_toolbarsMenu=toolbars;
+        toolbars->setStyleSheet(popupStyle);
+        auto *commandsAction=toolbars->addAction(QObject::tr("Customize toolbar commands…"));
         QObject::connect(commandsAction,&QAction::triggered,layout,[layout]() {
             QTimer::singleShot(0,layout,[layout]() {layout->editToolbar();});
         });
         if(layout->m_selectColor) {
-            auto *history=menu->addAction(QObject::tr("Toolbar color history"));
+            auto *history=toolbars->addAction(QObject::tr("Toolbar color history"));
             history->setCheckable(true);
             history->setChecked(layout->m_historyEnabled);
             QObject::connect(history,&QAction::toggled,layout,[layout](bool enabled) {
@@ -118,12 +121,11 @@ public:
                 layout->position();
             });
         }
-        auto *drawing=menu->addMenu(QObject::tr("Drawing controls"));
+        auto *drawing=toolbars->addMenu(QObject::tr("Drawing commands"));
         drawing->setStyleSheet(popupStyle);
         for(const auto &id:defaults)
             if(auto action=commands.value(id))drawing->addAction(action);
-        layout->m_toolbarMenu=menu->addMenu(QObject::tr("Custom toolbar commands"));
-        layout->m_toolbarMenu->setStyleSheet(popupStyle);
+        drawing->menuAction()->setVisible(!drawing->isEmpty());
         for(QAction *action:moreActions) {
             if(!action)continue;
             if(QMenu *submenu=action->menu())submenu->setStyleSheet(popupStyle);
@@ -651,8 +653,8 @@ private:
         populate(m_scroll,main,vertical);
         qDeleteAll(m_extra);
         m_extra.clear();
-        qDeleteAll(m_toolbarMenu->findChildren<QMenu*>(QString(),Qt::FindDirectChildrenOnly));
-        m_toolbarMenu->clear();
+        qDeleteAll(m_toolbarFallbacks);
+        m_toolbarFallbacks.clear();
         auto *canvas=static_cast<QWidget*>(parent());
         for(int i=1;i<m_bars.size();++i) {
             const auto &bar=m_bars.at(i);
@@ -675,12 +677,12 @@ private:
             populate(scroll,bar,bar.edge==Left || bar.edge==Right);
             m_extra.append(frame);
 
-            auto *fallback=m_toolbarMenu->addMenu(bar.name);
+            auto *fallback=m_toolbarsMenu->addMenu(bar.name);
+            m_toolbarFallbacks.append(fallback);
             for(const auto &id:bar.ids)
                 if(auto action=m_commands.value(id))fallback->addAction(action);
             fallback->menuAction()->setEnabled(!fallback->isEmpty());
         }
-        m_toolbarMenu->menuAction()->setVisible(!m_extra.isEmpty());
         position();
     }
 
@@ -750,8 +752,6 @@ private:
             form->addRow(label,field);
             return field;
         };
-        auto *target=spin(QObject::tr("Button size"),bar.target,44,72);
-        auto *icon=spin(QObject::tr("Icon size"),bar.icon,16,40);
         auto *spacing=spin(QObject::tr("Spacing"),bar.spacing,0,12);
         auto *opacity=spin(QObject::tr("Background opacity"),bar.opacity,0,100);
         opacity->setSuffix(QStringLiteral("%"));
@@ -764,8 +764,6 @@ private:
         if(!main) {
             if(!name->text().trimmed().isEmpty())bar.name=name->text().trimmed();
         }
-        bar.target=target->value();
-        bar.icon=icon->value();
         bar.spacing=spacing->value();
         bar.opacity=opacity->value();
     }
@@ -875,18 +873,7 @@ private:
         auto *buttons=new QDialogButtonBox(QDialogButtonBox::Save|QDialogButtonBox::Cancel,&dialog);
         auto *resetRow=new QHBoxLayout;
         layout->addLayout(resetRow);
-        addButton(resetRow,QObject::tr("Reset toolbar"),[&]() {
-            if(current==0)bars[0]=defaultBar();
-            else {
-                const auto old=bars.at(current);
-                Bar clean;
-                clean.name=old.name;
-                clean.edge=old.edge;
-                bars[current]=clean;
-            }
-            refillBars();
-        });
-        addButton(resetRow,QObject::tr("Reset layout"),[&]() {
+        addButton(resetRow,QObject::tr("Restore default toolbars"),[&]() {
             bars={defaultBar()};
             current=0;
             refillBars();
@@ -914,7 +901,8 @@ private:
     QStringList m_defaults;
     QVector<Bar> m_bars;
     QVector<QFrame*> m_extra;
-    QMenu *m_toolbarMenu=nullptr;
+    QMenu *m_toolbarsMenu=nullptr;
+    QVector<QMenu*> m_toolbarFallbacks;
     QFrame *m_toolbar=nullptr;
     QScrollArea *m_scroll=nullptr;
     QToolButton *m_restore=nullptr;
