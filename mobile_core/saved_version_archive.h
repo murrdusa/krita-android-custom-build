@@ -304,14 +304,35 @@ public:
             QStringLiteral(".kra"));
         QSaveFile destination(path);
         if(!destination.open(QIODevice::WriteOnly))return {};
+        // Reject damaged snapshots before publishing a recovery copy.
+        // Older checkpoints may legitimately lack the optional sidecar.
+        QByteArray expectedHash;
+        QFile digest(version.path+QStringLiteral(".sha256"));
+        if(digest.exists()) {
+            if(!digest.open(QIODevice::ReadOnly))return {};
+            expectedHash=digest.readAll().trimmed().toLower();
+            if(expectedHash.size()!=64 ||
+               !QRegularExpression(QStringLiteral("^[0-9a-f]{64}$"))
+                    .match(QString::fromLatin1(expectedHash)).hasMatch())
+                return {};
+        }
+        QCryptographicHash hash(QCryptographicHash::Sha256);
         QByteArray block(256*1024,Qt::Uninitialized);
         qint64 copied=0;
         qint64 count=0;
         while((count=source.read(block.data(),block.size()))>0) {
+            if(copied==0 &&
+               (count<4 || QByteArray(block.constData(),4)!=
+                   QByteArray::fromHex("504b0304")))return {};
             copied+=count;
             if(destination.write(block.constData(),count)!=count)return {};
+            hash.addData(block.constData(),count);
         }
-        return count==0 && copied>0 && destination.commit()?path:QString();
+        if(count!=0 || copied<=0 ||
+           (version.bytes>0 && copied!=version.bytes) ||
+           (!expectedHash.isEmpty() && hash.result().toHex()!=expectedHash))
+            return {};
+        return destination.commit()?path:QString();
     }
 
     static bool isRecoveryCopy(const QString &path)
