@@ -20,7 +20,7 @@
 #include <QMutex>
 #include <QMutexLocker>
 #include <QSaveFile>
-#include <QSet>
+#include <QHash>
 #include <QStandardPaths>
 #include <QStorageInfo>
 #include <QString>
@@ -311,30 +311,56 @@ public:
     {
         const QString canonical=canonicalIdentity(identity);
         if(canonical.isEmpty() || draft.isEmpty())return;
-        // A large KRA archive may take longer than the 15-second draft
-        // cadence. Collapse identical in-flight requests to avoid a
-        // growing worker backlog and unnecessary disk I/O. Foreground
-        // and background requests remain distinct so backgrounding can
-        // still force its own latest historical checkpoint.
-        const QString requestKey=draft+QLatin1Char('\n')+canonical+
-            (backgroundCheckpoint?QStringLiteral("\nbackground"):
-                                  QStringLiteral("\nperiodic"));
+        const QString requestKey=draft+QLatin1Char('\n')+canonical;
         {
-            QMutexLocker guard(&lock());
-            if(pendingDraftArchives().contains(requestKey))return;
-            pendingDraftArchives().insert(requestKey);
+            // Archive copying holds lock() across file I/O. Never acquire
+            // that mutex on the UI thread just to submit another request.
+            QMutexLocker guard(&requestLock());
+            auto &pending=pendingDraftArchives();
+            auto it=pending.find(requestKey);
+            if(it!=pending.end()) {
+                // The running job must recheck the latest published draft
+                // after it finishes. A background request upgrades the
+                // following pass so the two-minute historical spacing
+                // cannot swallow a background checkpoint.
+                ++it->generation;
+                it->background |= backgroundCheckpoint;
+                return;
+            }
+            PendingDraftRequest request;
+            request.background=backgroundCheckpoint;
+            pending.insert(requestKey,request);
         }
-        QThreadPool::globalInstance()->start(
-            [draft,identity,backgroundCheckpoint,requestKey]() {
-                // The latest recovery draft continues updating every
-                // 15 seconds. Space full historical copies at least
-                // two minutes apart while painting; allow one when
-                // backgrounded so an interrupted session has a version.
+        QThreadPool::globalInstance()->start([draft,identity,requestKey]() {
+            for(;;) {
+                quint64 generation=0;
+                bool background=false;
+                {
+                    QMutexLocker guard(&requestLock());
+                    auto it=pendingDraftArchives().find(requestKey);
+                    if(it==pendingDraftArchives().end())return;
+                    generation=it->generation;
+                    background=it->background;
+                    it->background=false;
+                }
+                // Serialize KRA copies through the archive's existing
+                // lock. Keep the request mutex free during disk I/O.
                 snapshotFrom(draft,identity,QString(),
-                             backgroundCheckpoint?0:2LL*60*1000);
-                QMutexLocker guard(&lock());
-                pendingDraftArchives().remove(requestKey);
-            });
+                             background?0:2LL*60*1000);
+                {
+                    QMutexLocker guard(&requestLock());
+                    auto &pending=pendingDraftArchives();
+                    auto it=pending.find(requestKey);
+                    if(it==pending.end())return;
+                    if(it->generation==generation) {
+                        pending.erase(it);
+                        return;
+                    }
+                }
+                // A newer completion or app background event occurred
+                // during I/O: process that latest state in this worker.
+            }
+        });
     }
 
     // Move history created while an untitled drawing was still a draft
@@ -452,11 +478,21 @@ private:
         return mutex;
     }
 
-    static QSet<QString> &pendingDraftArchives()
+    struct PendingDraftRequest {
+        quint64 generation=1;
+        bool background=false;
+    };
+
+    static QMutex &requestLock()
     {
-        // Always access under lock(). Entries are released after their
-        // worker completes, including when snapshotFrom returns false.
-        static QSet<QString> requests;
+        static QMutex mutex;
+        return mutex;
+    }
+
+    static QHash<QString,PendingDraftRequest> &pendingDraftArchives()
+    {
+        // Protected only by requestLock(), never by the archive I/O lock.
+        static QHash<QString,PendingDraftRequest> requests;
         return requests;
     }
 
