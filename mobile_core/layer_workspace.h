@@ -597,8 +597,25 @@ public:
         if(!isVisible() || m_deleteImage || m_reorderPending || m_clipBusy ||
            m_clipPropertyPending || m_mouseNode ||
            !m_touches.isEmpty())return;
-        if(engineSignature()!=m_signature)reload();
-        else updateVisibleLayerThumbnails();
+        if(engineSignature()!=m_signature) {
+            reload();
+        } else {
+            // Painting changes a layer's projection without changing the
+            // structural signature. Refresh the active preview at a bounded
+            // interval rather than freezing it until the next tree rebuild.
+            // Reuse the host's existing refresh cadence (no extra timer).
+            const qint64 now=QDateTime::currentMSecsSinceEpoch();
+            if(now-m_lastActiveThumbnailRefresh>=2500) {
+                m_lastActiveThumbnailRefresh=now;
+                for(int i=0;i<m_nodes.size();++i) {
+                    if(m_nodes.at(i)==m_active) {
+                        m_thumbnailReady[i]=false;
+                        break;
+                    }
+                }
+            }
+            updateVisibleLayerThumbnails();
+        }
     }
     void refreshNow() {
         if(!m_reorderPending && !m_clipBusy &&
@@ -2992,6 +3009,7 @@ private:
     QVector<int> m_rowDepths;
     QSet<const KisNode*> m_clipBases;
     QVector<bool> m_thumbnailReady;
+    qint64 m_lastActiveThumbnailRefresh=0;
     KisNodeList m_selected;
     KisNodeSP m_active;
     bool m_clipBusy=false;
