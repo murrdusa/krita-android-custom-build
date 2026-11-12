@@ -168,9 +168,14 @@ public:
                             MobileKritaNativeSaveHost *saver)
     {
         if(!m_host || !m_root || !m_manager || !m_actions ||
-           !m_root->openViews().isEmpty() ||
            !document || !saver || !m_host->isVisible() ||
            !KisPart::instance())return nullptr;
+        // The native view stack supports multiple open documents. The
+        // old single-view guard prevented a second canvas from ever
+        // attaching, despite the manager already routing tab activation.
+        // Refuse only duplicate attachments of the *same* document.
+        for(const auto &existing:m_root->openViews())
+            if(existing.document==document)return nullptr;
         bool inPart=false;
         for(const auto &registered : KisPart::instance()->documents()) {
             if(registered==document) {inPart=true;break;}
