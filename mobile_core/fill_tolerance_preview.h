@@ -56,8 +56,11 @@ public:
     {
         if(m_threshold==value)return;
         m_threshold=value;
+        // A previous worker's region belongs to a different tolerance.
+        // Hide that mask rather than falsely presenting it as the new one.
+        m_mask=QImage();
         update();
-        if(m_source && !m_window.isEmpty() && !m_running && !m_delay.isActive())
+        if(m_source && !m_window.isEmpty() && !m_running)
             m_delay.start();
     }
 
@@ -135,6 +138,14 @@ private:
                 fill.setRegionFillingBoundaryColor(options.boundaryColor);
             }
             const auto mask=fill.createFloodSelection(seed.x(),seed.y(),source,selected);
+            if(!mask) {
+                QMetaObject::invokeMethod(qApp,[preview,threshold]() {
+                    if(!preview)return;
+                    preview->m_running=false;
+                    if(threshold!=preview->m_threshold)preview->m_delay.start();
+                },Qt::QueuedConnection);
+                return;
+            }
             QByteArray coverage(size.width()*size.height(),Qt::Uninitialized);
             mask->readBytes(reinterpret_cast<quint8*>(coverage.data()),rect);
             QImage overlay(size,QImage::Format_ARGB32_Premultiplied);
@@ -151,7 +162,7 @@ private:
             QMetaObject::invokeMethod(qApp,[preview,overlay,threshold]() {
                 if(!preview)return;
                 preview->m_running=false;
-                if(threshold==preview->m_threshold || preview->m_mask.isNull()) {
+                if(threshold==preview->m_threshold) {
                     preview->m_mask=overlay;
                     preview->update();
                 }
