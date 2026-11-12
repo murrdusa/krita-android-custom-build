@@ -59,6 +59,9 @@
 #include <KoToolManager.h>
 #include "kis_canvas2.h"
 #include "kis_image.h"
+#include "kis_selection.h"
+#include "kis_config.h"
+#include "kis_config_notifier.h"
 #include "kis_paint_device.h"
 #include "kis_coordinates_converter.h"
 #include <KisReferenceImagesLayer.h>
@@ -92,6 +95,14 @@ public:
         : QObject(host),m_host(host),m_engine(services,manager)
     {
         setObjectName(QStringLiteral("_mobileNativeEngineWorkspaces"));
+        // Krita 6 shows a floating Selection Action Bar automatically.
+        // Mobile Studio provides a dedicated compact Deselect control and
+        // grouped selection actions instead; suppress the desktop bar.
+        {
+            KisConfig config;
+            config.setSelectionActionBar(false);
+            KisConfigNotifier::instance()->notifyConfigChanged();
+        }
         const QSettings settings;
         m_keepLayers=settings.value(QStringLiteral("MobileStudio/keepLayersOpen"),true).toBool();
         m_keepColor=settings.value(QStringLiteral("MobileStudio/keepColorOpen"),false).toBool();
@@ -163,6 +174,7 @@ public:
         QObject::connect(poll,&QTimer::timeout,this,[this]() {
             if(m_layers && m_layers->isVisible())
                 m_layers->refreshFromEngine();
+            syncSelectionDismissButton();
         });
         poll->start();
     }
@@ -1134,6 +1146,7 @@ public:
             hidePanels();
             return;
         }
+        syncSelectionDismissButton();
         syncLayersVisibility();
         updateBrushSliders();
         syncContextToolBar();
@@ -1161,6 +1174,7 @@ public:
         if(m_textFormatting)m_textFormatting->hide();
         if(m_color)m_color->hide();
         if(m_contextToolBar)m_contextToolBar->hide();
+        if(m_selectionDismiss)m_selectionDismiss->hide();
     }
 
     void setCanvasOnly(bool enabled)
@@ -1171,6 +1185,7 @@ public:
             syncLayersVisibility();
             updateBrushSliders();
             syncContextToolBar();
+            syncSelectionDismissButton();
         }
     }
 
@@ -1506,6 +1521,45 @@ private:
             if(m_brushModes.at(slot))m_brushModes.at(slot)->setChecked(slot==active);
     }
 
+    // A tiny always-available escape hatch from selections, independent
+    // of the currently active tool. Preserve Krita's native Undo behavior.
+    void syncSelectionDismissButton()
+    {
+        QWidget *canvas=m_host?m_host->nativeCanvas():nullptr;
+        const auto *view=m_engine.manager();
+        const auto selection=view?view->selection():KisSelectionSP();
+        const bool visible=canvas && !m_canvasOnly && m_engine.hasDocument() &&
+                           selection && !selection->selectedRect().isEmpty();
+        if(!visible) {
+            if(m_selectionDismiss && m_selectionDismiss->isVisible()) {
+                m_selectionDismiss->hide();
+                scheduleOverlayPlacement();
+            }
+            return;
+        }
+        if(!m_selectionDismiss) {
+            m_selectionDismiss=new QToolButton(canvas);
+            m_selectionDismiss->setObjectName(QStringLiteral("mobileDeselectShortcut"));
+            m_selectionDismiss->setText(tr("Deselect"));
+            m_selectionDismiss->setAccessibleName(tr("Deselect current selection"));
+            m_selectionDismiss->setToolTip(m_selectionDismiss->accessibleName());
+            m_selectionDismiss->setFixedSize(85,36);
+            m_selectionDismiss->setStyleSheet(QStringLiteral(
+                "QToolButton#mobileDeselectShortcut{background:rgba(35,38,44,215);"
+                "color:#f1f2f5;border:1px solid #818894;border-radius:9px;"
+                "font-size:12px;padding:1px 4px;}"));
+            connect(m_selectionDismiss,&QToolButton::clicked,this,[this]() {
+                if(auto *action=m_engine.action("deselect");
+                   action && action->isEnabled())action->trigger();
+                QTimer::singleShot(0,this,[this]() {syncSelectionDismissButton();});
+            });
+        }
+        if(!m_selectionDismiss->isVisible()) {
+            m_selectionDismiss->show();
+            scheduleOverlayPlacement();
+        }
+    }
+
     void syncContextToolBar()
     {
         if(m_canvasLayoutEditing)return;
@@ -1548,7 +1602,7 @@ private:
             return;
         }
         if(!m_contextToolBar) {
-            m_contextToolBar=new MobileContextToolBar(canvas);
+            m_contextToolBar=new MobileContextToolBar(canvas,m_optionsAction);
             m_contextToolBar->chooseTool=[this]() {chooseTool();};
             m_contextToolBar->chooseFillResource=[this](bool gradient) {
                 chooseFillResource(gradient);
@@ -1845,6 +1899,12 @@ private:
                     layerAnchor.center().y()<canvasBounds.center().y():
                     layerAnchor.center().x()<canvasBounds.center().x());
         }
+        if(m_selectionDismiss && m_selectionDismiss->isVisible()) {
+            if(m_layers && m_layers->isVisible())obstacles.append(m_layers->geometry());
+            if(m_color && m_color->isVisible())obstacles.append(m_color->geometry());
+            const QRect preferred(canvasBounds.right()-88,canvasBounds.top()+5,85,36);
+            placePanel(m_selectionDismiss,preferred,canvasBounds,obstacles,QSize(85,36));
+        }
 
     }
 
@@ -1852,6 +1912,7 @@ private:
     {
         if(m_layers && m_layers->isVisible())m_layers->raise();
         if(m_showLayers && m_showLayers->isVisible())m_showLayers->raise();
+        if(m_selectionDismiss && m_selectionDismiss->isVisible())m_selectionDismiss->raise();
         for(QWidget *panel:{static_cast<QWidget*>(m_brush.data()),
                             static_cast<QWidget*>(m_opacityStrip.data()),
                             static_cast<QWidget*>(m_color.data()),
@@ -1914,6 +1975,7 @@ private:
     QPointer<KritaMobileLayersPanel> m_layers;
     QPointer<MobileColorWorkspace> m_color;
     QPointer<MobileContextToolBar> m_contextToolBar;
+    QPointer<QToolButton> m_selectionDismiss;
     QPointer<QAction> m_volumeUndo;
     QPointer<QAction> m_volumeRedo;
     QPointer<MobileToolbarDragPreview> m_toolbarPreview;
