@@ -35,6 +35,7 @@
 #include <QStandardItemModel>
 #include <QTimer>
 #include <QToolButton>
+#include <QStyle>
 #include <QVBoxLayout>
 #include <functional>
 #include <initializer_list>
@@ -160,27 +161,8 @@ public:
             shortId==QStringLiteral("KisToolSelectPolygonal") ||
             shortId==QStringLiteral("KisToolSelectPath") ||
             shortId==QStringLiteral("KisToolSelectMagnetic");
-        if(finishablePath) {
-            const QPointer<KoToolBase> path=nativeTool;
-            connect(button(QObject::tr("Finish")),&QToolButton::clicked,this,[this,path]() {
-                if(path && m_nativeTool==path.data())path->requestStrokeEnd();
-            });
-            connect(button(QObject::tr("Cancel")),&QToolButton::clicked,this,[this,path]() {
-                if(path && m_nativeTool==path.data())path->requestStrokeCancellation();
-            });
-        }
-        if(shortId.startsWith(QStringLiteral("KisToolSelect")) ||
-           shortId==QStringLiteral("KisToolTransform")) {
-            // Dismiss an incomplete native selection/transform gesture.
-            // Do not implement a separate undo stack or replace Krita's
-            // own Apply/Reset actions.
-            const QPointer<KoToolBase> cancellable=nativeTool;
-            auto *cancel=button(QObject::tr("Cancel"));
-            connect(cancel,&QToolButton::clicked,this,[this,cancellable]() {
-                if(cancellable && cancellable==m_nativeTool)
-                    cancellable->requestStrokeCancellation();
-            });
-        }
+        // Finish/Cancel and native Apply are appended after ordinary
+        // settings so they remain adjacent at the right end of the row.
         if(shortId.startsWith(QStringLiteral("KisToolSelect"))) {
             addSectionChoices("sectionAction",QObject::tr("Combine"),{
                 QObject::tr("Replace"),QObject::tr("Intersect"),QObject::tr("Add"),
@@ -239,10 +221,8 @@ public:
             // can differ in this independent, main-window-free host.
             // Call exactly the same native slots as the working gear panel.
             addTransformModeMenu();
-            if(auto *box=qobject_cast<QDialogButtonBox*>(findOption("buttonBox"))) {
-                addOption(box->button(QDialogButtonBox::Apply),QObject::tr("Done"));
+            if(auto *box=qobject_cast<QDialogButtonBox*>(findOption("buttonBox")))
                 addOption(box->button(QDialogButtonBox::Reset),QObject::tr("Reset"));
-            }
             const auto modeOption=[this](const char *name,const QString &label) {
                 QPointer<QWidget> source=findOption(name);
                 const int before=m_row->count();
@@ -256,11 +236,15 @@ public:
             modeOption("liquifySizeSlider",QObject::tr("Size"));
             modeOption("liquifyAmountSlider",QObject::tr("Strength"));
             modeOption("chkShowControlPoints",QObject::tr("Mesh points"));
-            addNamedChoices(QObject::tr("Adjust"),{
-                {"flipXButton",QObject::tr("Flip H")},
-                {"flipYButton",QObject::tr("Flip V")},
-                {"rotateCCWButton",QObject::tr("Rotate left")},
-                {"rotateCWButton",QObject::tr("Rotate right")}
+            // Keep related modes nested instead of flattening four
+            // desktop-style options into separate toolbar buttons.
+            addNamedChoices(QObject::tr("Flip"),{
+                {"flipXButton",QObject::tr("Horizontal")},
+                {"flipYButton",QObject::tr("Vertical")}
+            });
+            addNamedChoices(QObject::tr("Rotate"),{
+                {"rotateCCWButton",QObject::tr("Left")},
+                {"rotateCWButton",QObject::tr("Right")}
             });
         } else if(shortId==QStringLiteral("KisToolFill")) {
             addSectionChoices("sectionWhatToFill",QObject::tr("Fill area"),
@@ -405,6 +389,32 @@ public:
         named("cmbOutline",QObject::tr("Outline"));
         named("cmbFill",QObject::tr("Fill"));
         if(m_row->count()==0)addCommonOptions();
+
+        // Use native in-progress stroke transactions. End actions always
+        // stay at the end of the compact subtool strip.
+        if(finishablePath) {
+            const QPointer<KoToolBase> path=nativeTool;
+            auto *cancel=button(QObject::tr("Cancel"));
+            connect(cancel,&QToolButton::clicked,this,[this,path]() {
+                if(path && m_nativeTool==path.data())path->requestStrokeCancellation();
+            });
+            auto *finish=button(QObject::tr("Done"));
+            connect(finish,&QToolButton::clicked,this,[this,path]() {
+                if(path && m_nativeTool==path.data())path->requestStrokeEnd();
+            });
+        } else if(shortId.startsWith(QStringLiteral("KisToolSelect")) ||
+                  shortId==QStringLiteral("KisToolTransform")) {
+            const QPointer<KoToolBase> cancellable=nativeTool;
+            auto *cancel=button(QObject::tr("Cancel"));
+            connect(cancel,&QToolButton::clicked,this,[this,cancellable]() {
+                if(cancellable && cancellable==m_nativeTool)
+                    cancellable->requestStrokeCancellation();
+            });
+        }
+        if(shortId==QStringLiteral("KisToolTransform")) {
+            if(auto *box=qobject_cast<QDialogButtonBox*>(findOption("buttonBox")))
+                addOption(box->button(QDialogButtonBox::Apply),QObject::tr("Done"));
+        }
         // Keep critical native transaction controls easy to spot.
         for(int i=0;i<m_row->count();++i) {
             auto *entry=m_row->itemAt(i);
