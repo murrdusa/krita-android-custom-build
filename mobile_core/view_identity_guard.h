@@ -60,7 +60,20 @@ public:
         int activeCount=0;
         for(const View &v:views)if(v.active)++activeCount;
         if(activeCount>1)return {};
-        if(activeCount==1)return uniqueActive(views);
+        if(activeCount==1) {
+            // The native Qt stack can switch its current widget before
+            // KisViewManager updates its active document. During that
+            // transition, never close whichever view happens to be
+            // visually selected if the engine still reports another
+            // canvas (or no document) as current.
+            if(!currentDocument)return {};
+            const auto active=uniqueActive(views);
+            for(const View &v:views) {
+                if(v.active && v.nativeView==active &&
+                   v.document==currentDocument)return active;
+            }
+            return {};
+        }
         QPointer<QObject> chosen;
         if(currentDocument) {
             for(const View &v:views) {
