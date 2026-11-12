@@ -2444,6 +2444,12 @@ private:
     void updateRows()
     {
         updateLayerName();
+        // Avoid repolishing every QWidget on routine selection updates.
+        // Qt setStyleSheet() invalidates style/layout even for identical
+        // strings; only changed rows need that work.
+        const auto setStyleIfChanged=[](QWidget *widget,const QString &style) {
+            if(widget->styleSheet()!=style)widget->setStyleSheet(style);
+        };
         for(int i=0;i<m_nodes.size();++i) {
             auto *item=m_items.value(i,nullptr);
             if(!item)continue;
@@ -2463,20 +2469,20 @@ private:
                     group?QStringLiteral("#74acda"):
                     m_rowDepths.value(i)>0?QStringLiteral("#607c92"):
                                         QStringLiteral("#536879");
-                frame->setStyleSheet(QStringLiteral(
+                setStyleIfChanged(frame,QStringLiteral(
                     "QFrame#mobileLayerTileRow{background:%1;"
                     "border-left:%2px solid %3;border-radius:5px;}")
                     .arg(background.name()).arg(clipped?4:1).arg(edge));
             }
             if(QToolButton *thumb=m_rowButtons.value(i).data()) {
                 if(group) {
-                    thumb->setStyleSheet(active?
+                    setStyleIfChanged(thumb,active?
                         "QToolButton{background:#365c78;border:2px solid #f1949d;border-radius:6px;}":
                         "QToolButton{background:#243848;border:1px solid #577d96;border-radius:6px;}");
                 } else if(mask) {
                     // Type text is deliberately visible rather than an
                     // unloaded thumbnail; preserve selection highlights.
-                    thumb->setStyleSheet(active?
+                    setStyleIfChanged(thumb,active?
                         "QToolButton{background:#795737;color:#fff5dc;"
                         "border:3px solid #ec7683;border-radius:5px;"
                         "font-size:10px;font-weight:bold;}":
@@ -2488,7 +2494,7 @@ private:
                         "border:2px solid #e7ad67;border-radius:5px;"
                         "font-size:10px;font-weight:bold;}");
                 } else {
-                    thumb->setStyleSheet(active?
+                    setStyleIfChanged(thumb,active?
                         "QToolButton{background:#808b97;color:white;"
                         "border:3px solid #ec7683;border-radius:5px;}":
                         highlighted?
