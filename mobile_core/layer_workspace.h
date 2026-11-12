@@ -2448,10 +2448,14 @@ private:
         if(!m_layerName)return;
         const QString name=editingGlobalSelection(manager())?i18n("Editing selection"):
             m_active?m_active->name():QString();
-        m_layerName->setText(m_layerName->fontMetrics().elidedText(
-            name,Qt::ElideRight,qMax(0,(m_horizontalRail?height():width())-14)));
-        m_layerName->setToolTip(name);
-        m_layerName->setAccessibleName(name);
+        const QString display=m_layerName->fontMetrics().elidedText(
+            name,Qt::ElideRight,qMax(0,(m_horizontalRail?height():width())-14));
+        // The layer rail refreshes during painting. Avoid spurious Qt
+        // label updates and accessibility events while nothing changed.
+        if(m_layerName->text()!=display)m_layerName->setText(display);
+        if(m_layerName->toolTip()!=name)m_layerName->setToolTip(name);
+        if(m_layerName->accessibleName()!=name)
+            m_layerName->setAccessibleName(name);
     }
 
     void resizeEvent(QResizeEvent *event) override
