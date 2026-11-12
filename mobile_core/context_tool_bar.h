@@ -50,7 +50,7 @@
 class MobileContextToolBar final : public QFrame
 {
 public:
-    explicit MobileContextToolBar(QWidget *parent) : QFrame(parent)
+    explicit MobileContextToolBar(QWidget *parent,QAction *options) : QFrame(parent)
     {
         setObjectName(QStringLiteral("mobileContextToolBar"));
         setStyleSheet(QStringLiteral(
@@ -88,8 +88,22 @@ public:
         m_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         MobileTouchScroll::configure(m_scroll);
         layout->addWidget(m_scroll,1);
+        // Restore the native-options shortcut as requested. The active
+        // tool chip remains the separate All Tools picker.
+        if(options) {
+            auto *gear=new QToolButton(this);
+            gear->setDefaultAction(options);
+            gear->setToolButtonStyle(Qt::ToolButtonIconOnly);
+            gear->setIconSize(QSize(20,20));
+            gear->setFixedSize(36,36);
+            gear->setAccessibleName(QObject::tr("Full Krita Tool Options"));
+            gear->setToolTip(gear->accessibleName());
+            layout->addWidget(gear);
+        }
         m_sync=new QTimer(this);
-        m_sync->setInterval(180);
+        // Native transform updates can be expensive; never poll the entire
+        // options widget tree at nearly six times per second.
+        m_sync->setInterval(400);
         connect(m_sync,&QTimer::timeout,this,[this]() {
             if(isVisible())refreshControls();
         });
@@ -104,7 +118,8 @@ public:
                  const MobileEngineBridge &engine,KoToolBase *nativeTool)
     {
         if(m_id==id && m_options==options && m_nativeTool==nativeTool) {
-            refreshControls();
+            // No need to walk all native settings on every workspace sync;
+            // the visibility-scoped timer updates changing controls.
             return;
         }
         m_id=id;
@@ -241,10 +256,6 @@ public:
             addNamedChoices(QObject::tr("Flip"),{
                 {"flipXButton",QObject::tr("Horizontal")},
                 {"flipYButton",QObject::tr("Vertical")}
-            });
-            addNamedChoices(QObject::tr("Rotate"),{
-                {"rotateCCWButton",QObject::tr("Left")},
-                {"rotateCWButton",QObject::tr("Right")}
             });
         } else if(shortId==QStringLiteral("KisToolFill")) {
             addSectionChoices("sectionWhatToFill",QObject::tr("Fill area"),
@@ -402,18 +413,15 @@ public:
             connect(finish,&QToolButton::clicked,this,[this,path]() {
                 if(path && m_nativeTool==path.data())path->requestStrokeEnd();
             });
-        } else if(shortId.startsWith(QStringLiteral("KisToolSelect")) ||
-                  shortId==QStringLiteral("KisToolTransform")) {
-            const QPointer<KoToolBase> cancellable=nativeTool;
-            auto *cancel=button(QObject::tr("Cancel"));
-            connect(cancel,&QToolButton::clicked,this,[this,cancellable]() {
-                if(cancellable && cancellable==m_nativeTool)
-                    cancellable->requestStrokeCancellation();
-            });
         }
         if(shortId==QStringLiteral("KisToolTransform")) {
-            if(auto *box=qobject_cast<QDialogButtonBox*>(findOption("buttonBox")))
+            // Use the native transform editor's Cancel button if present.
+            // A generic requestStrokeCancellation() after the operation
+            // commits is usually a no-op and should not be presented.
+            if(auto *box=qobject_cast<QDialogButtonBox*>(findOption("buttonBox"))) {
+                addOption(box->button(QDialogButtonBox::Cancel),QObject::tr("Cancel"));
                 addOption(box->button(QDialogButtonBox::Apply),QObject::tr("Done"));
+            }
         }
         // Keep critical native transaction controls easy to spot.
         for(int i=0;i<m_row->count();++i) {
