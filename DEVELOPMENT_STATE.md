@@ -62,7 +62,7 @@ The compact Layers rail grows to fit its visible tiles until it reaches a toolba
 
 ## Toolbar color history
 
-The gear menu's **Toolbars** submenu has a persistent **Toolbar color history** toggle, off by default. The strip spans each toolbar's inward edge, including custom side rails when space permits. It shares the wheel's eight-color history and records settled foreground choices, including toolbar sampling. Tap a swatch to apply it in the current Krita foreground color space. Canvas Only hides the strips with the toolbars.
+The gear menu's **Toolbars** submenu has a persistent **Toolbar color history** toggle, on by default. The strip spans each toolbar's inward edge, including custom side rails when space permits. It shares the wheel’s eight-color history of completed brush strokes. Tap a swatch to apply it in the current Krita foreground color space. Canvas Only hides the strips with the toolbars.
 
 ## Follow-up UI debloat (November 11; verified source / build pending)
 
@@ -80,7 +80,7 @@ User reported **double-tap-to-flip stopped working again**. The legacy `apply_re
 
 ## Toolbar drag previews and direct layout editing
 
-Vertical brush-size and opacity drags are opt-in under **Workspace Settings**. Moving the pointer updates a temporary value overlay and releasing applies one native brush-property change. Color sampling remains enabled by default and shows a live ring around the pointer, with the final color sampled on release. Toolbar color history uses a 22 px strip. The separate toolbar shortcut slot has been retired.
+Brush-size and opacity drags are enabled by default and configurable under **Workspace Settings**. Moving the pointer updates a temporary value overlay and releasing applies one native brush-property change. Color sampling remains enabled by default and shows a live ring around the pointer, with the final color sampled on release. Toolbar color history uses a 22 px strip. The separate toolbar shortcut slot has been retired.
 
 **Edit UI Layout** opens an on-canvas editing overlay for visible toolbars and panels. Drag a preview to move it, drag a corner to resize proportionally, and use **Rotate toolbar** after selecting a toolbar. Borders and other elements provide snap targets. **Done** saves relative placements and **Cancel** restores the prior layout. **Customize toolbar commands** is the separate command editor. Verify finger and S Pen gestures and saved placements after folding on the Fold 6.
 

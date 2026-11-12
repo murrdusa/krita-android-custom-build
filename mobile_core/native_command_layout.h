@@ -250,14 +250,17 @@ private:
 
     void switchWorkspace()
     {
-        if(m_editor || QApplication::activeModalWidget() ||
-           QGuiApplication::inputMethod()->isVisible())return;
+        if(m_editor || QGuiApplication::inputMethod()->isVisible())return;
         const auto *canvas=static_cast<QWidget*>(parent());
         const QSize size=canvas->size();
         if(!canvas->isVisible() || size.width()<120 || size.height()<120)return;
         const bool portrait=MobileWorkspaceProfiles::portraitDefault(size,m_portrait);
         if(!m_profile.isEmpty() && MobileWorkspaceProfiles::matches(size,m_profileSize) &&
            portrait==m_portrait)return;
+        if(QApplication::activeModalWidget()) {
+            m_workspaceTimer.start();
+            return;
+        }
         m_profileSize=size;
         m_portrait=portrait;
         QSettings settings;
@@ -269,7 +272,8 @@ private:
             const QString studio=QStringLiteral("MobileStudio/");
             for(const auto *suffix:{"toolbars","primaryToolbarCommands","canvasPanelPlacements",
                                     "layersHorizontal","layerCorner","layerWidth","layerHeight",
-                                    "layersCollapsed"}) {
+                                    "layersCollapsed","showBrushSliders","showSizeSlider","showOpacitySlider",
+                                    "sizeSliderCorner","sizeSliderWidth","opacitySliderCorner","opacitySliderWidth"}) {
                 const QString key=QString::fromLatin1(suffix);
                 if(!settings.contains(studio+key))continue;
                 settings.setValue(prefix+key,settings.value(studio+key));
@@ -300,7 +304,7 @@ private:
                 bar.ids=data.value(QStringLiteral("commands")).toStringList();
                 bar.edge=Edge(qBound(0,data.value(QStringLiteral("edge")).toInt(),3));
                 bar.alignment=qBound(0,data.value(QStringLiteral("alignment")).toInt(),2);
-                bar.target=qBound(44,data.value(QStringLiteral("target"),44).toInt(),72);
+                bar.target=qBound(30,data.value(QStringLiteral("target"),44).toInt(),72);
                 bar.icon=qBound(16,data.value(QStringLiteral("icon"),24).toInt(),40);
                 bar.spacing=qBound(0,data.value(QStringLiteral("spacing"),1).toInt(),12);
                 bar.opacity=qBound(0,data.value(QStringLiteral("opacity"),66).toInt(),100);
@@ -527,7 +531,7 @@ private:
             const auto name=QStringLiteral("_mobileToolbarColorHistory");
             const auto *history=frame->findChild<QFrame*>(name,Qt::FindDirectChildrenOnly);
             const int strip=history && history->isVisible()?historyThickness:0;
-            const int minimumBreadth=48+strip;
+            const int minimumBreadth=34+strip;
             const int minimumLength=index==0?100:48;
             targets.append({frame,vertical?QSize(minimumBreadth,minimumLength):
                                            QSize(minimumLength,minimumBreadth),true,
@@ -535,7 +539,7 @@ private:
                     const QRect bounds=canvas->rect().adjusted(2,2,-2,-2);
                     auto &bar=m_bars[index];
                     const bool finalVertical=vertical!=rotate;
-                    const int target=qBound(44,(finalVertical?rect.width():rect.height())-4-strip,72);
+                    const int target=qBound(30,(finalVertical?rect.width():rect.height())-4-strip,72);
                     bar.icon=qBound(16,qRound(bar.icon*target/qreal(bar.target)),40);
                     bar.target=target;
                     bar.edge=finalVertical?(rect.center().x()<bounds.center().x()?Left:Right):

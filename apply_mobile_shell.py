@@ -1227,6 +1227,7 @@ install(FILES org.kde.krita.desktop''',
         QSettings touchSettings;
         touchSettings.beginGroup(QStringLiteral("MobileStudio/touchGestures"));
         bool profileHasDoubleTap = false;
+        bool profileHasCustomTwoFingerTap = false;
 #endif
 """+pinch_source[migration_end:]
     pinch_source=one(pinch_source,
@@ -1237,7 +1238,11 @@ install(FILES org.kde.krita.desktop''',
                 if (touchSettings.contains(QString::number(shortcut->gesture()))) break;
                 if (shortcut->gesture()==KisShortcutConfiguration::OneFingerTap &&
                     shortcut->action()->id()==QStringLiteral("Show Popup Widget")) break;
-                if (shortcut->gesture()==KisShortcutConfiguration::TwoFingerTap) break;
+                if (shortcut->gesture()==KisShortcutConfiguration::TwoFingerTap) {
+                    if (shortcut->action()->id()==QStringLiteral("Touch Gestures") &&
+                        shortcut->mode()==KisTouchGestureAction::UndoActionShortcut) break;
+                    profileHasCustomTwoFingerTap=true;
+                }
                 profileHasDoubleTap |= shortcut->gesture() == KisShortcutConfiguration::OneFingerDoubleTap;
 #endif
                 if (!d->addNativeGestureShortcut""","apply Studio overrides to gesture bindings only")
@@ -1251,7 +1256,7 @@ install(FILES org.kde.krita.desktop''',
             QStringList binding = touchSettings.value(key).toStringList();
             if (!touchSettings.contains(key) &&
                 ((gesture == KisShortcutConfiguration::OneFingerDoubleTap && !profileHasDoubleTap) ||
-                 gesture == KisShortcutConfiguration::TwoFingerTap)) {
+                 (gesture == KisShortcutConfiguration::TwoFingerTap && !profileHasCustomTwoFingerTap))) {
                 binding = QStringList{QStringLiteral("Touch Gestures"),
                            QString::number(KisTouchGestureAction::MirrorView)};
             }

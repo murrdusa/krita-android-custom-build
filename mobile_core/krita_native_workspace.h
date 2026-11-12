@@ -97,11 +97,6 @@ public:
         const bool oldSliders=settings.value(QStringLiteral("MobileStudio/showBrushSliders"),false).toBool();
         m_showSize=settings.value(QStringLiteral("MobileStudio/showSizeSlider"),oldSliders).toBool();
         m_showOpacity=settings.value(QStringLiteral("MobileStudio/showOpacitySlider"),oldSliders).toBool();
-        for(int i=0;i<2;++i) {
-            const QString key=sliderLayoutKey(i);
-            m_sliderCorners[i]=qBound(0,settings.value(key+QStringLiteral("Corner"),2).toInt(),3);
-            m_sliderWidths[i]=qBound(120,settings.value(key+QStringLiteral("Width"),168).toInt(),360);
-        }
         m_fadePanels=settings.value(QStringLiteral("MobileStudio/fadePanels"),true).toBool();
         m_idleOpacity=qBound(15,settings.value(QStringLiteral("MobileStudio/idlePanelOpacity"),30).toInt(),90);
         m_fadeDelay=qBound(1,settings.value(QStringLiteral("MobileStudio/panelFadeDelay"),3).toInt(),30);
@@ -263,12 +258,14 @@ public:
         const QSettings settings;
         m_panelPlacements=settings.value(prefix+QStringLiteral("canvasPanelPlacements")).toMap();
         m_layersHorizontal=settings.value(prefix+QStringLiteral("layersHorizontal"),portrait).toBool();
-        const bool oldSliders=settings.value(QStringLiteral("MobileStudio/showBrushSliders"),false).toBool();
-        const auto sliderVisible=[&](const QString &key) {
-            return settings.value(prefix+key,settings.value(QStringLiteral("MobileStudio/")+key,oldSliders)).toBool();
-        };
-        m_showSize=sliderVisible(QStringLiteral("showSizeSlider"));
-        m_showOpacity=sliderVisible(QStringLiteral("showOpacitySlider"));
+        const bool oldSliders=settings.value(prefix+QStringLiteral("showBrushSliders"),false).toBool();
+        m_showSize=settings.value(prefix+QStringLiteral("showSizeSlider"),oldSliders).toBool();
+        m_showOpacity=settings.value(prefix+QStringLiteral("showOpacitySlider"),oldSliders).toBool();
+        for(int i=0;i<2;++i) {
+            const QString key=prefix+sliderLayoutKey(i);
+            m_sliderCorners[i]=qBound(0,settings.value(key+QStringLiteral("Corner"),2).toInt(),3);
+            m_sliderWidths[i]=qBound(120,settings.value(key+QStringLiteral("Width"),168).toInt(),360);
+        }
         m_layersCollapsed=settings.value(prefix+QStringLiteral("layersCollapsed"),false).toBool();
         m_layerCorner=qBound(0,settings.value(prefix+QStringLiteral("layerCorner"),1).toInt(),3);
         m_layerWidth=qBound(64,settings.value(prefix+QStringLiteral("layerWidth"),76).toInt(),138);
@@ -1333,8 +1330,7 @@ private:
 
     static QString sliderLayoutKey(int index)
     {
-        return index==0?QStringLiteral("MobileStudio/sizeSlider"):
-                        QStringLiteral("MobileStudio/opacitySlider");
+        return index==0?QStringLiteral("sizeSlider"):QStringLiteral("opacitySlider");
     }
 
     std::array<QWidget*,4> fadeTargets() const

@@ -2,6 +2,10 @@
 
 Decision recorded: 2026-11-09. **Planning only; do not implement these additions merely because this file changed.** Read alongside [AGENTS.md](AGENTS.md) and [DEVELOPMENT_STATE.md](DEVELOPMENT_STATE.md). Preserve the working standalone Krita engine and application.
 
+## Current priority (November 12, 2026)
+
+The adaptive Android workspace and its input defaults take priority over optional drawing conveniences. Continue verifying per-screen layout restoration, the integrated Layers rail, and usable toolbar fit across phones, foldables, tablets, and split-screen windows. Preserve native drawing and document recovery during these changes.
+
 ## Product principle
 
 - Preserve all **Krita drawing functionality that Infinite Painter offers**, preferably by adapting Krita's existing painting, document, tool, and layer APIs. Do not remove useful extra Krita capabilities solely because Infinite Painter lacks them.

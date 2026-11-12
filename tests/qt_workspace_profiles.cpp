@@ -53,10 +53,28 @@ int main(int argc,char **argv)
     auto *scroll=bar?bar->findChild<QScrollArea*>():nullptr;
     if(!bar || !scroll || bar->geometry().bottom()!=canvas->rect().bottom()-2 ||
        scroll->horizontalScrollBar()->maximum()!=0)return 7;
-    window.resize(800,360);
-    QEventLoop wait;
-    QTimer::singleShot(240,&wait,&QEventLoop::quit);
-    wait.exec();
-    if(bar->geometry().left()!=2 || bar->height()<=bar->width() ||
-       scroll->verticalScrollBar()->maximum()!=0)return 8;
+    QString active;
+    bool portrait=false;
+    layout->bindWorkspace([&](const QString &id,bool isPortrait) {active=id;portrait=isPortrait;});
+    const QString portraitId=active;
+    if(portraitId.isEmpty() || !portrait)return 8;
+    QSettings local;
+    remember(local,portraitId,canvas->size());
+    QStringList custom=defaults;
+    custom.move(0,3);
+    local.setValue(group(portraitId)+QStringLiteral("primaryToolbarCommands"),custom);
+    const auto resize=[&](int width,int height) {
+        window.resize(width,height);
+        QEventLoop wait;
+        QTimer::singleShot(260,&wait,&QEventLoop::quit);
+        wait.exec();
+    };
+    resize(800,360);
+    if(portrait || active==portraitId || bar->geometry().left()!=2 ||
+       bar->height()<=bar->width() || scroll->verticalScrollBar()->maximum()!=0)return 9;
+    resize(750,780);
+    if(portrait || active==portraitId || bar->height()<=bar->width())return 10;
+    resize(340,720);
+    const auto *first=qobject_cast<QToolButton*>(scroll->widget()->layout()->itemAt(0)->widget());
+    if(!portrait || active!=portraitId || !first || first->defaultAction()!=commands.value(custom.first()))return 11;
 }

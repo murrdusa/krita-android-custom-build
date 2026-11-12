@@ -181,8 +181,9 @@ protected:
         const int y=qMax(2,height()-54);
         m_cancel->setGeometry(x,y,86,46);
         m_done->setGeometry(x+92,y,90,46);
-        if(m_workspaces)m_workspaces->setGeometry(4,4,90,44);
-        m_rotate->setGeometry(x>=152?x-150:x,x>=152?y:qMax(2,y-50),144,46);
+        if(m_workspaces)m_workspaces->setGeometry(4,y,qMin(90,qMax(0,x-8)),46);
+        const bool rotateBeside=x>=(m_workspaces?246:152);
+        m_rotate->setGeometry(rotateBeside?x-150:x,rotateBeside?y:qMax(2,y-50),144,46);
     }
 
     void paintEvent(QPaintEvent *) override

@@ -1713,7 +1713,8 @@ private:
         m_horizontalRows->setSpacing(0);
         m_horizontalRows->setAlignment(Qt::AlignLeft|Qt::AlignVCenter);
         m_horizontalScroll->setWidget(m_horizontalBody);
-        m_railLayout->addWidget(m_horizontalScroll,1);
+        if(m_layerName)m_railLayout->insertWidget(m_railLayout->indexOf(m_layerName),m_horizontalScroll,1);
+        else m_railLayout->addWidget(m_horizontalScroll,1);
         connect(m_horizontalScroll->horizontalScrollBar(),&QScrollBar::valueChanged,
                 this,[this](int) {updateVisibleLayerThumbnails();});
     }
