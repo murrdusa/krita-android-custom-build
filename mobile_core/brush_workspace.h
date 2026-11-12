@@ -459,7 +459,9 @@ private:
     {
     public:
         explicit PresetTile(QListView *view,std::function<void(const QString &)> onFavorite)
-            : QStyledItemDelegate(view),m_view(view),m_onFavorite(std::move(onFavorite)) {}
+            : QStyledItemDelegate(view),m_view(view),m_onFavorite(std::move(onFavorite)),
+              m_favorites(QSettings().value(
+                  QStringLiteral("MobileStudio/brushFavorites")).toStringList()) {}
 
         QSize sizeHint(const QStyleOptionViewItem &,const QModelIndex &) const override
         {
@@ -485,8 +487,7 @@ private:
             const QModelIndex original=proxy?proxy->mapToSource(index):index;
             const QString fullName=original.sibling(
                 original.row(),KisAbstractResourceModel::Name).data().toString();
-            const bool favorite=QSettings().value(
-                QStringLiteral("MobileStudio/brushFavorites")).toStringList().contains(fullName);
+            const bool favorite=m_favorites.contains(fullName);
             const QRect star(tile.right()-23,tile.top()+2,21,21);
             painter->setPen(favorite?QColor("#ffe087"):QColor("#aebdcc"));
             painter->setFont(QFont(option.font.family(),16));
@@ -514,12 +515,15 @@ private:
             if(name.isEmpty())return false;
             m_view->setProperty("_mobileFavoriteTap",true);
             if(m_onFavorite)m_onFavorite(name);
+            m_favorites=QSettings().value(
+                QStringLiteral("MobileStudio/brushFavorites")).toStringList();
             return true;
         }
 
     private:
         QListView *m_view;
         std::function<void(const QString &)> m_onFavorite;
+        QStringList m_favorites;
     };
 
     static bool supportsFlow(const KisPaintOpPresetSP &preset)
