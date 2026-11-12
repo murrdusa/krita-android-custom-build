@@ -3,6 +3,7 @@
 // Does not initialize Krita or the Android drawing engine.
 #define KRITA_MOBILE_QT_TEST
 #include "../mobile_core/native_view_stack.h"
+#include "../mobile_core/view_identity_guard.h"
 #include <QApplication>
 #include <QWidget>
 #include <QObject>
@@ -40,9 +41,25 @@ int main(int argc,char **argv)
                 "both document identities retained"))return 1;
     const QPointer<QObject> firstIdentity(first);
     const QPointer<QObject> secondIdentity(second);
+    // Qt changes the visible stack index synchronously, while Krita
+    // updates its active document on the next queued event-loop turn.
+    // Close/Save must never hit the previous canvas in that interval.
+    if(!require(MobileViewIdentityGuard::safeCloseTarget(
+                    views,QPointer<QObject>(&firstDocument)).isNull(),
+                "reject close while selected and engine document disagree"))
+        return 1;
     if(!require(stack.activateView(firstIdentity) &&
                 stack.currentDocument()==&firstDocument,
                 "switch to first document"))return 1;
+    auto firstSnapshot=stack.openViews();
+    if(!require(MobileViewIdentityGuard::safeCloseTarget(
+                    firstSnapshot,QPointer<QObject>(&firstDocument))==firstIdentity &&
+                !MobileViewIdentityGuard::safeCloseTarget(
+                    firstSnapshot,QPointer<QObject>(&secondDocument)) &&
+                !MobileViewIdentityGuard::safeCloseTarget(
+                    firstSnapshot,QPointer<QObject>()),
+                "close target requires matching engine-selected document"))
+        return 1;
     if(!require(stack.activateView(secondIdentity) &&
                 stack.currentDocument()==&secondDocument,
                 "switch to second document"))return 1;
