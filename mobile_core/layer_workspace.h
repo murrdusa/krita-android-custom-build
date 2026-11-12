@@ -326,15 +326,15 @@ public:
         auto *addType=new QPushButton(QStringLiteral("+"),this);
         addType->setAccessibleName(i18n("Add layer"));
         addType->setToolTip(i18n("Tap: new paint layer. Hold: all layer and mask types"));
-        auto *railHeader=new QWidget(this);
-        // Keep Add and Minimize stacked even after the rail rotates.
-        auto *header=new QVBoxLayout(railHeader);
-        header->setContentsMargins(0,0,0,0);
-        header->setSpacing(1);
-        header->setAlignment(Qt::AlignCenter);
-        header->addWidget(addType);
+        m_railHeader=new QWidget(this);
+        m_railHeaderLayout=new QBoxLayout(QBoxLayout::LeftToRight,m_railHeader);
+        m_railHeaderLayout->setContentsMargins(0,0,0,0);
+        m_railHeaderLayout->setSpacing(1);
+        m_railHeaderLayout->setAlignment(Qt::AlignCenter);
+        m_addLayerButton=addType;
+        m_railHeaderLayout->addWidget(addType);
         if(compactRail) {
-            auto *minimize=new QPushButton(QStringLiteral("−"),railHeader);
+            auto *minimize=new QPushButton(QStringLiteral("−"),m_railHeader);
             minimize->setAccessibleName(i18n("Minimize Layers"));
             minimize->setToolTip(i18n("Minimize Layers"));
             const QString style=QStringLiteral(
@@ -342,15 +342,17 @@ public:
                 "border-radius:5px;min-height:0;padding:0;font-size:16px;}"
                 "QPushButton:pressed{background:#5685a6;}");
             addType->setStyleSheet(style);
-            addType->setFixedSize(29,34);
             minimize->setStyleSheet(style);
-            minimize->setFixedSize(24,22);
-            header->addWidget(minimize,0,Qt::AlignHCenter);
+            m_minimizeLayerButton=minimize;
+            m_railHeaderLayout->addWidget(minimize);
             connect(minimize,&QPushButton::clicked,this,[this]() {
                 if(onRequestClose)onRequestClose();
             });
         }
-        m_railLayout->insertWidget(0,railHeader);
+        // The buttons always occupy the rail's SHORT axis: side-by-side
+        // for a vertical rail, stacked for a horizontal rail.
+        updateRailHeader(82,false,true);
+        m_railLayout->insertWidget(0,m_railHeader);
         auto *addHold=new QTimer(addType);
         addHold->setSingleShot(true);
         addHold->setInterval(480);
@@ -504,6 +506,45 @@ public:
         return (horizontal?85:(m_layerName?58:45))+qMax(24,length);
     }
 
+    void updateRailHeader(int thickness,bool horizontal,bool controlsAtEnd)
+    {
+        if(!m_railHeader || !m_railHeaderLayout || !m_addLayerButton)return;
+
+        // controlsAtEnd indicates the canvas-facing side of layer tiles.
+        // Minimize belongs on the OPPOSITE side, closest to the screen edge.
+        const bool minimizeFirst=controlsAtEnd;
+        m_railHeaderLayout->setDirection(horizontal?
+            QBoxLayout::TopToBottom:QBoxLayout::LeftToRight);
+
+        m_railHeaderLayout->removeWidget(m_addLayerButton);
+        if(m_minimizeLayerButton)m_railHeaderLayout->removeWidget(m_minimizeLayerButton);
+        if(minimizeFirst && m_minimizeLayerButton)
+            m_railHeaderLayout->addWidget(m_minimizeLayerButton,0,Qt::AlignCenter);
+        m_railHeaderLayout->addWidget(m_addLayerButton,0,Qt::AlignCenter);
+        if(!minimizeFirst && m_minimizeLayerButton)
+            m_railHeaderLayout->addWidget(m_minimizeLayerButton,0,Qt::AlignCenter);
+
+        const int compactThickness=qMax(horizontal?58:64,thickness);
+        if(horizontal) {
+            // Top/bottom rail: minimize above/below Add, respectively.
+            m_railHeader->setMinimumWidth(0);
+            m_railHeader->setFixedWidth(36);
+            m_railHeader->setMinimumHeight(0);
+            m_railHeader->setMaximumHeight(QWIDGETSIZE_MAX);
+            m_addLayerButton->setFixedSize(34,
+                qMax(30,compactThickness-(m_minimizeLayerButton?27:4)));
+        } else {
+            // Left/right rail: minimize left/right of the larger Add.
+            m_railHeader->setMinimumHeight(0);
+            m_railHeader->setFixedHeight(36);
+            m_railHeader->setMinimumWidth(0);
+            m_railHeader->setMaximumWidth(QWIDGETSIZE_MAX);
+            m_addLayerButton->setFixedSize(
+                qMax(30,compactThickness-(m_minimizeLayerButton?29:4)),34);
+        }
+        if(m_minimizeLayerButton)m_minimizeLayerButton->setFixedSize(23,22);
+    }
+
     void setRailGeometry(const QRect &geometry,bool horizontal,bool controlsAtEnd)
     {
         const bool orientationChanged=horizontal!=m_horizontalRail;
@@ -511,6 +552,7 @@ public:
         const bool rebuild=orientationChanged || controlsAtEnd!=m_controlsAtEnd ||
             thickness!=(horizontal?height():width());
         m_controlsAtEnd=controlsAtEnd;
+        if(rebuild)updateRailHeader(thickness,horizontal,controlsAtEnd);
         if(orientationChanged) {
             m_horizontalRail=horizontal;
             if(horizontal && !m_horizontalScroll)createHorizontalRail();
@@ -2923,6 +2965,9 @@ private:
     const bool m_compactRail;
     QTreeWidget *m_tree=nullptr;
     QBoxLayout *m_railLayout=nullptr;
+    QWidget *m_railHeader=nullptr;
+    QBoxLayout *m_railHeaderLayout=nullptr;
+    QPushButton *m_addLayerButton=nullptr,*m_minimizeLayerButton=nullptr;
     MobileLayerNameLabel *m_layerName=nullptr;
     bool m_controlsAtEnd=true;
     QScrollArea *m_horizontalScroll=nullptr;
