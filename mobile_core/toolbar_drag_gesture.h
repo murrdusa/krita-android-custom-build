@@ -25,7 +25,7 @@ inline QString preference(const char *parameter)
 inline QString assignment(const char *parameter)
 {
     const QString fallback=qstrcmp(parameter,"size")==0?QStringLiteral("paint"):
-        qstrcmp(parameter,"opacity")==0?QStringLiteral("tool-settings"):QString();
+        qstrcmp(parameter,"opacity")==0?QStringLiteral("color"):QString();
     return QSettings().value(preference(parameter),fallback).toString();
 }
 enum class Phase { Preview, Commit, Cancel };
