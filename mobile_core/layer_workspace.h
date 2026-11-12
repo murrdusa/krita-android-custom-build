@@ -2533,8 +2533,10 @@ private:
     {
         if(!m_tree || !isVisible())return;
         const QRect viewport=railViewport()->rect().adjusted(-60,-60,60,60);
+        const qint64 now=QDateTime::currentMSecsSinceEpoch();
         for(int i=0;i<m_nodes.size();++i) {
             if(m_thumbnailReady.value(i,false))continue;
+            if(m_thumbnailRetryAfter.value(i,0)>now)continue;
             QTreeWidgetItem *item=m_items.value(i);
             QToolButton *button=m_rowButtons.value(i);
             KisNodeSP node=m_nodes.value(i);
@@ -2545,15 +2547,16 @@ private:
                 const QImage thumb=node->createThumbnail(
                     59,59,Qt::KeepAspectRatio);
                 if(thumb.isNull()) {
-                    // A thumbnail can be temporarily unavailable while a
-                    // newly inserted layer finishes its native projection.
-                    // Retry on the next visible refresh rather than leaving
-                    // a permanently blank tile until a structural reload.
+                    // A native projection can temporarily have no
+                    // thumbnail. Back off failed attempts rather than
+                    // requesting the same expensive image every UI tick.
+                    m_thumbnailRetryAfter[i]=now+1500;
                     continue;
                 }
                 button->setIcon(QIcon(QPixmap::fromImage(thumb)));
                 button->setIconSize(QSize(56,56));
             }
+            m_thumbnailRetryAfter.remove(i);
             m_thumbnailReady[i]=true;
         }
     }
@@ -2924,6 +2927,7 @@ private:
         m_nodes.clear();m_items.clear();
         m_rowFrames.clear();m_rowButtons.clear();
         m_rowDepths.clear();m_thumbnailReady.clear();
+        m_thumbnailRetryAfter.clear();
         std::function<void(KisNodeSP,QTreeWidgetItem*,int)> visit;
         visit=[&](KisNodeSP parent,QTreeWidgetItem *parentItem,int depth) {
             if(!parent || depth>20 || m_nodes.size()>=500)return;
@@ -3009,6 +3013,7 @@ private:
     QVector<int> m_rowDepths;
     QSet<const KisNode*> m_clipBases;
     QVector<bool> m_thumbnailReady;
+    QHash<int,qint64> m_thumbnailRetryAfter;
     qint64 m_lastActiveThumbnailRefresh=0;
     KisNodeList m_selected;
     KisNodeSP m_active;
