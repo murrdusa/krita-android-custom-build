@@ -86,7 +86,7 @@ public:
             }
             if(!group.tiles.isEmpty())groups.append(group);
         };
-        addGroup(i18n("Draw"),{
+        addGroup(i18n("Paint and Fill"),{
             {"KritaShape/KisToolBrush",i18n("Brush")},
             {"KritaFill/KisToolFill",i18n("Fill")},
             {"KritaFill/KisToolGradient",i18n("Gradient")},
@@ -104,7 +104,7 @@ public:
             {"stroke_selection",i18n("Stroke selection"),"draw-freehand"},
             {"stroke_shapes",i18n("Stroke shapes"),"draw-freehand"}
         });
-        addGroup(i18n("Select"),{
+        addGroup(i18n("Selection"),{
             {"KisToolSelectOutline",i18n("Lasso")},
             {"KisToolSelectRectangular",i18n("Rectangle")},
             {"KisToolSelectContiguous",i18n("Wand")},
@@ -146,7 +146,7 @@ public:
             {"set_stabilizer_brush_smoothing",i18n("Stabilizer"),"draw-freehand"},
             {"set_pixel_perfect_smoothing",i18n("Pixel perfect"),"draw-freehand"}
         });
-        addGroup(i18n("Retouch and color"),{
+        addGroup(i18n("Other drawing tools"),{
             {"KritaShape/KisToolSmartPatch",i18n("Smart Patch")},
             {"KritaShape/KisToolLazyBrush",i18n("Colorize Mask")},
             {"KritaShape/KisToolDyna",i18n("Dynamic Brush")}
@@ -170,7 +170,7 @@ public:
             {"KritaShape/KisToolBezierCurve",i18n("Bézier")},
             {"KritaShape/KisToolPath",i18n("Path")}
         });
-        addGroup(i18n("Guides and symmetry"),{
+        addGroup(i18n("View and Guides"),{
             {"KisAssistantTool",i18n("Assistants")},
             {"KritaShape/KisToolMultiBrush",i18n("Multibrush")},
             {"ToolReferenceImages",i18n("Reference images")},
@@ -203,21 +203,36 @@ public:
                                  tool.description,tool.iconName,nullptr});
         }
 
+        // Present drawing tools before secondary document commands,
+        // while retaining every native Krita action in searchable groups.
+        const QStringList primaryOrder={
+            i18n("Paint and Fill"),i18n("Shapes"),i18n("Selection"),
+            i18n("Transform"),i18n("View and Guides"),
+            i18n("Other drawing tools")};
+        std::stable_sort(groups.begin(),groups.end(),
+            [&primaryOrder](const Group &a,const Group &b) {
+                const int ia=primaryOrder.indexOf(a.label);
+                const int ib=primaryOrder.indexOf(b.label);
+                return (ia<0?primaryOrder.size():ia) <
+                       (ib<0?primaryOrder.size():ib);
+            });
+
         QDialog dialog(parent);
-        dialog.setWindowTitle(i18n("Tools"));
+        dialog.setWindowTitle(i18n("All Tools"));
         dialog.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
         dialog.setStyleSheet(QStringLiteral(
             "QDialog,QWidget#toolTiles{background:#272729;color:#efeff0;}"
             "QLabel{color:#efeff0;}"
             "QLineEdit,QPushButton{background:#343438;color:#efeff0;"
-            "border:1px solid #515156;border-radius:8px;min-height:43px;padding:4px;}"
+            "border:1px solid #515156;border-radius:8px;min-height:38px;padding:4px;}"
             "QScrollArea{background:#272729;border:0;}"
-            "QToolButton{background:transparent;color:#efeff0;border:0;"
-            "border-radius:8px;padding:3px;}"
+            "QToolButton{background:#303035;color:#efeff0;border:0;"
+            "border-radius:9px;padding:1px 6px;}"
             "QToolButton:checked,QToolButton:pressed{background:#45454c;}"
             "QToolButton:disabled,QLabel:disabled{color:#929299;}"));
         auto *layout=new QVBoxLayout(&dialog);
-        layout->setContentsMargins(10,10,10,10);
+        layout->setContentsMargins(9,9,9,9);
+        layout->setSpacing(5);
         auto *search=new QLineEdit(&dialog);
         search->setPlaceholderText(i18n("Search tools"));
         search->setClearButtonEnabled(true);
@@ -233,7 +248,7 @@ public:
         QObject::connect(close,&QPushButton::clicked,&dialog,&QDialog::reject);
         constexpr int showOptions=2;
         if(offerOptions) {
-            auto *options=new QPushButton(i18n("Tool Options"),&dialog);
+            auto *options=new QPushButton(i18n("Krita Tool Options"),&dialog);
             buttons->addWidget(options);
             QObject::connect(options,&QPushButton::clicked,&dialog,
                              [&dialog]() {dialog.done(showOptions);});
@@ -241,16 +256,16 @@ public:
         layout->addLayout(buttons);
 
         Tile requested;
-        // Use two columns on very narrow displays instead of squeezing
-        // four full tool tiles into unreadable touch targets.
-        const int columns=parent->window()->width()<390?2:4;
+        // Two compact columns remain legible on phones as well as tablets.
+        // Extremely narrow windows fall back to one column.
+        const int columns=parent->window()->width()<300?1:2;
         const auto refill=[&]() {
             const QString phrase=search->text().trimmed();
             auto *content=new QWidget(scroll);
             content->setObjectName(QStringLiteral("toolTiles"));
             auto *sections=new QVBoxLayout(content);
             sections->setContentsMargins(0,0,0,0);
-            sections->setSpacing(8);
+            sections->setSpacing(4);
             for(const Group &group:groups) {
                 auto *grid=new QGridLayout;
                 grid->setSpacing(2);
@@ -265,22 +280,26 @@ public:
                     button->setAccessibleName(tile.label);
                     button->setToolTip(tile.description);
                     button->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
-                    button->setFixedHeight(72);
-                    auto *tileLayout=new QVBoxLayout(button);
-                    tileLayout->setContentsMargins(2,4,2,4);
-                    tileLayout->setSpacing(2);
+                    button->setFixedHeight(49);
+                    auto *tileLayout=new QHBoxLayout(button);
+                    tileLayout->setContentsMargins(7,2,5,2);
+                    tileLayout->setSpacing(7);
                     auto *symbol=new QLabel(button);
                     symbol->setPixmap(tileIcon(tile));
                     symbol->setAlignment(Qt::AlignCenter);
                     symbol->setAttribute(Qt::WA_TransparentForMouseEvents);
-                    symbol->setFixedHeight(26);
+                    symbol->setFixedSize(25,28);
                     tileLayout->addWidget(symbol);
                     auto *label=new QLabel(tile.label,button);
-                    label->setWordWrap(true);
-                    label->setAlignment(Qt::AlignCenter);
+                    label->setWordWrap(false);
+                    label->setAlignment(Qt::AlignLeft|Qt::AlignVCenter);
                     label->setAttribute(Qt::WA_TransparentForMouseEvents);
                     label->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Expanding);
-                    tileLayout->addWidget(label);
+                    label->setMinimumWidth(0);
+                    // Keep the complete command in accessibility and tooltip,
+                    // but do not let lengthy native labels widen a tile.
+                    label->setToolTip(tile.label);
+                    tileLayout->addWidget(label,1);
                     button->setCheckable(true);
                     button->setChecked(tile.action?tile.action->isChecked():tile.tool==current);
                     button->setEnabled(!tile.action || tile.action->isEnabled());
@@ -297,7 +316,8 @@ public:
                 }
                 for(int column=0;column<columns;++column)grid->setColumnStretch(column,1);
                 auto *heading=new QLabel(group.label,content);
-                heading->setStyleSheet(QStringLiteral("font-weight:600;padding:4px;"));
+                heading->setStyleSheet(QStringLiteral(
+                    "color:#aeb0bc;font-size:13px;font-weight:600;padding:7px 3px 2px;"));
                 sections->addWidget(heading);
                 sections->addLayout(grid);
             }
@@ -311,7 +331,7 @@ public:
         refill();
         const QSize bounds=parent->window()->size();
         dialog.resize(qMin(520,qMax(1,bounds.width()-20)),
-                      qMin(710,qMax(1,bounds.height()-26)));
+                      qMin(760,qMax(1,bounds.height()-26)));
         dialog.setMaximumSize(qMax(1,bounds.width()-12),qMax(1,bounds.height()-12));
         close->setFocus();
         const int result=dialog.exec();
