@@ -28,6 +28,7 @@
 #include <QScrollArea>
 #include <QSlider>
 #include <QScrollBar>
+#include <QMouseEvent>
 #include "touch_scroll.h"
 #include "touch_action_picker.h"
 #include <QSet>
@@ -80,6 +81,7 @@ public:
         m_scroll=new QScrollArea(this);
         m_scroll->setFrameShape(QFrame::NoFrame);
         m_scroll->setWidgetResizable(true);
+        m_scroll->viewport()->installEventFilter(this);
         m_scroll->setMinimumWidth(0);
         m_scroll->setFixedHeight(38);
         // A single compact row may pan horizontally, never vertically.
@@ -438,6 +440,7 @@ public:
         }
         m_row->addStretch();
         m_scroll->setWidget(content);
+        content->installEventFilter(this);
         // Each tool starts with its most common controls; a long strip on
         // the previous tool must not leave the new tool scrolled to the end.
         m_scroll->horizontalScrollBar()->setValue(0);
@@ -445,6 +448,42 @@ public:
     }
 
 protected:
+    // Qt's kinetic scrolling handles finger touches. S Pen hover/mouse
+    // events over the empty row are not recognized by QScroller on
+    // Android, so pan those backgrounds directly along the X axis.
+    // Children (mode chips, buttons) retain their own click semantics.
+    bool eventFilter(QObject *watched,QEvent *event) override
+    {
+        const bool background=watched==m_scroll->viewport() ||
+            (m_scroll->widget() && watched==m_scroll->widget());
+        if(!background)return QFrame::eventFilter(watched,event);
+        const auto type=event->type();
+        if(type==QEvent::MouseButtonPress) {
+            auto *mouse=static_cast<QMouseEvent*>(event);
+            if(mouse->button()!=Qt::LeftButton)return false;
+            m_penScrollActive=true;
+            m_penScrollStart=mouse->globalPos();
+            m_penScrollValue=m_scroll->horizontalScrollBar()->value();
+            return true;
+        }
+        if(!m_penScrollActive)return false;
+        if(type==QEvent::MouseMove) {
+            auto *mouse=static_cast<QMouseEvent*>(event);
+            if(!(mouse->buttons()&Qt::LeftButton))return false;
+            const QPoint moved=mouse->globalPos()-m_penScrollStart;
+            m_scroll->horizontalScrollBar()->setValue(m_penScrollValue-moved.x());
+            return true;
+        }
+        if(type==QEvent::MouseButtonRelease) {
+            m_penScrollActive=false;
+            return true;
+        }
+        if(type==QEvent::Hide || type==QEvent::Leave) {
+            m_penScrollActive=false;
+        }
+        return QFrame::eventFilter(watched,event);
+    }
+
     void showEvent(QShowEvent *event) override
     {
         QFrame::showEvent(event);
@@ -1025,6 +1064,9 @@ private:
     QSet<QWidget*> m_used;
     QToolButton *m_tool=nullptr;
     QScrollArea *m_scroll=nullptr;
+    bool m_penScrollActive=false;
+    QPoint m_penScrollStart;
+    int m_penScrollValue=0;
     QHBoxLayout *m_row=nullptr;
     QTimer *m_sync=nullptr;
     quint64 m_generation=0;
