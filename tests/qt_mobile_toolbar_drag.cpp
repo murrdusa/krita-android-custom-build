@@ -76,6 +76,15 @@ int main(int argc,char **argv)
     require(taps==1 && sampled==1 && lastSample==color.mapToGlobal(QPoint(20,110)),
             "perpendicular color swipe must select the release pixel");
 
+    QSettings().setValue(MobileToolbarDrag::preference("opacity"),QStringLiteral("color"));
+    mouse(&color,QEvent::MouseButtonPress,QPoint(20,20));
+    mouse(&color,QEvent::MouseMove,QPoint(70,20));
+    mouse(&color,QEvent::MouseButtonRelease,QPoint(80,20));
+    require(commits==1 && parameter==QStringLiteral("opacity") && adjustment==60 && sampled==1,
+            "Color must adjust inline while sampling stays perpendicular");
+    QSettings().setValue(MobileToolbarDrag::preference("opacity"),QStringLiteral("paint"));
+    previews=commits=0;
+
     MobileToolbarGestureButton paint(nullptr,QStringLiteral("paint"),false,adjust,sample);
     QAction paintAction(QStringLiteral("Paint"),&paint);
     paint.setDefaultAction(&paintAction);

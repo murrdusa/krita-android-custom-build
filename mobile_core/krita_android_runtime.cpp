@@ -9,6 +9,10 @@
 #ifdef Q_OS_ANDROID
 #include <QAbstractSpinBox>
 #include <QApplication>
+#include <QInputMethod>
+#include <QLineEdit>
+#include <QMouseEvent>
+#include <QTabletEvent>
 #include <QTimer>
 #include <QCoreApplication>
 #include <QDebug>
@@ -30,7 +34,7 @@
 #include <config-qt-patches-present.h>
 
 namespace {
-class SelectNumericValueOnFocus final : public QObject
+class StudioTextInput final : public QObject
 {
 public:
     using QObject::QObject;
@@ -38,6 +42,23 @@ public:
 protected:
     bool eventFilter(QObject *object,QEvent *event) override
     {
+        auto *edit=qobject_cast<QLineEdit*>(object);
+        if(edit && edit->isEnabled() && !edit->isReadOnly()) {
+            bool tapped=false;
+            if(event->type()==QEvent::MouseButtonRelease) {
+                auto *mouse=static_cast<QMouseEvent*>(event);
+                tapped=mouse->button()==Qt::LeftButton && edit->rect().contains(mouse->pos());
+            } else if(event->type()==QEvent::TabletRelease) {
+                tapped=edit->rect().contains(static_cast<QTabletEvent*>(event)->pos());
+            }
+            if(tapped) {
+                edit->setFocus(Qt::MouseFocusReason);
+                QTimer::singleShot(0,edit,[edit]() {
+                    if(edit->isVisible() && edit->hasFocus())
+                        QGuiApplication::inputMethod()->show();
+                });
+            }
+        }
         if(event->type()!=QEvent::FocusIn)return false;
         auto *spin=qobject_cast<QAbstractSpinBox*>(object);
         if(!spin)spin=qobject_cast<QAbstractSpinBox*>(object->parent());
@@ -117,7 +138,7 @@ MobileKritaAndroidRuntime::Result MobileKritaAndroidRuntime::launch(
     app.initializeGlobals(args);
     app.initializeAndroidScaling(cfg);
     applyStudioWidgetColors(app);
-    app.installEventFilter(new SelectNumericValueOnFocus(&app));
+    app.installEventFilter(new StudioTextInput(&app));
     app.addResourceTypes();
     app.loadPlugins();
     if(!app.registerResources()) {

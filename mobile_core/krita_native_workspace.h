@@ -1017,6 +1017,7 @@ public:
                                           const QString &selected) {
                 combo->addItem(QObject::tr("Off"),QString());
                 for(const auto &pair:QList<QPair<QString,QString>>{
+                    {QStringLiteral("color"),QObject::tr("Color wheel button")},
                     {QStringLiteral("tool-settings"),QObject::tr("Brush / Tool Settings button")},
                     {QStringLiteral("paint"),QObject::tr("Paint button")},
                     {QStringLiteral("erase"),QObject::tr("Erase button")},
@@ -1580,8 +1581,13 @@ private:
     {
         const std::array<QWidget*,2> panels{m_brush.data(),m_opacityStrip.data()};
         for(auto *panel:panels) {
-            if(hasEditedPlacement(panel))
-                placePanel(panel,preferredPanel(panel,bounds,{}),bounds,occupied,QSize(120,36));
+            if(hasEditedPlacement(panel)) {
+                auto geometry=preferredPanel(panel,bounds,{});
+                const auto anchor=MobileCanvasLayoutEditor::relative(geometry,bounds);
+                geometry.setHeight(qMin(40,bounds.height()));
+                geometry.moveTop(bounds.top()+qRound(anchor.y()*(bounds.height()-geometry.height())));
+                placePanel(panel,geometry,bounds,occupied,QSize(120,36));
+            }
         }
         for(int band=0;band<2 && available.isValid();++band) {
             std::array<int,2> widths{0,0};
@@ -1592,7 +1598,7 @@ private:
                 if(!panels[i] || !panels[i]->isVisible() || hasEditedPlacement(panels[i]) ||
                    m_sliderCorners[i]/2!=band)continue;
                 widths[i]=qMin(m_sliderWidths[i],available.width());
-                height=qMax(height,panels[i]->sizeHint().height());
+                height=qMax(height,qMin(40,panels[i]->sizeHint().height()));
                 total+=widths[i];
                 ++count;
             }
@@ -1660,8 +1666,8 @@ private:
                 layerAnchor=MobileCanvasLayoutEditor::absolute(
                     m_panelPlacements.value(QStringLiteral("layers")).toRectF(),railBounds);
                 const int minThickness=KritaMobileLayersPanel::compactRailWidth();
-                if(m_layersHorizontal)layerAnchor.setHeight(qMax(minThickness,layerAnchor.height()));
-                else layerAnchor.setWidth(qMax(minThickness,layerAnchor.width()));
+                if(m_layersHorizontal)layerAnchor.setHeight(qBound(minThickness,layerAnchor.height(),138));
+                else layerAnchor.setWidth(qBound(minThickness,layerAnchor.width(),138));
                 const int thickness=m_layersHorizontal?layerAnchor.height():layerAnchor.width();
                 layerLength=m_layers->contentLength(m_layersHorizontal,thickness);
             } else {

@@ -144,7 +144,7 @@ private:
         m_dragged=false;
         m_axis=0;
         m_sampling=MobileToolbarDrag::samplesColor(m_command);
-        m_parameter=m_sampling?QString():MobileToolbarDrag::adjustment(m_command);
+        m_parameter=MobileToolbarDrag::adjustment(m_command);
         m_start=pos;
         m_last=pos;
         setDown(true);
@@ -156,11 +156,17 @@ private:
         if(!m_dragged &&
            delta.manhattanLength()>=QApplication::startDragDistance()) {
             m_dragged=true;
-            if(m_sampling) {
-                if(qAbs(MobileToolbarDrag::away(delta,m_vertical))>=
-                   qAbs(MobileToolbarDrag::along(delta,m_vertical)))m_axis=2;
-            } else if(qAbs(delta.y())>=qAbs(delta.x())) {
+            const bool inlineDrag=qAbs(MobileToolbarDrag::along(delta,m_vertical))>=
+                                  qAbs(MobileToolbarDrag::away(delta,m_vertical));
+            if(m_command==QStringLiteral("color")) {
+                if(!inlineDrag && m_sampling)m_axis=2;
+                else if(inlineDrag && !m_parameter.isEmpty()) {
+                    m_axis=1;
+                    m_adjustVertical=m_vertical;
+                }
+            } else if(!m_parameter.isEmpty()) {
                 m_axis=1;
+                m_adjustVertical=qAbs(delta.y())>=qAbs(delta.x());
             }
             setDown(false);
         }
@@ -171,7 +177,8 @@ private:
     void dispatch(const QPoint &pos,MobileToolbarDrag::Phase phase)
     {
         if(m_axis==1 && m_adjust && !m_parameter.isEmpty())
-            m_adjust(m_parameter,m_start.y()-pos.y(),pos,phase);
+            m_adjust(m_parameter,m_adjustVertical?m_start.y()-pos.y():pos.x()-m_start.x(),
+                     pos,phase);
         if(m_axis==2 && m_sample)m_sample(pos,phase);
     }
 
@@ -191,7 +198,7 @@ private:
 
     QString m_command,m_parameter;
     bool m_vertical=false,m_sampling=false;
-    bool m_active=false;
+    bool m_active=false,m_adjustVertical=true;
     bool m_dragged=false;
     int m_axis=0;
     QPoint m_start,m_last;

@@ -135,6 +135,21 @@ public:
                 slider->setPalette(colors);
             }
         }
+        if(slidersOnly && !toolSettings) {
+            setStyleSheet(QStringLiteral(
+                "QFrame#mobileBrushWorkspace{background:rgba(28,31,37,150);"
+                "border:0;border-radius:8px;}"));
+            for(auto *slider:{m_size,m_opacity}) {
+                slider->setButtonSymbols(QAbstractSpinBox::NoButtons);
+                slider->setFixedHeight(36);
+                QPalette colors=slider->palette();
+                colors.setColor(QPalette::Base,QColor(38,46,55,160));
+                colors.setColor(QPalette::Button,QColor(38,46,55,160));
+                slider->setPalette(colors);
+                slider->setStyleSheet(QStringLiteral(
+                    "QAbstractSpinBox{background:transparent;border:0;padding:0 5px;}"));
+            }
+        }
         details->addLayout(controlRow);
         if(toolSettings) {
             m_flow=new KisDoubleSliderSpinBox(m_controls);
