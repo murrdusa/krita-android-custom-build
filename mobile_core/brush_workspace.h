@@ -11,6 +11,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListView>
+#include <QTreeWidget>
 #include <QSortFilterProxyModel>
 #include <QPointer>
 #include <QPalette>
@@ -170,17 +171,13 @@ public:
 
         }
         if(toolSettings) {
-            m_composite=new MobileTouchComboBox(m_controls);
+            m_composite=new QPushButton(i18n("Brush blending mode…"),m_controls);
             m_composite->setAccessibleName(i18n("Brush blending mode"));
             m_composite->setToolTip(i18n("Brush blending mode"));
             m_composite->setMinimumHeight(44);
             details->addWidget(m_composite);
-            connect(m_composite,QOverload<int>::of(&QComboBox::activated),
-                    this,[this](int index) {
-                const QString mode=m_composite->itemData(index).toString();
-                if(auto *provider=resources(); provider && !mode.isEmpty() && !provider->eraserMode())
-                    provider->setCurrentCompositeOp(mode);
-            });
+            connect(m_composite,&QPushButton::clicked,this,
+                    [this]() {openBrushBlendModes();});
             if(auto *editor=m_engine.action("show_brush_editor")) {
                 auto *advanced=new QPushButton(i18n("Advanced Brush Settings"),m_controls);
                 advanced->setMinimumHeight(44);
@@ -304,16 +301,12 @@ public:
             auto *view=m_engine.manager();
             const auto node=view?view->activeNode():KisNodeSP();
             const auto *space=node?node->colorSpace():nullptr;
-            if(space!=m_compositeSpace) {
-                m_compositeSpace=space;
-                m_composite->clear();
-                if(space) {
-                    const auto modes=KoCompositeOpRegistry::instance().getCompositeOps(space);
-                    for(const auto &mode:modes)m_composite->addItem(mode.name(),mode.id());
-                }
-            }
-            m_composite->setVisible(m_composite->count()>0 && !provider->eraserMode());
-            m_composite->setCurrentIndex(m_composite->findData(provider->currentCompositeOp()));
+            const auto &registry=KoCompositeOpRegistry::instance();
+            const bool available=space && !registry.getCompositeOps(space).isEmpty();
+            m_composite->setVisible(available && !provider->eraserMode());
+            const QString name=registry.getCompositeOpDisplayName(provider->currentCompositeOp());
+            m_composite->setText(i18n("Blending mode: %1").arg(
+                name.isEmpty()?i18n("Normal"):name));
         }
         if(m_presetName) {
             const auto preset=provider->currentPreset();
@@ -325,6 +318,73 @@ public:
     }
 
 private:
+    // Match Layers' Favorites-first, categorized native composite picker.
+    // Only apply an operation if this is still the same active canvas.
+    void openBrushBlendModes()
+    {
+        auto *provider=resources();
+        auto *view=m_engine.manager();
+        const auto node=view?view->activeNode():KisNodeSP();
+        const auto *space=node?node->colorSpace():nullptr;
+        if(!provider || provider->eraserMode() || !space)return;
+        const auto &registry=KoCompositeOpRegistry::instance();
+        const auto modes=registry.getCompositeOps(space);
+        if(modes.isEmpty())return;
+        const KisImageSP original=view->image().toStrongRef();
+        if(!original)return;
+        QDialog dialog(this);
+        dialog.setWindowTitle(i18n("Brush blending mode"));
+        auto *layout=new QVBoxLayout(&dialog);
+        auto *tree=new QTreeWidget(&dialog);
+        tree->setHeaderHidden(true);
+        tree->setStyleSheet(QStringLiteral("QTreeWidget::item{min-height:40px;}"));
+        MobileTouchScroll::configureList(tree);
+        layout->addWidget(tree,1);
+        const QString current=provider->currentCompositeOp();
+        const auto addMode=[&](QTreeWidgetItem *parent,const KoID &mode) {
+            auto *item=new QTreeWidgetItem(parent,{mode.name()});
+            item->setData(0,Qt::UserRole,mode.id());
+            if(mode.id()==current)item->setCheckState(0,Qt::Checked);
+            item->setFlags(item->flags() & ~Qt::ItemIsUserCheckable);
+        };
+        auto *favorites=new QTreeWidgetItem(tree,{i18n("Favorites")});
+        for(const auto &id:{COMPOSITE_OVER,COMPOSITE_MULT,COMPOSITE_OVERLAY,
+                            COMPOSITE_SCREEN,COMPOSITE_ERASE,COMPOSITE_DARKEN,
+                            COMPOSITE_LIGHTEN,COMPOSITE_DODGE,COMPOSITE_BURN}) {
+            for(const auto &mode:modes)
+                if(mode.id()==id) {addMode(favorites,mode);break;}
+        }
+        favorites->setExpanded(true);
+        for(const auto &category:registry.getCategories()) {
+            const auto categoryModes=registry.getCompositeOps(category,space);
+            if(categoryModes.isEmpty())continue;
+            auto *entry=new QTreeWidgetItem(tree,{category.name()});
+            for(const auto &mode:categoryModes)addMode(entry,mode);
+        }
+        auto *cancel=new QPushButton(i18n("Cancel"),&dialog);
+        cancel->setMinimumHeight(44);
+        layout->addWidget(cancel);
+        connect(cancel,&QPushButton::clicked,&dialog,&QDialog::reject);
+        QString selected;
+        connect(tree,&QTreeWidget::itemClicked,&dialog,
+                [&dialog,&selected](QTreeWidgetItem *item,int) {
+            const QString id=item->data(0,Qt::UserRole).toString();
+            if(id.isEmpty()) {item->setExpanded(!item->isExpanded());return;}
+            selected=id;
+            dialog.accept();
+        });
+        dialog.resize(qMin(360,window()->width()),qMin(540,window()->height()));
+        if(dialog.exec()!=QDialog::Accepted || selected.isEmpty())return;
+        auto *now=m_engine.manager();
+        if(now!=view || !now || now->image().toStrongRef()!=original ||
+           resources()!=provider || provider->eraserMode() ||
+           !now->activeNode() || now->activeNode()->colorSpace()!=space)return;
+        if(space->compositeOp(selected)) {
+            provider->setCurrentCompositeOp(selected);
+            refresh();
+        }
+    }
+
     static QString displayPresetName(QString name)
     {
         static const QRegularExpression categoryPrefix(QStringLiteral(R"(^[a-z]\)\s+)"));
@@ -700,8 +760,7 @@ private:
     QToolButton *m_detailToggle=nullptr;
     bool m_detailsExpanded=true;
     KisDoubleSliderSpinBox *m_size=nullptr,*m_opacity=nullptr,*m_flow=nullptr;
-    MobileTouchComboBox *m_composite=nullptr;
-    const KoColorSpace *m_compositeSpace=nullptr;
+    QPushButton *m_composite=nullptr;
     KisResourceModel *m_model=nullptr;
     QTimer *m_refresh=nullptr;
     bool m_syncing=false,m_internalChange=false,m_hasSelectedMode=true;
