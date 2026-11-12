@@ -628,7 +628,7 @@ private:
         }
         if(choices.isEmpty())return;
         auto *control=button(QObject::tr("Mode"));
-        connect(control,&QToolButton::clicked,this,[this,control,choices]() {
+        connect(control,&QToolButton::clicked,this,[this,choices]() {
             QMenu menu;
             styleMenu(menu);
             const quint64 generation=m_generation;
