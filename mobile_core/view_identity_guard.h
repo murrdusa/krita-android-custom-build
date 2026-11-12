@@ -74,19 +74,10 @@ public:
             }
             return {};
         }
-        QPointer<QObject> chosen;
-        if(currentDocument) {
-            for(const View &v:views) {
-                if(v.document!=currentDocument)continue;
-                if(!v.nativeView || chosen)return {};
-                chosen=v.nativeView;
-            }
-            if(chosen)return chosen;
-        }
-        // If the engine cannot identify an active document yet, even a
-        // single remaining native view is not sufficient authority to
-        // close it. This can happen between initial widget attachment
-        // and Krita view-manager activation.
+        // No active native view means the stack is in transition or
+        // the last canvas is being detached. An engine document left
+        // selected from the previous tab is not sufficient authority to
+        // close an inactive canvas, even if it is the only match.
         return {};
     }
 };
