@@ -113,7 +113,7 @@ public:
 
     std::function<void()> chooseTool;
     std::function<void()> openTextFormatting;
-    std::function<void(bool)> chooseFillResource;
+    std::function<void(bool,QWidget *)> chooseFillResource;
 
     void setTool(const QString &id,const QString &label,
                  const QList<QPointer<QWidget>> &options,
@@ -165,8 +165,8 @@ public:
         const auto addFillResource=[this](bool gradient) {
             if(!chooseFillResource)return;
             auto *control=button(gradient?QObject::tr("Gradient"):QObject::tr("Pattern"));
-            connect(control,&QToolButton::clicked,this,[this,gradient]() {
-                chooseFillResource(gradient);
+            connect(control,&QToolButton::clicked,this,[this,gradient,control]() {
+                chooseFillResource(gradient,control);
             });
         };
         // Shape tools may register with their plugin prefix, unlike the

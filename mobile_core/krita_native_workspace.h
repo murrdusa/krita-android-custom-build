@@ -437,26 +437,35 @@ public:
         });
     }
 
-    void chooseFillResource(bool gradient)
+    void chooseFillResource(bool gradient,QWidget *anchor=nullptr)
     {
         if(!m_host || !m_engine.hasDocument())return;
-        QTimer::singleShot(0,this,[this,gradient]() {
+        QTimer::singleShot(0,this,[this,gradient,anchor=QPointer<QWidget>(anchor)]() {
             if(!m_host || !m_engine.hasDocument())return;
             auto *manager=m_engine.manager();
             QPointer<KisCanvasResourceProvider> provider=m_engine.brushResources();
             QPointer<KisDocument> document=manager?manager->document():nullptr;
             if(!provider || !document)return;
 
-            QDialog dialog(m_host);
-            dialog.setWindowTitle(gradient?tr("Gradients"):tr("Patterns"));
-            dialog.setStyleSheet(QStringLiteral(
-                "QDialogButtonBox QPushButton{min-height:44px;padding:0 14px;}"
+            auto *panel=new MobileTransientPanel(m_host);
+            panel->setObjectName(QStringLiteral("mobileFillResources"));
+            panel->setAccessibleName(gradient?tr("Gradients"):tr("Patterns"));
+            panel->setStyleSheet(QStringLiteral(
+                "QFrame#mobileFillResources{background:#252529;border:1px solid #55555c;"
+                "border-radius:8px;}"
+                "QDialogButtonBox QPushButton{min-height:40px;padding:0 14px;}"
                 "QTabBar::tab{min-height:36px;padding:0 10px;}"));
-            auto *layout=new QVBoxLayout(&dialog);
+            auto *layout=new QVBoxLayout(panel);
+            const auto applyResource=[this,panel,provider,document,gradient](const KoResourceSP &resource) {
+                if(!resource || !provider || !document || !m_engine.manager() ||
+                   m_engine.manager()->document()!=document)return;
+                if(gradient)provider->slotGradientActivated(resource);
+                else provider->slotPatternActivated(resource);
+                panel->close();
+            };
             std::function<KoResourceSP()> selected;
-            KoResourceSP customPattern;
             if(gradient) {
-                auto *chooser=new KisGradientChooser(&dialog,nullptr,false);
+                auto *chooser=new KisGradientChooser(panel,nullptr,false);
                 chooser->setCanvasResourcesInterface(
                     provider->resourceManager()->canvasResourcesInterface());
                 chooser->setItemSize(KisGradientChooser::ItemSize_Large);
@@ -464,7 +473,7 @@ public:
                 layout->addWidget(chooser,1);
                 selected=[chooser]() {return chooser->currentResource();};
             } else {
-                auto *tabs=new QTabWidget(&dialog);
+                auto *tabs=new QTabWidget(panel);
                 auto *chooser=new KisPatternChooser(tabs);
                 chooser->setPreviewOrientation(Qt::Vertical);
                 if(auto pattern=provider->currentPattern())
@@ -473,12 +482,7 @@ public:
                 auto *custom=new KisCustomPattern(tabs,"mobileCanvasPattern",
                                                   tr("From Canvas"),manager);
                 tabs->addTab(custom,tr("From Canvas"));
-                connect(custom,&KisCustomPattern::activatedResource,&dialog,
-                        [&dialog,&customPattern](KoResourceSP pattern) {
-                    if(!pattern)return;
-                    customPattern=pattern;
-                    dialog.accept();
-                });
+                connect(custom,&KisCustomPattern::activatedResource,panel,applyResource);
                 connect(custom,&KisCustomPattern::patternAdded,
                         chooser,&KisPatternChooser::setCurrentPattern);
                 selected=[chooser,tabs]() {
@@ -486,22 +490,12 @@ public:
                 };
                 layout->addWidget(tabs,1);
             }
-            auto *buttons=new QDialogButtonBox(
-                QDialogButtonBox::Apply|QDialogButtonBox::Cancel,&dialog);
-            auto *apply=buttons->button(QDialogButtonBox::Apply);
-            connect(apply,&QPushButton::clicked,&dialog,[&]() {
-                if(selected())dialog.accept();
-            });
-            connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
+            auto *buttons=new QDialogButtonBox(QDialogButtonBox::Apply,panel);
+            connect(buttons->button(QDialogButtonBox::Apply),&QPushButton::clicked,panel,
+                    [applyResource,selected]() {applyResource(selected());});
             layout->addWidget(buttons);
-            const QSize size=m_host->size();
-            dialog.resize(qMin(640,size.width()),qMin(680,size.height()));
-            if(dialog.exec()!=QDialog::Accepted || !provider || !document ||
-               !m_engine.manager() || m_engine.manager()->document()!=document)return;
-            const auto resource=customPattern?customPattern:selected();
-            if(!resource)return;
-            if(gradient)provider->slotGradientActivated(resource);
-            else provider->slotPatternActivated(resource);
+            panel->anchorTo(anchor,QSize(440,460));
+            panel->present();
         });
     }
 
@@ -1612,8 +1606,8 @@ private:
         if(!m_contextToolBar) {
             m_contextToolBar=new MobileContextToolBar(canvas,m_optionsAction);
             m_contextToolBar->chooseTool=[this]() {chooseTool();};
-            m_contextToolBar->chooseFillResource=[this](bool gradient) {
-                chooseFillResource(gradient);
+            m_contextToolBar->chooseFillResource=[this](bool gradient,QWidget *anchor) {
+                chooseFillResource(gradient,anchor);
             };
             if(KoDockRegistry::instance()->value(QStringLiteral("TextProperties")))
                 m_contextToolBar->openTextFormatting=[this]() {toggleTextFormatting();};

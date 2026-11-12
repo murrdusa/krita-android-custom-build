@@ -827,7 +827,7 @@ private:
         if(!base)return {};
         auto preset=base->clone().dynamicCast<KisPaintOpPreset>();
         if(!preset)return {};
-        const auto settings=preset->settings()->clone();
+        auto settings=preset->settings()->clone();
         const auto original=source->settings();
         settings->setProperty(QStringLiteral("brush_definition"),
                               original->getProperty(QStringLiteral("brush_definition")));
@@ -893,7 +893,6 @@ private:
         };
         if(slot==1)tab(i18n("Erasers"),1);
         if(slot==2)tab(i18n("Blenders"),2);
-        const int allTab=tabs->count();
         tab(i18n("All"),-1);
         tab(i18n("Favorites"),-4);
         tab(i18n("Recent"),-5);
@@ -978,8 +977,7 @@ private:
             filter->setCategory(tabs->tabData(index).toInt());
             updateSelected();
         });
-        connect(search,&QLineEdit::textChanged,panel,[tabs,allTab,filter,updateSelected](const QString &query) {
-            if(!query.isEmpty() && tabs->currentIndex()!=allTab)tabs->setCurrentIndex(allTab);
+        connect(search,&QLineEdit::textChanged,panel,[filter,updateSelected](const QString &query) {
             filter->setSearch(query);
             updateSelected();
         });

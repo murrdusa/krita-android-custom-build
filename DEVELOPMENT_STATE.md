@@ -6,7 +6,7 @@ Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1]
 
 ## Brush picker and contextual controls
 
-Contextual tool options use compact lists or sliders anchored to their toolbar buttons. Brush presets use a dismissible drawer with search, category tabs, stars, and per-mode recents. One tap selects and keeps the drawer open. A second tap opens size, opacity, and supported flow controls. Erase can use any preset through Krita’s eraser toggle. Blend can create a separate Color Smudge preset from a compatible native brush tip. The conversion copies shared size, opacity, rotation, and scatter dynamics when present, and specialized engine effects remain specific to their original preset.
+Contextual tool options use compact lists or sliders anchored to their toolbar buttons. Gradient and pattern choosers also open as dismissible panels while retaining the native resource controls. Brush presets use a dismissible drawer with search, category tabs, stars, and per-mode recents. One tap selects and keeps the drawer open. A second tap opens size, opacity, and supported flow controls. Erase can use any preset through Krita’s eraser toggle. Blend can create a separate Color Smudge preset from a compatible native brush tip. The conversion copies shared size, opacity, rotation, and scatter dynamics when present, and specialized engine effects remain specific to their original preset.
 
 ## Compact Tools picker
 
