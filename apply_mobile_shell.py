@@ -1255,10 +1255,14 @@ install(FILES org.kde.krita.desktop''',
             const QString key = QString::number(index);
             QStringList binding = touchSettings.value(key).toStringList();
             if (!touchSettings.contains(key) &&
-                ((gesture == KisShortcutConfiguration::OneFingerDoubleTap && !profileHasDoubleTap) ||
-                 (gesture == KisShortcutConfiguration::TwoFingerTap && !profileHasCustomTwoFingerTap))) {
+                gesture == KisShortcutConfiguration::OneFingerDoubleTap && !profileHasDoubleTap) {
                 binding = QStringList{QStringLiteral("Touch Gestures"),
                            QString::number(KisTouchGestureAction::MirrorView)};
+            }
+            if (!touchSettings.contains(key) &&
+                gesture == KisShortcutConfiguration::TwoFingerTap && !profileHasCustomTwoFingerTap) {
+                binding = QStringList{QStringLiteral("Touch Gestures"),
+                           QString::number(KisTouchGestureAction::UndoActionShortcut)};
             }
             if (binding.size() != 2) continue;
             bool validMode = false;
