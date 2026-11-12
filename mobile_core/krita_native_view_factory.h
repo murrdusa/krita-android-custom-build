@@ -24,6 +24,7 @@
 #include "native_view_stack.h"
 #include "native_krita_save_host.h"
 #include "canvas_resume_observer.h"
+#include "saved_version_archive.h"
 
 class MobileKritaNativeViewFactory final
 {
@@ -54,7 +55,8 @@ public:
         view->slotLoadingFinished();
 
         const QString title=document->path().isEmpty()?
-            QStringLiteral("Untitled"):document->path();
+            QStringLiteral("Untitled"):
+            MobileSavedVersionArchive::projectName(document->path());
         if(!stack->adoptView(view,document,title,[guarded]() {
             if(!guarded || !guarded->close())return false;
             // Close may be canceled. Once accepted, destroy the native
@@ -76,7 +78,8 @@ public:
             if(!trackedStack || !trackedDocument || !guarded)return;
             const QString path=trackedDocument->path();
             const QString title=path.isEmpty()?
-                QStringLiteral("Untitled"):QFileInfo(path).fileName();
+                QStringLiteral("Untitled"):
+                MobileSavedVersionArchive::projectName(path);
             // QPointer is not covariant in the Android Qt version:
             // explicitly convert the live KisView pointer to the
             // QObject identity expected by MobileNativeViewStack.
