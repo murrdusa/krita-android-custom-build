@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 // Standalone desktop Qt regression checks for Android-independent archive paths.
 #include "../mobile_core/saved_version_archive.h"
+#include "../mobile_core/open_document_destination_policy.h"
 #include <QCoreApplication>
 #include <QFile>
 #include <QDir>
@@ -273,6 +274,24 @@ int main(int argc,char **argv)
         if(!require(writeBytes(checksum,originalDigest),
                     "restore original checksum after failed link"))return 1;
     }
+
+    // The Save As/Export guard must recognize aliases, relative paths,
+    // and equivalent content provider URIs for another open project.
+    using Destination=MobileOpenDocumentDestinationPolicy;
+    if(!require(Destination::sameFile(
+                    source,temp.filePath(QStringLiteral("./art.kra"))) &&
+                Destination::sameFile(tree,direct) &&
+                !Destination::sameFile(source,saved) &&
+                !Destination::sameFile(QString(),source),
+                "multi-document Save As destination identity"))return 1;
+    const QString alias=temp.filePath(QStringLiteral("alias.kra"));
+    if(QFile(source).link(alias))
+        if(!require(Destination::sameFile(alias,source),
+                    "symlink alias destination collision"))return 1;
+    const QString output=temp.filePath(QStringLiteral("exports/result.png"));
+    if(!require(Destination::sameFile(
+                    output,temp.filePath(QStringLiteral("exports/./result.png"))),
+                "nonexistent export destination normalizes"))return 1;
 
     qInfo() << "PASS: archive deduplication, recovery integrity, checksum repair,"
                " corruption handling, periodic spacing, forced checkpoints,"
