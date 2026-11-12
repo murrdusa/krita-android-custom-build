@@ -568,7 +568,7 @@ private:
                 if(checked&&active.isEmpty())active=choice.label;
             }
             control->setEnabled(enabled);
-            setValueLabel(control,label,active);
+            setChoiceLabel(control,label,active);
         });
     }
 
@@ -588,7 +588,7 @@ private:
             int mode=-1;
         };
         const std::initializer_list<ModeSpec> specs={
-            {"freeTransformButton","slotSetFreeTransformModeButtonClicked",QObject::tr("Free"),"FreeTransformMode"},
+            {"freeTransformButton","slotSetFreeTransformModeButtonClicked",QObject::tr("Standard"),"FreeTransformMode"},
             {"perspectiveTransformButton","slotSetPerspectiveModeButtonClicked",QObject::tr("Perspective"),"PerspectiveTransformMode"},
             {"warpButton","slotSetWarpModeButtonClicked",QObject::tr("Warp"),"WarpTransformMode"},
             {"cageButton","slotSetCageModeButtonClicked",QObject::tr("Cage"),"CageTransformMode"},
@@ -632,7 +632,8 @@ private:
                     m_nativeTool->property("transformMode").toInt()==choice.mode);
                 item->setEnabled(choice.config && optionAvailable(choice.button));
             }
-            auto *picked=menu.exec(control->mapToGlobal(QPoint(0,control->height())));
+            // Native QMenu could open as a narrow strip on Android.
+            auto *picked=mobilePickAction(window(),menu);
             if(!picked)return;
             const int index=picked->data().toInt();
             if(index<0 || index>=choices.size())return;
@@ -694,7 +695,7 @@ private:
                     active=choice.label;
             }
             control->setEnabled(enabled);
-            setValueLabel(control,QObject::tr("Mode"),active);
+            setChoiceLabel(control,QObject::tr("Mode"),active);
         });
     }
 
@@ -739,7 +740,7 @@ private:
                 if(choice.button && choice.button->isChecked())active=choice.label;
             }
             control->setEnabled(enabled);
-            setValueLabel(control,label,active);
+            setChoiceLabel(control,label,active);
         });
     }
 
@@ -969,6 +970,17 @@ private:
                 if(label.size()<=32)addOption(candidate,label);
             }
         }
+    }
+
+    static void setChoiceLabel(QToolButton *control,const QString &label,const QString &choice)
+    {
+        const QString full=choice.isEmpty()?label:
+            QStringLiteral("%1: %2").arg(label,choice);
+        // The selected mode identifies the chip; keep the longer label
+        // for accessibility without using scarce horizontal space.
+        setChipText(control,choice.isEmpty()?label:choice);
+        control->setToolTip(full);
+        control->setAccessibleName(full);
     }
 
     static void setValueLabel(QToolButton *control,const QString &label,const QString &value)
