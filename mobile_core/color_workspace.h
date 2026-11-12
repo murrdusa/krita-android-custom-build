@@ -203,13 +203,10 @@ public:
             m_wheel->setMinimumSize(0,0);
             m_historyRow=createHistoryRow(this);
             refreshHistory();
-            m_wheel->onChosen=[this](const QColor &color,bool final) {
-                setNativeColor(color,final);
+            m_wheel->onChosen=[this](const QColor &color,bool) {
+                setNativeColor(color);
             };
-            if(auto *provider=m_engine.brushResources()) {
-                connect(provider,&KisCanvasResourceProvider::sigFGColorChanged,
-                        this,[this](const KoColor &) {refresh();});
-            }
+            connectColorUpdates();
             if(canvasParent)canvasParent->installEventFilter(this);
             updateForViewport();
             refresh();
@@ -273,8 +270,8 @@ public:
         inner->setSpacing(4);
         m_wheel=new MobileHueWheel(m_contents);
         inner->addWidget(m_wheel,1);
-        m_wheel->onChosen=[this](const QColor &color,bool final) {
-            setNativeColor(color,final);
+        m_wheel->onChosen=[this](const QColor &color,bool) {
+            setNativeColor(color);
         };
         inner->addWidget(createHistoryRow(m_contents));
         auto *advanced=new QToolButton(m_contents);
@@ -286,7 +283,7 @@ public:
             const QColor chosen=QColorDialog::getColor(
                 provider->fgColor().toQColor(),this,i18n("Foreground color"),
                 QColorDialog::ShowAlphaChannel);
-            if(chosen.isValid())setNativeColor(chosen,true);
+            if(chosen.isValid())setNativeColor(chosen);
         });
         inner->addWidget(advanced);
         root->addWidget(m_contents);
@@ -300,6 +297,7 @@ public:
         m_bottomInset=qMax(0,saved.value(
             QStringLiteral("MobileStudio/colorWheelBottom"),7).toInt());
         m_history=MobileRecentColors::load();
+        connectColorUpdates();
         refreshHistory();
         setExpanded(saved.value(
             QStringLiteral("MobileStudio/colorWheelExpanded"),true).toBool());
@@ -348,7 +346,7 @@ public:
                     .arg(color.name()));
                 swatches->addWidget(swatch,i/4,i%4);
                 connect(swatch,&QToolButton::clicked,&dialog,[this,color,&dialog]() {
-                    setNativeColor(color,true);
+                    setNativeColor(color);
                     dialog.accept();
                 });
             }
@@ -373,7 +371,7 @@ public:
                 const QColor color=QColorDialog::getColor(provider->fgColor().toQColor(),
                     &dialog,i18n("Foreground color"),QColorDialog::ShowAlphaChannel);
                 if(color.isValid()) {
-                    setNativeColor(color,true);
+                    setNativeColor(color);
                     dialog.accept();
                 }
             }
@@ -625,7 +623,7 @@ private:
         settings.setValue(QStringLiteral("MobileStudio/colorWheelBottom"),
                           m_bottomInset);
     }
-    void setNativeColor(const QColor &color,bool final)
+    void setNativeColor(const QColor &color)
     {
         auto *provider=m_engine.brushResources();
         if(!provider || !color.isValid())return;
@@ -634,7 +632,6 @@ private:
         // Preserve the active Krita color space, unlike a standalone
         // QColor state or an RGB-only approximation of the document.
         provider->setFGColor(KoColor(color,previous.colorSpace()));
-        if(final)remember(color);
         refresh();
     }
     QWidget *createHistoryRow(QWidget *parent)
@@ -653,17 +650,25 @@ private:
             connect(swatch,&QToolButton::clicked,this,[this,i]() {
                 if(i>=m_history.size())return;
                 const QColor color(m_history.at(i));
-                if(color.isValid())setNativeColor(color,true);
+                if(color.isValid())setNativeColor(color);
             });
         }
         return row;
     }
 
-    void remember(const QColor &color)
+    void connectColorUpdates()
     {
-        m_history=MobileRecentColors::remember(color);
-        refreshHistory();
-        if(m_wheelOnly && m_showHistory && m_history.size()==1)updateForViewport();
+        auto *provider=m_engine.brushResources();
+        if(!provider)return;
+        connect(provider,&KisCanvasResourceProvider::sigFGColorChanged,
+                this,[this](const KoColor &) {refresh();});
+        connect(provider,&KisCanvasResourceProvider::sigMobileStrokeColorsChanged,
+                this,[this](const QStringList &colors) {
+            const bool wasEmpty=m_history.isEmpty();
+            m_history=colors;
+            refreshHistory();
+            if(m_wheelOnly && m_showHistory && wasEmpty)updateForViewport();
+        });
     }
     void refreshHistory()
     {

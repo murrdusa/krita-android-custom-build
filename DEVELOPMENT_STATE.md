@@ -4,6 +4,12 @@
 
 Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1). This file records *current* status, not a commit-by-commit log. The preceding complete log is preserved verbatim in [DEVELOPMENT_HISTORY_2026-11-11.md](DEVELOPMENT_HISTORY_2026-11-11.md). More focused runbooks live under `mobile_core/`.
 
+## Mirror anchor and brush color history
+
+Studio Mirror View keeps the latest visible pen or brush point fixed using Krita's native view transform. A one-finger double tap keeps the tapped point fixed. The anchor can be disabled in Touch, Pressure & Buttons. The default single tap no longer opens the popup palette, which is still assignable. Existing explicit gesture choices remain in effect.
+
+The wheel and toolbar share the last eight colors used in completed freehand brush strokes. Color picking, swatch taps, Clone source picking, and erasing do not add entries. The new history starts fresh because old entries were recorded on foreground changes. Android input and painting behavior still require device verification.
+
 ## Checkpoint lifecycle audit
 
 Studio coalesces foreground loss and waits for the current native save before requesting another checkpoint. Native autosave records the project association before export, validates the staged KRA, and archives only after atomic publication. A failed export or rename keeps the last completed draft. On reopen, Krita tries structurally readable checkpoints newest first before the original file. The 15-second timer remains the primary recovery opportunity because Android can terminate without delivering shutdown callbacks.

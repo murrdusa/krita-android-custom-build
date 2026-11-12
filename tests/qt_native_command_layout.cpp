@@ -128,7 +128,7 @@ int main(int argc,char **argv)
     second.resize(420,600);
     auto *secondCanvas=new QWidget(&second);
     second.setCentralWidget(secondCanvas);
-    QSettings().setValue(QStringLiteral("MobileStudio/recentColors"),
+    QSettings().setValue(QStringLiteral("MobileStudio/strokeColors"),
                          QStringList{QStringLiteral("#ffaa5500"),QStringLiteral("#ff0066ff")});
     QColor picked;
     auto *secondLayout=MobileNativeCommandLayout::install(

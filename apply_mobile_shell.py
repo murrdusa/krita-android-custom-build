@@ -1233,6 +1233,8 @@ install(FILES org.kde.krita.desktop''',
         """            case KisShortcutConfiguration::GestureType:
 #ifdef Q_OS_ANDROID
                 if (touchSettings.contains(QString::number(shortcut->gesture()))) break;
+                if (shortcut->gesture()==KisShortcutConfiguration::OneFingerTap &&
+                    shortcut->action()->id()==QStringLiteral("Show Popup Widget")) break;
                 profileHasDoubleTap |= shortcut->gesture() == KisShortcutConfiguration::OneFingerDoubleTap;
 #endif
                 if (!d->addNativeGestureShortcut""","apply Studio overrides to gesture bindings only")
@@ -1268,6 +1270,35 @@ install(FILES org.kde.krita.desktop''',
         "default to Krita pinch handling without the optional quick reset")
     pinchfile.write_text(pinch_source,encoding="utf-8")
 
+    gesture_header=root/"libs/ui/input/KisTouchGestureAction.h"
+    gesture=gesture_header.read_text(encoding="utf-8")
+    gesture=one(gesture,"    int priority() const override;",
+        """    int priority() const override;
+#ifdef Q_OS_ANDROID
+    void markMobileDoubleTap() {m_mobileDoubleTap=true;}
+#endif""","mark actual double taps without changing other Mirror bindings")
+    gesture=one(gesture,"    int m_shortcut{-1};",
+        """    int m_shortcut{-1};
+#ifdef Q_OS_ANDROID
+    bool m_mobileDoubleTap=false;
+#endif""","track double-tap dispatch for the mirror action")
+    gesture_header.write_text(gesture,encoding="utf-8")
+
+    matcher_file=root/"libs/ui/input/kis_shortcut_matcher.cpp"
+    matcher=matcher_file.read_text(encoding="utf-8")
+    matcher=one(matcher,"#include <QTabletEvent>",
+        '#include <QTabletEvent>\n#include "KisTouchGestureAction.h"',
+        "identify the native mirror gesture after matching a double tap")
+    matcher=one(matcher,"            doubleTap->action()->end(event);",
+        """#ifdef Q_OS_ANDROID
+            if (auto *gesture=dynamic_cast<KisTouchGestureAction*>(doubleTap->action()))
+                gesture->markMobileDoubleTap();
+#endif
+            doubleTap->action()->end(event);""","carry the matched double-tap location into gesture dispatch")
+    matcher=matcher.replace('QStringLiteral("TabletUi/doubleTapMs"), 150',
+                            'QStringLiteral("TabletUi/doubleTapMs"), 250')
+    matcher_file.write_text(matcher,encoding="utf-8")
+
     gesture_file=root/"libs/ui/input/KisTouchGestureAction.cpp"
     gestures=gesture_file.read_text(encoding="utf-8")
     gestures=one(gestures,'#include <QAction>',
@@ -1276,6 +1307,9 @@ install(FILES org.kde.krita.desktop''',
 #include <QTimer>
 #include <KisViewManager.h>
 #include <kis_canvas2.h>
+#include <kis_canvas_controller.h>
+#include <QTouchEvent>
+#include <optional>
 #include "kis_input_manager.h" """.rstrip(),
         "resolve gesture commands through the event canvas")
     gestures=one(gestures,
@@ -1295,6 +1329,13 @@ install(FILES org.kde.krita.desktop''',
         """    // A drag may send end() on finger release and again on TouchEnd.
 #ifdef Q_OS_ANDROID
     const int shortcut = m_shortcut;
+    const bool doubleTap=m_mobileDoubleTap;
+    m_mobileDoubleTap=false;
+    std::optional<QPointF> mirrorTap;
+    if (doubleTap && shortcut==MirrorView && event) {
+        const auto *touch=static_cast<QTouchEvent*>(event);
+        if (!touch->touchPoints().isEmpty()) mirrorTap=touch->touchPoints().first().pos();
+    }
 #endif
     m_shortcut = -1;
     if (actionName.isEmpty()) return;
@@ -1315,8 +1356,20 @@ install(FILES org.kde.krita.desktop''',
 #endif
     // Undo, layer changes and tool switches can reenter the input matcher.
     // Dispatch after it finishes the current gesture and verify the canvas.
-    QTimer::singleShot(0, view, [view, canvas, actionName]() {
+    QTimer::singleShot(0, view, [view, canvas, actionName
+#ifdef Q_OS_ANDROID
+                                , mirrorTap
+#endif
+                               ]() {
         if (!canvas || view->canvasBase() != canvas.data()) return;
+#ifdef Q_OS_ANDROID
+        if (mirrorTap && !view->mainWindow()) {
+            if (auto *controller=dynamic_cast<KisCanvasController*>(canvas->canvasController())) {
+                controller->mobileMirrorAtTap(*mirrorTap);
+                return;
+            }
+        }
+#endif
         auto *collection = view->actionCollection();
         auto *action = collection->action(actionName);
         if (!action) {
@@ -1741,6 +1794,81 @@ install(FILES org.kde.krita.desktop''',
                  f"Studio Dynamic Brush {variable}")
     dyna_file.write_text(dyna,encoding="utf-8")
 
+    controller_header=root/"libs/ui/canvas/kis_canvas_controller.h"
+    controller=controller_header.read_text(encoding="utf-8")
+    controller=one(controller,"    void mirrorCanvas(bool enable);",
+        """    void mirrorCanvas(bool enable);
+#ifdef Q_OS_ANDROID
+    void mobileMirrorView(bool enable);
+    void mobileMirrorAtTap(const QPointF &widgetPoint);
+    void mobileRememberPenPoint(const QPointF &documentPoint);
+#endif"""," expose native view mirroring with an explicit anchor")
+    controller=one(controller,"    void mirrorCanvasImpl(const std::optional<KoViewTransformStillPoint> &stillPoint, bool enable);",
+        """    void mirrorCanvasImpl(const std::optional<KoViewTransformStillPoint> &stillPoint, bool enable);
+#ifdef Q_OS_ANDROID
+    std::optional<QPointF> m_mobilePenPoint;
+#endif""","keep the pen anchor local to each canvas")
+    controller_header.write_text(controller,encoding="utf-8")
+
+    controller_source=root/"libs/ui/canvas/kis_canvas_controller.cpp"
+    controller=controller_source.read_text(encoding="utf-8")
+    controller=one(controller,"#include <QMouseEvent>","#include <QMouseEvent>\n#include <QSettings>",
+                   "read the mobile mirror preference")
+    controller=one(controller,"void KisCanvasController::mirrorCanvasAroundCursor(bool enable)",
+        """#ifdef Q_OS_ANDROID
+void KisCanvasController::mobileRememberPenPoint(const QPointF &documentPoint)
+{
+    m_mobilePenPoint=documentPoint;
+}
+
+void KisCanvasController::mobileMirrorView(bool enable)
+{
+    if (m_mobilePenPoint && QSettings().value(QStringLiteral("MobileStudio/mirrorAtPen"),true).toBool()) {
+        const auto point=m_d->coordinatesConverter->makeDocStillPoint(*m_mobilePenPoint);
+        const auto *widget=m_d->view->canvasBase()->canvasWidget();
+        if (widget && widget->rect().contains(m_d->coordinatesConverter->documentToWidget(*m_mobilePenPoint).toPoint())) {
+            mirrorCanvasImpl(point,enable);
+            return;
+        }
+    }
+    mirrorCanvas(enable);
+}
+
+void KisCanvasController::mobileMirrorAtTap(const QPointF &widgetPoint)
+{
+    const bool enable=!m_d->coordinatesConverter->xAxisMirrored();
+    if (QSettings().value(QStringLiteral("MobileStudio/mirrorAtPen"),true).toBool())
+        mirrorCanvasImpl(m_d->coordinatesConverter->makeWidgetStillPoint(widgetPoint),enable);
+    else
+        mirrorCanvas(enable);
+}
+#endif
+
+void KisCanvasController::mirrorCanvasAroundCursor(bool enable)""","reuse Krita's still-point mirroring")
+    controller_source.write_text(controller,encoding="utf-8")
+    mirror_file=root/"libs/ui/kis_mirror_manager.cpp"
+    mirror=mirror_file.read_text(encoding="utf-8")
+    mirror=one(mirror,
+        "        connect(m_mirrorCanvas, SIGNAL(toggled(bool)), dynamic_cast<KisCanvasController*>(m_imageView->canvasController()), SLOT(mirrorCanvas(bool)));",
+        """        auto *controller=dynamic_cast<KisCanvasController*>(m_imageView->canvasController());
+#ifdef Q_OS_ANDROID
+        if (!m_imageView->viewManager()->mainWindow())
+            connect(m_mirrorCanvas,&QAction::toggled,controller,&KisCanvasController::mobileMirrorView);
+        else
+#endif
+            connect(m_mirrorCanvas,&QAction::toggled,controller,&KisCanvasController::mirrorCanvas);""",
+        "anchor the independent Studio mirror action without changing native reset")
+    mirror_file.write_text(mirror,encoding="utf-8")
+
+    provider_header=root/"libs/ui/kis_canvas_resource_provider.h"
+    provider=provider_header.read_text(encoding="utf-8")
+    provider=one(provider,"    void sigFGColorChanged(const KoColor &);",
+        """    void sigFGColorChanged(const KoColor &);
+#ifdef Q_OS_ANDROID
+    void sigMobileStrokeColorsChanged(const QStringList &colors);
+#endif""","refresh both Studio history surfaces after a brush stroke")
+    provider_header.write_text(provider,encoding="utf-8")
+
     freehand_header=root/"libs/ui/tool/kis_tool_freehand.h"
     freehand=freehand_header.read_text(encoding="utf-8")
     freehand=one(freehand,"    bool trySampleByPaintOp(KoPointerEvent *event, AlternateAction action);",
@@ -1760,6 +1888,13 @@ install(FILES org.kde.krita.desktop''',
         """    bool m_paintopBasedSamplingInAction {false};
     KisPaintOpPresetSP m_mobileClonePreset;
     bool m_mobileCloneSourceTap {false};""","one-shot Clone source state")
+    freehand=one(freehand,"#include <kis_distance_information.h>",
+        "#include <kis_distance_information.h>\n#include <QColor>","store the foreground color at stroke start")
+    freehand=one(freehand,"    bool m_mobileCloneSourceTap {false};",
+        """    bool m_mobileCloneSourceTap {false};
+#ifdef Q_OS_ANDROID
+    QColor m_mobileStrokeColor;
+#endif""","capture the color used when a native brush stroke starts")
     freehand_header.write_text(freehand,encoding="utf-8")
 
     freehand_file=root/"libs/ui/tool/kis_tool_freehand.cc"
@@ -1821,6 +1956,56 @@ void KisToolFreehand::beginPrimaryAction(KoPointerEvent *event)
     freehand=one(freehand,"                                                                                   event->modifiers(),",
         """                                                                                   pickCloneSource ? Qt::KeyboardModifiers(Qt::ControlModifier) : event->modifiers(),""",
         "reuse native Clone engine origin selection")
+    freehand=one(freehand,'#include "canvas/kis_canvas2.h"',
+        """#include "canvas/kis_canvas2.h"
+#ifdef Q_OS_ANDROID
+#include "canvas/kis_canvas_controller.h"
+#include "recent_colors.h"
+#endif""","native stroke color and mirror anchor")
+    freehand=one(freehand,"    m_helper->initPaint(event,",
+        """#ifdef Q_OS_ANDROID
+    m_mobileStrokeColor=QColor();
+    if (auto *native=dynamic_cast<KisCanvas2*>(canvas())) {
+        if (auto *controller=dynamic_cast<KisCanvasController*>(native->canvasController()))
+            controller->mobileRememberPenPoint(event->point);
+        auto *view=native->viewManager();
+        const auto preset=currentPaintOpPreset();
+        if (!view->mainWindow() && preset && preset->paintOp().id()!=QStringLiteral("duplicate") &&
+            !isEraser()) {
+            auto *resources=view->canvasResourceProvider();
+            if (resources->opacity()>0) m_mobileStrokeColor=resources->fgColor().toQColor();
+        }
+    }
+#endif
+    m_helper->initPaint(event,""","record only colors used to begin real paint strokes")
+    freehand=one(freehand,"    m_helper->paintEvent(event);",
+        """#ifdef Q_OS_ANDROID
+    if (auto *controller=dynamic_cast<KisCanvasController*>(canvas()->canvasController()))
+        controller->mobileRememberPenPoint(event->point);
+#endif
+    m_helper->paintEvent(event);""","track the last painted document point")
+    freehand=one(freehand,"    m_helper->endPaint();",
+        """#ifdef Q_OS_ANDROID
+    const auto color=m_mobileStrokeColor;
+    m_mobileStrokeColor=QColor();
+    const bool painted=m_helper->isRunning();
+#endif
+    m_helper->endPaint();
+#ifdef Q_OS_ANDROID
+    if (painted && color.isValid()) {
+        if (auto *native=dynamic_cast<KisCanvas2*>(canvas())) {
+            const auto colors=MobileRecentColors::recordStroke(color);
+            if (!colors.isEmpty())
+                Q_EMIT native->viewManager()->canvasResourceProvider()->sigMobileStrokeColorsChanged(colors);
+        }
+    }
+#endif""","publish brush color history after the native stroke ends")
+    freehand=one(freehand,"void KisToolFreehand::requestStrokeCancellation()\n{",
+        """void KisToolFreehand::requestStrokeCancellation()
+{
+#ifdef Q_OS_ANDROID
+    m_mobileStrokeColor=QColor();
+#endif""","exclude cancelled strokes from color history")
     freehand_file.write_text(freehand,encoding="utf-8")
 
     fill_dir=root/"plugins/tools/basictools"
@@ -2177,6 +2362,17 @@ void KisToolSelectContiguous::endPrimaryAction(KoPointerEvent *event)
 #endif
 
     if (tabletEvent)""","guard empty Android touch events and cancel interrupted tool gestures")
+    tool_proxy=one(tool_proxy,'#include "kis_tool_proxy.h"',
+        '#include "kis_tool_proxy.h"\n#include "kis_canvas_controller.h"',
+        "share the latest tablet hover point with the mirror controller")
+    tool_proxy=one(tool_proxy,
+        "        this->tabletEvent(tabletEvent, docPoint);\n        return;",
+        """#ifdef Q_OS_ANDROID
+        if (auto *controller=dynamic_cast<KisCanvasController*>(canvas()->canvasController()))
+            controller->mobileRememberPenPoint(docPoint);
+#endif
+        this->tabletEvent(tabletEvent, docPoint);
+        return;""","remember the pen point even before the next stroke")
     tool_proxy_file.write_text(tool_proxy,encoding="utf-8")
 
     assistant_dir=root/"plugins/assistants/Assistants"

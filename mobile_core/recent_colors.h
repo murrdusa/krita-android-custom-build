@@ -9,19 +9,19 @@ namespace MobileRecentColors
 {
 inline QStringList load()
 {
-    return QSettings().value(QStringLiteral("MobileStudio/recentColors")).toStringList().mid(0,8);
+    return QSettings().value(QStringLiteral("MobileStudio/strokeColors")).toStringList().mid(0,8);
 }
 
-inline QStringList remember(const QColor &color)
+inline QStringList recordStroke(const QColor &color)
 {
+    if(!color.isValid() || color.alpha()==0)return {};
     auto colors=load();
-    if(!color.isValid())return colors;
     const auto code=color.name(QColor::HexArgb);
-    if(!colors.isEmpty() && colors.first()==code)return colors;
+    if(!colors.isEmpty() && colors.first()==code)return {};
     colors.removeAll(code);
     colors.prepend(code);
     if(colors.size()>8)colors.removeLast();
-    QSettings().setValue(QStringLiteral("MobileStudio/recentColors"),colors);
+    QSettings().setValue(QStringLiteral("MobileStudio/strokeColors"),colors);
     return colors;
 }
 }

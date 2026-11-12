@@ -57,14 +57,6 @@ public:
         layout->m_recentColors=MobileRecentColors::load();
         layout->m_historyEnabled=layout->m_selectColor &&
             QSettings().value(QStringLiteral("MobileStudio/toolbarColorHistory"),false).toBool();
-        layout->m_colorTimer.setSingleShot(true);
-        layout->m_colorTimer.setInterval(200);
-        QObject::connect(&layout->m_colorTimer,&QTimer::timeout,layout,[layout]() {
-            const auto colors=MobileRecentColors::remember(layout->m_pendingColor);
-            if(layout->m_recentColors==colors)return;
-            layout->m_recentColors=colors;
-            if(layout->m_historyEnabled)layout->requestPosition();
-        });
         auto *row=new QHBoxLayout(layout->m_toolbar);
         row->setContentsMargins(1,1,1,1);
         row->setSpacing(1);
@@ -177,11 +169,11 @@ public:
         m_layoutEditing=std::move(editing);
     }
 
-    void observeForeground(const QColor &color)
+    void updateStrokeColors(const QStringList &colors)
     {
-        if(!color.isValid() || color==m_pendingColor)return;
-        m_pendingColor=color;
-        m_colorTimer.start();
+        if(m_recentColors==colors)return;
+        m_recentColors=colors;
+        if(m_historyEnabled)requestPosition();
     }
 
     static const char *overlayBoundsProperty()
@@ -937,8 +929,6 @@ private:
     MobileToolbarGestureButton::InlineAdjustment m_adjust;
     MobileToolbarGestureButton::ColorSample m_sample;
     std::function<void(const QColor &)> m_selectColor;
-    QTimer m_colorTimer;
-    QColor m_pendingColor;
     QStringList m_recentColors;
     bool m_historyEnabled=false;
     QStringList m_defaults;

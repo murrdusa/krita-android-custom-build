@@ -528,7 +528,10 @@ public:
             const QString key=QString::number(gesture);
             const QString label=Shortcut::gestureToText(gesture);
             auto *combo=new MobileTouchComboBox(body);
-            combo->addItem(QObject::tr("Krita profile default"));
+            combo->addItem(gesture==Shortcut::OneFingerDoubleTap?
+                QObject::tr("Default (Flip Canvas)"):
+                gesture==Shortcut::OneFingerTap?QObject::tr("Default (no popup palette)"):
+                QObject::tr("Krita profile default"));
             combo->addItem(QObject::tr("Disabled"),QStringList{QStringLiteral("disabled")});
             combo->addItem(QObject::tr("Undo"),command(Touch::UndoActionShortcut));
             combo->addItem(QObject::tr("Redo"),command(Touch::RedoActionShortcut));
@@ -735,11 +738,18 @@ public:
             referenceFlipInfo->setWordWrap(true);
             form->addRow(referenceFlipInfo);
 
+            auto *mirrorAtPen=new QCheckBox(QObject::tr("Keep drawing point in place when mirroring"),body);
+            mirrorAtPen->setChecked(settings.value(
+                QStringLiteral("MobileStudio/mirrorAtPen"),true).toBool());
+            form->addRow(mirrorAtPen);
+            QObject::connect(mirrorAtPen,&QCheckBox::toggled,&dialog,[](bool enabled) {
+                QSettings().setValue(QStringLiteral("MobileStudio/mirrorAtPen"),enabled);
+            });
             auto *doubleTap=new QSpinBox(body);
             doubleTap->setRange(120,600);
             doubleTap->setSuffix(QObject::tr(" ms"));
             doubleTap->setValue(qBound(120,settings.value(
-                QStringLiteral("TabletUi/doubleTapMs"),150).toInt(),600));
+                QStringLiteral("TabletUi/doubleTapMs"),250).toInt(),600));
             form->addRow(QObject::tr("One-finger double tap interval"),doubleTap);
             QObject::connect(doubleTap,QOverload<int>::of(&QSpinBox::valueChanged),
                 &dialog,[](int value) {

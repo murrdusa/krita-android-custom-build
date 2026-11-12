@@ -404,14 +404,9 @@ public:
         if(commandLayout) {
             commandLayout->setLayoutPanels([workspace]() {return workspace->layoutPanels();},
                 [workspace](bool editing) {workspace->setCanvasLayoutEditing(editing);});
-            if(auto *provider=nativeBridge.brushResources()) {
-                if(MobileRecentColors::load().isEmpty())
-                    commandLayout->observeForeground(provider->fgColor().toQColor());
-                QObject::connect(provider,&KisCanvasResourceProvider::sigFGColorChanged,
-                                 commandLayout,[commandLayout](const KoColor &color) {
-                    commandLayout->observeForeground(color.toQColor());
-                });
-            }
+            if(auto *provider=nativeBridge.brushResources())
+                QObject::connect(provider,&KisCanvasResourceProvider::sigMobileStrokeColorsChanged,
+                                 commandLayout,&MobileNativeCommandLayout::updateStrokeColors);
         } else {
             qWarning() << "Independent Krita command layout unavailable";
         }
