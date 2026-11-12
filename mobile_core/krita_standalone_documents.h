@@ -35,6 +35,7 @@
 #include "krita_standalone_runtime.h"
 #include "native_krita_save_host.h"
 #include "saved_version_archive.h"
+#include "open_document_destination_policy.h"
 
 class MobileKritaStandaloneDocuments final : public MobileDocumentHostPort
 {
@@ -260,17 +261,14 @@ private:
         // tab while its dirty in-memory artwork remains unsaved.
         // Compare canonical KRA identities, including equivalent SAF
         // document URI forms, before initiating any native disk write.
-        const QString targetIdentity=MobileSavedVersionArchive::canonicalIdentity(target);
         const auto open=m_runtime->documentRoot()->openViews();
         for(const auto &view:open) {
             const auto *other=qobject_cast<KisDocument*>(view.document.data());
             if(!other || other==guardedDocument.data())continue;
             const QString otherPath=other->path();
             if(otherPath.isEmpty())continue;
-            const QString otherIdentity=
-                MobileSavedVersionArchive::canonicalIdentity(otherPath);
-            if(target==otherPath ||
-               (!targetIdentity.isEmpty() && targetIdentity==otherIdentity)) {
+            if(MobileOpenDocumentDestinationPolicy::sameFile(
+                   target,otherPath)) {
                 QMessageBox::warning(m_runtime->window(),
                     exporting?QObject::tr("Export a copy"):QObject::tr("Save drawing"),
                     QObject::tr("That file is already open in another canvas. "
@@ -279,9 +277,8 @@ private:
             }
         }
         if(exporting) {
-            const QString canonical=QFileInfo(target).canonicalFilePath();
-            if(target==currentPath ||
-               (!canonical.isEmpty() && canonical==QFileInfo(currentPath).canonicalFilePath())) {
+            if(MobileOpenDocumentDestinationPolicy::sameFile(
+                   target,currentPath)) {
                 QMessageBox::warning(m_runtime->window(),QObject::tr("Export a copy"),
                     QObject::tr("Choose a different file from the open drawing."));
                 return false;
