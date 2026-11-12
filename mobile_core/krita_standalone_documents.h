@@ -255,6 +255,29 @@ private:
         if(!guardedDocument || !m_runtime ||
            !m_runtime->ownsDocument(guardedDocument) ||
            target.isEmpty() || targetMime.isEmpty())return false;
+        // With multiple native canvases, a Save As or Export Copy could
+        // otherwise overwrite the on-disk project of a different open
+        // tab while its dirty in-memory artwork remains unsaved.
+        // Compare canonical KRA identities, including equivalent SAF
+        // document URI forms, before initiating any native disk write.
+        const QString targetIdentity=MobileSavedVersionArchive::canonicalIdentity(target);
+        const auto open=m_runtime->documentRoot()->openViews();
+        for(const auto &view:open) {
+            const auto *other=qobject_cast<KisDocument*>(view.document.data());
+            if(!other || other==guardedDocument.data())continue;
+            const QString otherPath=other->path();
+            if(otherPath.isEmpty())continue;
+            const QString otherIdentity=
+                MobileSavedVersionArchive::canonicalIdentity(otherPath);
+            if(target==otherPath ||
+               (!targetIdentity.isEmpty() && targetIdentity==otherIdentity)) {
+                QMessageBox::warning(m_runtime->window(),
+                    exporting?QObject::tr("Export a copy"):QObject::tr("Save drawing"),
+                    QObject::tr("That file is already open in another canvas. "
+                                "Choose a different destination to avoid overwriting it."));
+                return false;
+            }
+        }
         if(exporting) {
             const QString canonical=QFileInfo(target).canonicalFilePath();
             if(target==currentPath ||
