@@ -1,0 +1,72 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+// Desktop Qt checks for multiple independent native document views.
+// Does not initialize Krita or the Android drawing engine.
+#define KRITA_MOBILE_QT_TEST
+#include "../mobile_core/native_view_stack.h"
+#include <QApplication>
+#include <QWidget>
+#include <QObject>
+#include <QDebug>
+
+static bool require(bool ok,const char *message)
+{
+    if(!ok)qCritical()<<"FAIL:"<<message;
+    return ok;
+}
+int main(int argc,char **argv)
+{
+    QApplication app(argc,argv);
+    MobileNativeViewStack stack;
+    QObject firstDocument,secondDocument;
+    auto *first=new QWidget;
+    auto *second=new QWidget;
+    auto *duplicate=new QWidget;
+    bool allowClose=false;
+    int closed=0;
+    const bool firstAdded=stack.adoptView(first,&firstDocument,
+        QStringLiteral("Untitled"),[&]() {++closed;return allowClose;});
+    const bool secondAdded=stack.adoptView(second,&secondDocument,
+        QStringLiteral("Second"),[&]() {++closed;return allowClose;});
+    if(!require(firstAdded && secondAdded,"two distinct documents attached"))
+        return 1;
+    if(!require(!stack.adoptView(duplicate,&firstDocument,
+                    QStringLiteral("Duplicate"),[](){return true;}),
+                "duplicate document rejected"))return 1;
+    delete duplicate;
+    auto views=stack.openViews();
+    if(!require(views.size()==2 &&
+                views.at(0).document==&firstDocument &&
+                views.at(1).document==&secondDocument,
+                "both document identities retained"))return 1;
+    const QPointer<QObject> firstIdentity(first);
+    const QPointer<QObject> secondIdentity(second);
+    if(!require(stack.activateView(firstIdentity) &&
+                stack.currentDocument()==&firstDocument,
+                "switch to first document"))return 1;
+    if(!require(stack.activateView(secondIdentity) &&
+                stack.currentDocument()==&secondDocument,
+                "switch to second document"))return 1;
+    if(!require(stack.updateViewState(secondIdentity,
+                    QStringLiteral("Second edited"),true),
+                "update document state"))return 1;
+    views=stack.openViews();
+    if(!require(views.at(1).modified &&
+                views.at(1).title==QStringLiteral("Second edited"),
+                "modified flag and title reflect real document"))return 1;
+    if(!require(!stack.closeView(secondIdentity) &&
+                stack.openViews().size()==2 && closed==1,
+                "canceling close keeps document attached"))return 1;
+    allowClose=true;
+    if(!require(stack.closeView(secondIdentity) &&
+                stack.openViews().size()==1 &&
+                stack.currentDocument()==&firstDocument,
+                "closing second document preserves first"))return 1;
+    delete second;
+    if(!require(stack.closeView(firstIdentity) &&
+                stack.openViews().isEmpty(),
+                "close remaining document"))return 1;
+    delete first;
+    qInfo()<<"PASS: multi-document native view ownership, duplicate rejection,"
+             " activation, state changes and cancelable closing";
+    return 0;
+}
