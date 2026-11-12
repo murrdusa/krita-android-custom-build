@@ -12,7 +12,6 @@
 #include <QAndroidJniEnvironment>
 #include <QApplication>
 #include <QBuffer>
-#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -64,6 +63,7 @@
 
 #include "document_workflow.h"
 #include "mobile_draft_recovery.h"
+#include "project_preview_cache.h"
 #include "saved_version_archive.h"
 
 // ---------------------------------------------------------------------------
@@ -88,16 +88,6 @@ public:
         return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
                + QStringLiteral("/project-index.json");
     }
-    static QString thumbDir() {
-        return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
-               + QStringLiteral("/project-thumbs");
-    }
-    static QString thumbPath(const QString &path) {
-        const QByteArray key=QCryptographicHash::hash(
-            path.toUtf8(),QCryptographicHash::Sha256).toHex();
-        return thumbDir()+QLatin1Char('/')+QString::fromLatin1(key)+QStringLiteral(".png");
-    }
-
     static QVector<MobileProjectIndexEntry> load() {
         QVector<MobileProjectIndexEntry> entries;
         QFile f(indexPath());
@@ -180,47 +170,7 @@ public:
         return existing;
     }
 
-    // Load a cached thumbnail from disk. Returns null image if not cached
-    // or if the entry's modification time has changed (stale).
-    static QImage loadThumb(const QString &path, qint64 modified) {
-        const QString tp=thumbPath(path);
-        const QFileInfo ti(tp);
-        if(!ti.isReadable())return {};
-        // The thumb file's mtime is set to match the project's mtime.
-        // If they differ, the thumb is stale.
-        if(modified>0 && ti.lastModified().toMSecsSinceEpoch()!=modified)return {};
-        // Android SAF providers sometimes report no modification time.
-        // Give those thumbnail entries a finite lifetime rather than
-        // showing an obsolete picture forever.
-        if(modified==0 && ti.lastModified().secsTo(
-                QDateTime::currentDateTime())>30*60)return {};
-        QImageReader reader(tp,"png");
-        return reader.read();
-    }
 
-    // Save a thumbnail to disk and stamp its mtime to match the project.
-    static void saveThumb(const QString &path, qint64 modified, const QImage &image) {
-        if(image.isNull())return;
-        const QString dir=thumbDir();
-        QDir().mkpath(dir);
-        const QString tp=thumbPath(path);
-        QSaveFile output(tp);
-        if(!output.open(QIODevice::WriteOnly))return;
-        if(!image.save(&output,"PNG") || !output.flush()) {
-            output.cancelWriting();
-            return;
-        }
-        if(modified>0)
-            output.setFileTime(QDateTime::fromMSecsSinceEpoch(modified),
-                               QFileDevice::FileModificationTime);
-        if(!output.commit())return;
-        static std::atomic_uint writes{0};
-        if(writes++%64!=0)return;
-        const auto entries=QDir(dir).entryInfoList({QStringLiteral("*.png")},
-            QDir::Files|QDir::NoSymLinks,QDir::Time);
-        for(int i=512;i<entries.size();++i)
-            QFile::remove(entries.at(i).absoluteFilePath());
-    }
 };
 
 class MobileDocumentHome final : public QFrame
@@ -390,6 +340,8 @@ public:
     ~MobileDocumentHome() override
     {
         if(m_scanCancel)m_scanCancel->store(true);
+        m_previewCancelled->store(true);
+        m_thumbnails.clear();
         m_scanner.waitForDone();
         m_thumbnails.waitForDone();
     }
@@ -414,41 +366,17 @@ public:
     void showSavedVersions(const QString &path)
     {
         if(m_restoringVersion || !m_files)return;
-        const auto versions=MobileSavedVersionArchive::list(path);
-        if(versions.isEmpty()) {
-            QMessageBox::information(window(),i18n("Saved versions"),
-                i18n("Earlier saved copies and completed draft checkpoints "
-                     "will appear here."));
-            return;
-        }
         QDialog dialog(window());
         dialog.setWindowTitle(i18n("Saved versions"));
         dialog.setMinimumWidth(qMin(300,qMax(1,window()->width()-24)));
         auto *layout=new QVBoxLayout(&dialog);
-        auto *explanation=new QLabel(i18n(
-            "Open a saved copy as a new canvas. Use Save As to keep it."),&dialog);
+        auto *explanation=new QLabel(i18n("Loading saved versions…"),&dialog);
         explanation->setWordWrap(true);
         layout->addWidget(explanation);
         auto *list=new QListWidget(&dialog);
         list->setIconSize(QSize(64,54));
         list->setStyleSheet(QStringLiteral("QListWidget::item{min-height:54px;padding:5px;}"));
         MobileTouchScroll::configureList(list);
-        for(const auto &version:versions) {
-            new QListWidgetItem(m_placeholder,i18n("%1  •  %2 MB",
-                version.createdUtc.toLocalTime().toString(QStringLiteral("yyyy-MM-dd  HH:mm")),
-                QString::number(version.bytes/(1024.0*1024.0),'f',1)),list);
-        }
-        const QPointer<QListWidget> target(list);
-        m_thumbnails.start([target,versions]() {
-            for(int row=0;row<versions.size();++row) {
-                const QImage image=preview(versions.at(row).path);
-                if(image.isNull())continue;
-                QMetaObject::invokeMethod(qApp,[target,image,row]() {
-                    if(target)target->item(row)->setIcon(QIcon(QPixmap::fromImage(image)));
-                },Qt::QueuedConnection);
-            }
-        });
-        list->setCurrentRow(0);
         layout->addWidget(list,1);
         auto *buttons=new QDialogButtonBox(
             QDialogButtonBox::Open|QDialogButtonBox::Cancel,&dialog);
@@ -456,9 +384,43 @@ public:
         connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);
         connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
         layout->addWidget(buttons);
-        if(dialog.exec()!=QDialog::Accepted || list->currentRow()<0)return;
-
-        openCopy(versions.at(list->currentRow()));
+        auto *open=buttons->button(QDialogButtonBox::Open);
+        open->setEnabled(false);
+        const auto versions=std::make_shared<QVector<MobileSavedVersionArchive::Version>>();
+        const auto cancelled=std::make_shared<std::atomic_bool>(false);
+        const QPointer<QListWidget> target(list);
+        const QIcon placeholder=m_placeholder;
+        QThreadPool::globalInstance()->start([path,target,explanation,open,placeholder,versions,cancelled]() {
+            const auto found=MobileSavedVersionArchive::list(path);
+            QMetaObject::invokeMethod(qApp,[target,explanation,open,placeholder,versions,found]() {
+                if(!target)return;
+                *versions=found;
+                explanation->setText(found.isEmpty()?
+                    i18n("Earlier saves and completed checkpoints will appear here."):
+                    i18n("Open a saved copy as a new canvas. Use Save As to keep it."));
+                for(const auto &version:found) {
+                    new QListWidgetItem(placeholder,i18n("%1  •  %2 MB",
+                        version.createdUtc.toLocalTime().toString(QStringLiteral("yyyy-MM-dd  HH:mm")),
+                        QString::number(version.bytes/(1024.0*1024.0),'f',1)),target);
+                }
+                if(!found.isEmpty())target->setCurrentRow(0);
+                open->setEnabled(!found.isEmpty());
+            },Qt::QueuedConnection);
+            for(int row=0;row<found.size() && !cancelled->load();++row) {
+                const auto &version=found.at(row);
+                const QImage image=cachedPreview(version.path,version.createdUtc.toMSecsSinceEpoch(),
+                                                 false,cancelled.get());
+                if(image.isNull())continue;
+                QMetaObject::invokeMethod(qApp,[target,image,row]() {
+                    if(target)target->item(row)->setIcon(QIcon(QPixmap::fromImage(image)));
+                },Qt::QueuedConnection);
+            }
+        });
+        const int result=dialog.exec();
+        cancelled->store(true);
+        const int row=list->currentRow();
+        if(result==QDialog::Accepted && row>=0 && row<versions->size())
+            openCopy(versions->at(row));
     }
 
 protected:
@@ -836,7 +798,8 @@ private:
         m_sort->setVisible(mode==AllProjects);
         m_projectItems.clear();
         m_list->clear();
-        ++m_previewGeneration;
+        m_previewCancelled->store(true);
+        m_previewCancelled=std::make_shared<std::atomic_bool>(false);
         m_thumbnails.clear();
         m_pending.clear();
         m_attempted.clear();
@@ -968,8 +931,6 @@ private:
                 item->setData(Qt::UserRole+2,location);
                 item->setToolTip(location);
                 m_cache.remove(existingPath);
-                m_pending.remove(existingPath);
-                m_attempted.remove(existingPath);
             }
             if(modified)
                 item->setData(Qt::UserRole+1,project.timestamp);
@@ -980,7 +941,6 @@ private:
             }
             if(refreshedPath || modified) {
                 m_cache.remove(project.path);
-                m_attempted.remove(project.path);
                 updatePreviewSource(item);
                 filterItem(item,m_search->text().trimmed());
                 scheduleThumbnails();
@@ -1013,7 +973,7 @@ private:
         const qint64 modified=useDraft?draftTime:savedTime;
         item->setData(Qt::UserRole+4,path);
         item->setData(Qt::UserRole+5,modified);
-        m_attempted.remove(path);
+        m_attempted.remove(qMakePair(path,modified));
         const auto cached=m_cache.find(path);
         if(cached!=m_cache.end() && cached->modified==modified)
             item->setIcon(cached->icon);
@@ -1208,6 +1168,20 @@ private:
         scheduleThumbnails();
     }
 
+    static QImage cachedPreview(const QString &path,qint64 revision,bool refresh,
+                                const std::atomic_bool *cancelled)
+    {
+        if(cancelled->load())return {};
+        const MobileProjectPreviewCache cache(QDir(QStandardPaths::writableLocation(
+            QStandardPaths::AppDataLocation)).filePath(QStringLiteral("project-thumbs")));
+        QImage image=refresh?QImage():cache.load(path,revision);
+        if(image.isNull()) {
+            image=preview(path);
+            cache.store(path,revision,image,cancelled);
+        }
+        return image;
+    }
+
     void scheduleThumbnails()
     {
         if(!isVisible() || !m_list)return;
@@ -1223,37 +1197,29 @@ private:
     {
         if(!isVisible())return;
         const QRect region=m_list->viewport()->rect().adjusted(0,-170,0,170);
-        int budget=10;
+        int budget=qMin(10,12-m_pending.size());
         for(int i=0;i<m_list->count() && budget>0;++i) {
             auto *item=m_list->item(i);
             if(item->isHidden() ||
                !m_list->visualItemRect(item).intersects(region))continue;
             const QString project=item->data(Qt::UserRole).toString();
             const QString path=item->data(Qt::UserRole+4).toString();
-            if(path.isEmpty() || m_pending.contains(path) ||
-               m_attempted.contains(path) || m_cache.contains(path))continue;
             const qint64 modified=item->data(Qt::UserRole+5).toLongLong();
-            m_pending.insert(path);
+            const auto request=qMakePair(path,modified);
+            if(path.isEmpty() || m_pending.contains(request) ||
+               m_attempted.contains(request) || m_cache.contains(path))continue;
+            m_pending.insert(request);
             --budget;
-            QPointer<MobileDocumentHome> home(this);
-            const quint64 generation=m_previewGeneration;
+            const QPointer<MobileDocumentHome> home(this);
+            const auto cancelled=m_previewCancelled;
             const bool refresh=m_forceThumbnailRefresh;
-            m_thumbnails.start([home,project,path,modified,generation,refresh]() {
-                // Even cached PNG decoding belongs off the touch/UI thread.
-                // Explicit Refresh always reopens the project rather than
-                // reusing the previous disk cache (important for SAF URIs
-                // with unknown modification timestamps).
-                QImage image=refresh?QImage():
-                    MobileProjectIndex::loadThumb(path,modified);
-                if(image.isNull()) {
-                    image=preview(path);
-                    // Persist to disk so next launch avoids opening KRA.
-                    if(!image.isNull())
-                        MobileProjectIndex::saveThumb(path,modified,image);
-                }
-                QMetaObject::invokeMethod(qApp,[home,project,path,image,modified,generation]() {
-                    if(!home || generation!=home->m_previewGeneration)return;
-                    home->m_pending.remove(path);
+            m_thumbnails.start([home,project,request,cancelled,refresh]() {
+                const QImage image=cachedPreview(request.first,request.second,refresh,cancelled.get());
+                QMetaObject::invokeMethod(qApp,[home,project,request,image,cancelled]() {
+                    if(cancelled->load() || !home)return;
+                    home->m_pending.remove(request);
+                    const auto &path=request.first;
+                    const auto modified=request.second;
                     auto *current=home->m_projectItems.value(projectKey(project));
                     if(!current || current->data(Qt::UserRole).toString()!=project ||
                        current->data(Qt::UserRole+4).toString()!=path ||
@@ -1263,7 +1229,7 @@ private:
                         home->scheduleThumbnails();
                         return;
                     }
-                    home->m_attempted.insert(path);
+                    home->m_attempted.insert(request);
                     if(!image.isNull()) {
                         if(home->m_cache.size()>=96)home->m_cache.erase(
                             home->m_cache.begin());
@@ -1299,9 +1265,10 @@ private:
     QHash<QString,QListWidgetItem*> m_projectItems;
     QHash<QString,QFileInfo> m_latestDrafts;
     QVariantMap m_savedPreviewRevisions;
-    QSet<QString> m_pending,m_attempted;
+    QSet<QPair<QString,qint64>> m_pending,m_attempted;
     struct CachedPreview {QIcon icon; qint64 modified=0;};
     QHash<QString,CachedPreview> m_cache;
-    quint64 m_previewGeneration=0;
+    std::shared_ptr<std::atomic_bool> m_previewCancelled=
+        std::make_shared<std::atomic_bool>(false);
 };
 #endif

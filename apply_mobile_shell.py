@@ -971,6 +971,9 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
     (root/"libs/ui/document_close_prompt.h").write_text(
         (own/"mobile_core/document_close_prompt.h").read_text(encoding="utf-8"),
         encoding="utf-8")
+    (root/"libs/ui/project_preview_cache.h").write_text(
+        (own/"mobile_core/project_preview_cache.h").read_text(encoding="utf-8"),
+        encoding="utf-8")
     (root/"libs/ui/document_home.h").write_text(
         (own/"mobile_core/document_home.h").read_text(encoding="utf-8"),
         encoding="utf-8")
