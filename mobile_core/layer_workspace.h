@@ -2527,10 +2527,15 @@ private:
                !node->inherits("KisMask")) {
                 const QImage thumb=node->createThumbnail(
                     59,59,Qt::KeepAspectRatio);
-                if(!thumb.isNull()) {
-                    button->setIcon(QIcon(QPixmap::fromImage(thumb)));
-                    button->setIconSize(QSize(56,56));
+                if(thumb.isNull()) {
+                    // A thumbnail can be temporarily unavailable while a
+                    // newly inserted layer finishes its native projection.
+                    // Retry on the next visible refresh rather than leaving
+                    // a permanently blank tile until a structural reload.
+                    continue;
                 }
+                button->setIcon(QIcon(QPixmap::fromImage(thumb)));
+                button->setIconSize(QSize(56,56));
             }
             m_thumbnailReady[i]=true;
         }
