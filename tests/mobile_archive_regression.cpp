@@ -87,6 +87,40 @@ int main(int argc,char **argv)
     if(!require(Archive::list(spaced,root).size()==2,
                 "forced checkpoint retains new version"))return 1;
 
+    // A removed (explicitly discarded) draft must not appear to have
+    // checkpointed successfully merely because a recent version exists.
+    if(!require(QFile::remove(spaced),"remove discarded draft"))return 1;
+    if(!require(!Archive::snapshotFrom(spaced,spaced,root,120000),
+                "discarded source rejected even within minimum gap"))return 1;
+    if(!require(writeBytes(spaced,QByteArray("not a KRA archive")),
+                "create invalid draft"))return 1;
+    if(!require(!Archive::snapshotFrom(spaced,spaced,root,120000),
+                "invalid source rejected even within minimum gap"))return 1;
+    if(!require(writeBytes(spaced,changed),"restore valid source"))return 1;
+    if(!require(Archive::snapshotFrom(spaced,spaced,root,120000),
+                "valid source still respects spacing"))return 1;
+
+    // Test retention with separate content for each generation. The oldest
+    // archive copies must be pruned without removing the newest version.
+    const QString bounded=temp.filePath(QStringLiteral("bounded.kra"));
+    for(int i=0;i<Archive::maxVersions()+3;++i) {
+        const QByteArray data=QByteArray::fromHex("504b0304")+
+            QByteArray("generation-")+QByteArray::number(i);
+        if(!require(writeBytes(bounded,data) &&
+                    Archive::snapshot(bounded,root),
+                    "archive generation"))return 1;
+    }
+    const auto retained=Archive::list(bounded,root);
+    if(!require(retained.size()==Archive::maxVersions(),
+                "version retention limit"))return 1;
+    const QString lastCopy=Archive::materializeRecovery(
+        retained.first(),temp.filePath(QStringLiteral("recovery")));
+    QFile lastFile(lastCopy);
+    if(!require(!lastCopy.isEmpty() && lastFile.open(QIODevice::ReadOnly) &&
+                lastFile.readAll().endsWith(QByteArray("generation-")+
+                    QByteArray::number(Archive::maxVersions()+2)),
+                "retention preserves newest generation"))return 1;
+
     // The archive directory can contain unrelated symlinks. Never expose
     // them as recoverable snapshots to the project browser.
     const QString folder=Archive::folderFor(spaced,root);
@@ -96,6 +130,6 @@ int main(int argc,char **argv)
                     "symlink not included in archive browser"))return 1;
     qInfo() << "PASS: archive deduplication, recovery integrity, checksum repair,"
                " corruption handling, periodic spacing, forced checkpoints,"
-               " symlink exclusion and canonical file identity";
+               " retention, discarded drafts, symlink exclusion and canonical identity";
     return 0;
 }
