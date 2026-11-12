@@ -238,6 +238,42 @@ int main(int argc,char **argv)
                     "symlink source excluded"))return 1;
     }
 
+    // A stale browser result may point at a file replaced with a
+    // symlink after the directory scan. Recovery must not follow it,
+    // even if the symlink ultimately contains valid KRA bytes.
+    const auto archived=Archive::list(saved,root);
+    if(!require(!archived.isEmpty(),"archived entry for symlink check"))return 1;
+    const QString linkedArchive=temp.filePath(QStringLiteral("replaced.kra"));
+    if(QFile(archived.first().path).link(linkedArchive)) {
+        auto stale=archived.first();
+        stale.path=linkedArchive;
+        if(!require(Archive::materializeRecovery(
+                stale,temp.filePath(QStringLiteral("recovery"))).isEmpty(),
+                "stale symlink archive rejected"))return 1;
+    }
+    // Similarly a checksum sidecar swapped for a symlink is not
+    // authoritative, even when it resolves to a valid digest.
+    const QString checksum=archived.first().path+QStringLiteral(".sha256");
+    QFile digestSource(checksum);
+    if(!require(digestSource.open(QIODevice::ReadOnly),
+                "read checksum for sidecar replacement"))return 1;
+    const QByteArray originalDigest=digestSource.readAll();
+    digestSource.close();
+    const QString safeDigest=temp.filePath(QStringLiteral("safe.sha256"));
+    if(!require(writeBytes(safeDigest,originalDigest) &&
+                QFile::remove(checksum),"prepare checksum link"))return 1;
+    if(QFile(safeDigest).link(checksum)) {
+        if(!require(Archive::materializeRecovery(
+                archived.first(),temp.filePath(QStringLiteral("recovery"))).isEmpty(),
+                "symlink checksum rejected"))return 1;
+        if(!require(QFile::remove(checksum) &&
+                    writeBytes(checksum,originalDigest),
+                    "restore original checksum"))return 1;
+    } else {
+        if(!require(writeBytes(checksum,originalDigest),
+                    "restore original checksum after failed link"))return 1;
+    }
+
     qInfo() << "PASS: archive deduplication, recovery integrity, checksum repair,"
                " corruption handling, periodic spacing, forced checkpoints,"
                " retention, merged and collided histories, symlinks and Android identities";
