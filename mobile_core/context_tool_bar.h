@@ -31,6 +31,7 @@
 #include "touch_scroll.h"
 #include <QSet>
 #include <QSpinBox>
+#include <QStandardItemModel>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -252,6 +253,7 @@ public:
                 {QObject::tr("Foreground"),QObject::tr("Background"),QObject::tr("Pattern")});
             addFillResource(false);
             named("sliderThreshold",QObject::tr("Tolerance"));
+            named("mobileFillDragTolerance",QObject::tr("Drag tolerance"));
             named("sliderCloseGap",QObject::tr("Close gap"));
             addSectionChoices("sectionReference",QObject::tr("Reference"),
                 {QObject::tr("Current layer"),QObject::tr("All layers"),QObject::tr("Color labels")});
@@ -774,32 +776,46 @@ private:
         } else if(auto *combo=qobject_cast<QComboBox*>(source)) {
             auto *control=button(label);
             const QPointer<QComboBox> native=combo;
-            connect(control,&QToolButton::clicked,this,[this,control,native]() {
+            connect(control,&QToolButton::clicked,this,[this,native]() {
                 if(!optionAvailable(native))return;
-                QMenu menu;
-                styleMenu(menu);
                 const quint64 generation=m_generation;
+                const QPointer<MobileContextToolBar> alive=this;
                 const QPointer<QObject> invokedTool=m_nativeTool;
-                for(int i=0;i<native->count();++i) {
-                    const QString text=native->itemText(i);
-                    if(text.isEmpty())continue;
-                    auto *item=menu.addAction(text);
-                    const auto index=native->model()->index(i,native->modelColumn(),
-                                                           native->rootModelIndex());
-                    item->setEnabled(index.flags().testFlag(Qt::ItemIsEnabled));
-                    item->setCheckable(true);
-                    item->setChecked(i==native->currentIndex());
-                    connect(item,&QAction::triggered,this,
-                            [this,generation,invokedTool,native,i,text]() {
-                        if(generation!=m_generation || !invokedTool ||
-                           m_nativeTool!=invokedTool.data() ||
-                           !optionAvailable(native) || i>=native->count() ||
-                           native->itemText(i)!=text)return;
-                        native->setCurrentIndex(i);
-                        if(native)Q_EMIT native->activated(i);
-                    });
+                MobileTouchComboBox choices(window());
+                choices.hide();
+                const QStringList preferred=native->objectName()==
+                    QStringLiteral("availableAssistantsComboBox")?
+                    QStringList{QStringLiteral("vanishing point"),QStringLiteral("two point"),
+                                QStringLiteral("perspective"),QStringLiteral("parallel ruler")}:
+                    QStringList{};
+                QVector<int> rows;
+                for(const QString &id:preferred) {
+                    const int row=native->findData(id);
+                    if(row>=0)rows.append(row);
                 }
-                menu.exec(control->mapToGlobal(QPoint(0,control->height())));
+                for(int row=0;row<native->count();++row)
+                    if(!rows.contains(row))rows.append(row);
+                auto *model=qobject_cast<QStandardItemModel*>(choices.model());
+                for(const int row:rows) {
+                    const QString text=native->itemText(row);
+                    if(text.isEmpty())continue;
+                    choices.addItem(text,row);
+                    const int index=choices.count()-1;
+                    const auto flags=native->model()->index(row,native->modelColumn(),
+                                                           native->rootModelIndex()).flags();
+                    model->item(index)->setEnabled(flags.testFlag(Qt::ItemIsEnabled));
+                    if(row==native->currentIndex())choices.setCurrentIndex(index);
+                }
+                int picked=-1;
+                connect(&choices,QOverload<int>::of(&QComboBox::activated),&choices,
+                    [&choices,&picked](int index) {picked=choices.itemData(index).toInt();});
+                choices.showPopup();
+                if(!alive || generation!=m_generation || !invokedTool ||
+                   m_nativeTool!=invokedTool.data() || !optionAvailable(native) ||
+                   picked<0 || picked>=native->count() ||
+                   native->itemText(picked)!=choices.currentText())return;
+                native->setCurrentIndex(picked);
+                if(native)Q_EMIT native->activated(picked);
             });
             m_refresh.append([this,control,label,native]() {
                 control->setEnabled(optionAvailable(native));

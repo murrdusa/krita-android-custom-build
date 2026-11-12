@@ -1799,6 +1799,191 @@ void KisToolFreehand::beginPrimaryAction(KoPointerEvent *event)
         "reuse native Clone engine origin selection")
     freehand_file.write_text(freehand,encoding="utf-8")
 
+    fill_dir=root/"plugins/tools/basictools"
+    (fill_dir/"fill_tolerance_drag.h").write_text(
+        (own/"mobile_core/fill_tolerance_drag.h").read_text(encoding="utf-8"),
+        encoding="utf-8")
+    fill_header=fill_dir/"kis_tool_fill.h"
+    fill=fill_header.read_text(encoding="utf-8")
+    fill=one(fill,"#include <QVector>",
+        "#include <QVector>\n#ifdef Q_OS_ANDROID\n#include <QLabel>\n#include <QPointer>\n#endif",
+        "Fill tolerance preview widget")
+    fill=one(fill,"    Q_OBJECT",
+        """    Q_OBJECT
+#ifdef Q_OS_ANDROID
+    Q_PROPERTY(bool mobileFillTolerancePending READ mobileFillTolerancePending)
+#endif""","expose pending Fill gesture to the native input proxy")
+    fill=one(fill,"    QWidget* createOptionWidget() override;",
+        """    QWidget* createOptionWidget() override;
+#ifdef Q_OS_ANDROID
+    bool mobileFillTolerancePending() const {return bool(m_mobileFillTarget);}
+    void requestStrokeCancellation() override;
+    void requestStrokeEnd() override;
+#endif""","discard incomplete Fill gestures through native stroke requests")
+    fill=one(fill,"    FillMode m_fillMode {FillMode_FillContiguousRegion};",
+        """#ifdef Q_OS_ANDROID
+    void clearMobileFillTolerance();
+    void updateMobileFillTolerance(int widgetX);
+    bool m_mobileDragTolerance = false;
+    int m_mobileInitialTolerance = 8;
+    int m_mobilePreviewTolerance = 8;
+    KisNodeSP m_mobileFillTarget;
+    QPoint m_mobileFillSeed;
+    QPointer<QLabel> m_mobileToleranceBadge;
+#endif
+    FillMode m_fillMode {FillMode_FillContiguousRegion};""","store the Fill seed and target until release")
+    fill_header.write_text(fill,encoding="utf-8")
+    fill_source=fill_dir/"kis_tool_fill.cc"
+    fill=fill_source.read_text(encoding="utf-8")
+    fill=one(fill,'#include "kis_tool_fill.h"',
+        '''#include "kis_tool_fill.h"
+#ifdef Q_OS_ANDROID
+#include "fill_tolerance_drag.h"
+#include <QScopedValueRollback>
+#endif''',"Fill tolerance calculation")
+    fill=one(fill,"KisToolFill::~KisToolFill()\n{\n}",
+        """KisToolFill::~KisToolFill()
+{
+#ifdef Q_OS_ANDROID
+    delete m_mobileToleranceBadge.data();
+#endif
+}""","destroy any remaining Fill preview")
+    fill=one(fill,"void KisToolFill::deactivate()\n{",
+        """void KisToolFill::deactivate()
+{
+#ifdef Q_OS_ANDROID
+    clearMobileFillTolerance();
+#endif""","cancel pending Fill when switching tools")
+    fill=one(fill,"    m_seedPoints.append(lastImagePosition);",
+        """#ifdef Q_OS_ANDROID
+    if (m_mobileDragTolerance && m_effectiveFillMode == FillMode_FillContiguousRegion) {
+        m_mobileFillTarget = currentNode();
+        m_mobileFillSeed = lastImagePosition;
+        m_mobileInitialTolerance = m_threshold;
+        setMode(KisTool::PAINT_MODE);
+        if (auto *widget = canvas()->canvasWidget()) {
+            m_mobileToleranceBadge = new QLabel(widget);
+            m_mobileToleranceBadge->setAttribute(Qt::WA_TransparentForMouseEvents);
+            m_mobileToleranceBadge->setStyleSheet(QStringLiteral(
+                "QLabel{background:#dd252529;color:white;border-radius:7px;padding:6px 10px;}"));
+            updateMobileFillTolerance(event->pos().x());
+            m_mobileToleranceBadge->raise();
+            m_mobileToleranceBadge->show();
+        }
+        return;
+    }
+#endif
+    m_seedPoints.append(lastImagePosition);""","defer the native contiguous Fill until release")
+    fill=one(fill,"void KisToolFill::continuePrimaryAction(KoPointerEvent *event)\n{",
+        """void KisToolFill::continuePrimaryAction(KoPointerEvent *event)
+{
+#ifdef Q_OS_ANDROID
+    if (mobileFillTolerancePending()) {
+        updateMobileFillTolerance(event->pos().x());
+        return;
+    }
+#endif""","preview tolerance without scheduling flood-fill jobs")
+    fill=one(fill,"void KisToolFill::endPrimaryAction(KoPointerEvent *)\n{",
+        """#ifdef Q_OS_ANDROID
+void KisToolFill::updateMobileFillTolerance(int widgetX)
+{
+    m_mobilePreviewTolerance = mobileFillTolerance(
+        m_mobileInitialTolerance,widgetX - m_fillStartWidgetPosition.x());
+    if (!m_mobileToleranceBadge) return;
+    const QString label = i18n("Tolerance: %1",m_mobilePreviewTolerance);
+    if (m_mobileToleranceBadge->text() == label) return;
+    m_mobileToleranceBadge->setText(label);
+    m_mobileToleranceBadge->adjustSize();
+    m_mobileToleranceBadge->move(qMax(0,(m_mobileToleranceBadge->parentWidget()->width() -
+                                        m_mobileToleranceBadge->width()) / 2),16);
+}
+
+void KisToolFill::clearMobileFillTolerance()
+{
+    if (!mobileFillTolerancePending()) return;
+    m_mobileFillTarget.clear();
+    delete m_mobileToleranceBadge.data();
+    setMode(KisTool::HOVER_MODE);
+}
+
+void KisToolFill::requestStrokeCancellation()
+{
+    clearMobileFillTolerance();
+    KisToolPaint::requestStrokeCancellation();
+}
+
+void KisToolFill::requestStrokeEnd()
+{
+    clearMobileFillTolerance();
+    KisToolPaint::requestStrokeEnd();
+}
+#endif
+
+void KisToolFill::endPrimaryAction(KoPointerEvent *event)
+{
+#ifdef Q_OS_ANDROID
+    if (mobileFillTolerancePending()) {
+        const KisNodeSP target = m_mobileFillTarget;
+        const QPoint seed = m_mobileFillSeed;
+        if (event) updateMobileFillTolerance(event->pos().x());
+        clearMobileFillTolerance();
+        if (!event || currentNode() != target || !nodeEditable() ||
+            nodePaintAbility() != NodePaintAbility::PAINT) return;
+        const QScopedValueRollback<int> threshold(m_threshold,m_mobilePreviewTolerance);
+        m_seedPoints = {seed};
+        beginFilling(seed);
+        if (m_fillStrokeId) {
+            slotUpdateFill();
+            endFilling();
+        } else {
+            setMode(KisTool::HOVER_MODE);
+        }
+        m_seedPoints.clear();
+        return;
+    }
+#else
+    Q_UNUSED(event);
+#endif""","apply one native Fill at the original seed with the previewed threshold")
+    fill=one(fill,'    sectionRegionExtent->appendWidget("sliderThreshold", m_sliderThreshold);',
+        """    sectionRegionExtent->appendWidget("sliderThreshold", m_sliderThreshold);
+#ifdef Q_OS_ANDROID
+    auto *dragTolerance = new QCheckBox(i18n("Adjust tolerance by dragging"));
+    dragTolerance->setChecked(m_mobileDragTolerance);
+    sectionRegionExtent->appendWidget("mobileFillDragTolerance",dragTolerance);
+    connect(dragTolerance,&QCheckBox::toggled,this,[this](bool enabled) {
+        m_mobileDragTolerance = enabled;
+        m_configGroup.writeEntry("mobileDragTolerance",enabled);
+    });
+#endif""","add an opt-in native Fill option")
+    fill=one(fill,'    m_threshold = m_configGroup.readEntry<int>("thresholdAmount", 8);',
+        """    m_threshold = m_configGroup.readEntry<int>("thresholdAmount", 8);
+#ifdef Q_OS_ANDROID
+    m_mobileDragTolerance = m_configGroup.readEntry<bool>("mobileDragTolerance",false);
+#endif""","persist the Android Fill gesture preference")
+    fill_source.write_text(fill,encoding="utf-8")
+
+    tool_proxy_file=root/"libs/ui/canvas/kis_tool_proxy.cpp"
+    tool_proxy=tool_proxy_file.read_text(encoding="utf-8")
+    tool_proxy=one(tool_proxy,
+        "    QTouchEvent *touchEvent = dynamic_cast<QTouchEvent *> (event);\n\n    if (tabletEvent)",
+        """    QTouchEvent *touchEvent = dynamic_cast<QTouchEvent *> (event);
+#ifdef Q_OS_ANDROID
+    if (state == END && priv()->activeTool &&
+        priv()->activeTool->property("mobileFillTolerancePending").toBool() &&
+        (!event || (event->type() != QEvent::TouchEnd &&
+                    event->type() != QEvent::TabletRelease &&
+                    event->type() != QEvent::MouseButtonRelease) ||
+         (touchEvent && touchEvent->touchPoints().isEmpty()))) {
+        requestStrokeCancellation();
+        Q_EMIT toolPrimaryActionActivated(false);
+        return true;
+    }
+    if (touchEvent && touchEvent->touchPoints().isEmpty()) return true;
+#endif
+
+    if (tabletEvent)""","guard empty Android touch events and cancel interrupted Fill gestures")
+    tool_proxy_file.write_text(tool_proxy,encoding="utf-8")
+
     transform_dir=root/"plugins/tools/tool_transform2"
     transform_header=transform_dir/"kis_tool_transform.h"
     transform=transform_header.read_text(encoding="utf-8")
