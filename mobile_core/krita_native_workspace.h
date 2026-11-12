@@ -22,6 +22,7 @@
 #include <QListWidget>
 #include <QMap>
 #include <QSignalBlocker>
+#include <QScopedValueRollback>
 #include <QScrollArea>
 #include "touch_scroll.h"
 #include <QSpinBox>
@@ -1169,7 +1170,7 @@ protected:
             watched==m_brushOptions || watched==m_textFormatting || watched==m_contextToolBar) &&
            (event->type()==QEvent::Show || event->type()==QEvent::Hide)) {
             syncPanelActions();
-            QTimer::singleShot(0,this,[this]() {placeDrawingOverlays();});
+            scheduleOverlayPlacement();
         }
         const auto type=event->type();
         if(!m_canvasLayoutEditing && m_host && (type==QEvent::MouseButtonPress || type==QEvent::MouseButtonDblClick ||
@@ -1200,11 +1201,11 @@ protected:
             (event->type()==QEvent::DynamicPropertyChange &&
              static_cast<QDynamicPropertyChangeEvent*>(event)->propertyName()==
                 MobileNativeCommandLayout::overlayBoundsProperty()))) {
-            placeDrawingOverlays();
+            scheduleOverlayPlacement();
         }
         if((watched==m_brush || watched==m_opacityStrip || watched==m_brushOptions) &&
            event->type()==QEvent::LayoutRequest)
-            placeDrawingOverlays();
+            scheduleOverlayPlacement();
         return QObject::eventFilter(watched,event);
     }
 
@@ -1690,11 +1691,29 @@ private:
 
     void placeLayerOverlay()
     {
-        if(m_layers && m_layers->isVisible())placeDrawingOverlays();
+        if(m_layers && m_layers->isVisible())scheduleOverlayPlacement();
+    }
+
+    // Geometry updates emit Resize/LayoutRequest synchronously. Coalesce
+    // repeated invalidations into one next-turn placement; never recurse
+    // into the entire overlay solver while a pass is still in progress.
+    void scheduleOverlayPlacement()
+    {
+        if(m_overlayPlacementQueued)return;
+        m_overlayPlacementQueued=true;
+        QTimer::singleShot(0,this,[this]() {
+            m_overlayPlacementQueued=false;
+            placeDrawingOverlays();
+        });
     }
 
     void placeDrawingOverlays()
     {
+        if(m_overlayPlacementInProgress) {
+            scheduleOverlayPlacement();
+            return;
+        }
+        const QScopedValueRollback<bool> placing(m_overlayPlacementInProgress,true);
         QWidget *canvas=m_host?m_host->nativeCanvas():nullptr;
         if(!canvas || m_canvasLayoutEditing)return;
         const QRect canvasBounds=canvas->rect().adjusted(2,2,-2,-2);
@@ -1887,6 +1906,7 @@ private:
     qreal m_dragBaseline=0,m_dragMaximum=1;
     bool m_keepLayers=true,m_keepColor=true,m_showSize=true,m_showOpacity=true;
     bool m_canvasOnly=false,m_canvasLayoutEditing=false;
+    bool m_overlayPlacementQueued=false,m_overlayPlacementInProgress=false;
     QVariantMap m_panelPlacements;
 };
 #endif
