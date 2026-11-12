@@ -455,6 +455,10 @@ public:
         QMutexLocker guard(&lock());
         const QString base=rootOverride.isEmpty()?recoveryDirectory():rootOverride;
         if(base.isEmpty() || !QDir().mkpath(base))return {};
+        // The browser filters symlinks, but recovery may be requested
+        // using a previously captured entry after files have changed.
+        // Never follow a replaced archive or checksum symlink.
+        if(QFileInfo(version.path).isSymLink())return {};
         QFile source(version.path);
         if(!source.open(QIODevice::ReadOnly))return {};
         // An archive chosen from the version browser has a known file
@@ -478,6 +482,7 @@ public:
         // Older checkpoints may legitimately lack the optional sidecar.
         QByteArray expectedHash;
         QFile digest(version.path+QStringLiteral(".sha256"));
+        if(QFileInfo(digest.fileName()).isSymLink())return {};
         if(digest.exists()) {
             if(!digest.open(QIODevice::ReadOnly))return {};
             expectedHash=digest.readAll().trimmed().toLower();
