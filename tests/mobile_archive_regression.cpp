@@ -125,7 +125,7 @@ int main(int argc,char **argv)
     // them as recoverable snapshots to the project browser.
     const QString folder=Archive::folderFor(spaced,root);
     const QString link=QDir(folder).filePath(QStringLiteral("99999999T999999999-link.kra"));
-    if(QFile::link(source,link))
+    if(QFile(source).link(link))
         if(!require(Archive::list(spaced,root).size()==2,
                     "symlink not included in archive browser"))return 1;
     qInfo() << "PASS: archive deduplication, recovery integrity, checksum repair,"
