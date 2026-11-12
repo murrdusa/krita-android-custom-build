@@ -83,6 +83,39 @@
 #include "kis_image.h"
 #include <klocalizedstring.h>
 
+class MobileLayerNameLabel final : public QLabel
+{
+public:
+    explicit MobileLayerNameLabel(QWidget *parent) : QLabel(parent) {}
+    void setRotated(bool rotated)
+    {
+        m_rotated=rotated;
+        setSizePolicy(rotated?QSizePolicy::Fixed:QSizePolicy::Ignored,
+                      rotated?QSizePolicy::Ignored:QSizePolicy::Fixed);
+        setMinimumSize(rotated?19:0,rotated?0:19);
+        setMaximumSize(rotated?19:QWIDGETSIZE_MAX,rotated?QWIDGETSIZE_MAX:19);
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        if(!m_rotated) {QLabel::paintEvent(event);return;}
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor("#252e39"));
+        painter.drawRoundedRect(rect(),5,5);
+        painter.translate(width(),0);
+        painter.rotate(90);
+        painter.setPen(QColor("#edf5fb"));
+        painter.drawText(QRect(0,0,height(),width()),Qt::AlignCenter,text());
+    }
+
+private:
+    bool m_rotated=false;
+};
+
 class KritaMobileLayersPanel final : public QFrame
 {
 public:
@@ -158,7 +191,7 @@ public:
         m_railLayout->addWidget(m_tree,1);
         layout->addLayout(m_railLayout,1);
         if(compactRail) {
-            m_layerName=new QLabel(this);
+            m_layerName=new MobileLayerNameLabel(this);
             m_layerName->setObjectName(QStringLiteral("mobileLayerName"));
             m_layerName->setStyleSheet(QStringLiteral(
                 "QLabel#mobileLayerName{background:#252e39;color:#edf5fb;"
@@ -166,7 +199,7 @@ public:
             m_layerName->setAlignment(Qt::AlignCenter);
             m_layerName->setFixedHeight(19);
             m_layerName->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
-            layout->addWidget(m_layerName);
+            m_railLayout->addWidget(m_layerName);
         }
         m_dragGhost=new QLabel(m_tree->viewport());
         m_dragGhost->setFixedSize(60,60);
@@ -289,8 +322,30 @@ public:
         auto *addType=new QPushButton(QStringLiteral("+"),this);
         addType->setAccessibleName(i18n("Add layer"));
         addType->setToolTip(i18n("Tap: new paint layer. Hold: all layer and mask types"));
-        m_addType=addType;
-        m_railLayout->insertWidget(0,addType);
+        auto *railHeader=new QWidget(this);
+        auto *header=new QHBoxLayout(railHeader);
+        header->setContentsMargins(0,0,0,0);
+        header->setSpacing(1);
+        header->setAlignment(Qt::AlignCenter);
+        header->addWidget(addType);
+        if(compactRail) {
+            auto *minimize=new QPushButton(QStringLiteral("−"),railHeader);
+            minimize->setAccessibleName(i18n("Minimize Layers"));
+            minimize->setToolTip(i18n("Minimize Layers"));
+            const QString style=QStringLiteral(
+                "QPushButton{background:#34343a;color:white;border:1px solid #55555c;"
+                "border-radius:5px;min-height:0;padding:0;font-size:16px;}"
+                "QPushButton:pressed{background:#5685a6;}");
+            for(auto *button:{addType,minimize}) {
+                button->setStyleSheet(style);
+                button->setFixedSize(29,34);
+            }
+            header->addWidget(minimize);
+            connect(minimize,&QPushButton::clicked,this,[this]() {
+                if(onRequestClose)onRequestClose();
+            });
+        }
+        m_railLayout->insertWidget(0,railHeader);
         auto *addHold=new QTimer(addType);
         addHold->setSingleShot(true);
         addHold->setInterval(480);
@@ -441,23 +496,23 @@ public:
             else length+=node->inherits("KisGroupLayer")?42:
                 node->inherits("KisMask")?58:verticalTileSize(thickness)+4;
         }
-        return (horizontal?45:(m_layerName?70:50))+qMax(24,length);
+        return (horizontal?85:(m_layerName?58:45))+qMax(24,length);
     }
 
-    void setRailGeometry(const QRect &geometry,bool horizontal)
+    void setRailGeometry(const QRect &geometry,bool horizontal,bool controlsAtEnd)
     {
         const bool orientationChanged=horizontal!=m_horizontalRail;
         const int thickness=horizontal?geometry.height():geometry.width();
-        const bool rebuild=orientationChanged ||
+        const bool rebuild=orientationChanged || controlsAtEnd!=m_controlsAtEnd ||
             thickness!=(horizontal?height():width());
+        m_controlsAtEnd=controlsAtEnd;
         if(orientationChanged) {
             m_horizontalRail=horizontal;
             if(horizontal && !m_horizontalScroll)createHorizontalRail();
             m_tree->setVisible(!horizontal);
             if(m_horizontalScroll)m_horizontalScroll->setVisible(horizontal);
             m_railLayout->setDirection(horizontal?QBoxLayout::LeftToRight:QBoxLayout::TopToBottom);
-            m_addType->setMinimumWidth(horizontal?40:0);
-            m_addType->setMaximumWidth(horizontal?40:QWIDGETSIZE_MAX);
+            if(m_layerName)m_layerName->setRotated(horizontal);
             m_dragGhost->setParent(railViewport());
             m_dropMarker->setParent(railViewport());
             hideLayerDropPreview();
@@ -469,6 +524,7 @@ public:
             setFixedWidth(geometry.width());
         }
         setGeometry(geometry);
+        updateLayerName();
         if(rebuild)QTimer::singleShot(0,this,[this]() {refreshNow();});
     }
 
@@ -1614,8 +1670,8 @@ private:
     }
 
     int along(const QPoint &point) const {return m_horizontalRail?point.x():point.y();}
-    int verticalTileSize(int width) const {return m_compactRail?qBound(73,width-9,111):73;}
-    static int horizontalTileSize(int height) {return qBound(54,height-28,111);}
+    int verticalTileSize(int width) const {return m_compactRail?qBound(54,width-9,111):73;}
+    static int horizontalTileSize(int height) {return qBound(48,height-20,111);}
 
     QWidget *railViewport() const
     {
@@ -2322,7 +2378,7 @@ private:
         const QString name=editingGlobalSelection(manager())?i18n("Editing selection"):
             m_active?m_active->name():QString();
         m_layerName->setText(m_layerName->fontMetrics().elidedText(
-            name,Qt::ElideRight,qMax(0,width()-14)));
+            name,Qt::ElideRight,qMax(0,(m_horizontalRail?height():width())-14)));
         m_layerName->setToolTip(name);
         m_layerName->setAccessibleName(name);
     }
@@ -2484,16 +2540,21 @@ private:
                 return;
             tapLayer(node,item);
         });
-        const int overlay=m_horizontalRail?16:group?20:22;
-        const int iconX=tile->x()+tile->width()-overlay;
         const int count=group?1:qobject_cast<KisPaintLayer*>(node.data())?3:2;
-        const int gap=qMax(2,(tileHeight-count*overlay)/(count+1));
+        const int overlay=m_horizontalRail?16:qMin(22,(tileHeight-4)/count);
+        const int iconX=m_controlsAtEnd?tile->x()+tile->width()-overlay:tile->x();
+        const int gap=qMax(0,(tileHeight-count*overlay)/(count+1));
         auto addOverlay=[&](int n,const QString &icon,
                             const QString &tooltip,
                             const KoID &prop,bool desired) {
             auto *button=new QToolButton(frame);
-            button->setGeometry(iconX,
-                (m_horizontalRail?tile->y():1)+gap*(n+1)+overlay*n,overlay,overlay);
+            if(m_horizontalRail) {
+                const int step=qMax(0,(tile->width()-count*overlay)/(count+1));
+                const int y=m_controlsAtEnd?tile->geometry().bottom()-overlay+1:tile->y();
+                button->setGeometry(tile->x()+step*(n+1)+overlay*n,y,overlay,overlay);
+            } else {
+                button->setGeometry(iconX,1+gap*(n+1)+overlay*n,overlay,overlay);
+            }
             button->setIcon(QIcon(icon));
             button->setIconSize(QSize(16,16));
             button->setAccessibleName(tooltip);
@@ -2852,8 +2913,8 @@ private:
     const bool m_compactRail;
     QTreeWidget *m_tree=nullptr;
     QBoxLayout *m_railLayout=nullptr;
-    QPushButton *m_addType=nullptr;
-    QLabel *m_layerName=nullptr;
+    MobileLayerNameLabel *m_layerName=nullptr;
+    bool m_controlsAtEnd=true;
     QScrollArea *m_horizontalScroll=nullptr;
     QWidget *m_horizontalBody=nullptr;
     QHBoxLayout *m_horizontalRows=nullptr;

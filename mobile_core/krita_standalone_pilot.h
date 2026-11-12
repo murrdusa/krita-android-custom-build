@@ -385,8 +385,8 @@ public:
             toolbarCommands.insert(QString::fromLatin1(entry.first),entry.second);
         setStudioIcon(optionsAction,"paintop_settings_02");
         auto *commandLayout=MobileNativeCommandLayout::install(window,homeAction,studioIcon("configure-thicker"),
-            toolbarCommands,{"paint","erase","blend","tool-settings","color","layers",
-                             "tools","undo","redo","save"},
+            toolbarCommands,{"paint","erase","blend","tool-settings","color",
+                             "tools","undo","redo"},
             moreActions,canvasOnlyAction,
             [workspace](const QString &parameter,qreal delta,const QPoint &global,MobileToolbarDrag::Phase phase) {
                 workspace->adjustToolbarDrag(parameter,delta,global,phase);
@@ -402,6 +402,9 @@ public:
                 }
             });
         if(commandLayout) {
+            commandLayout->bindWorkspace([workspace](const QString &id,bool portrait) {
+                workspace->applyScreenWorkspace(id,portrait);
+            });
             commandLayout->setLayoutPanels([workspace]() {return workspace->layoutPanels();},
                 [workspace](bool editing) {workspace->setCanvasLayoutEditing(editing);});
             if(auto *provider=nativeBridge.brushResources())

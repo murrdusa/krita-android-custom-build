@@ -15,6 +15,7 @@
 #include <QStackedWidget>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QInputMethod>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMainWindow>
@@ -31,6 +32,8 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include "touch_scroll.h"
+#include "touch_action_picker.h"
+#include "workspace_profiles.h"
 #include "recent_colors.h"
 #include "canvas_layout_editor.h"
 #include "overlay_placement.h"
@@ -56,7 +59,7 @@ public:
         layout->m_selectColor=std::move(selectColor);
         layout->m_recentColors=MobileRecentColors::load();
         layout->m_historyEnabled=layout->m_selectColor &&
-            QSettings().value(QStringLiteral("MobileStudio/toolbarColorHistory"),false).toBool();
+            QSettings().value(QStringLiteral("MobileStudio/toolbarColorHistory"),true).toBool();
         auto *row=new QHBoxLayout(layout->m_toolbar);
         row->setContentsMargins(1,1,1,1);
         row->setSpacing(1);
@@ -158,7 +161,14 @@ public:
         }
         layout->m_canvasOnly=canvasOnly && canvasOnly->isChecked();
         layout->m_toolbar->setVisible(!layout->m_canvasOnly);
-        layout->rebuild();
+        layout->m_workspaceTimer.setSingleShot(true);
+        layout->m_workspaceTimer.setInterval(150);
+        QObject::connect(&layout->m_workspaceTimer,&QTimer::timeout,layout,
+                         [layout]() {layout->switchWorkspace();});
+        QObject::connect(QGuiApplication::inputMethod(),&QInputMethod::visibleChanged,layout,
+                         [layout]() {layout->m_workspaceTimer.start();});
+        layout->switchWorkspace();
+        if(layout->m_profile.isEmpty())layout->rebuild();
         return layout;
     }
 
@@ -167,6 +177,12 @@ public:
     {
         m_layoutPanels=std::move(panels);
         m_layoutEditing=std::move(editing);
+    }
+
+    void bindWorkspace(std::function<void(const QString &,bool)> apply)
+    {
+        m_applyWorkspace=std::move(apply);
+        if(!m_profile.isEmpty())m_applyWorkspace(m_profile,m_portrait);
     }
 
     void updateStrokeColors(const QStringList &colors)
@@ -199,7 +215,11 @@ protected:
         if(watched==parent() &&
            (event->type()==QEvent::Resize || event->type()==QEvent::Show)) {
             if(m_editor)m_editor->setGeometry(static_cast<QWidget*>(parent())->rect());
-            else position();
+            else {
+                requestPosition();
+                if(event->type()==QEvent::Show) switchWorkspace();
+                else m_workspaceTimer.start();
+            }
         }
         return false;
     }
@@ -216,6 +236,7 @@ private:
         int spacing=1;
         int opacity=66;
         QRectF placement;
+        bool adaptive=false;
     };
 
     MobileNativeCommandLayout(QWidget *canvas,const Commands &commands,
@@ -223,11 +244,53 @@ private:
         : QObject(canvas),m_commands(commands),m_defaults(defaults)
     {
         m_bars.append(defaultBar());
+        m_toolbar=new QFrame(canvas);
+        m_toolbar->setObjectName(QStringLiteral("_mobileNativeToolbar"));
+    }
+
+    void switchWorkspace()
+    {
+        if(m_editor || QApplication::activeModalWidget() ||
+           QGuiApplication::inputMethod()->isVisible())return;
+        const auto *canvas=static_cast<QWidget*>(parent());
+        const QSize size=canvas->size();
+        if(!canvas->isVisible() || size.width()<120 || size.height()<120)return;
+        const bool portrait=MobileWorkspaceProfiles::portraitDefault(size,m_portrait);
+        if(!m_profile.isEmpty() && MobileWorkspaceProfiles::matches(size,m_profileSize) &&
+           portrait==m_portrait)return;
+        m_profileSize=size;
+        m_portrait=portrait;
+        QSettings settings;
+        m_profile=MobileWorkspaceProfiles::closest(settings,size);
+        if(m_profile.isEmpty())m_profile=QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const QString prefix=MobileWorkspaceProfiles::group(m_profile);
+        const QString migrated=QStringLiteral("MobileStudio/workspacesMigrated");
+        if(!settings.value(migrated,false).toBool()) {
+            const QString studio=QStringLiteral("MobileStudio/");
+            for(const auto *suffix:{"toolbars","primaryToolbarCommands","canvasPanelPlacements",
+                                    "layersHorizontal","layerCorner","layerWidth","layerHeight",
+                                    "layersCollapsed"}) {
+                const QString key=QString::fromLatin1(suffix);
+                if(!settings.contains(studio+key))continue;
+                settings.setValue(prefix+key,settings.value(studio+key));
+                MobileWorkspaceProfiles::remember(settings,m_profile,size);
+            }
+            settings.setValue(migrated,true);
+        }
+        loadWorkspace();
+    }
+
+    void loadWorkspace()
+    {
+        m_bars={defaultBar()};
         const QSettings settings;
         const auto saved=settings.value(settingsKey()).toList();
+        m_builtin=saved.isEmpty() && !settings.contains(
+            MobileWorkspaceProfiles::group(m_profile)+QStringLiteral("primaryToolbarCommands"));
         if(saved.isEmpty()) {
+            if(!m_builtin)m_bars.first().edge=Top;
             m_bars.first().ids=settings.value(
-                QStringLiteral("MobileStudio/primaryToolbarCommands"),defaults).toStringList();
+                MobileWorkspaceProfiles::group(m_profile)+QStringLiteral("primaryToolbarCommands"),m_defaults).toStringList();
         } else {
             m_bars.clear();
             for(const auto &item:saved) {
@@ -247,8 +310,9 @@ private:
         }
         if(!m_commands.contains(QStringLiteral("shortcut")))
             for(auto &bar:m_bars)bar.ids.removeAll(QStringLiteral("shortcut"));
-        m_toolbar=new QFrame(canvas);
-        m_toolbar->setObjectName(QStringLiteral("_mobileNativeToolbar"));
+        m_bars.first().adaptive=m_builtin;
+        rebuild();
+        if(m_applyWorkspace)m_applyWorkspace(m_profile,m_portrait);
     }
 
     Bar defaultBar() const
@@ -256,12 +320,13 @@ private:
         Bar bar;
         bar.name=QObject::tr("Main toolbar");
         bar.ids=m_defaults;
+        bar.edge=m_portrait?Bottom:Left;
         return bar;
     }
 
-    static QString settingsKey()
+    QString settingsKey() const
     {
-        return QStringLiteral("MobileStudio/toolbars");
+        return MobileWorkspaceProfiles::group(m_profile)+QStringLiteral("toolbars");
     }
 
     static QString toolbarStyle(const Bar &bar)
@@ -290,7 +355,9 @@ private:
             };
             values.append(value);
         }
-        QSettings().setValue(settingsKey(),values);
+        QSettings settings;
+        MobileWorkspaceProfiles::remember(settings,m_profile,m_profileSize);
+        settings.setValue(settingsKey(),values);
     }
 
     static QFrame *toolbar(QWidget *canvas)
@@ -300,20 +367,20 @@ private:
     }
 
     static QToolButton *makeButton(QWidget *parent,QAction *action,
-                                   int target=44,int icon=24,bool vertical=false)
+                                   int target=44,int icon=24,bool vertical=false,bool square=false)
     {
         auto *button=new QToolButton(parent);
         button->setDefaultAction(action);
         button->setFocusPolicy(Qt::NoFocus);
         button->setIconSize(QSize(icon,icon));
-        const auto sync=[button,action,target,vertical]() {
+        const auto sync=[button,action,target,vertical,square]() {
             QString label=action->text();
             label.remove(QLatin1Char('&'));
             button->setAccessibleName(label);
             button->setVisible(action->isVisible());
             button->setToolButtonStyle(action->icon().isNull()?
                 Qt::ToolButtonTextOnly:Qt::ToolButtonIconOnly);
-            const int width=action->icon().isNull() && !vertical?
+            const int width=action->icon().isNull() && !vertical && !square?
                 qBound(target,button->fontMetrics().horizontalAdvance(label)+10,132):target;
             button->setFixedSize(width,target);
             button->setToolTip(action->toolTip().isEmpty()?label:action->toolTip());
@@ -428,6 +495,27 @@ private:
             vertical?QSize(cross,minimum):QSize(minimum,cross));
     }
 
+    void chooseWorkspaceLayout()
+    {
+        if(!m_editor || m_profile.isEmpty())return;
+        const QSettings stored;
+        QMenu menu(QObject::tr("Screen layouts"));
+        auto *reset=menu.addAction(QObject::tr("Restore defaults for this screen"));
+        for(const auto &id:MobileWorkspaceProfiles::saved(stored)) {
+            if(id==m_profile)continue;
+            const auto size=stored.value(MobileWorkspaceProfiles::group(id)+QStringLiteral("size")).toSize();
+            auto *copy=menu.addAction(QObject::tr("Copy layout from %1 × %2").arg(size.width()).arg(size.height()));
+            copy->setData(id);
+        }
+        auto *chosen=mobilePickAction(m_editor,menu);
+        if(!chosen || !m_editor)return;
+        m_editor->closeEditor(false);
+        QSettings settings;
+        MobileWorkspaceProfiles::replace(settings,m_profile,m_profileSize,
+            chosen==reset?QString():chosen->data().toString());
+        loadWorkspace();
+    }
+
     void editCanvasLayout()
     {
         if(m_editor || m_canvasOnly)return;
@@ -462,11 +550,14 @@ private:
             m_editor.clear();
             if(m_editedBars) {
                 m_editedBars=false;
+                m_builtin=false;
+                m_bars.first().adaptive=false;
                 saveBars();
                 rebuild();
             } else position();
             if(m_layoutEditing)m_layoutEditing(false);
-        });
+            m_workspaceTimer.start();
+        },[this]() {chooseWorkspaceLayout();});
     }
 
     void position()
@@ -476,6 +567,10 @@ private:
         const QRect bounds=canvas->rect().adjusted(2,2,-2,-2);
         if(!bounds.isValid())return;
         QRect usable=bounds;
+        if(m_builtin && adaptiveTarget(bounds)!=m_bars.first().target) {
+            rebuild();
+            return;
+        }
         const auto &main=m_bars.first();
         const auto *row=m_toolbar->layout();
         const bool mainVertical=verticalEdge(main.edge);
@@ -488,9 +583,15 @@ private:
         if(main.placement.isValid()) {
             m_toolbar->setGeometry(editedBarGeometry(m_toolbar,main,bounds,history,{}));
         } else {
-            m_toolbar->setGeometry(usable.x(),usable.y(),
-                qMin(pinned+stripLength+6,qMax(0,usable.width())),
-                main.target+4+(history?historyThickness:0));
+            const int available=mainVertical?bounds.height():bounds.width();
+            const int breadth=main.target+4+(history?historyThickness:0);
+            const int length=main.adaptive?available:qMin(pinned+stripLength+6,available);
+            const int offset=(available-length)*main.alignment/2;
+            const int x=mainVertical?(main.edge==Left?bounds.left():bounds.right()-breadth+1):
+                                     bounds.left()+offset;
+            const int y=mainVertical?bounds.top()+offset:
+                        (main.edge==Top?bounds.top():bounds.bottom()-breadth+1);
+            m_toolbar->setGeometry(x,y,mainVertical?breadth:length,mainVertical?length:breadth);
         }
         placeHistory(m_toolbar,main.edge,1,history);
         QList<QRect> occupied;
@@ -596,7 +697,7 @@ private:
                     gesture->setVisible(action->isVisible());
                     gesture->setToolButtonStyle(action->icon().isNull()?
                         Qt::ToolButtonTextOnly:Qt::ToolButtonIconOnly);
-                    const int width=action->icon().isNull() && !vertical?
+                    const int width=action->icon().isNull() && !vertical && !bar.adaptive?
                         qBound(bar.target,gesture->fontMetrics().horizontalAdvance(label)+10,132):
                         bar.target;
                     gesture->setFixedSize(width,bar.target);
@@ -604,7 +705,7 @@ private:
                 };
                 QObject::connect(action,&QAction::changed,gesture,sync);
                 sync();
-            } else button=makeButton(strip,action,bar.target,bar.icon,vertical);
+            } else button=makeButton(strip,action,bar.target,bar.icon,vertical,bar.adaptive);
             if(action==shortcut)shortcutButton=button;
             row->addWidget(button);
         }
@@ -653,18 +754,34 @@ private:
         });
     }
 
+    int adaptiveTarget(const QRect &bounds) const
+    {
+        const int length=verticalEdge(m_bars.first().edge)?bounds.height():bounds.width();
+        return MobileWorkspaceProfiles::toolbarTarget(length-2,m_defaults.size()+2);
+    }
+
     void rebuild()
     {
         m_toolbar->setProperty("mobileCommandToolbar",true);
         m_toolbar->setStyleSheet(toolbarStyle(m_bars.first()));
-        const auto &main=m_bars.first();
+        auto &main=m_bars.first();
+        if(m_builtin) {
+            main.target=adaptiveTarget(static_cast<QWidget*>(parent())->rect().adjusted(2,2,-2,-2));
+            main.icon=qBound(16,main.target-11,26);
+            main.spacing=0;
+        }
         const bool vertical=verticalEdge(main.edge);
         auto *mainRow=static_cast<QBoxLayout*>(m_toolbar->layout());
         delete m_toolbar->findChild<QFrame*>(QStringLiteral("_mobileToolbarColorHistory"),
                                             Qt::FindDirectChildrenOnly);
+        mainRow->setSpacing(main.adaptive?0:1);
         mainRow->setDirection(vertical?QBoxLayout::TopToBottom:QBoxLayout::LeftToRight);
         mainRow->itemAt(0)->widget()->setFixedSize(main.target,main.target);
         mainRow->itemAt(2)->widget()->setFixedSize(main.target,main.target);
+        for(int index:{0,2}) {
+            auto *button=static_cast<QToolButton*>(mainRow->itemAt(index)->widget());
+            button->setIconSize(QSize(main.icon,main.icon));
+        }
         m_scroll->setMinimumSize(vertical?main.target:0,vertical?0:main.target);
         populate(m_scroll,main,vertical);
         qDeleteAll(m_extra);
@@ -758,6 +875,7 @@ private:
         MobileTouchScroll::configureList(list);
         layout->addWidget(list,1);
         auto bars=m_bars;
+        for(auto &bar:bars)bar.adaptive=false;
         int current=0;
         const auto ids=[&]() -> QStringList& {return bars[current].ids;};
         const auto refresh=[&](int index) {
@@ -905,6 +1023,7 @@ private:
         layout->addLayout(resetRow);
         addButton(resetRow,QObject::tr("Restore default toolbars"),[&]() {
             bars={defaultBar()};
+            bars.first().adaptive=true;
             current=0;
             refillBars();
         });
@@ -921,8 +1040,15 @@ private:
            !barName->text().trimmed().isEmpty())
             bars[current].name=barName->text().trimmed();
         m_bars=bars;
-        saveBars();
+        m_builtin=bars.size()==1 && bars.first().adaptive &&
+            bars.first().ids==m_defaults && !bars.first().placement.isValid();
+        m_bars.first().adaptive=m_builtin;
+        if(m_builtin) {
+            QSettings().remove(settingsKey());
+            QSettings().remove(MobileWorkspaceProfiles::group(m_profile)+QStringLiteral("primaryToolbarCommands"));
+        } else saveBars();
         rebuild();
+        m_workspaceTimer.start();
     }
 
     Commands m_commands;
@@ -942,6 +1068,11 @@ private:
     QPointer<MobileCanvasLayoutEditor> m_editor;
     std::function<QVector<MobileCanvasLayoutEditor::Target>()> m_layoutPanels;
     std::function<void(bool)> m_layoutEditing;
+    QTimer m_workspaceTimer;
+    QString m_profile;
+    QSize m_profileSize;
+    bool m_portrait=false,m_builtin=true;
+    std::function<void(const QString &,bool)> m_applyWorkspace;
     bool m_canvasOnly=false,m_editing=false,m_positionPending=false,m_editedBars=false;
 };
 #endif

@@ -274,7 +274,7 @@ extern "C" JNIEXPORT jint JNICALL
 Java_org_krita_android_JNIWrappers_volumeLongPressMs(JNIEnv*,jclass)
 {
     return qBound(80,QSettings().value(
-        QStringLiteral("TabletUi/volumeLongMs"),150).toInt(),1000);
+        QStringLiteral("TabletUi/volumeLongMs"),200).toInt(),1000);
 }
 
 extern "C" JNIEXPORT void JNICALL

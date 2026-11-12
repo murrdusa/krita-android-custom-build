@@ -401,7 +401,7 @@ Java_org_krita_android_JNIWrappers_volumeKeyAction(JNIEnv*, jobject, jboolean up
 extern "C" JNIEXPORT jint JNICALL
 Java_org_krita_android_JNIWrappers_volumeLongPressMs(JNIEnv*, jobject)
 {
-    return qBound(80, QSettings().value(QStringLiteral("TabletUi/volumeLongMs"), 150).toInt(), 1000);
+    return qBound(80, QSettings().value(QStringLiteral("TabletUi/volumeLongMs"), 200).toInt(), 1000);
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -441,7 +441,7 @@ Java_org_krita_android_JNIWrappers_volumeExecute(JNIEnv*, jobject, jint code)
         QSpinBox *volumeLongMs = new QSpinBox(&dialog);
         volumeLongMs->setRange(80, 1000);
         volumeLongMs->setSuffix(i18n(" ms"));
-        volumeLongMs->setValue(stored.value(QStringLiteral("TabletUi/volumeLongMs"), 150).toInt());
+        volumeLongMs->setValue(stored.value(QStringLiteral("TabletUi/volumeLongMs"), 200).toInt());
         form->addRow(i18n("Long-press threshold"), volumeLongMs);
         auto makeVolumeSelector = [&dialog, &stored, form](const QString &label,
                                                             const QString &key, int defaultAction) {

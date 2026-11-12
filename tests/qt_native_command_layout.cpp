@@ -123,6 +123,7 @@ int main(int argc,char **argv)
                               {QStringLiteral("commands"),QStringList{"brush","undo"}},
                               {QStringLiteral("edge"),3},
                               {QStringLiteral("target"),56}};
+    QSettings().clear();
     QSettings().setValue(QStringLiteral("MobileStudio/toolbars"),QVariantList{mainBar,sideBar});
     QMainWindow second;
     second.resize(420,600);
@@ -155,8 +156,7 @@ int main(int argc,char **argv)
         if(action->text()==QStringLiteral("Toolbar color history"))historyToggle=action;
         if(action->text()==QStringLiteral("Drawing commands"))fallbackMenu=action->menu();
     }
-    verify(historyToggle && !historyToggle->isChecked(),"history should start off");
-    historyToggle->trigger();
+    verify(historyToggle && historyToggle->isChecked(),"history should start on");
     auto *secondBar=secondCanvas->findChild<QFrame*>(QStringLiteral("_mobileNativeToolbar"));
     const auto stripName=QStringLiteral("_mobileToolbarColorHistory");
     auto *topHistory=secondBar->findChild<QFrame*>(stripName);
@@ -223,8 +223,10 @@ int main(int argc,char **argv)
            savedPanel.width()==savedPanel.height() && savedPanel.width()>80,
            "layout editor did not snap and proportionally resize the panel");
     verify(secondBar->height()>secondBar->width(),"main toolbar did not rotate");
-    const auto layouts=QSettings().value(QStringLiteral("MobileStudio/toolbars")).toList();
-    verify(layouts.first().toMap().value(QStringLiteral("placement")).toRectF().isValid(),
+    const QSettings stored;
+    const auto id=MobileWorkspaceProfiles::closest(stored,secondCanvas->size());
+    const auto layouts=stored.value(MobileWorkspaceProfiles::group(id)+QStringLiteral("toolbars")).toList();
+    verify(!layouts.isEmpty() && layouts.first().toMap().value(QStringLiteral("placement")).toRectF().isValid(),
            "edited toolbar placement did not persist");
     return 0;
 }

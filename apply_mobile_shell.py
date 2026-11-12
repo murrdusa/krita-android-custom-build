@@ -1023,6 +1023,8 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
         (own/"mobile_core/touch_action_picker.h").read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/touch_scroll.h").write_text(
         (own/"mobile_core/touch_scroll.h").read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/workspace_profiles.h").write_text(
+        (own/"mobile_core/workspace_profiles.h").read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/recent_colors.h").write_text(
         (own/"mobile_core/recent_colors.h").read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/tool_browser.h").write_text(
@@ -1235,6 +1237,7 @@ install(FILES org.kde.krita.desktop''',
                 if (touchSettings.contains(QString::number(shortcut->gesture()))) break;
                 if (shortcut->gesture()==KisShortcutConfiguration::OneFingerTap &&
                     shortcut->action()->id()==QStringLiteral("Show Popup Widget")) break;
+                if (shortcut->gesture()==KisShortcutConfiguration::TwoFingerTap) break;
                 profileHasDoubleTap |= shortcut->gesture() == KisShortcutConfiguration::OneFingerDoubleTap;
 #endif
                 if (!d->addNativeGestureShortcut""","apply Studio overrides to gesture bindings only")
@@ -1247,7 +1250,8 @@ install(FILES org.kde.krita.desktop''',
             const QString key = QString::number(index);
             QStringList binding = touchSettings.value(key).toStringList();
             if (!touchSettings.contains(key) &&
-                gesture == KisShortcutConfiguration::OneFingerDoubleTap && !profileHasDoubleTap) {
+                ((gesture == KisShortcutConfiguration::OneFingerDoubleTap && !profileHasDoubleTap) ||
+                 gesture == KisShortcutConfiguration::TwoFingerTap)) {
                 binding = QStringList{QStringLiteral("Touch Gestures"),
                            QString::number(KisTouchGestureAction::MirrorView)};
             }
@@ -1275,12 +1279,12 @@ install(FILES org.kde.krita.desktop''',
     gesture=one(gesture,"    int priority() const override;",
         """    int priority() const override;
 #ifdef Q_OS_ANDROID
-    void markMobileDoubleTap() {m_mobileDoubleTap=true;}
+    void markMobileTap() {m_mobileTap=true;}
 #endif""","mark actual double taps without changing other Mirror bindings")
     gesture=one(gesture,"    int m_shortcut{-1};",
         """    int m_shortcut{-1};
 #ifdef Q_OS_ANDROID
-    bool m_mobileDoubleTap=false;
+    bool m_mobileTap=false;
 #endif""","track double-tap dispatch for the mirror action")
     gesture_header.write_text(gesture,encoding="utf-8")
 
@@ -1292,11 +1296,19 @@ install(FILES org.kde.krita.desktop''',
     matcher=one(matcher,"            doubleTap->action()->end(event);",
         """#ifdef Q_OS_ANDROID
             if (auto *gesture=dynamic_cast<KisTouchGestureAction*>(doubleTap->action()))
-                gesture->markMobileDoubleTap();
+                gesture->markMobileTap();
 #endif
             doubleTap->action()->end(event);""","carry the matched double-tap location into gesture dispatch")
     matcher=matcher.replace('QStringLiteral("TabletUi/doubleTapMs"), 150',
                             'QStringLiteral("TabletUi/doubleTapMs"), 250')
+    a=matcher.index("void KisShortcutMatcher::fireReadyTouchShortcut")
+    b=matcher.index("        goodCandidate->action()->end(event);",a)
+    matcher=matcher[:b]+"""#ifdef Q_OS_ANDROID
+        if (goodCandidate->matchTapType(event))
+            if (auto *gesture=dynamic_cast<KisTouchGestureAction*>(goodCandidate->action()))
+                gesture->markMobileTap();
+#endif
+"""+matcher[b:]
     matcher_file.write_text(matcher,encoding="utf-8")
 
     gesture_file=root/"libs/ui/input/KisTouchGestureAction.cpp"
@@ -1329,12 +1341,16 @@ install(FILES org.kde.krita.desktop''',
         """    // A drag may send end() on finger release and again on TouchEnd.
 #ifdef Q_OS_ANDROID
     const int shortcut = m_shortcut;
-    const bool doubleTap=m_mobileDoubleTap;
-    m_mobileDoubleTap=false;
+    const bool anchorAtTap=m_mobileTap;
+    m_mobileTap=false;
     std::optional<QPointF> mirrorTap;
-    if (doubleTap && shortcut==MirrorView && event) {
+    if (anchorAtTap && shortcut==MirrorView && event) {
         const auto *touch=static_cast<QTouchEvent*>(event);
-        if (!touch->touchPoints().isEmpty()) mirrorTap=touch->touchPoints().first().pos();
+        if (!touch->touchPoints().isEmpty()) {
+            QPointF center;
+            for (const auto &point:touch->touchPoints()) center+=point.pos();
+            mirrorTap=center/touch->touchPoints().size();
+        }
     }
 #endif
     m_shortcut = -1;

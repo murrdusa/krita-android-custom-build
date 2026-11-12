@@ -1,8 +1,16 @@
 # Krita Mobile Studio — current development state
 
-**Updated:** November 11, 2026. **Branch:** `main` of `murrdusa/krita-android-custom-build`.
+**Updated:** November 12, 2026. **Branch:** `main` of `murrdusa/krita-android-custom-build`.
 
 Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1). This file records *current* status, not a commit-by-commit log. The preceding complete log is preserved verbatim in [DEVELOPMENT_HISTORY_2026-11-11.md](DEVELOPMENT_HISTORY_2026-11-11.md). More focused runbooks live under `mobile_core/`.
+
+## Adaptive Android workspace
+
+The built-in portrait workspace puts the ten essential commands along the bottom and Layers at the top. Landscape and near-square windows use the left toolbar and right Layers rail. The toolbar fits a single strip by adapting icon and touch-target sizes, with scrolling as a fallback when fewer than about 308 logical pixels are available. Layers expand with content, collapse at their anchor, and place the tile controls inward. The horizontal rail uses a rotated name at the end. Edit UI Layout adjusts rail thickness and offers per-screen reset and layout copying.
+
+Screen profiles match tolerant logical dimensions and orientation. Keyboard transitions are excluded from profile switching while Android reports the input method visible. Existing geometry is migrated into the first matched screen profile and the old settings are retained. Layer collapse, floating slider visibility, toolbar layout, and panel placements are restored per screen. Input preferences remain global. Android folding, insets, and keyboard timing require runtime verification.
+
+New defaults enable stroke-color history, Paint size drag, Brush Settings opacity drag, Color sampling, and panel fading to 30% after three seconds. The persistent wheel and floating sliders start off. One-finger double tap and two-finger tap mirror around the tap location. Native pinch continues to change the view. Finger pressure retains its existing 1–10 calibration and volume uses Undo/Redo with a 200 ms hold threshold. Explicit Studio preference overrides remain in effect.
 
 ## Mirror anchor and brush color history
 

@@ -31,8 +31,11 @@ int main(int argc,char **argv)
     app.setOrganizationName(QStringLiteral("KritaMobileToolbarDragTest"));
     app.setApplicationName(QStringLiteral("KritaMobileToolbarDragTest"));
     QSettings().clear();
-    require(MobileToolbarDrag::assignment("opacity").isEmpty() &&
-            MobileToolbarDrag::assignment("size").isEmpty(),"sliders must default to off");
+    require(MobileToolbarDrag::assignment("opacity")==QStringLiteral("tool-settings") &&
+            MobileToolbarDrag::assignment("size")==QStringLiteral("paint"),
+            "new workspaces should enable distinct opacity and size drags");
+    QSettings().setValue(MobileToolbarDrag::preference("opacity"),QString());
+    require(MobileToolbarDrag::assignment("opacity").isEmpty(),"explicit Off was lost");
     QSettings().setValue(MobileToolbarDrag::preference("opacity"),QStringLiteral("paint"));
     QSettings().setValue(MobileToolbarDrag::preference("size"),QStringLiteral("tool-settings"));
     using MobileToolbarDrag::Phase;

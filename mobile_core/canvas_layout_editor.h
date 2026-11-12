@@ -21,10 +21,12 @@ public:
         bool rotatable=false;
         std::function<void(const QRect &,bool)> save;
         QString rotateLabel;
+        Qt::Orientations thicknessAxis={};
     };
 
     MobileCanvasLayoutEditor(QWidget *canvas,const QVector<Target> &targets,
-                             std::function<void()> finished)
+                             std::function<void()> finished,
+                             std::function<void()> workspaceOptions={})
         : QWidget(canvas),m_finished(std::move(finished))
     {
         setObjectName(QStringLiteral("_mobileCanvasLayoutEditor"));
@@ -49,6 +51,10 @@ public:
             item.rotated=!item.rotated;
             update();
         });
+        if(workspaceOptions) {
+            m_workspaces=new QPushButton(tr("Layouts…"),this);
+            connect(m_workspaces,&QPushButton::clicked,this,std::move(workspaceOptions));
+        }
         m_rotate->hide();
         setGeometry(canvas->rect());
         for(const auto &target:targets) {
@@ -175,6 +181,7 @@ protected:
         const int y=qMax(2,height()-54);
         m_cancel->setGeometry(x,y,86,46);
         m_done->setGeometry(x+92,y,90,46);
+        if(m_workspaces)m_workspaces->setGeometry(4,4,90,44);
         m_rotate->setGeometry(x>=152?x-150:x,x>=152?y:qMax(2,y-50),144,46);
     }
 
@@ -319,9 +326,19 @@ private:
             const QSize minimum=item.rotated?item.target.minimum.transposed():item.target.minimum;
             const qreal limitX=(signX>0?bounds().right()-anchor.x()+1:anchor.x()-bounds().left()+1)/w;
             const qreal limitY=(signY>0?bounds().bottom()-anchor.y()+1:anchor.y()-bounds().top()+1)/h;
-            const qreal limit=qMin(limitX,limitY);
-            factor=qBound(qMin(limit,qMax(minimum.width()/w,minimum.height()/h)),factor,limit);
-            const QSize size(qMax(1,qRound(w*factor)),qMax(1,qRound(h*factor)));
+            QSize size;
+            const auto thickness=item.target.thicknessAxis;
+            if(thickness) {
+                const bool width=(thickness==Qt::Horizontal)!=item.rotated;
+                const int limit=qMax(1,qRound(width?limitX*w:limitY*h));
+                const int lower=qMin(limit,width?minimum.width():minimum.height());
+                const int value=qBound(lower,qRound(width?dx+sx*signX:dy+sy*signY),limit);
+                size=width?QSize(value,m_initial.height()):QSize(m_initial.width(),value);
+            } else {
+                const qreal limit=qMin(limitX,limitY);
+                factor=qBound(qMin(limit,qMax(minimum.width()/w,minimum.height()/h)),factor,limit);
+                size=QSize(qMax(1,qRound(w*factor)),qMax(1,qRound(h*factor)));
+            }
             item.rect=clamp(QRect(QPoint(anchor.x()+(signX<0?1-size.width():0),
                                          anchor.y()+(signY<0?1-size.height():0)),size),bounds());
         }
@@ -341,7 +358,7 @@ private:
 
     QVector<Item> m_items;
     std::function<void()> m_finished;
-    QPushButton *m_done=nullptr,*m_cancel=nullptr,*m_rotate=nullptr;
+    QPushButton *m_done=nullptr,*m_cancel=nullptr,*m_rotate=nullptr,*m_workspaces=nullptr;
     QPointer<QPushButton> m_pressedControl;
     int m_selected=-1,m_handle=-1;
     bool m_active=false,m_moved=false,m_closing=false;
