@@ -5,14 +5,12 @@
 #pragma once
 #ifdef Q_OS_ANDROID
 
-#include <QComboBox>
-#include <QDialog>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListView>
 #include <QTreeWidget>
-#include <QTabBar>
+#include <QListWidget>
 #include <QUuid>
 #include "transient_panel.h"
 #include <QSortFilterProxyModel>
@@ -47,6 +45,7 @@
 #include <QStyledItemDelegate>
 #include <QRegularExpression>
 #include <QPainter>
+#include <QPainterPath>
 #include <QMouseEvent>
 #include <functional>
 #include <memory>
@@ -83,9 +82,9 @@ public:
                 button->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
                 m_modes[i]=button;
                 buttons->addWidget(button,1);
-                connect(button,&QToolButton::clicked,this,[this,i]() {
+                connect(button,&QToolButton::clicked,this,[this,i,button]() {
                     if(m_hasSelectedMode && m_slot==i) {
-                        openPresetBrowser(i);
+                        openPresetBrowser(i,nullptr,button);
                     } else switchMode(i);
                 });
             }
@@ -94,8 +93,8 @@ public:
             browse->setMinimumHeight(42);
             browse->setToolTip(i18n("Search Krita brush presets"));
             buttons->addWidget(browse,1);
-            connect(browse,&QToolButton::clicked,this,[this]() {
-                openPresetBrowser(m_slot);
+            connect(browse,&QToolButton::clicked,this,[this,browse]() {
+                openPresetBrowser(m_slot,nullptr,browse);
             });
             m_detailToggle=new QToolButton(this);
             m_detailToggle->setToolTip(i18n("Show or hide detailed brush controls"));
@@ -286,7 +285,7 @@ public:
     }
 
     void activateMode(int slot) { switchMode(slot); }
-    void browsePresets(int slot) { openPresetBrowser(slot); }
+    void browsePresets(int slot,QAction *action) {openPresetBrowser(slot,action);}
     void dismissPresetBrowser() {if(m_presetBrowser)m_presetBrowser->close();}
 
     void setSliderVisibility(bool size,bool opacity)
@@ -365,6 +364,7 @@ private:
         if(modes.isEmpty())return;
         const KisImageSP original=view->image().toStrongRef();
         if(!original)return;
+        if(MobileTransientPanel::closeForAnchor(parentWidget(),m_composite))return;
         auto *panel=new MobileTransientPanel(parentWidget());
         panel->setAccessibleName(i18n("Brush blending mode"));
         panel->setObjectName(QStringLiteral("mobileBrushComposite"));
@@ -458,88 +458,90 @@ private:
         QString m_name;
     };
 
-    class PresetTile final : public QStyledItemDelegate
+    class PresetRow final : public QStyledItemDelegate
     {
     public:
-        explicit PresetTile(QListView *view,std::function<void(const QString &)> onFavorite)
+        PresetRow(QListView *view,std::function<void(const QString &)> onFavorite)
             : QStyledItemDelegate(view),m_view(view),m_onFavorite(std::move(onFavorite)),
               m_favorites(QSettings().value(
                   QStringLiteral("MobileStudio/brushFavorites")).toStringList()) {}
 
         QSize sizeHint(const QStyleOptionViewItem &,const QModelIndex &) const override
         {
-            return m_view->gridSize();
+            return QSize(1,58);
         }
 
         void paint(QPainter *painter,const QStyleOptionViewItem &option,
                    const QModelIndex &index) const override
         {
             painter->save();
-            const QRect tile=option.rect.adjusted(1,1,-1,-1);
-            painter->fillRect(tile,(option.state & QStyle::State_Selected)?
-                QColor("#365c78"):QColor("#293745"));
-            const QIcon thumb=qvariant_cast<QIcon>(index.data(Qt::DecorationRole));
-            const QRect image=tile.adjusted(2,1,-2,-15);
-            thumb.paint(painter,image,Qt::AlignCenter);
+            painter->setRenderHint(QPainter::Antialiasing);
+            const QRect row=option.rect.adjusted(3,2,-3,-2);
+            if(option.state & QStyle::State_Selected) {
+                painter->setPen(Qt::NoPen);
+                painter->setBrush(QColor("#394459"));
+                painter->drawRoundedRect(row,8,8);
+            }
+
+            const QRect preview(row.left()+5,row.center().y()-21,42,42);
+            QPainterPath clip;
+            clip.addRoundedRect(preview,7,7);
+            painter->save();
+            painter->setClipPath(clip);
+            painter->fillRect(preview,QColor("#363942"));
+            index.data(Qt::DecorationRole).value<QIcon>().paint(painter,preview);
+            painter->restore();
+
+            const QRect star=starArea(option.rect);
+            const QRect caption(preview.right()+10,row.top(),
+                                qMax(0,star.left()-preview.right()-12),row.height());
             QFont font=option.font;
-            font.setPixelSize(11);
+            font.setPixelSize(14);
             painter->setFont(font);
-            painter->setPen(QColor("#f4f9fe"));
-            const QRect caption(tile.x()+2,tile.bottom()-14,tile.width()-4,15);
-            const auto *proxy=qobject_cast<const QSortFilterProxyModel*>(index.model());
-            const QModelIndex original=proxy?proxy->mapToSource(index):index;
-            const QString fullName=original.sibling(
-                original.row(),KisAbstractResourceModel::Name).data().toString();
-            const bool favorite=m_favorites.contains(fullName);
-            const QRect star(tile.right()-23,tile.top()+2,21,21);
-            painter->setPen(favorite?QColor("#ffe087"):QColor("#aebdcc"));
-            painter->setFont(QFont(option.font.family(),16));
-            painter->drawText(star,Qt::AlignCenter,favorite?
-                QStringLiteral("★"):QStringLiteral("☆"));
-            // The favorite marker must not change the preset caption's
-            // font size or contrast.
+            painter->setPen(QColor("#f1f2f5"));
+            painter->drawText(caption,Qt::AlignVCenter|Qt::AlignLeft,
+                painter->fontMetrics().elidedText(index.data().toString(),Qt::ElideRight,caption.width()));
+
+            const bool favorite=m_favorites.contains(resourceName(index));
+            font.setPixelSize(21);
             painter->setFont(font);
-            painter->setPen(QColor("#f4f9fe"));
-            const QString name=index.data().toString();
-            painter->drawText(caption,Qt::AlignCenter,
-                painter->fontMetrics().elidedText(name,Qt::ElideRight,caption.width()));
+            painter->setPen(favorite?QColor("#ffd478"):QColor("#9da4b3"));
+            painter->drawText(star,Qt::AlignCenter,favorite?QStringLiteral("★"):QStringLiteral("☆"));
             painter->restore();
         }
 
-        void reloadFavorites()
-        {
-            m_favorites=QSettings().value(
-                QStringLiteral("MobileStudio/brushFavorites")).toStringList();
-            m_view->viewport()->update();
-        }
-
-        bool editorEvent(QEvent *event,QAbstractItemModel *model,
-                         const QStyleOptionViewItem &option,
+        bool editorEvent(QEvent *event,QAbstractItemModel *,const QStyleOptionViewItem &option,
                          const QModelIndex &index) override
         {
             if(event->type()!=QEvent::MouseButtonRelease)return false;
             auto *mouse=static_cast<QMouseEvent*>(event);
-            const QRect star=option.rect.adjusted(option.rect.width()-28,0,0,
-                                                   -(option.rect.height()-28));
-            if(!star.contains(mouse->pos()))return false;
-            const auto *proxy=qobject_cast<const QSortFilterProxyModel*>(model);
-            const QModelIndex original=proxy?proxy->mapToSource(index):index;
-            const QString name=original.sibling(
-                original.row(),KisAbstractResourceModel::Name).data().toString();
+            if(mouse->button()!=Qt::LeftButton || !starArea(option.rect).contains(mouse->pos()))return false;
+            const QString name=resourceName(index);
             if(name.isEmpty())return false;
             m_view->setProperty("_mobileFavoriteTap",true);
-            if(m_onFavorite)m_onFavorite(name);
-            reloadFavorites();
-            // A delegate-handled release may not emit QListView::clicked.
-            // Clear the suppression token after this input transaction so
-            // the next ordinary preset tap is never swallowed.
+            m_onFavorite(name);
+            m_favorites=QSettings().value(
+                QStringLiteral("MobileStudio/brushFavorites")).toStringList();
+            m_view->viewport()->update();
             QTimer::singleShot(0,m_view,[view=m_view]() {
-                if(view)view->setProperty("_mobileFavoriteTap",false);
+                view->setProperty("_mobileFavoriteTap",false);
             });
             return true;
         }
 
     private:
+        static QRect starArea(const QRect &row)
+        {
+            return QRect(row.right()-43,row.top(),44,row.height());
+        }
+
+        static QString resourceName(const QModelIndex &index)
+        {
+            const auto *proxy=qobject_cast<const QSortFilterProxyModel*>(index.model());
+            const auto source=proxy?proxy->mapToSource(index):index;
+            return source.sibling(source.row(),KisAbstractResourceModel::Name).data().toString();
+        }
+
         QListView *m_view;
         std::function<void(const QString &)> m_onFavorite;
         QStringList m_favorites;
@@ -600,6 +602,10 @@ private:
     static int paintingFamily(const QString &name)
     {
         const QString text=displayPresetName(name).toLower();
+        if(text.contains(QStringLiteral("basic")) &&
+           !text.contains(QStringLiteral("water")))return 9;
+        if(text.contains(QStringLiteral("watercolor")) || text.contains(QStringLiteral("waterc")))return 14;
+        if(text.contains(QStringLiteral("airbrush")))return 15;
         if(text.contains(QStringLiteral("pencil")) || text.contains(QStringLiteral("chalk")) ||
            text.contains(QStringLiteral("charcoal")) || text.contains(QStringLiteral("pastel")))return 10;
         if(text.contains(QStringLiteral("ink")) || text.contains(QStringLiteral("pen")) ||
@@ -622,8 +628,11 @@ private:
             sort(KisAbstractResourceModel::Name);
         }
 
+        int category() const {return m_category;}
+
         void setCategory(int category)
         {
+            if(m_category==category)return;
             m_category=category;
             invalidate();
             sort(KisAbstractResourceModel::Name);
@@ -699,7 +708,7 @@ private:
             if(m_category==-4 && !m_favorites.contains(name))return false;
             if(m_category==-5 && !m_recent.contains(name))return false;
             if(m_category<0)return true;
-            if(m_category>=10)return paintingFamily(name)==m_category;
+            if(m_category>=9)return paintingFamily(name)==m_category;
             return inCategory(name,presetEngine(m_source,row),m_category);
         }
 
@@ -860,61 +869,80 @@ private:
         return model()->addResourceDeduplicateFileName(preset)?preset:KisPaintOpPresetSP();
     }
 
-    void openPresetBrowser(int slot)
+    void openPresetBrowser(int slot,QAction *action=nullptr,QWidget *opener=nullptr)
     {
+        if(m_presetBrowser && m_presetBrowser->isVisible()) {
+            dismissPresetBrowser();
+            if(m_browserSlot==slot)return;
+        }
         if(!resources() || !parentWidget())return;
         const auto view=MobileViewIdentityGuard::uniqueActive(m_engine.openDocuments());
         if(!view)return;
-        dismissPresetBrowser();
         auto *panel=new MobileTransientPanel(parentWidget());
         m_presetBrowser=panel;
+        m_browserSlot=slot;
+        panel->setOpener(opener,action);
         panel->setObjectName(QStringLiteral("mobilePresetBrowser"));
         panel->setAccessibleName(slot==1?i18n("Eraser presets"):slot==2?i18n("Blend presets"):i18n("Brush presets"));
         panel->setStyleSheet(QStringLiteral(
-            "QFrame#mobilePresetBrowser{background:#252529;color:white;"
-            "border:1px solid #55555c;border-radius:8px;}"
-            "QLineEdit,QListView,QTabBar::tab,QToolButton{background:#34343a;color:white;border:0;}"
-            "QLineEdit,QToolButton{min-height:34px;padding:3px;}"
-            "QTabBar::tab{min-height:34px;padding:0 7px;}"
-            "QTabBar::tab:selected{background:#365c78;}"
-            "QToolButton:disabled{color:#93939b;}QLabel{color:white;}"));
-        auto *layout=new QVBoxLayout(panel);
-        layout->setContentsMargins(6,6,6,6);
-        layout->setSpacing(4);
+            "QFrame#mobilePresetBrowser{background:#25262b;border:1px solid #44464f;border-radius:12px;}"
+            "QListWidget#brushCategories{background:#202126;color:#bfc3ce;border:0;border-radius:8px;outline:0;}"
+            "QListWidget#brushCategories::item{min-height:40px;padding:0 8px;border-radius:6px;}"
+            "QListWidget#brushCategories::item:selected{background:#353b4b;color:#e0e7fb;}"
+            "QListView#brushRows{background:#25262b;color:#f1f2f5;border:0;outline:0;}"
+            "QLineEdit,QToolButton{background:#30323b;color:#f1f2f5;border:0;border-radius:6px;"
+            "min-height:36px;padding:2px 8px;}"
+            "QToolButton:disabled{color:#a0a1aa;}QLabel{color:#f1f2f5;}"));
+        auto *layout=new QHBoxLayout(panel);
+        layout->setContentsMargins(7,7,7,7);
+        layout->setSpacing(6);
+
+        auto *categories=new QListWidget(panel);
+        categories->setObjectName(QStringLiteral("brushCategories"));
+        categories->setAccessibleName(i18n("Brush categories"));
+        MobileTouchScroll::configureList(categories);
+        layout->addWidget(categories);
+        const auto category=[categories](const QString &name,int id) {
+            auto *item=new QListWidgetItem(name,categories);
+            item->setData(Qt::UserRole,id);
+        };
+        if(slot==1)category(i18n("Erasers"),1);
+        if(slot==2)category(i18n("Blenders"),2);
+        category(i18n("All"),-1);
+        category(i18n("Favorites"),-4);
+        category(i18n("Recent"),-5);
+        category(i18n("Basic"),9);
+        if(slot!=1)category(i18n("Erasers"),1);
+        if(slot!=2)category(i18n("Blenders"),2);
+        category(i18n("Sketch"),10);
+        category(i18n("Inking"),11);
+        category(i18n("Painting"),13);
+        category(i18n("Watercolor"),14);
+        category(i18n("Airbrush"),15);
+        category(i18n("Texture"),12);
+        categories->setCurrentRow(0);
+
+        auto *body=new QVBoxLayout;
+        body->setSpacing(4);
+        layout->addLayout(body,1);
         auto *search=new QLineEdit(panel);
         search->setPlaceholderText(i18n("Search brushes"));
         search->setClearButtonEnabled(true);
-        layout->addWidget(search);
-        auto *tabs=new QTabBar(panel);
-        tabs->setExpanding(false);
-        tabs->setUsesScrollButtons(true);
-        const auto tab=[tabs](const QString &label,int id) {
-            tabs->setTabData(tabs->addTab(label),id);
-        };
-        if(slot==1)tab(i18n("Erasers"),1);
-        if(slot==2)tab(i18n("Blenders"),2);
-        tab(i18n("All"),-1);
-        tab(i18n("Favorites"),-4);
-        tab(i18n("Recent"),-5);
-        tab(i18n("Sketch"),10);
-        tab(i18n("Ink"),11);
-        tab(i18n("Paint"),13);
-        tab(i18n("Texture"),12);
-        if(slot!=1)tab(i18n("Erasers"),1);
-        if(slot!=2)tab(i18n("Blenders"),2);
-        layout->addWidget(tabs);
-        auto *grid=new QListView(panel);
-        grid->setViewMode(QListView::IconMode);
-        grid->setFlow(QListView::LeftToRight);
-        grid->setWrapping(true);
-        grid->setResizeMode(QListView::Adjust);
-        grid->setMovement(QListView::Static);
-        grid->setLayoutMode(QListView::Batched);
-        grid->setBatchSize(32);
-        grid->setUniformItemSizes(true);
-        grid->setEditTriggers(QAbstractItemView::NoEditTriggers);
-        MobileTouchScroll::configureList(grid);
-        layout->addWidget(grid,1);
+        search->setMinimumWidth(0);
+        search->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
+        body->addWidget(search);
+        auto *list=new QListView(panel);
+        list->setObjectName(QStringLiteral("brushRows"));
+        list->setAccessibleName(i18n("Brush presets"));
+        list->setUniformItemSizes(true);
+        list->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        MobileTouchScroll::configureList(list);
+        body->addWidget(list,1);
+        auto *empty=new QLabel(i18n("No matching brushes"),panel);
+        empty->setAlignment(Qt::AlignCenter);
+        empty->setWordWrap(true);
+        empty->hide();
+        body->addWidget(empty,1);
 
         auto *quick=new QWidget(panel);
         auto *adjusters=new QVBoxLayout(quick);
@@ -935,50 +963,66 @@ private:
             control->setMinimumHeight(38);
             adjusters->addWidget(control);
         }
-        layout->addWidget(quick);
+        body->addWidget(quick);
         quick->hide();
 
         auto *conversion=new QToolButton(panel);
-        conversion->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);
-        layout->addWidget(conversion);
+        conversion->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
+        body->addWidget(conversion);
         conversion->hide();
         auto candidate=std::make_shared<KisPaintOpPresetSP>();
         auto *source=model();
         auto *filter=new PresetFilter(source,slot,panel);
-        grid->setModel(filter);
-        grid->setModelColumn(KisAbstractResourceModel::Name);
-        filter->setCategory(tabs->tabData(0).toInt());
-        auto *delegate=new PresetTile(grid,[filter](const QString &name) {
+        list->setModel(filter);
+        list->setModelColumn(KisAbstractResourceModel::Name);
+        filter->setCategory(categories->currentItem()->data(Qt::UserRole).toInt());
+        const auto valid=[this,view]() {
+            return view && view==MobileViewIdentityGuard::uniqueActive(m_engine.openDocuments()) && resources();
+        };
+        const auto updateSelected=[this,list,source,filter]() {
+            const auto preset=resources()?resources()->currentPreset():KisPaintOpPresetSP();
+            if(!preset)return;
+            const auto row=source->indexForResourceId(preset->resourceId());
+            list->setCurrentIndex(filter->mapFromSource(row.sibling(row.row(),KisAbstractResourceModel::Name)));
+        };
+        auto *delegate=new PresetRow(list,[filter,updateSelected](const QString &name) {
             QSettings settings;
             const QString key=QStringLiteral("MobileStudio/brushFavorites");
             QStringList favorites=settings.value(key).toStringList();
             if(favorites.contains(name))favorites.removeAll(name);
             else favorites.prepend(name);
             settings.setValue(key,favorites);
-            QTimer::singleShot(0,filter,[filter]() {filter->reloadPersonalLists();});
+            QTimer::singleShot(0,filter,[filter,updateSelected]() {
+                filter->reloadPersonalLists();
+                updateSelected();
+            });
         });
-        grid->setItemDelegate(delegate);
-        const auto valid=[this,view]() {
-            return view && view==MobileViewIdentityGuard::uniqueActive(m_engine.openDocuments()) && resources();
-        };
-        const auto updateSelected=[this,grid,source,filter]() {
-            const auto preset=resources()?resources()->currentPreset():KisPaintOpPresetSP();
-            if(!preset)return;
-            const auto row=source->indexForResourceId(preset->resourceId());
-            grid->setCurrentIndex(filter->mapFromSource(row.sibling(row.row(),KisAbstractResourceModel::Name)));
-        };
+        list->setItemDelegate(delegate);
         const auto clearExtras=[quick,conversion,candidate]() {
             quick->hide();
             conversion->hide();
             candidate->clear();
         };
-        connect(tabs,&QTabBar::currentChanged,panel,[tabs,filter,clearExtras,updateSelected](int index) {
+        const auto updateList=[list,empty,filter]() {
+            const bool hasRows=filter->rowCount()>0;
+            list->setVisible(hasRows);
+            empty->setVisible(!hasRows);
+        };
+        connect(filter,&QAbstractItemModel::rowsInserted,panel,updateList);
+        connect(filter,&QAbstractItemModel::rowsRemoved,panel,updateList);
+        connect(filter,&QAbstractItemModel::modelReset,panel,updateList);
+        const auto chooseCategory=[filter,list,clearExtras,updateSelected](QListWidgetItem *item) {
             clearExtras();
-            filter->setCategory(tabs->tabData(index).toInt());
+            filter->setCategory(item->data(Qt::UserRole).toInt());
+            list->scrollToTop();
             updateSelected();
-        });
-        connect(search,&QLineEdit::textChanged,panel,[filter,updateSelected](const QString &query) {
+        };
+        connect(categories,&QListWidget::itemClicked,panel,chooseCategory);
+        connect(categories,&QListWidget::itemActivated,panel,chooseCategory);
+        connect(search,&QLineEdit::textChanged,panel,[filter,list,clearExtras,updateSelected](const QString &query) {
+            clearExtras();
             filter->setSearch(query);
+            list->scrollToTop();
             updateSelected();
         });
         connect(size,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),this,[this,valid](qreal value) {
@@ -994,8 +1038,8 @@ private:
             preset->settings()->setPaintOpFlow(value/100.0);
             resources()->setFlow(value/100.0);
         });
-        connect(grid,&QListView::clicked,this,[=](const QModelIndex &index) {
-            if(!valid() || grid->property("_mobileFavoriteTap").toBool())return;
+        connect(list,&QListView::clicked,this,[=](const QModelIndex &index) {
+            if(!valid() || list->property("_mobileFavoriteTap").toBool())return;
             const auto selected=filter->mapToSource(index);
             const auto preset=source->resourceForIndex(selected.sibling(selected.row(),0))
                 .dynamicCast<KisPaintOpPreset>();
@@ -1024,7 +1068,7 @@ private:
             }
             clearExtras();
             usePreset(slot,preset);
-            if(tabs->tabData(tabs->currentIndex()).toInt()==-5)filter->reloadPersonalLists();
+            if(filter->category()==-5)filter->reloadPersonalLists();
             updateSelected();
         });
         connect(conversion,&QToolButton::clicked,this,[=]() {
@@ -1037,21 +1081,22 @@ private:
             clearExtras();
             usePreset(2,result);
             search->clear();
-            tabs->setCurrentIndex(0);
-            updateSelected();
+            categories->setCurrentRow(0);
+            chooseCategory(categories->currentItem());
         });
-        const auto fit=[panel,grid]() {
-            const int width=qMax(1,panel->width()-14);
-            grid->setGridSize(QSize(width/qMax(1,width/75),60));
+        const auto fit=[panel,categories]() {
+            categories->setFixedWidth(qBound(82,panel->width()*28/100,134));
         };
         panel->onRefresh=fit;
-        panel->anchorTo(nullptr,QSize(470,qMin(480,qMax(1,parentWidget()->height()*3/4))));
+        panel->anchorTo(nullptr,QSize(510,650));
         panel->present();
         fit();
         updateSelected();
+        updateList();
     }
 
     QPointer<MobileTransientPanel> m_presetBrowser;
+    int m_browserSlot=-1;
     MobileEngineBridge m_engine;
     QToolButton *m_modes[3]={nullptr,nullptr,nullptr};
     PresetLabel *m_presetName=nullptr;

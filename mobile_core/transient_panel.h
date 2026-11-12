@@ -2,10 +2,14 @@
 #pragma once
 
 #include <QApplication>
+#include <QAction>
 #include <QFrame>
 #include <QKeyEvent>
 #include <QPointer>
+#include <QTabletEvent>
 #include <QTimer>
+#include <QToolButton>
+#include <QTouchEvent>
 #include <QWindow>
 #include <functional>
 
@@ -35,6 +39,25 @@ public:
     {
         m_anchor=anchor;
         m_preferred=preferred;
+    }
+
+    void setOpener(QWidget *widget,QAction *action=nullptr)
+    {
+        m_opener=widget;
+        m_action=action;
+    }
+
+    static bool closeForAnchor(QWidget *host,QWidget *anchor)
+    {
+        if(!host || !anchor)return false;
+        for(auto *child:host->children()) {
+            auto *panel=dynamic_cast<MobileTransientPanel*>(child);
+            if(panel && panel->isVisible() && panel->m_anchor==anchor) {
+                panel->close();
+                return true;
+            }
+        }
+        return false;
     }
 
     void present()
@@ -70,7 +93,34 @@ protected:
             close();
         } else if(sameWindow && (type==QEvent::MouseButtonPress || type==QEvent::MouseButtonDblClick ||
                                type==QEvent::TabletPress || type==QEvent::TouchBegin)) {
-            // Keep the original event available to the canvas or next control.
+            // Native touch or pen may reach a parent before Qt synthesizes
+            // the button's click. Keep the opener exempt on that delivery too.
+            if(type==QEvent::TouchBegin) {
+                const auto *touch=static_cast<QTouchEvent*>(event);
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+                const auto &points=touch->points();
+                if(!points.isEmpty())
+                    if(auto *hit=QApplication::widgetAt(points.first().globalPosition().toPoint()))target=hit;
+#else
+                const auto &points=touch->touchPoints();
+                if(!points.isEmpty())
+                    if(auto *hit=QApplication::widgetAt(points.first().screenPos().toPoint()))target=hit;
+#endif
+            } else if(type==QEvent::TabletPress) {
+                const auto *tablet=static_cast<QTabletEvent*>(event);
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+                const auto global=tablet->globalPosition().toPoint();
+#else
+                const auto global=tablet->globalPos();
+#endif
+                if(auto *hit=QApplication::widgetAt(global))target=hit;
+            }
+            if(target==this || isAncestorOf(target))return false;
+            for(auto *widget=target;widget;widget=widget->parentWidget()) {
+                if(widget==m_anchor || widget==m_opener)return false;
+                const auto *button=qobject_cast<QToolButton*>(widget);
+                if(m_action && button && button->defaultAction()==m_action)return false;
+            }
             close();
         }
         return false;
@@ -78,7 +128,8 @@ protected:
 
 private:
     bool m_refreshPending=false;
-    QPointer<QWidget> m_anchor;
+    QPointer<QWidget> m_anchor,m_opener;
+    QPointer<QAction> m_action;
     QSize m_preferred;
 
     void position()

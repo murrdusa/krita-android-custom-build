@@ -218,7 +218,7 @@ public:
         const auto view=MobileViewIdentityGuard::uniqueActive(m_engine.openDocuments());
         QTimer::singleShot(0,this,[this,slot,view]() {
             if(m_brush && view && view==MobileViewIdentityGuard::uniqueActive(m_engine.openDocuments()))
-                m_brush->browsePresets(slot);
+                m_brush->browsePresets(slot,m_brushModes.value(slot));
             syncBrushModes();
         });
     }
@@ -250,8 +250,9 @@ public:
         });
     }
 
-    void bindPanelActions(QAction *layers,QAction *color,QAction *options)
+    void bindPanelActions(QAction *layers,QAction *color,QAction *options,QAction *tools)
     {
+        m_toolsAction=tools;
         m_layersAction=layers;
         m_colorAction=color;
         m_optionsAction=options;
@@ -417,11 +418,12 @@ public:
         showOverlay(m_color);
     }
 
-    void chooseTool()
+    void chooseTool(QWidget *opener=nullptr)
     {
         if(!m_host || !m_engine.hasDocument())return;
-        QTimer::singleShot(0,this,[this]() {
-            if(m_host)MobileToolBrowser::open(m_engine,m_host);
+        QTimer::singleShot(0,this,[this,opener=QPointer<QWidget>(opener)]() {
+            if(m_host)MobileToolBrowser::toggle(m_engine,m_host,
+                opener?opener.data():m_contextToolOpener.data(),m_toolsAction);
         });
     }
 
@@ -447,6 +449,7 @@ public:
             QPointer<KisDocument> document=manager?manager->document():nullptr;
             if(!provider || !document)return;
 
+            if(MobileTransientPanel::closeForAnchor(m_host,anchor))return;
             auto *panel=new MobileTransientPanel(m_host);
             panel->setObjectName(QStringLiteral("mobileFillResources"));
             panel->setAccessibleName(gradient?tr("Gradients"):tr("Patterns"));
@@ -1496,7 +1499,7 @@ private:
         if(!m_keepColor)dismiss(m_color,m_colorAction);
         dismiss(m_brushOptions,m_optionsAction);
         dismiss(m_toolOptions,m_optionsAction);
-        dismiss(m_textFormatting,m_optionsAction);
+        if(target!=m_textFormatOpener)dismiss(m_textFormatting,m_optionsAction);
     }
 
     bool ensureColorPanel()
@@ -1605,12 +1608,16 @@ private:
         }
         if(!m_contextToolBar) {
             m_contextToolBar=new MobileContextToolBar(canvas,m_optionsAction);
-            m_contextToolBar->chooseTool=[this]() {chooseTool();};
+            m_contextToolOpener=m_contextToolBar->toolButton();
+            m_contextToolBar->chooseTool=[this](QWidget *opener) {chooseTool(opener);};
             m_contextToolBar->chooseFillResource=[this](bool gradient,QWidget *anchor) {
                 chooseFillResource(gradient,anchor);
             };
             if(KoDockRegistry::instance()->value(QStringLiteral("TextProperties")))
-                m_contextToolBar->openTextFormatting=[this]() {toggleTextFormatting();};
+                m_contextToolBar->openTextFormatting=[this](QWidget *opener) {
+                    m_textFormatOpener=opener;
+                    toggleTextFormatting();
+                };
         }
         QString label=id;
         for(const auto &entry:m_engine.tools()) {
@@ -1972,7 +1979,8 @@ private:
     QTimer *m_fadeTimer=nullptr;
     QHash<QWidget*,qint64> m_lastPanelInput;
     std::array<QPointer<QWidget>,3> m_fadeHeld;
-    QPointer<QAction> m_layersAction,m_colorAction,m_optionsAction;
+    QPointer<QAction> m_layersAction,m_colorAction,m_optionsAction,m_toolsAction;
+    QPointer<QWidget> m_contextToolOpener,m_textFormatOpener;
     QList<QAction*> m_brushModes;
     QPointer<KritaMobileLayersPanel> m_layers;
     QPointer<MobileColorWorkspace> m_color;

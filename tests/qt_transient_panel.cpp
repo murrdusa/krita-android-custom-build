@@ -74,5 +74,53 @@ int main(int argc,char **argv)
     inside->show();
     QKeyEvent back(QEvent::KeyPress,Qt::Key_Escape,Qt::NoModifier);
     QApplication::sendEvent(inside,&back);
-    return panel->isVisible()?4:0;
+    if(panel->isVisible())return 4;
+
+    QToolButton opener(&host);
+    opener.setGeometry(90,2,80,44);
+    opener.show();
+    const auto openerConnection=QObject::connect(&opener,&QToolButton::clicked,[&]() {
+        if(MobileTransientPanel::closeForAnchor(&canvas,&opener))return;
+        panel=new MobileTransientPanel(&canvas);
+        panel->anchorTo(&opener,QSize(220,170));
+        panel->present();
+    });
+    click(&opener);
+    if(!panel->isVisible())return 5;
+    auto *original=panel;
+    // Simulate Android delivering the raw touch to a parent before the
+    // synthesized mouse pair reaches the actual opener.
+    point.setScreenPos(opener.mapToGlobal(opener.rect().center()));
+    QTouchEvent openerTouch(QEvent::TouchBegin,&device,Qt::NoModifier,
+                            Qt::TouchPointPressed,{point});
+    QApplication::sendEvent(&host,&openerTouch);
+    if(!panel->isVisible())return 6;
+    click(&opener);
+    if(panel!=original || panel->isVisible())return 7;
+    click(&opener);
+    if(!panel->isVisible())return 8;
+    click(&nextMenu);
+    if(panel->isVisible() || menuClicks!=2)return 9;
+
+    QObject::disconnect(openerConnection);
+    QAction action(&host);
+    opener.setDefaultAction(&action);
+    QToolButton alias(&host);
+    alias.setDefaultAction(&action);
+    alias.setGeometry(180,2,80,44);
+    alias.show();
+    panel=new MobileTransientPanel(&canvas);
+    panel->setOpener(nullptr,&action);
+    panel->present();
+    QObject::connect(&action,&QAction::triggered,[&]() {
+        if(panel->isVisible())panel->close();
+    });
+    QMouseEvent press(QEvent::MouseButtonPress,alias.rect().center(),
+                      Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);
+    QApplication::sendEvent(&alias,&press);
+    if(!panel->isVisible())return 10;
+    QMouseEvent release(QEvent::MouseButtonRelease,alias.rect().center(),
+                        Qt::LeftButton,Qt::NoButton,Qt::NoModifier);
+    QApplication::sendEvent(&alias,&release);
+    return panel->isVisible()?11:0;
 }

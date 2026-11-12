@@ -75,7 +75,7 @@ public:
         m_tool->setFixedHeight(38);
         m_tool->setToolTip(QObject::tr("Choose a tool"));
         connect(m_tool,&QToolButton::clicked,this,[this]() {
-            if(chooseTool)chooseTool();
+            if(chooseTool)chooseTool(m_tool);
         });
         layout->addWidget(m_tool);
         m_scroll=new QScrollArea(this);
@@ -111,8 +111,10 @@ public:
         });
     }
 
-    std::function<void()> chooseTool;
-    std::function<void()> openTextFormatting;
+    QWidget *toolButton() const {return m_tool;}
+
+    std::function<void(QWidget *)> chooseTool;
+    std::function<void(QWidget *)> openTextFormatting;
     std::function<void(bool,QWidget *)> chooseFillResource;
 
     void setTool(const QString &id,const QString &label,
@@ -395,8 +397,8 @@ public:
             named("mobileEditSvgText",QObject::tr("Edit text"));
             if(openTextFormatting) {
                 auto *format=button(QObject::tr("Format"));
-                connect(format,&QToolButton::clicked,this,[this]() {
-                    if(openTextFormatting)openTextFormatting();
+                connect(format,&QToolButton::clicked,this,[this,format]() {
+                    if(openTextFormatting)openTextFormatting(format);
                 });
             }
             named("mobileSvgGlyphs",QObject::tr("Glyphs"));
@@ -916,6 +918,7 @@ private:
             if(!optionAvailable(native))return;
             const auto generation=m_generation;
             const auto invokedTool=m_nativeTool;
+            if(MobileTransientPanel::closeForAnchor(parentWidget(),control))return;
             auto *panel=new MobileTransientPanel(parentWidget());
             panel->setObjectName(QStringLiteral("mobileNumericOption"));
             panel->setStyleSheet(QStringLiteral(

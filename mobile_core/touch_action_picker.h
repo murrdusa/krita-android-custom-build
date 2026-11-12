@@ -62,6 +62,7 @@ inline QAction *mobilePickAction(QWidget *parent,const QMenu &menu)
 inline void mobileShowActionList(QWidget *host,QWidget *anchor,const QMenu &menu,
                                  QObject *receiver,std::function<void(const QVariant &)> picked)
 {
+    if(MobileTransientPanel::closeForAnchor(host,anchor))return;
     auto *panel=new MobileTransientPanel(host);
     panel->setObjectName(QStringLiteral("mobileContextOptionList"));
     panel->setAccessibleName(menu.title());

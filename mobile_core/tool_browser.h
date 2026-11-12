@@ -35,12 +35,13 @@ public:
         if(auto *panel=findPanel(parent))panel->close();
     }
 
-    static void open(const MobileEngineBridge &engine,QWidget *parent)
+    static void toggle(const MobileEngineBridge &engine,QWidget *parent,
+                       QWidget *opener,QAction *action)
     {
         if(!parent || !engine.hasDocument())return;
         const auto view=MobileViewIdentityGuard::uniqueActive(engine.openDocuments());
         if(!view)return;
-        if(auto *panel=findPanel(parent))panel->close();
+        if(auto *panel=findPanel(parent)) {panel->close();return;}
 
         const auto available=engine.tools();
         const QString current=engine.activeTool();
@@ -227,6 +228,7 @@ public:
         auto *host=qobject_cast<QMainWindow*>(parent);
         auto *panel=new MobileTransientPanel(host && host->centralWidget()?host->centralWidget():parent);
         panel->setObjectName(QStringLiteral("mobileToolBrowser"));
+        panel->setOpener(opener,action);
         panel->setAccessibleName(i18n("Tools"));
         panel->setStyleSheet(QStringLiteral(
             "QFrame#mobileToolBrowser{background:#272729;border:1px solid #55555c;border-radius:9px;}"

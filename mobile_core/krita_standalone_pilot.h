@@ -162,7 +162,7 @@ public:
         QObject::connect(canvasOnlyAction,&QAction::toggled,workspace,
                          &MobileKritaNativeWorkspace::setCanvasOnly);
         workspace->bindBrushModes(brushesAction,eraserAction,blendBrushAction);
-        workspace->bindPanelActions(layersAction,colorAction,optionsAction);
+        workspace->bindPanelActions(layersAction,colorAction,optionsAction,toolsAction);
         QObject::connect(brushesAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleBrushes(0);});
         QObject::connect(eraserAction,&QAction::triggered,window,

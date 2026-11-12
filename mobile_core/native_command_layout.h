@@ -87,9 +87,11 @@ public:
             "QMenu::item:selected{background:#45454f;}"
             "QMenu::item:disabled{color:#9a9aa2;}");
         menu->setStyleSheet(popupStyle);
+        menu->setNoReplayFor(more);
         // Open the real menu directly. Associating its menuAction with the
         // tool button can make Qt wrap it in a second, unstyled menu.
         QObject::connect(settings,&QAction::triggered,menu,[more,menu]() {
+            if(menu->isVisible()) {menu->close();return;}
             const int x=more->width()-menu->sizeHint().width();
             menu->popup(more->mapToGlobal(QPoint(x,more->height())));
         });
