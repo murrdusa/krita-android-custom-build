@@ -345,6 +345,38 @@ public:
         auto *documentMenu=new QMenu(QObject::tr("Documents"),window);
         documentMenu->addActions({newAction,openAction,saveAsAction,exportAction,
                                   versionsAction});
+        // Rebuild only when opened: a canvas may be renamed, closed or
+        // modified while its menu is hidden. Capture guarded view identities,
+        // never integer tab indices, so deferred clicks cannot select a
+        // different document after a close or reorder.
+        auto *openCanvases=new QMenu(QObject::tr("Switch Canvas"),documentMenu);
+        QObject::connect(openCanvases,&QMenu::aboutToShow,window,
+                         [openCanvases,views=services.views,window]() {
+            openCanvases->clear();
+            if(!views)return;
+            const auto open=views->openViews();
+            if(open.isEmpty()) {
+                auto *empty=openCanvases->addAction(
+                    QObject::tr("No open canvases"));
+                empty->setEnabled(false);
+                return;
+            }
+            for(const auto &entry:open) {
+                const auto identity=entry.nativeView;
+                if(!identity || !entry.document)continue;
+                const QString title=entry.title.isEmpty()?
+                    QObject::tr("Untitled"):entry.title;
+                auto *action=openCanvases->addAction(
+                    entry.modified?title+QStringLiteral(" *"):title);
+                action->setCheckable(true);
+                action->setChecked(entry.active);
+                QObject::connect(action,&QAction::triggered,window,
+                                 [views,identity]() {
+                    if(views && identity)views->activateView(identity);
+                });
+            }
+        });
+        documentMenu->addMenu(openCanvases);
         documentMenu->addSeparator();
         documentMenu->addAction(closeAction);
         QList<QAction*> moreActions{
