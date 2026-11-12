@@ -586,13 +586,16 @@ private:
               m_smudgeOnly(slot==2),m_slot(slot)
         {
             setSourceModel(source);
+            setDynamicSortFilter(true);
             reloadPersonalLists();
+            sort(KisAbstractResourceModel::Name);
         }
 
         void setCategory(int category)
         {
             m_category=category;
             invalidateFilter();
+            sort(KisAbstractResourceModel::Name);
         }
 
         void reloadPersonalLists()
@@ -603,6 +606,7 @@ private:
             m_recent=settings.value(
                 QStringLiteral("MobileStudio/brushRecent%1").arg(m_slot)).toStringList();
             invalidateFilter();
+            sort(KisAbstractResourceModel::Name);
         }
 
         void setSearch(const QString &search)
@@ -631,6 +635,21 @@ private:
         }
 
     protected:
+        bool lessThan(const QModelIndex &left,const QModelIndex &right) const override
+        {
+            const QStringList *order=m_category==-5?&m_recent:
+                                     m_category==-4?&m_favorites:nullptr;
+            if(order) {
+                const QString a=left.sibling(left.row(),KisAbstractResourceModel::Name)
+                    .data().toString();
+                const QString b=right.sibling(right.row(),KisAbstractResourceModel::Name)
+                    .data().toString();
+                const int ia=order->indexOf(a),ib=order->indexOf(b);
+                if(ia>=0 && ib>=0 && ia!=ib)return ia<ib;
+            }
+            return QSortFilterProxyModel::lessThan(left,right);
+        }
+
         bool filterAcceptsRow(int row,const QModelIndex &parent) const override
         {
             const QString name=m_source->index(row,KisAbstractResourceModel::Name,parent)
