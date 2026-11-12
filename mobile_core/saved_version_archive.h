@@ -20,6 +20,7 @@
 #include <QMutex>
 #include <QMutexLocker>
 #include <QSaveFile>
+#include <QSet>
 #include <QStandardPaths>
 #include <QStorageInfo>
 #include <QString>
@@ -308,15 +309,31 @@ public:
                                        const QString &identity,
                                        bool backgroundCheckpoint=false)
     {
-        if(canonicalIdentity(identity).isEmpty())return;
+        const QString canonical=canonicalIdentity(identity);
+        if(canonical.isEmpty() || draft.isEmpty())return;
+        // A large KRA archive may take longer than the 15-second draft
+        // cadence. Collapse identical in-flight requests to avoid a
+        // growing worker backlog and unnecessary disk I/O. Foreground
+        // and background requests remain distinct so backgrounding can
+        // still force its own latest historical checkpoint.
+        const QString requestKey=draft+QLatin1Char('\n')+canonical+
+            (backgroundCheckpoint?QStringLiteral("\nbackground"):
+                                  QStringLiteral("\nperiodic"));
+        {
+            QMutexLocker guard(&lock());
+            if(pendingDraftArchives().contains(requestKey))return;
+            pendingDraftArchives().insert(requestKey);
+        }
         QThreadPool::globalInstance()->start(
-            [draft,identity,backgroundCheckpoint]() {
+            [draft,identity,backgroundCheckpoint,requestKey]() {
                 // The latest recovery draft continues updating every
                 // 15 seconds. Space full historical copies at least
                 // two minutes apart while painting; allow one when
                 // backgrounded so an interrupted session has a version.
                 snapshotFrom(draft,identity,QString(),
                              backgroundCheckpoint?0:2LL*60*1000);
+                QMutexLocker guard(&lock());
+                pendingDraftArchives().remove(requestKey);
             });
     }
 
@@ -433,6 +450,14 @@ private:
     {
         static QMutex mutex(QMutex::Recursive);
         return mutex;
+    }
+
+    static QSet<QString> &pendingDraftArchives()
+    {
+        // Always access under lock(). Entries are released after their
+        // worker completes, including when snapshotFrom returns false.
+        static QSet<QString> requests;
+        return requests;
     }
 
     static void migrateFolder(const QString &from, const QString &to)
