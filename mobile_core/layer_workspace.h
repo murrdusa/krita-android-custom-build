@@ -45,6 +45,7 @@
 #include <QMouseEvent>
 #include <QCursor>
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <QLineF>
 #include <QHash>
 #include <QToolButton>
@@ -126,6 +127,7 @@ public:
                            QWidget *parent=nullptr,bool compactRail=false)
         : QFrame(parent),m_engine(engine),m_compactRail(compactRail)
     {
+        m_thumbnailClock.start();
         setObjectName(QStringLiteral("MobileStudioLayersPanel"));
         // Match the earlier TabletCompactSkin rail, not Krita's
         // full-width desktop layer docker. Additional operations live
@@ -604,7 +606,7 @@ public:
             // structural signature. Refresh the active preview at a bounded
             // interval rather than freezing it until the next tree rebuild.
             // Reuse the host's existing refresh cadence (no extra timer).
-            const qint64 now=QDateTime::currentMSecsSinceEpoch();
+            const qint64 now=m_thumbnailClock.elapsed();
             if(now-m_lastActiveThumbnailRefresh>=2500) {
                 m_lastActiveThumbnailRefresh=now;
                 for(int i=0;i<m_nodes.size();++i) {
@@ -2533,7 +2535,7 @@ private:
     {
         if(!m_tree || !isVisible())return;
         const QRect viewport=railViewport()->rect().adjusted(-60,-60,60,60);
-        const qint64 now=QDateTime::currentMSecsSinceEpoch();
+        const qint64 now=m_thumbnailClock.elapsed();
         for(int i=0;i<m_nodes.size();++i) {
             if(m_thumbnailReady.value(i,false))continue;
             if(m_thumbnailRetryAfter.value(i,0)>now)continue;
@@ -2861,6 +2863,13 @@ private:
             m_tree->clear();
             m_nodes.clear();
             m_items.clear();
+            m_rowFrames.clear();
+            m_rowButtons.clear();
+            m_rowDepths.clear();
+            m_thumbnailReady.clear();
+            m_thumbnailRetryAfter.clear();
+            m_clipBases.clear();
+            m_selected.clear();
             m_signature=engineSignature();
             m_active.clear();
             updateLayerName();
@@ -3014,7 +3023,8 @@ private:
     QSet<const KisNode*> m_clipBases;
     QVector<bool> m_thumbnailReady;
     QHash<int,qint64> m_thumbnailRetryAfter;
-    qint64 m_lastActiveThumbnailRefresh=0;
+    QElapsedTimer m_thumbnailClock;
+    qint64 m_lastActiveThumbnailRefresh=-2500;
     KisNodeList m_selected;
     KisNodeSP m_active;
     bool m_clipBusy=false;
