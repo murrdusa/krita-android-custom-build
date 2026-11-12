@@ -193,7 +193,8 @@ public:
                         QGuiApplication::applicationState()!=Qt::ApplicationActive);
                 });
             connect(document,&KisDocument::sigCompleteBackgroundSaving,this,[this]() {
-                if(m_pendingDraft)QTimer::singleShot(0,this,[this]() {continueDraft();});
+                if(!m_pendingDrafts.isEmpty())
+                    QTimer::singleShot(0,this,[this]() {continueDrafts();});
             });
         }
         return view;
@@ -203,20 +204,43 @@ private:
     void checkpointDrafts()
     {
         if(!m_root)return;
-        auto *document=qobject_cast<KisDocument*>(m_root->currentDocument().data());
-        if(!document || !document->isModified() ||
-           document->property("_mobileDraftPath").toString().isEmpty())return;
-        m_pendingDraft=document;
-        continueDraft();
+        // An inactive canvas can contain unsaved strokes too. Checkpoint
+        // every distinct document hosted by this runtime, not just the
+        // currently selected tab. Never activate a view to save it.
+        QList<QPointer<KisDocument>> seen;
+        for(const auto &view:m_root->openViews()) {
+            auto *document=qobject_cast<KisDocument*>(view.document.data());
+            if(!document || seen.contains(document))continue;
+            seen.append(document);
+            if(!ownsDocument(document) || !document->isModified() ||
+               document->property("_mobileDraftPath").toString().isEmpty())
+                continue;
+            if(document->isSaving()) {
+                if(!m_pendingDrafts.contains(document))
+                    m_pendingDrafts.append(document);
+            } else {
+                m_pendingDrafts.removeAll(document);
+                QMetaObject::invokeMethod(document,"slotAutoSave",Qt::DirectConnection);
+            }
+        }
     }
 
-    void continueDraft()
+    void continueDrafts()
     {
-        const auto document=m_pendingDraft;
-        if(!document || document->isSaving())return;
-        m_pendingDraft.clear();
-        if(ownsDocument(document) && document->isModified())
-            QMetaObject::invokeMethod(document,"slotAutoSave",Qt::DirectConnection);
+        // Finish queued checkpoints independently: a busy document must
+        // never block another open canvas from being protected.
+        for(int i=m_pendingDrafts.size()-1;i>=0;--i) {
+            const auto document=m_pendingDrafts.at(i);
+            if(!document) {
+                m_pendingDrafts.removeAt(i);
+                continue;
+            }
+            if(document->isSaving())continue;
+            m_pendingDrafts.removeAt(i);
+            if(ownsDocument(document) && document->isModified() &&
+               !document->property("_mobileDraftPath").toString().isEmpty())
+                QMetaObject::invokeMethod(document,"slotAutoSave",Qt::DirectConnection);
+        }
     }
 
     MobileKritaStandaloneRuntime(MobileLightweightCanvasHost *host,
@@ -230,7 +254,7 @@ private:
     QPointer<MobileNativeViewStack> m_root;
     QPointer<KisKActionCollection> m_actions;
     QPointer<KisViewManager> m_manager;
-    QPointer<KisDocument> m_pendingDraft;
+    QList<QPointer<KisDocument>> m_pendingDrafts;
     QSharedPointer<MobileCommandRegistryPort> m_commands;
 };
 #endif
