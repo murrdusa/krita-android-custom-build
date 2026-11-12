@@ -79,6 +79,14 @@ int main(int argc,char **argv)
                 stack.currentDocument()==&firstDocument,
                 "closing second document preserves first"))return 1;
     delete second;
+    const auto lone=stack.openViews();
+    if(!require(lone.size()==1 &&
+                !MobileViewIdentityGuard::safeCloseTarget(
+                    lone,QPointer<QObject>()) &&
+                MobileViewIdentityGuard::safeCloseTarget(
+                    lone,QPointer<QObject>(&firstDocument))==firstIdentity,
+                "lone canvas close still requires engine document ownership"))
+        return 1;
     if(!require(stack.closeView(firstIdentity) &&
                 stack.openViews().isEmpty(),
                 "close remaining document"))return 1;
