@@ -3,6 +3,7 @@
 #include "../mobile_core/saved_version_archive.h"
 #include <QCoreApplication>
 #include <QFile>
+#include <QDir>
 #include <QTemporaryDir>
 #include <QDebug>
 
@@ -70,7 +71,31 @@ int main(int argc,char **argv)
     if(!require(Archive::folderFor(source,root)==
                 Archive::folderFor(temp.filePath(QStringLiteral("./art.kra")),root),
                 "canonical file identity"))return 1;
+    // Periodic autosaves must be rate-limited without overwriting an
+    // earlier completed historical version.
+    const QString spaced=temp.filePath(QStringLiteral("spaced.kra"));
+    if(!require(writeBytes(spaced,initial),"create periodic source"))return 1;
+    if(!require(Archive::snapshotFrom(spaced,spaced,root,120000),
+                "initial periodic checkpoint"))return 1;
+    if(!require(writeBytes(spaced,changed),"change periodic source"))return 1;
+    if(!require(Archive::snapshotFrom(spaced,spaced,root,120000),
+                "periodic checkpoint rate limit"))return 1;
+    if(!require(Archive::list(spaced,root).size()==1,
+                "periodic checkpoint did not duplicate within minimum gap"))return 1;
+    if(!require(Archive::snapshotFrom(spaced,spaced,root,0),
+                "foreground-loss checkpoint bypasses spacing"))return 1;
+    if(!require(Archive::list(spaced,root).size()==2,
+                "forced checkpoint retains new version"))return 1;
+
+    // The archive directory can contain unrelated symlinks. Never expose
+    // them as recoverable snapshots to the project browser.
+    const QString folder=Archive::folderFor(spaced,root);
+    const QString link=QDir(folder).filePath(QStringLiteral("99999999T999999999-link.kra"));
+    if(QFile::link(source,link))
+        if(!require(Archive::list(spaced,root).size()==2,
+                    "symlink not included in archive browser"))return 1;
     qInfo() << "PASS: archive deduplication, recovery integrity, checksum repair,"
-               " corruption handling, and canonical file identity";
+               " corruption handling, periodic spacing, forced checkpoints,"
+               " symlink exclusion and canonical file identity";
     return 0;
 }
