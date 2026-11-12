@@ -21,6 +21,24 @@ int main()
         qFatal("bottom-anchored rail did not stop above its first blocker");
     if(expand(rail,bounds,500,false,false,{bounds}).height()!=0)
         qFatal("rail overlapped an occupied viewport");
+    // Generic phone/fold/tablet layouts: every auto-expanded rail stays
+    // inside the available viewport and respects the nearest blocker.
+    for(const QSize size:{QSize(320,720),QSize(720,320),
+                          QSize(700,700),QSize(1200,800)}) {
+        const QRect screen(QPoint(0,0),size);
+        for(bool horizontal:{false,true}) {
+            for(bool reverse:{false,true}) {
+                const QRect start=horizontal?
+                    QRect(24,24,90,60):QRect(24,24,60,90);
+                const QRect result=expand(start,screen,2000,horizontal,reverse,{});
+                if(!result.isValid() || !screen.contains(result))
+                    qFatal("auto-expanded rail escaped a device viewport");
+                const int extent=horizontal?result.width():result.height();
+                if(extent<=0 || extent> (horizontal?size.width():size.height()))
+                    qFatal("rail expansion used invalid screen space");
+            }
+        }
+    }
     const QRect toolbar(2,2,398,48);
     const auto panel=MobileOverlayPlacement::nearest(QRect(12,12,150,160),bounds,
                                                      {toolbar},QSize(100,80));
