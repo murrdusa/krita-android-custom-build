@@ -196,6 +196,15 @@ public:
                 if(!m_pendingDrafts.isEmpty())
                     QTimer::singleShot(0,this,[this]() {continueDrafts();});
             });
+            // A tab may be closed while its background save completes.
+            // Drop its queued identity immediately rather than retaining
+            // a dead entry until another document finishes saving.
+            connect(document,&QObject::destroyed,this,[this,document]() {
+                for(int i=m_pendingDrafts.size()-1;i>=0;--i)
+                    if(!m_pendingDrafts.at(i) ||
+                       m_pendingDrafts.at(i).data()==document)
+                        m_pendingDrafts.removeAt(i);
+            });
         }
         return view;
     }
