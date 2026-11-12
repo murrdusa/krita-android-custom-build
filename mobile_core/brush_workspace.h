@@ -43,6 +43,8 @@
 #include <QStyledItemDelegate>
 #include <QRegularExpression>
 #include <QPainter>
+#include <QMouseEvent>
+#include <functional>
 #include <klocalizedstring.h>
 
 class KritaMobileBrushWorkspace final : public QFrame {
@@ -456,7 +458,8 @@ private:
     class PresetTile final : public QStyledItemDelegate
     {
     public:
-        explicit PresetTile(QListView *view) : QStyledItemDelegate(view),m_view(view) {}
+        explicit PresetTile(QListView *view,std::function<void(const QString &)> onFavorite)
+            : QStyledItemDelegate(view),m_view(view),m_onFavorite(std::move(onFavorite)) {}
 
         QSize sizeHint(const QStyleOptionViewItem &,const QModelIndex &) const override
         {
@@ -478,14 +481,45 @@ private:
             painter->setFont(font);
             painter->setPen(QColor("#f4f9fe"));
             const QRect caption(tile.x()+2,tile.bottom()-14,tile.width()-4,15);
+            const auto *proxy=qobject_cast<const QSortFilterProxyModel*>(index.model());
+            const QModelIndex original=proxy?proxy->mapToSource(index):index;
+            const QString fullName=original.sibling(
+                original.row(),KisAbstractResourceModel::Name).data().toString();
+            const bool favorite=QSettings().value(
+                QStringLiteral("MobileStudio/brushFavorites")).toStringList().contains(fullName);
+            const QRect star(tile.right()-23,tile.top()+2,21,21);
+            painter->setPen(favorite?QColor("#ffe087"):QColor("#aebdcc"));
+            painter->setFont(QFont(option.font.family(),16));
+            painter->drawText(star,Qt::AlignCenter,favorite?
+                QStringLiteral("★"):QStringLiteral("☆"));
             const QString name=index.data().toString();
             painter->drawText(caption,Qt::AlignCenter,
                 painter->fontMetrics().elidedText(name,Qt::ElideRight,caption.width()));
             painter->restore();
         }
 
+        bool editorEvent(QEvent *event,QAbstractItemModel *model,
+                         const QStyleOptionViewItem &option,
+                         const QModelIndex &index) override
+        {
+            if(event->type()!=QEvent::MouseButtonRelease)return false;
+            auto *mouse=static_cast<QMouseEvent*>(event);
+            const QRect star=option.rect.adjusted(option.rect.width()-28,0,0,
+                                                   -(option.rect.height()-28));
+            if(!star.contains(mouse->pos()))return false;
+            const auto *proxy=qobject_cast<const QSortFilterProxyModel*>(model);
+            const QModelIndex original=proxy?proxy->mapToSource(index):index;
+            const QString name=original.sibling(
+                original.row(),KisAbstractResourceModel::Name).data().toString();
+            if(name.isEmpty())return false;
+            m_view->setProperty("_mobileFavoriteTap",true);
+            if(m_onFavorite)m_onFavorite(name);
+            return true;
+        }
+
     private:
         QListView *m_view;
+        std::function<void(const QString &)> m_onFavorite;
     };
 
     static bool supportsFlow(const KisPaintOpPresetSP &preset)
@@ -778,7 +812,6 @@ private:
         const int columns=qMax(1,gridWidth/60);
         constexpr int tileHeight=64;
         grid->setGridSize(QSize(gridWidth/columns,tileHeight));
-        grid->setItemDelegate(new PresetTile(grid));
         grid->setWordWrap(false);
         grid->setTextElideMode(Qt::ElideRight);
         grid->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -805,13 +838,29 @@ private:
             filter->reloadPersonalLists();
             updateFavorite();
         });
+        auto toggleFavorite=[filter,updateFavorite,grid](const QString &name) {
+            QSettings settings;
+            const QString key=QStringLiteral("MobileStudio/brushFavorites");
+            QStringList favorites=settings.value(key).toStringList();
+            if(favorites.contains(name))favorites.removeAll(name);
+            else favorites.prepend(name);
+            settings.setValue(key,favorites);
+            filter->reloadPersonalLists();
+            grid->viewport()->update();
+            updateFavorite();
+        };
+        grid->setItemDelegate(new PresetTile(grid,toggleFavorite));
         connect(search,&QLineEdit::textChanged,filter,&PresetFilter::setSearch);
         connect(category,QOverload<int>::of(&QComboBox::currentIndexChanged),
                 &dialog,[filter,category](int) {
             filter->setCategory(category->currentData().toInt());
         });
         connect(grid,&QListView::clicked,&dialog,
-                [this,&dialog,source,filter,slot](const QModelIndex &index) {
+                [this,&dialog,source,filter,slot,grid](const QModelIndex &index) {
+            if(grid->property("_mobileFavoriteTap").toBool()) {
+                grid->setProperty("_mobileFavoriteTap",false);
+                return;
+            }
             const auto selected=filter->mapToSource(index);
             if(!selected.isValid())return;
             const auto preset=source->resourceForIndex(selected.sibling(selected.row(),0))
