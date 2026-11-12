@@ -98,10 +98,23 @@ public:
         auto *draftTimer=new QTimer(runtime);
         QObject::connect(draftTimer,&QTimer::timeout,runtime,
                          [runtime]() {runtime->checkpointDrafts();});
-        draftTimer->start(30000);
+        // Android does not guarantee an onDestroy callback when the user
+        // swipes the task away or the OS kills the process. Keep a recent
+        // completed private KRA checkpoint rather than relying on shutdown
+        // to save a named document synchronously.
+        draftTimer->start(15000);
         QObject::connect(qGuiApp,&QGuiApplication::applicationStateChanged,runtime,
                          [runtime](Qt::ApplicationState state) {
+            // Android Home, activity stop and loss of foreground are
+            // proactive save opportunities. No modal Save As dialog.
             if(state!=Qt::ApplicationActive)runtime->checkpointDrafts();
+        });
+        QObject::connect(qGuiApp,&QCoreApplication::aboutToQuit,runtime,
+                         [runtime]() {
+            // Best-effort final checkpoint on an orderly app exit.
+            // A forced process kill skips this callback, so the periodic
+            // and foreground-loss checkpoints remain authoritative.
+            runtime->checkpointDrafts();
         });
         return runtime;
     }
