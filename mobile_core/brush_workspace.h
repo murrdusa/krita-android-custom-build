@@ -545,14 +545,25 @@ private:
     public:
         PresetFilter(KisResourceModel *source,int slot,QObject *parent)
             : QSortFilterProxyModel(parent),m_source(source),m_category(slot),
-              m_smudgeOnly(slot==2)
+              m_smudgeOnly(slot==2),m_slot(slot)
         {
             setSourceModel(source);
+            reloadPersonalLists();
         }
 
         void setCategory(int category)
         {
             m_category=category;
+            invalidateFilter();
+        }
+
+        void reloadPersonalLists()
+        {
+            const QSettings settings;
+            m_favorites=settings.value(
+                QStringLiteral("MobileStudio/brushFavorites")).toStringList();
+            m_recent=settings.value(
+                QStringLiteral("MobileStudio/brushRecent%1").arg(m_slot)).toStringList();
             invalidateFilter();
         }
 
@@ -587,6 +598,8 @@ private:
             const QString name=m_source->index(row,KisAbstractResourceModel::Name,parent)
                 .data().toString();
             if(!name.contains(m_search,Qt::CaseInsensitive))return false;
+            if(m_category==-4 && !m_favorites.contains(name))return false;
+            if(m_category==-5 && !m_recent.contains(name))return false;
             if(m_category<0 && !m_smudgeOnly)return true;
             const QString engine=presetEngine(m_source,row);
             return (!m_smudgeOnly || engine==QStringLiteral("colorsmudge")) &&
@@ -598,6 +611,8 @@ private:
         int m_category;
         bool m_smudgeOnly;
         QString m_search;
+        QStringList m_favorites,m_recent;
+        int m_slot;
     };
 
     KisCanvasResourceProvider *resources() const
@@ -615,6 +630,12 @@ private:
         const QString key=QStringLiteral("MobilePilot/brushSlot%1").arg(slot);
         settings.setValue(key,preset->name());
         settings.setValue(key+QStringLiteral("ResourceId"),preset->resourceId());
+        const QString recentKey=QStringLiteral("MobileStudio/brushRecent%1").arg(slot);
+        QStringList recent=settings.value(recentKey).toStringList();
+        recent.removeAll(preset->name());
+        recent.prepend(preset->name());
+        while(recent.size()>16)recent.removeLast();
+        settings.setValue(recentKey,recent);
     }
 
     KisPaintOpPresetSP findPreset(int slot)
@@ -712,6 +733,8 @@ private:
         search->setClearButtonEnabled(true);
         layout->addWidget(search);
         auto *category=new MobileTouchComboBox(&dialog);
+        category->addItem(i18n("Favorites"),-4);
+        category->addItem(i18n("Recent"),-5);
         category->addItem(slot==2?i18n("All compatible brushes"):i18n("All brushes"),-1);
         if(slot!=2) {
             category->addItem(i18n("Painting"),0);
@@ -719,8 +742,26 @@ private:
         }
         category->addItem(i18n("Blending / Smudge"),2);
         if(slot!=2)category->addItem(i18n("Clone"),3);
-        category->setCurrentIndex(category->findData(slot));
+        const QSettings brushSettings;
+        const QString recentKey=QStringLiteral("MobileStudio/brushRecent%1").arg(slot);
+        const int initial=brushSettings.value(recentKey).toStringList().isEmpty()?slot:-5;
+        category->setCurrentIndex(category->findData(initial));
         layout->addWidget(category);
+        // Favorites are shared across Paint/Erase/Blend, while Recents
+        // follow the mode that actually used the brush.
+        auto *favoriteCurrent=new QPushButton(&dialog);
+        const auto updateFavorite=[this,favoriteCurrent]() {
+            const auto preset=resources()?resources()->currentPreset():KisPaintOpPresetSP();
+            const QString name=preset?preset->name():QString();
+            const QStringList favorites=QSettings().value(
+                QStringLiteral("MobileStudio/brushFavorites")).toStringList();
+            favoriteCurrent->setEnabled(!name.isEmpty());
+            favoriteCurrent->setText(favorites.contains(name)?
+                i18n("★ Remove current brush from Favorites"):
+                i18n("☆ Favorite current brush"));
+        };
+        updateFavorite();
+        layout->addWidget(favoriteCurrent);
 
         auto *grid=new QListView(&dialog);
         grid->setViewMode(QListView::IconMode);
@@ -751,6 +792,19 @@ private:
         auto *filter=new PresetFilter(source,slot,&dialog);
         grid->setModel(filter);
         grid->setModelColumn(KisAbstractResourceModel::Name);
+        connect(favoriteCurrent,&QPushButton::clicked,&dialog,
+                [this,filter,updateFavorite]() {
+            const auto preset=resources()?resources()->currentPreset():KisPaintOpPresetSP();
+            if(!preset)return;
+            QSettings settings;
+            const QString key=QStringLiteral("MobileStudio/brushFavorites");
+            QStringList favorites=settings.value(key).toStringList();
+            if(favorites.contains(preset->name()))favorites.removeAll(preset->name());
+            else favorites.prepend(preset->name());
+            settings.setValue(key,favorites);
+            filter->reloadPersonalLists();
+            updateFavorite();
+        });
         connect(search,&QLineEdit::textChanged,filter,&PresetFilter::setSearch);
         connect(category,QOverload<int>::of(&QComboBox::currentIndexChanged),
                 &dialog,[filter,category](int) {
