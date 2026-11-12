@@ -499,6 +499,13 @@ private:
             painter->restore();
         }
 
+        void reloadFavorites()
+        {
+            m_favorites=QSettings().value(
+                QStringLiteral("MobileStudio/brushFavorites")).toStringList();
+            m_view->viewport()->update();
+        }
+
         bool editorEvent(QEvent *event,QAbstractItemModel *model,
                          const QStyleOptionViewItem &option,
                          const QModelIndex &index) override
@@ -515,8 +522,13 @@ private:
             if(name.isEmpty())return false;
             m_view->setProperty("_mobileFavoriteTap",true);
             if(m_onFavorite)m_onFavorite(name);
-            m_favorites=QSettings().value(
-                QStringLiteral("MobileStudio/brushFavorites")).toStringList();
+            reloadFavorites();
+            // A delegate-handled release may not emit QListView::clicked.
+            // Clear the suppression token after this input transaction so
+            // the next ordinary preset tap is never swallowed.
+            QTimer::singleShot(0,m_view,[view=m_view]() {
+                if(view)view->setProperty("_mobileFavoriteTap",false);
+            });
             return true;
         }
 
@@ -867,7 +879,7 @@ private:
         grid->setModel(filter);
         grid->setModelColumn(KisAbstractResourceModel::Name);
         connect(favoriteCurrent,&QPushButton::clicked,&dialog,
-                [this,filter,updateFavorite]() {
+                [this,filter,updateFavorite,grid]() {
             const auto preset=resources()?resources()->currentPreset():KisPaintOpPresetSP();
             if(!preset)return;
             QSettings settings;
@@ -877,6 +889,8 @@ private:
             else favorites.prepend(preset->name());
             settings.setValue(key,favorites);
             filter->reloadPersonalLists();
+            if(auto *delegate=static_cast<PresetTile*>(grid->itemDelegate()))
+                delegate->reloadFavorites();
             updateFavorite();
         });
         auto toggleFavorite=[filter,updateFavorite,grid](const QString &name) {
