@@ -1782,12 +1782,18 @@ private:
             }
         }
         const bool customContext=hasEditedPlacement(m_contextToolBar);
+        // Mobile tool settings are most reachable as a bottom dock.
+        // Keep manually positioned bars untouched, and fit the default
+        // above Android/system/toolbars using the native overlay bounds.
+        const int contextHeight=48;
         const auto context=placePanel(m_contextToolBar,
             preferredPanel(m_contextToolBar,canvasBounds,
-                QRect(viewport.left(),viewport.top(),qMin(760,viewport.width()),48)),
+                QRect(viewport.left(),viewport.bottom()-contextHeight+1,
+                      qMin(760,viewport.width()),contextHeight)),
             customContext?canvasBounds:viewport,obstacles,QSize(120,40));
-        if(!customContext && context.isValid() && context.top()==viewport.top())
-            viewport.setTop(context.bottom()+3);
+        if(!customContext && context.isValid() &&
+           context.bottom()==viewport.bottom())
+            viewport.setBottom(context.top()-3);
         if(!viewport.isValid())viewport=canvasBounds;
         const QRect wheelBounds=viewport;
         viewport=placeSliders(viewport,canvasBounds,obstacles);
