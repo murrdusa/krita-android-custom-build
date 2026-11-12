@@ -380,6 +380,7 @@ def main(root:Path):
     standalone_krita_runtime=own/"mobile_core/krita_standalone_runtime.h"
     standalone_krita_documents=own/"mobile_core/krita_standalone_documents.h"
     saved_version_archive=own/"mobile_core/saved_version_archive.h"
+    open_document_destination_policy=own/"mobile_core/open_document_destination_policy.h"
     standalone_engine_session=own/"mobile_core/krita_engine_session.h"
     standalone_engine_pilot=own/"mobile_core/krita_standalone_pilot.h"
     engine_only_policy=own/"mobile_core/engine_only_startup_policy.h"
@@ -468,7 +469,8 @@ def main(root:Path):
                      deferred_view_command,document_navigation,bridge,host_services,document_service,
                      native_document_rollback,native_document_path_policy,document_port,view_port,
                      view_guard,command_service,command_port,switcher,brush,color,layers,commands,
-                     pressure_calibration,pressure_settings,saved_version_archive,tools,documents,
+                     pressure_calibration,pressure_settings,saved_version_archive,
+                      open_document_destination_policy,tools,documents,
                      native_chrome,lightweight,native_view_stack,native_krita_save_host)
     for module in mobile_frontend:
         contents=module.read_text(encoding="utf-8")
@@ -983,6 +985,8 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
         standalone_krita_documents.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/saved_version_archive.h").write_text(
         saved_version_archive.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/open_document_destination_policy.h").write_text(
+        open_document_destination_policy.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/krita_engine_session.h").write_text(
         standalone_engine_session.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/krita_standalone_pilot.h").write_text(
