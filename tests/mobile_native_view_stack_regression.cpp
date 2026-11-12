@@ -66,6 +66,29 @@ int main(int argc,char **argv)
                 stack.openViews().isEmpty(),
                 "close remaining document"))return 1;
     delete first;
+    // The native engine can destroy a view without a close command
+    // (for example, document teardown after a failed import). The
+    // stack must forget its identity and permit reopening that document.
+    MobileNativeViewStack externalStack;
+    QObject externalDocument;
+    auto *externalView=new QWidget;
+    if(!require(externalStack.adoptView(
+                    externalView,&externalDocument,QStringLiteral("External"),
+                    [](){return true;}),
+                "external view registered"))return 1;
+    delete externalView;
+    if(!require(externalStack.openViews().isEmpty(),
+                "destroyed native view removed from stack"))return 1;
+    auto *replacement=new QWidget;
+    if(!require(externalStack.adoptView(
+                    replacement,&externalDocument,QStringLiteral("Reattached"),
+                    [](){return true;}) &&
+                externalStack.currentDocument()==&externalDocument,
+                "document can attach again after view destruction"))return 1;
+    delete replacement;
+    if(!require(externalStack.openViews().isEmpty(),
+                "replaced view teardown cleans registry"))return 1;
+
     qInfo()<<"PASS: multi-document native view ownership, duplicate rejection,"
              " activation, state changes and cancelable closing";
     return 0;
