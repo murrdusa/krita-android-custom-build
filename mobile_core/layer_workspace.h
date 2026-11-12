@@ -1676,7 +1676,11 @@ private:
 
     int along(const QPoint &point) const {return m_horizontalRail?point.x():point.y();}
     int verticalTileSize(int width) const {return m_compactRail?qBound(54,width-9,111):73;}
-    static int horizontalTileSize(int height) {return qBound(48,height-20,111);}
+    static int horizontalTileSize(int height) {
+        // Use the short axis for the thumbnail, leaving only a narrow
+        // border around the tile rather than an oversized empty gutter.
+        return qBound(48,height-8,111);
+    }
 
     QWidget *railViewport() const
     {
