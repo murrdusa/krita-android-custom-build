@@ -60,7 +60,7 @@ public:
     // that service can roll back the document registration.
     bool attachNewDocument(KisDocument *document) const override
     {
-        return !m_opening && replaceCanvas(document);
+        return !m_opening && attachCanvas(document);
     }
 
     bool openFile(const QString &path) const override
@@ -69,15 +69,22 @@ public:
            path.trimmed().isEmpty())return false;
         const QScopedValueRollback<bool> transaction(m_opening,true);
 
-        // Opening the current document again must keep its unsaved edits.
-        const auto current=m_runtime->documentRoot()->currentDocument();
-        if(auto *existing=qobject_cast<KisDocument*>(current.data())) {
-            if(existing->path()==path ||
-               existing->property("_mobileDraftPath").toString()==path)return true;
-            const QString identity=MobileSavedVersionArchive::canonicalIdentity(path);
-            if(!identity.isEmpty() &&
-               identity==MobileSavedVersionArchive::canonicalIdentity(existing->path()))
-                return true;
+        // Reopening any already-open project preserves its unsaved edits
+        // and activates the existing native tab. Equivalent Android SAF
+        // tree/document URIs must also resolve to that same project.
+        const QString identity=MobileSavedVersionArchive::canonicalIdentity(path);
+        auto *root=m_runtime->documentRoot();
+        for(const auto &view:root->openViews()) {
+            auto *existing=qobject_cast<KisDocument*>(view.document.data());
+            if(!existing || !view.nativeView)continue;
+            const QString currentPath=existing->path();
+            const QString draft=existing->property("_mobileDraftPath").toString();
+            const bool samePath=currentPath==path || draft==path;
+            const bool sameProject=!identity.isEmpty() &&
+                (identity==MobileSavedVersionArchive::canonicalIdentity(currentPath) ||
+                 identity==MobileSavedVersionArchive::canonicalIdentity(draft));
+            if(samePath || sameProject)
+                return root->activateView(view.nativeView);
         }
 
         const bool privateDraft=MobileDraftRecovery::isDraft(path);
@@ -127,7 +134,7 @@ public:
 
         KisPart::instance()->addDocument(document);
         QPointer<KisDocument> guardedDocument=document;
-        if(!replaceCanvas(document)) {
+        if(!attachCanvas(document)) {
             MobileFailedDocumentAttach::rollback(
                 guardedDocument,
                 [](KisDocument *candidate) {
@@ -176,18 +183,14 @@ private:
         return document->openPath(path,privateCopy?KisDocument::DontAddToRecent:KisDocument::None);
     }
 
-    bool replaceCanvas(KisDocument *document) const
+    bool attachCanvas(KisDocument *document) const
     {
         if(!available() || m_replacing || m_saving || !document ||
            !document->image() || !isRegistered(document))return false;
-        const QScopedValueRollback<bool> replacing(m_replacing,true);
-        auto *root=m_runtime->documentRoot();
-        const auto views=root->openViews();
-        for(const auto &view:views) {
-            if(!root->closeView(view.nativeView))return false;
-        }
-        return root->openViews().isEmpty() &&
-               m_runtime->attachDocument(document,m_saver)!=nullptr;
+        const QScopedValueRollback<bool> attaching(m_replacing,true);
+        // New/Open must preserve every other canvas and its unsaved edits.
+        // Native tab selection and close ownership live in the view stack.
+        return m_runtime->attachDocument(document,m_saver)!=nullptr;
     }
 
     bool writeDocument(KisDocument *document,bool saveAs,bool exporting) const
