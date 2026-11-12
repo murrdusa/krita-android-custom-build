@@ -42,6 +42,11 @@ public:
     {
         if(!view || !document || !closeRequest || view->parentWidget() ||
            view->window()!=view || indexOf(view)>=0)return false;
+        // Multiple canvases are separate native documents; registering
+        // two views for the same document would create competing close
+        // callbacks and ambiguous save/discard ownership.
+        for(const Row &row:m_rows)
+            if(row.document==document && row.view)return false;
         const quint64 token=++m_nextToken;
         if(addWidget(view)<0)return false;
         Row row;
