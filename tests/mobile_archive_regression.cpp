@@ -96,6 +96,26 @@ int main(int argc,char **argv)
     if(!require(Archive::list(spaced,root).size()==2,
                 "forced checkpoint retains new version"))return 1;
 
+    // A rate-limited draft must not silently accept an archive whose
+    // checksum was lost or corrupted since the previous checkpoint.
+    const QString damaged=temp.filePath(QStringLiteral("damaged-gap.kra"));
+    if(!require(writeBytes(damaged,initial) &&
+                Archive::snapshotFrom(damaged,damaged,root,120000),
+                "create rate-limited archive"))return 1;
+    auto damagedVersions=Archive::list(damaged,root);
+    if(!require(damagedVersions.size()==1 &&
+                writeBytes(damagedVersions.first().path+
+                           QStringLiteral(".sha256"),QByteArray("invalid")),
+                "damage latest checksum"))return 1;
+    if(!require(writeBytes(damaged,changed) &&
+                Archive::snapshotFrom(damaged,damaged,root,120000) &&
+                Archive::list(damaged,root).size()==2,
+                "invalid checksum does not suppress new checkpoint"))return 1;
+    // The new valid version should now correctly reinstate spacing.
+    if(!require(Archive::snapshotFrom(damaged,damaged,root,120000) &&
+                Archive::list(damaged,root).size()==2,
+                "valid replacement snapshot restores rate limiting"))return 1;
+
     // A removed (explicitly discarded) draft must not appear to have
     // checkpointed successfully merely because a recent version exists.
     if(!require(QFile::remove(spaced),"remove discarded draft"))return 1;
