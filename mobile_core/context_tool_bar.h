@@ -197,7 +197,9 @@ public:
                 {"select_all",QObject::tr("Select all")},
                 {"reselect",QObject::tr("Reselect")},
                 {"invert_selection",QObject::tr("Invert")},
-                {"edit_selection",QObject::tr("Edit selection")}
+                {"edit_selection",QObject::tr("Edit selection")},
+                {"fill_selection_foreground_color",QObject::tr("Fill foreground")},
+                {"copy_selection_to_new_layer",QObject::tr("Copy to new layer")}
             });
             nativeMenu(QObject::tr("Edges"),{
                 {"growselection",QObject::tr("Grow")},
