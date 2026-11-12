@@ -53,6 +53,20 @@ int main(int argc,char **argv)
     if(!require(stack.activateView(firstIdentity) &&
                 stack.currentDocument()==&firstDocument,
                 "switch to first document"))return 1;
+    // Neither a stale engine document nor a reused native tab index
+    // authorizes Close while the Qt stack reports no active canvas.
+    auto noActive=stack.openViews();
+    for(auto &row:noActive)row.active=false;
+    if(!require(!MobileViewIdentityGuard::safeCloseTarget(
+                    noActive,QPointer<QObject>(&firstDocument)) &&
+                !MobileViewIdentityGuard::safeCloseTarget(
+                    noActive,QPointer<QObject>(&secondDocument)),
+                "reject close when no native canvas is active"))return 1;
+    auto ambiguous=noActive;
+    for(auto &row:ambiguous)row.active=true;
+    if(!require(!MobileViewIdentityGuard::safeCloseTarget(
+                    ambiguous,QPointer<QObject>(&firstDocument)),
+                "reject close with ambiguous active canvases"))return 1;
     auto firstSnapshot=stack.openViews();
     if(!require(MobileViewIdentityGuard::safeCloseTarget(
                     firstSnapshot,QPointer<QObject>(&firstDocument))==firstIdentity &&
