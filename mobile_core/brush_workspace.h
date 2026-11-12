@@ -24,6 +24,7 @@
 #include <QFrame>
 #include <QTimer>
 #include <QPixmap>
+#include <QPixmapCache>
 #include <QImage>
 #include <QShowEvent>
 #include <QHideEvent>
@@ -493,6 +494,10 @@ private:
             painter->setFont(QFont(option.font.family(),16));
             painter->drawText(star,Qt::AlignCenter,favorite?
                 QStringLiteral("★"):QStringLiteral("☆"));
+            // The favorite marker must not change the preset caption's
+            // font size or contrast.
+            painter->setFont(font);
+            painter->setPen(QColor("#f4f9fe"));
             const QString name=index.data().toString();
             painter->drawText(caption,Qt::AlignCenter,
                 painter->fontMetrics().elidedText(name,Qt::ElideRight,caption.width()));
@@ -634,11 +639,18 @@ private:
                 const auto thumbnail=source.sibling(source.row(),KisAbstractResourceModel::Thumbnail)
                     .data(Qt::DecorationRole).value<QImage>();
                 if(thumbnail.isNull())return {};
-                // Scale into a square, never stretch a wide/portrait preset
-                // into a distorted icon. Krita's resource model still loads
-                // thumbnails lazily for visible cells only.
-                return QIcon(QPixmap::fromImage(thumbnail.scaled(
-                    QSize(56,56),Qt::KeepAspectRatio,Qt::SmoothTransformation)));
+                // Image cacheKey changes when the underlying thumbnail
+                // changes. Use Qt's bounded, shared pixmap cache instead of
+                // rescaling the same resource on every item repaint.
+                const QString cacheKey=QStringLiteral("mobile-preset-thumb-56-%1")
+                    .arg(thumbnail.cacheKey());
+                QPixmap scaled;
+                if(!QPixmapCache::find(cacheKey,&scaled)) {
+                    scaled=QPixmap::fromImage(thumbnail.scaled(
+                        QSize(56,56),Qt::KeepAspectRatio,Qt::SmoothTransformation));
+                    QPixmapCache::insert(cacheKey,scaled);
+                }
+                return QIcon(scaled);
             }
             const auto value=QSortFilterProxyModel::data(index,role);
             if(index.column()==KisAbstractResourceModel::Name && role==Qt::DisplayRole)
