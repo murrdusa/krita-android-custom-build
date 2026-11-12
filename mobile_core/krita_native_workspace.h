@@ -105,7 +105,17 @@ public:
         m_fadeTimer=new QTimer(this);
         m_fadeTimer->setInterval(160);
         connect(m_fadeTimer,&QTimer::timeout,this,[this]() {updatePanelFades();});
-        if(m_fadePanels)m_fadeTimer->start();
+        // Fading is only a foreground visual effect. Stop the recurring
+        // wakeups while Android has backgrounded the drawing app.
+        connect(qApp,&QGuiApplication::applicationStateChanged,this,
+                [this](Qt::ApplicationState state) {
+            if(!m_fadeTimer)return;
+            if(state==Qt::ApplicationActive && m_fadePanels)
+                m_fadeTimer->start();
+            else m_fadeTimer->stop();
+        });
+        if(m_fadePanels && QGuiApplication::applicationState()==Qt::ApplicationActive)
+            m_fadeTimer->start();
         m_samplePreviewTimer.setSingleShot(true);
         m_samplePreviewTimer.setInterval(16);
         connect(&m_samplePreviewTimer,&QTimer::timeout,this,[this]() {
@@ -1098,7 +1108,8 @@ public:
             settings.setValue(QStringLiteral("MobileStudio/fadePanels"),m_fadePanels);
             settings.setValue(QStringLiteral("MobileStudio/idlePanelOpacity"),m_idleOpacity);
             settings.setValue(QStringLiteral("MobileStudio/panelFadeDelay"),m_fadeDelay);
-            if(m_fadePanels)m_fadeTimer->start();
+            if(m_fadePanels && QGuiApplication::applicationState()==Qt::ApplicationActive)
+                m_fadeTimer->start();
             else m_fadeTimer->stop();
             for(auto *panel:fadeTargets())wakePanel(panel);
             QString selectedOpacity=opacityDrag->currentData().toString();
