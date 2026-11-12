@@ -4,6 +4,10 @@
 
 Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1). This file records *current* status, not a commit-by-commit log. The preceding complete log is preserved verbatim in [DEVELOPMENT_HISTORY_2026-11-11.md](DEVELOPMENT_HISTORY_2026-11-11.md). More focused runbooks live under `mobile_core/`.
 
+## Android app-exit automatic checkpoint (November 11)
+
+User wants drawings autosaved when Android closes/terminates the app, without a new Save prompt when merely pressing system Home; no additional device testing requested now. `mobile_core/krita_standalone_runtime.h` commit `1aa7b7778adb6513a2e4d850c7ea775b2a959df1` reduces the dirty-document private KRA checkpoint timer from 30 seconds to 15 seconds and requests a final checkpoint on Qt `aboutToQuit`, in addition to the existing non-Active Android application state hook. This is *best effort*: Android can kill a process abruptly, so the final event may not run or allow asynchronous save completion. The latest **completed** periodic/background private snapshot is the guaranteed fallback; do not promise saving the very last stroke during a force-kill. Preserve atomic pending-file publication, version archive deduplication and explicit app Home Save/Cancel/2-second Discard. Prioritize engineering-only unit/regression and source audits over new Fold test requests. Check Issue #1 for exact build SHA before claiming compile success.
+
 ## Fold 6 handoff follow-up
 
 The prior Fold 6 pass covered responsive layout, Layers resizing and rotation, Workspace Settings, reference gestures, toolbar swipes, native Tool Options and document safety. Advanced Brush Settings was not tested. The next batch makes editable fields request Android's keyboard on finger or pen taps, gives floating size and opacity compact translucent tracks, and allows the Color button to adjust size or opacity along the toolbar while retaining perpendicular sampling and tap-to-open.
