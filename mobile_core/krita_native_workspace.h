@@ -1548,7 +1548,7 @@ private:
             return;
         }
         if(!m_contextToolBar) {
-            m_contextToolBar=new MobileContextToolBar(canvas,m_optionsAction);
+            m_contextToolBar=new MobileContextToolBar(canvas);
             m_contextToolBar->chooseTool=[this]() {chooseTool();};
             m_contextToolBar->chooseFillResource=[this](bool gradient) {
                 chooseFillResource(gradient);
