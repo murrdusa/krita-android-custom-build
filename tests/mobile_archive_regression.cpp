@@ -129,6 +129,26 @@ int main(int argc,char **argv)
                     QByteArray::number(Archive::maxVersions()+2)),
                 "retention preserves newest generation"))return 1;
 
+    // Saving an untitled canvas must preserve its earlier unsaved draft
+    // history under the final project identity, including multiple versions.
+    const QString draft=temp.filePath(QStringLiteral("Untitled.kra"));
+    const QString saved=temp.filePath(QStringLiteral("Named.kra"));
+    if(!require(writeBytes(draft,initial) &&
+                Archive::snapshot(draft,root),"untitled history initial"))return 1;
+    if(!require(writeBytes(draft,changed) &&
+                Archive::snapshot(draft,root),"untitled history subsequent"))return 1;
+    const auto originalHistory=Archive::list(draft,root);
+    if(!require(originalHistory.size()==2,"untitled has two versions"))return 1;
+    Archive::adoptHistory(draft,saved,root);
+    if(!require(Archive::list(draft,root).isEmpty() &&
+                Archive::list(saved,root).size()==2,
+                "unsaved draft history moves to named project"))return 1;
+    if(!require(writeBytes(saved,QByteArray::fromHex("504b0304")+
+                QByteArray("named revision")) &&
+                Archive::snapshot(saved,root) &&
+                Archive::list(saved,root).size()==3,
+                "named project continues existing version history"))return 1;
+
     // The archive directory can contain unrelated symlinks. Never expose
     // them as recoverable snapshots to the project browser.
     const QString folder=Archive::folderFor(spaced,root);
@@ -156,6 +176,6 @@ int main(int argc,char **argv)
 
     qInfo() << "PASS: archive deduplication, recovery integrity, checksum repair,"
                " corruption handling, periodic spacing, forced checkpoints,"
-               " retention, discarded drafts, symlink exclusion and Android identities";
+               " retention, draft history migration, symlinks and Android identities";
     return 0;
 }
