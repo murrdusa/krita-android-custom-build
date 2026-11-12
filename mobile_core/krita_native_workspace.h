@@ -99,7 +99,7 @@ public:
         // Mobile Studio provides a dedicated compact Deselect control and
         // grouped selection actions instead; suppress the desktop bar.
         {
-            KisConfig config;
+            KisConfig config(false);
             config.setSelectionActionBar(false);
             KisConfigNotifier::instance()->notifyConfigChanged();
         }
@@ -1526,7 +1526,7 @@ private:
     void syncSelectionDismissButton()
     {
         QWidget *canvas=m_host?m_host->nativeCanvas():nullptr;
-        const auto *view=m_engine.manager();
+        auto *view=m_engine.manager();
         const auto selection=view?view->selection():KisSelectionSP();
         const bool visible=canvas && !m_canvasOnly && m_engine.hasDocument() &&
                            selection && !selection->selectedRect().isEmpty();
