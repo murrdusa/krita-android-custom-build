@@ -221,6 +221,19 @@ int main(int argc,char **argv)
             "draft paths must be private and unique");
     save(draft,QByteArray::fromHex("504b0304")+"draft");
     save(draft+QStringLiteral(".pending.kra"),"incomplete");
+    const QString staging=draft+QStringLiteral(".pending.kra");
+    require(MobileDraftRecovery::list().size()==1 &&
+            !MobileDraftRecovery::publish(draft,true) &&
+            !QFile::exists(staging) && QFileInfo(draft).size()==9,
+            "interrupted staging must never replace the last completed checkpoint");
+    save(staging,QByteArray::fromHex("504b0304")+"failed-export");
+    require(!MobileDraftRecovery::publish(draft,false) &&
+            !QFile::exists(staging) && QFileInfo(draft).size()==9,
+            "an export failure must preserve the current checkpoint");
+    save(staging,QByteArray::fromHex("504b0304")+"replacement");
+    require(MobileDraftRecovery::publish(draft,true) &&
+            !QFile::exists(staging) && QFileInfo(draft).size()==15,
+            "successful publication must replace the draft at its stable path");
     require(MobileDraftRecovery::hasKraHeader(draft) &&
             !MobileDraftRecovery::hasKraHeader(
                 draft+QStringLiteral(".pending.kra")),
@@ -247,18 +260,18 @@ int main(int argc,char **argv)
     MobileDraftRecovery::setProject(draft,source);
     const qint64 draftTime=QFileInfo(draft).lastModified().toMSecsSinceEpoch();
     require(MobileDraftRecovery::projectFor(draft)==source &&
-            MobileDraftRecovery::latestFor(source,draftTime-1).absoluteFilePath()==draft &&
-            !MobileDraftRecovery::latestFor(source,draftTime).exists(),
+            MobileDraftRecovery::checkpointsFor(source,draftTime-1).value(0).absoluteFilePath()==draft &&
+            MobileDraftRecovery::checkpointsFor(source,draftTime).isEmpty(),
             "only a newer checkpoint should replace the saved project");
     QThread::msleep(12);
     const QString damagedDraft=MobileDraftRecovery::allocate(
         QStringLiteral("newer-damaged"));
     save(damagedDraft,"truncated recovery");
     MobileDraftRecovery::setProject(damagedDraft,source);
-    require(MobileDraftRecovery::latestFor(source,draftTime-1).absoluteFilePath()==draft,
+    require(MobileDraftRecovery::checkpointsFor(source,draftTime-1).value(0).absoluteFilePath()==draft,
             "invalid latest recovery must fall back to an earlier intact draft");
     save(damagedDraft,QByteArray::fromHex("504b0304")+"newer-complete");
-    require(MobileDraftRecovery::latestFor(source,draftTime-1).absoluteFilePath()==damagedDraft,
+    require(MobileDraftRecovery::checkpointsFor(source,draftTime-1).value(0).absoluteFilePath()==damagedDraft,
             "newer valid project draft should supersede an older draft");
     QFile::remove(damagedDraft);
     QFile::remove(damagedDraft+QStringLiteral(".project"));

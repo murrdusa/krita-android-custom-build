@@ -1986,14 +1986,30 @@ void KisNodeManager::slotSomethingActivatedNodeImpl(KisNodeSP node, bool allowGl
         "use the native Transform tool to retarget the selection")
     selection_file.write_text(selection,encoding="utf-8")
 
+    draft_header_file=root/"libs/ui/KisDocument.h"
+    draft_header=draft_header_file.read_text(encoding="utf-8")
+    draft_header=one(draft_header,"    void sigCompleteBackgroundSaving(",
+        "    void sigMobileDraftPublished(const QString &draft,const QString &project);\n"
+        "    void sigCompleteBackgroundSaving(","notify Studio after publishing a checkpoint")
+    draft_header_file.write_text(draft_header,encoding="utf-8")
+
     draft_document_file=root/"libs/ui/KisDocument.cpp"
     draft_document=draft_document_file.read_text(encoding="utf-8")
     draft_document=one(draft_document,"#include <QFileInfo>",
-        "#include <QFileInfo>\n#include <cstdio>","draft atomic rename include")
+        "#include <QFileInfo>\n#include \"mobile_draft_recovery.h\"","draft recovery include")
     draft_document=one(draft_document,
         "    if (!d->modified || !d->modifiedAfterAutosave) return;\n    const QString autoSaveFileName = generateAutoSaveFileName(localFilePath());",
         """    if (!d->modified || !d->modifiedAfterAutosave) return;
     const QString draftPath = property("_mobileDraftPath").toString();
+    if (!draftPath.isEmpty()) {
+        if (d->documentIsClosing || isSaving()) return;
+        const bool nativeProject = mimeType() == nativeFormatMimeType() ||
+                                   mimeType() == "application/x-krita-archive";
+        if (!MobileDraftRecovery::setProject(draftPath,nativeProject ? path() : QString())) {
+            setEmergencyAutoSaveInterval();
+            return;
+        }
+    }
     const QString autoSaveFileName = draftPath.isEmpty()
         ? generateAutoSaveFileName(localFilePath())
         : draftPath + QStringLiteral(".pending.kra");""",
@@ -2004,16 +2020,15 @@ void KisNodeManager::slotSomethingActivatedNodeImpl(KisNodeSP node, bool allowGl
 
     const QString draftPath = property("_mobileDraftPath").toString();
     if (!draftPath.isEmpty() && job.filePath == draftPath + QStringLiteral(".pending.kra")) {
-        if (!status.isOk() ||
-            std::rename(QFile::encodeName(job.filePath).constData(),
-                        QFile::encodeName(draftPath).constData()) != 0) {
-            QFile::remove(job.filePath);
+        if (!MobileDraftRecovery::publish(draftPath,status.isOk())) {
             d->modifiedAfterAutosave = true;
             if (status.isOk()) {
                 setEmergencyAutoSaveInterval();
                 qWarning() << "Could not commit Studio draft";
                 return;
             }
+        } else {
+            Q_EMIT sigMobileDraftPublished(draftPath,MobileDraftRecovery::projectFor(draftPath));
         }
     }
 

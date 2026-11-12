@@ -10,6 +10,7 @@
 #include <QFileInfo>
 #include <QFile>
 #include <QSaveFile>
+#include <cstdio>
 #include "saved_version_archive.h"
 #include <QStandardPaths>
 #include <QUuid>
@@ -89,19 +90,29 @@ public:
         return drafts;
     }
 
-    static void setProject(const QString &draft,const QString &project)
+    static bool setProject(const QString &draft,const QString &project)
     {
-        if(draft.isEmpty())return;
+        if(draft.isEmpty())return false;
         const QString metadata=draft+QStringLiteral(".project");
         if(MobileSavedVersionArchive::canonicalIdentity(project).isEmpty()) {
-            QFile::remove(metadata);
-            return;
+            return !QFile::exists(metadata) || QFile::remove(metadata);
         }
-        if(projectFor(draft)==project)return;
+        if(projectFor(draft)==project)return true;
         QSaveFile file(metadata);
         const QByteArray data=project.toUtf8();
-        if(file.open(QIODevice::WriteOnly) && file.write(data)==data.size())
-            file.commit();
+        return data.size()<=16384 && file.open(QIODevice::WriteOnly) &&
+            file.write(data)==data.size() && file.commit();
+    }
+
+    static bool publish(const QString &draft,bool exportSucceeded)
+    {
+        if(draft.isEmpty())return false;
+        const QString staging=draft+QStringLiteral(".pending.kra");
+        if(exportSucceeded && hasReadableProject(staging) &&
+           std::rename(QFile::encodeName(staging).constData(),
+                       QFile::encodeName(draft).constData())==0)return true;
+        QFile::remove(staging);
+        return false;
     }
 
     static QString projectFor(const QString &draft)
@@ -111,18 +122,19 @@ public:
         return QString::fromUtf8(file.readAll());
     }
 
-    static QFileInfo latestFor(const QString &project,qint64 savedModified)
+    static QFileInfoList checkpointsFor(const QString &project,qint64 savedModified)
     {
         const QString identity=MobileSavedVersionArchive::canonicalIdentity(project);
         if(identity.isEmpty())return {};
+        QFileInfoList result;
         for(const auto &draft:list()) {
             if(draft.lastModified().toMSecsSinceEpoch()<=savedModified)break;
             if(MobileSavedVersionArchive::canonicalIdentity(
                    projectFor(draft.absoluteFilePath()))==identity &&
                hasReadableProject(draft.absoluteFilePath()))
-                return draft;
+                result.append(draft);
         }
-        return {};
+        return result;
     }
 
     static bool rename(const QString &path,const QString &name)

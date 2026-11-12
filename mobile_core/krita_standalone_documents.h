@@ -80,35 +80,35 @@ public:
                 return true;
         }
 
-        const auto checkpoint=MobileDraftRecovery::latestFor(
-            path,qMax(MobileSavedVersionArchive::projectModified(path),
-                MobileSavedVersionArchive::previewRevisions().value(
-                    MobileSavedVersionArchive::canonicalIdentity(path)).toLongLong()));
-        // A newer draft can survive an interrupted save with invalid
-        // bytes. Prefer the completed project rather than repeatedly
-        // attempting that draft whenever the named file is opened.
-        // Keep the damaged draft available for manual inspection.
-        const QString latest=checkpoint.absoluteFilePath();
-        const bool originalAvailable=MobileNativeDocumentPathPolicy::mayAttemptOpen(path);
-        if(latest.isEmpty() && !originalAvailable)return false;
-        const QString source=latest.isEmpty()?path:latest;
-        KisDocument *document=KisPart::instance()->createDocument();
-        if(!document)return false;
-
-        // Native Krita import filters (including KRA, PNG and PSD)
-        // are chosen inside openPath. This also presents its existing
-        // autosave-recovery prompt, rather than discarding recovery files.
         const bool privateDraft=MobileDraftRecovery::isDraft(path);
         const bool savedVersion=MobileSavedVersionArchive::isRecoveryCopy(path);
-        if(!openProjectSource(document,source,privateDraft || savedVersion || !latest.isEmpty())) {
-            delete document;
-            if(latest.isEmpty() || !originalAvailable)return false;
+        KisDocument *document=nullptr;
+        QString latest;
+        if(!privateDraft && !savedVersion) {
+            const auto checkpoints=MobileDraftRecovery::checkpointsFor(
+                path,qMax(MobileSavedVersionArchive::projectModified(path),
+                    MobileSavedVersionArchive::previewRevisions().value(
+                        MobileSavedVersionArchive::canonicalIdentity(path)).toLongLong()));
+            for(const auto &checkpoint:checkpoints) {
+                document=KisPart::instance()->createDocument();
+                if(!document)return false;
+                if(openProjectSource(document,checkpoint.absoluteFilePath(),true)) {
+                    latest=checkpoint.absoluteFilePath();
+                    break;
+                }
+                delete document;
+                document=nullptr;
+            }
+        }
+        if(!document) {
+            if(!MobileNativeDocumentPathPolicy::mayAttemptOpen(path))return false;
             document=KisPart::instance()->createDocument();
-            if(!document || !openProjectSource(document,path,false)) {
+            if(!document || !openProjectSource(document,path,privateDraft || savedVersion)) {
                 delete document;
                 return false;
             }
-        } else if(!latest.isEmpty()) {
+        }
+        if(!latest.isEmpty()) {
             // Reopen the latest completed checkpoint as the original project.
             // Keeping the original path lets the next native Save update it.
             document->setProperty("_mobileDraftPath",latest);

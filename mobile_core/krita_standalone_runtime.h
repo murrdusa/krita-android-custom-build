@@ -104,10 +104,11 @@ public:
         // to save a named document synchronously.
         draftTimer->start(15000);
         QObject::connect(qGuiApp,&QGuiApplication::applicationStateChanged,runtime,
-                         [runtime](Qt::ApplicationState state) {
-            // Android Home, activity stop and loss of foreground are
-            // proactive save opportunities. No modal Save As dialog.
-            if(state!=Qt::ApplicationActive)runtime->checkpointDrafts();
+                         [runtime,active=QGuiApplication::applicationState()==
+                                          Qt::ApplicationActive](Qt::ApplicationState state) mutable {
+            const bool wasActive=active;
+            active=state==Qt::ApplicationActive;
+            if(wasActive && !active)runtime->checkpointDrafts();
         });
         QObject::connect(qGuiApp,&QCoreApplication::aboutToQuit,runtime,
                          [runtime]() {
@@ -185,33 +186,14 @@ public:
         auto *view=MobileKritaNativeViewFactory::attach(
             document,m_manager,m_root,saver);
         if(view) {
-            QPointer<KisDocument> alive(document);
-            connect(document,&KisDocument::sigCompleteBackgroundSaving,this,
-                [this,alive](const KritaUtils::ExportFileJob &job,
-                             KisImportExportErrorCode status,
-                             const QString &,const QString &) {
-                // Krita's own slotCompleteAutoSaving publishes the .kra
-                // via an atomic rename. Run after all signal receivers so
-                // the archive never reads an incomplete .pending.kra file.
-                if(status.isOk() &&
-                   (job.flags & KritaUtils::SaveInAutosaveMode)) {
-                    QTimer::singleShot(0,this,[this,alive,job]() {
-                        if(!alive || !ownsDocument(alive))return;
-                        const QString draft=alive->property(
-                            "_mobileDraftPath").toString();
-                        if(job.filePath!=draft+QStringLiteral(".pending.kra") ||
-                           !MobileDraftRecovery::isDraft(draft))return;
-                        const QString project=alive->path();
-                        const QString identity=
-                            MobileSavedVersionArchive::canonicalIdentity(project).isEmpty()?
-                            draft:project;
-                        MobileSavedVersionArchive::enqueueDraftCheckpoint(
-                            draft,identity,
-                            QGuiApplication::applicationState()!=Qt::ApplicationActive);
-                    });
-                }
-                if(!m_pendingDrafts.isEmpty())
-                    QTimer::singleShot(0,this,[this]() {continueDrafts();});
+            connect(document,&KisDocument::sigMobileDraftPublished,this,
+                [](const QString &draft,const QString &project) {
+                    MobileSavedVersionArchive::enqueueDraftCheckpoint(
+                        draft,project.isEmpty()?draft:project,
+                        QGuiApplication::applicationState()!=Qt::ApplicationActive);
+                });
+            connect(document,&KisDocument::sigCompleteBackgroundSaving,this,[this]() {
+                if(m_pendingDraft)QTimer::singleShot(0,this,[this]() {continueDraft();});
             });
         }
         return view;
@@ -221,36 +203,20 @@ private:
     void checkpointDrafts()
     {
         if(!m_root)return;
-        // A previous draft may still be queued while another canvas
-        // finishes saving. Always collect newly dirty documents: an
-        // app-background event must not be lost merely because the queue
-        // was already nonempty.
-        for(const auto &view:m_root->openViews()) {
-            auto *document=qobject_cast<KisDocument*>(view.document.data());
-            if(document && document->isModified() &&
-               !document->property("_mobileDraftPath").toString().isEmpty() &&
-               !m_pendingDrafts.contains(document))
-                m_pendingDrafts.append(document);
-        }
-        continueDrafts();
+        auto *document=qobject_cast<KisDocument*>(m_root->currentDocument().data());
+        if(!document || !document->isModified() ||
+           document->property("_mobileDraftPath").toString().isEmpty())return;
+        m_pendingDraft=document;
+        continueDraft();
     }
 
-    void continueDrafts()
+    void continueDraft()
     {
-        if(!m_root || m_pendingDrafts.isEmpty())return;
-        for(const auto &view:m_root->openViews()) {
-            auto *document=qobject_cast<KisDocument*>(view.document.data());
-            if(document && document->isSaving())return;
-        }
-        while(!m_pendingDrafts.isEmpty()) {
-            const auto document=m_pendingDrafts.takeFirst();
-            if(!document || !ownsDocument(document) || !document->isModified())
-                continue;
-            MobileDraftRecovery::setProject(
-                document->property("_mobileDraftPath").toString(),document->path());
+        const auto document=m_pendingDraft;
+        if(!document || document->isSaving())return;
+        m_pendingDraft.clear();
+        if(ownsDocument(document) && document->isModified())
             QMetaObject::invokeMethod(document,"slotAutoSave",Qt::DirectConnection);
-            if(document && document->isSaving())break;
-        }
     }
 
     MobileKritaStandaloneRuntime(MobileLightweightCanvasHost *host,
@@ -264,7 +230,7 @@ private:
     QPointer<MobileNativeViewStack> m_root;
     QPointer<KisKActionCollection> m_actions;
     QPointer<KisViewManager> m_manager;
-    QList<QPointer<KisDocument>> m_pendingDrafts;
+    QPointer<KisDocument> m_pendingDraft;
     QSharedPointer<MobileCommandRegistryPort> m_commands;
 };
 #endif

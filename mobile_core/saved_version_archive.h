@@ -308,11 +308,11 @@ public:
                                        const QString &identity,
                                        bool backgroundCheckpoint=false)
     {
-        if(folderFor(identity).isEmpty())return;
+        if(canonicalIdentity(identity).isEmpty())return;
         QThreadPool::globalInstance()->start(
             [draft,identity,backgroundCheckpoint]() {
                 // The latest recovery draft continues updating every
-                // 30 seconds. Space full historical copies at least
+                // 15 seconds. Space full historical copies at least
                 // two minutes apart while painting; allow one when
                 // backgrounded so an interrupted session has a version.
                 snapshotFrom(draft,identity,QString(),
@@ -337,7 +337,7 @@ public:
     static void enqueueAfterSave(const QString &source,
                                  const QString &previousDraft=QString())
     {
-        if(folderFor(source).isEmpty())return;
+        if(canonicalIdentity(source).isEmpty())return;
         QThreadPool::globalInstance()->start([source,previousDraft]() {
             if(!previousDraft.isEmpty())
                 adoptHistory(previousDraft,source);
