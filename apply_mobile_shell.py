@@ -1108,6 +1108,8 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
         (own/"mobile_core/workspace_profiles.h").read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/recent_colors.h").write_text(
         (own/"mobile_core/recent_colors.h").read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/transient_panel.h").write_text(
+        (own/"mobile_core/transient_panel.h").read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/tool_browser.h").write_text(
         tools.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_workflow.h").write_text(

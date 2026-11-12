@@ -163,6 +163,7 @@ public:
             QObject::connect(root,&QStackedWidget::currentChanged,this,
                              [this,root=QPointer<MobileNativeViewStack>(root)](int) {
                 if(!root)return;
+                MobileToolBrowser::dismiss(m_host);
                 const QPointer<QWidget> selected=root->currentWidget();
                 // The native factory schedules manager->setCurrentView()
                 // on the first event-loop turn. The workspace is wired
@@ -419,14 +420,8 @@ public:
     void chooseTool()
     {
         if(!m_host || !m_engine.hasDocument())return;
-        QPointer<MobileLightweightCanvasHost> host=m_host;
-        QTimer::singleShot(0,this,[this,host]() {
-            if(host) {
-                checkpoint("Tool chooser: opening");
-                if(MobileToolBrowser::open(m_engine,host,true) && host)
-                    toggleToolSettings();
-                checkpoint("Tool chooser: closed");
-            }
+        QTimer::singleShot(0,this,[this]() {
+            if(m_host)MobileToolBrowser::open(m_engine,m_host);
         });
     }
 
@@ -1175,6 +1170,7 @@ public:
 
     void hidePanels()
     {
+        MobileToolBrowser::dismiss(m_host);
         clearToolbarPreview();
         if(m_layers)m_layers->hide();
         if(m_showLayers)m_showLayers->hide();
@@ -1494,7 +1490,6 @@ private:
         auto *canvas=m_host->nativeCanvas();
         if(!canvas || (target!=canvas && !canvas->isAncestorOf(target)))return;
         auto *button=qobject_cast<QToolButton*>(target);
-        if(button && button->objectName()==QStringLiteral("_mobileNativeMoreButton"))return;
         QAction *action=button?button->defaultAction():nullptr;
         const auto dismiss=[target,action](QWidget *panel,QAction *opener) {
             if(panel && panel->isVisible() && panel!=target &&
@@ -1506,6 +1501,7 @@ private:
         if(!m_keepColor)dismiss(m_color,m_colorAction);
         dismiss(m_brushOptions,m_optionsAction);
         dismiss(m_toolOptions,m_optionsAction);
+        dismiss(m_textFormatting,m_optionsAction);
     }
 
     bool ensureColorPanel()

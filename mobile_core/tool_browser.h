@@ -6,15 +6,15 @@
 #pragma once
 #ifdef Q_OS_ANDROID
 
-#include <QDialog>
 #include <QGridLayout>
 #include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QLineEdit>
+#include <QMainWindow>
 #include <QPainter>
-#include <QPushButton>
 #include <QScrollArea>
+#include <QSettings>
+#include "transient_panel.h"
 #include "touch_scroll.h"
 #include <QSet>
 #include <QToolButton>
@@ -30,11 +30,17 @@
 class MobileToolBrowser final
 {
 public:
-    // Returns true when the user asks to show native Tool Options.
-    static bool open(const MobileEngineBridge &engine,QWidget *parent,
-                     bool offerOptions=false)
+    static void dismiss(QWidget *parent)
     {
-        if(!parent || !engine.hasDocument())return false;
+        if(auto *panel=findPanel(parent))panel->close();
+    }
+
+    static void open(const MobileEngineBridge &engine,QWidget *parent)
+    {
+        if(!parent || !engine.hasDocument())return;
+        const auto view=MobileViewIdentityGuard::uniqueActive(engine.openDocuments());
+        if(!view)return;
+        if(auto *panel=findPanel(parent))panel->close();
 
         const auto available=engine.tools();
         const QString current=engine.activeTool();
@@ -82,7 +88,8 @@ public:
             for(const auto &entry:actions) {
                 if(QAction *action=engine.action(entry.id)) {
                     group.tiles.append({{},entry.label,action->toolTip(),
-                                        QString::fromLatin1(entry.icon),action});
+                                        QString::fromLatin1(entry.icon),action,
+                                        QString::fromLatin1(entry.id)});
                 }
             }
             if(!group.tiles.isEmpty())groups.append(group);
@@ -204,8 +211,7 @@ public:
                                  tool.description,tool.iconName,nullptr});
         }
 
-        // Present drawing tools before secondary document commands,
-        // while retaining every native Krita action in searchable groups.
+        // Present drawing tools before secondary document commands.
         const QStringList primaryOrder={
             i18n("Paint and Fill"),i18n("Shapes"),i18n("Selection"),
             i18n("Transform"),i18n("View and Guides"),
@@ -218,157 +224,141 @@ public:
                        (ib<0?primaryOrder.size():ib);
             });
 
-        QDialog dialog(parent);
-        dialog.setWindowTitle(i18n("All Tools"));
-        dialog.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
-        dialog.setStyleSheet(QStringLiteral(
-            "QDialog,QWidget#toolTiles{background:#272729;color:#efeff0;}"
+        auto *host=qobject_cast<QMainWindow*>(parent);
+        auto *panel=new MobileTransientPanel(host && host->centralWidget()?host->centralWidget():parent);
+        panel->setObjectName(QStringLiteral("mobileToolBrowser"));
+        panel->setAccessibleName(i18n("Tools"));
+        panel->setStyleSheet(QStringLiteral(
+            "QFrame#mobileToolBrowser{background:#272729;border:1px solid #55555c;border-radius:9px;}"
             "QLabel{color:#efeff0;}"
-            "QLineEdit,QPushButton{background:#343438;color:#efeff0;"
-            "border:1px solid #515156;border-radius:8px;min-height:38px;padding:4px;}"
-            "QScrollArea{background:#272729;border:0;}"
-            "QToolButton{background:#303035;color:#efeff0;border:0;"
-            "border-radius:9px;padding:1px 6px;}"
+            "QScrollArea,QWidget#toolTiles{background:#272729;border:0;}"
+            "QToolButton{background:#303035;color:#efeff0;border:0;border-radius:5px;padding:0;}"
             "QToolButton:checked,QToolButton:pressed{background:#45454c;}"
-            "QToolButton:disabled,QLabel:disabled{color:#929299;}"));
-        auto *layout=new QVBoxLayout(&dialog);
-        layout->setContentsMargins(9,9,9,9);
-        layout->setSpacing(5);
-        auto *search=new QLineEdit(&dialog);
-        search->setPlaceholderText(i18n("Search tools"));
-        search->setClearButtonEnabled(true);
-        layout->addWidget(search);
-        auto *scroll=new QScrollArea(&dialog);
+            "QToolButton:disabled,QLabel:disabled{color:#929299;}"
+            "QToolButton#toolFavorite{font-size:18px;}"
+            "QToolButton#toolFavorite:checked{color:#ffd26a;}"));
+        auto *layout=new QVBoxLayout(panel);
+        layout->setContentsMargins(6,6,6,6);
+        auto *scroll=new QScrollArea(panel);
         scroll->setWidgetResizable(true);
         MobileTouchScroll::configure(scroll);
-        layout->addWidget(scroll,1);
-
-        // The main screen stays concise like a mobile tool drawer.
-        // Advanced Krita actions remain available one tap away or by
-        // searching, rather than occupying dozens of rows by default.
-        auto *more=new QPushButton(i18n("More Krita tools and commands"),&dialog);
-        more->setCheckable(true);
-        layout->addWidget(more);
-
-        auto *buttons=new QHBoxLayout;
-        auto *close=new QPushButton(i18n("Close"),&dialog);
-        buttons->addWidget(close);
-        QObject::connect(close,&QPushButton::clicked,&dialog,&QDialog::reject);
-        constexpr int showOptions=2;
-        if(offerOptions) {
-            auto *options=new QPushButton(i18n("Krita Tool Options"),&dialog);
-            buttons->addWidget(options);
-            QObject::connect(options,&QPushButton::clicked,&dialog,
-                             [&dialog]() {dialog.done(showOptions);});
-        }
-        layout->addLayout(buttons);
-
-        Tile requested;
-        // Two compact columns remain legible on phones as well as tablets.
-        // Extremely narrow windows fall back to one column.
-        const int columns=parent->window()->width()<300?1:2;
-        const int textSpace=qMax(62,
-            (qMin(520,qMax(1,parent->window()->width()-20))-36)/columns-47);
-        const auto refill=[&]() {
-            const QString phrase=search->text().trimmed();
+        layout->addWidget(scroll);
+        const auto refill=[panel,scroll,groups,current,engine,view]() {
+            const QString settingsKey=QStringLiteral("MobileStudio/favoriteTools");
+            const auto favorites=QSettings().value(settingsKey).toStringList();
+            const int offset=scroll->verticalScrollBar()->value();
             auto *content=new QWidget(scroll);
             content->setObjectName(QStringLiteral("toolTiles"));
             auto *sections=new QVBoxLayout(content);
             sections->setContentsMargins(0,0,0,0);
-            sections->setSpacing(4);
-            for(const Group &group:groups) {
-                if(phrase.isEmpty() && !more->isChecked() &&
-                   !primaryOrder.contains(group.label) &&
-                   group.label!=i18n("Other tools"))continue;
+            sections->setSpacing(3);
+            const int columns=panel->width()<295?1:2;
+            const int textSpace=qMax(40,(panel->width()-16)/columns-67);
+            const auto addTiles=[&](const Group &group,bool pinned) {
                 auto *grid=new QGridLayout;
-                grid->setSpacing(2);
+                grid->setSpacing(3);
                 int count=0;
                 for(const Tile &tile:group.tiles) {
-                    if(!phrase.isEmpty() &&
-                       !tile.label.contains(phrase,Qt::CaseInsensitive) &&
-                       !tile.description.contains(phrase,Qt::CaseInsensitive) &&
-                       !tile.tool.contains(phrase,Qt::CaseInsensitive) &&
-                       !group.label.contains(phrase,Qt::CaseInsensitive))continue;
-                    auto *button=new QToolButton(content);
+                    const QString id=tile.favoriteId();
+                    if(pinned!=favorites.contains(id))continue;
+                    auto *cell=new QWidget(content);
+                    auto *row=new QHBoxLayout(cell);
+                    row->setContentsMargins(0,0,0,0);
+                    row->setSpacing(2);
+                    auto *button=new QToolButton(cell);
                     button->setAccessibleName(tile.label);
-                    button->setToolTip(tile.description);
+                    button->setToolTip(tile.description.isEmpty()?tile.label:tile.description);
                     button->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
-                    button->setFixedHeight(49);
+                    button->setFixedHeight(40);
                     auto *tileLayout=new QHBoxLayout(button);
-                    tileLayout->setContentsMargins(7,2,5,2);
-                    tileLayout->setSpacing(7);
+                    tileLayout->setContentsMargins(4,1,2,1);
+                    tileLayout->setSpacing(4);
                     auto *symbol=new QLabel(button);
                     symbol->setPixmap(tileIcon(tile));
                     symbol->setAlignment(Qt::AlignCenter);
                     symbol->setAttribute(Qt::WA_TransparentForMouseEvents);
-                    symbol->setFixedSize(25,28);
+                    symbol->setFixedSize(22,24);
                     tileLayout->addWidget(symbol);
                     auto *label=new QLabel(
-                        labelFontElided(tile.label,button->font(),textSpace),button);
-                    label->setWordWrap(false);
-                    label->setAlignment(Qt::AlignLeft|Qt::AlignVCenter);
+                        QFontMetrics(button->font()).elidedText(tile.label,Qt::ElideRight,textSpace),button);
                     label->setAttribute(Qt::WA_TransparentForMouseEvents);
                     label->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Expanding);
-                    label->setMinimumWidth(0);
-                    // Keep the complete command in accessibility and tooltip,
-                    // but do not let lengthy native labels widen a tile.
-                    label->setToolTip(tile.label);
+                    label->setAlignment(Qt::AlignLeft|Qt::AlignVCenter);
                     tileLayout->addWidget(label,1);
                     button->setCheckable(true);
                     button->setChecked(tile.action?tile.action->isChecked():tile.tool==current);
                     button->setEnabled(!tile.action || tile.action->isEnabled());
-                    QObject::connect(button,&QToolButton::clicked,&dialog,[&,tile]() {
-                        requested=tile;
-                        dialog.accept();
+                    QObject::connect(button,&QToolButton::clicked,panel,[panel,engine,view,tile]() {
+                        auto *host=panel->parentWidget();
+                        panel->close();
+                        QTimer::singleShot(0,host,[engine,view,tile]() {
+                            if(!view || view!=MobileViewIdentityGuard::uniqueActive(engine.openDocuments()))return;
+                            if(tile.action && tile.action->isEnabled())tile.action->trigger();
+                            else if(!tile.tool.isEmpty())engine.selectTool(tile.tool);
+                        });
                     });
-                    grid->addWidget(button,count/columns,count%columns);
+                    row->addWidget(button,1);
+
+                    auto *star=new QToolButton(cell);
+                    star->setObjectName(QStringLiteral("toolFavorite"));
+                    star->setCheckable(true);
+                    star->setChecked(pinned);
+                    star->setText(pinned?QStringLiteral("★"):QStringLiteral("☆"));
+                    star->setAccessibleName(pinned?i18n("Remove %1 from favorites",tile.label):
+                                                   i18n("Favorite %1",tile.label));
+                    star->setFixedSize(32,40);
+                    QObject::connect(star,&QToolButton::clicked,panel,[panel,id,settingsKey](bool checked) {
+                        QSettings settings;
+                        auto saved=settings.value(settingsKey).toStringList();
+                        saved.removeAll(id);
+                        if(checked)saved.prepend(id);
+                        settings.setValue(settingsKey,saved);
+                        panel->requestRefresh();
+                    });
+                    row->addWidget(star);
+                    grid->addWidget(cell,count/columns,count%columns);
                     ++count;
                 }
                 if(count==0) {
                     delete grid;
-                    continue;
+                    return;
                 }
                 for(int column=0;column<columns;++column)grid->setColumnStretch(column,1);
                 auto *heading=new QLabel(group.label,content);
                 heading->setStyleSheet(QStringLiteral(
-                    "color:#aeb0bc;font-size:13px;font-weight:600;padding:7px 3px 2px;"));
+                    "color:#aeb0bc;font-size:12px;font-weight:600;padding:4px 2px 1px;"));
                 sections->addWidget(heading);
                 sections->addLayout(grid);
+            };
+            Group pinned{i18n("Favorites"),{}};
+            for(const auto &id:favorites) {
+                for(const auto &group:groups) {
+                    const auto match=std::find_if(group.tiles.cbegin(),group.tiles.cend(),
+                        [&id](const Tile &tile) {return tile.favoriteId()==id;});
+                    if(match!=group.tiles.cend()) {
+                        pinned.tiles.append(*match);
+                        break;
+                    }
+                }
             }
-            if(sections->count()==0)
-                sections->addWidget(new QLabel(i18n("No matching tools"),content));
+            addTiles(pinned,true);
+            for(const auto &group:groups)addTiles(group,false);
             sections->addStretch();
             scroll->setWidget(content);
+            scroll->verticalScrollBar()->setValue(offset);
         };
-        QObject::connect(search,&QLineEdit::textChanged,&dialog,
-                         [&refill](const QString &) {refill();});
-        QObject::connect(more,&QPushButton::toggled,&dialog,
-                         [&refill,more](bool expanded) {
-            more->setText(expanded?i18n("Fewer tools"):
-                                    i18n("More Krita tools and commands"));
-            refill();
-        });
+        panel->onRefresh=refill;
+        panel->present();
         refill();
-        const QSize bounds=parent->window()->size();
-        dialog.resize(qMin(520,qMax(1,bounds.width()-20)),
-                      qMin(760,qMax(1,bounds.height()-26)));
-        dialog.setMaximumSize(qMax(1,bounds.width()-12),qMax(1,bounds.height()-12));
-        close->setFocus();
-        const int result=dialog.exec();
-        if(result==showOptions)return true;
-        if(result!=QDialog::Accepted || !engine.hasDocument())return false;
-        if(requested.action && requested.action->isEnabled()) {
-            requested.action->trigger();
-        } else if(!requested.tool.isEmpty()) {
-            engine.selectTool(requested.tool);
-        }
-        return false;
     }
 
 private:
-    static QString labelFontElided(const QString &label,const QFont &font,int width)
+    static QWidget *findPanel(QWidget *parent)
     {
-        return QFontMetrics(font).elidedText(label,Qt::ElideRight,width);
+        if(!parent)return nullptr;
+        for(auto *panel:parent->window()->findChildren<QWidget*>(QStringLiteral("mobileToolBrowser")))
+            if(panel->isVisible())return panel;
+        return nullptr;
     }
 
     struct ToolTile { const char *id; QString label; };
@@ -376,6 +366,11 @@ private:
     struct Tile {
         QString tool,label,description,icon;
         QPointer<QAction> action;
+        QString actionId;
+        QString favoriteId() const {
+            return tool.isEmpty()?QStringLiteral("action/")+actionId:
+                                  QStringLiteral("tool/")+tool;
+        }
     };
     struct Group { QString label; QVector<Tile> tiles; };
 
@@ -384,7 +379,7 @@ private:
         QIcon native=tile.action?tile.action->icon():QIcon();
         if(native.isNull() && !tile.icon.isEmpty())
             native=KisIconUtils::loadIcon(tile.icon);
-        QPixmap icon=native.pixmap(QSize(26,26));
+        QPixmap icon=native.pixmap(QSize(21,21));
         if(icon.isNull())return {};
         QPainter tint(&icon);
         tint.setCompositionMode(QPainter::CompositionMode_SourceIn);

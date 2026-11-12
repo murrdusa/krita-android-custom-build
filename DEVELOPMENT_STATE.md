@@ -4,6 +4,10 @@
 
 Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1). This file records *current* status, not a commit-by-commit log. The preceding complete log is preserved verbatim in [DEVELOPMENT_HISTORY_2026-11-11.md](DEVELOPMENT_HISTORY_2026-11-11.md). More focused runbooks live under `mobile_core/`.
 
+## Compact Tools picker
+
+Tools is a nonmodal canvas panel. A press on the canvas or another control dismisses it and continues to the original target. The picker displays all of its tool and command groups in one scroll area. Each tile can be starred independently of activating it, and favorites are saved by native ID and pinned above the groups. Advanced Tool Options remains available from the contextual gear and its existing toolbar command. Back or Escape also dismisses the panel.
+
 ## Native multi-document workspace and regression coverage (November 12)
 
 Independent Studio now supports multiple real Krita documents in one native view stack. The runtime's single-document guard was removed in `f1421d0`, and the **document service** was updated in `9d7c50f` so New/Open **does not close prior canvases** and reopening a project already open in an inactive tab activates the existing view, preserving its unsaved edits (including equivalent Android document URIs). Both revisions passed the user's WSL Android compilation; neither was device-tested. The native view stack refuses duplicate document ownership, and its destruction observer clears closed views. Provider document names now display in the canvas switcher (`d4190eb`, pending verification at handoff).
