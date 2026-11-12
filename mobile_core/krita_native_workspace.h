@@ -212,8 +212,10 @@ public:
         if(!m_host || !m_engine.hasDocument())return;
         if(!ensureBrushControls())return;
         if(!m_brush->isActiveMode(slot)) {
+            m_brush->dismissPresetBrowser();
             m_brush->activateMode(slot);
             syncBrushModes();
+            return;
         }
         const auto view=MobileViewIdentityGuard::uniqueActive(m_engine.openDocuments());
         QTimer::singleShot(0,this,[this,slot,view]() {

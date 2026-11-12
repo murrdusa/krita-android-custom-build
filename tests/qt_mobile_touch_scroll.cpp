@@ -101,6 +101,23 @@ static void checkView(QListView &view,int &clicks)
 
     mouseTap(viewport,tile,Qt::MouseEventNotSynthesized);
     verify(clicks==before+2,"mouse tap after a raw swipe did not activate");
+    int holds=0;
+    MobileTouchScroll::configureList(&view,[&](const QModelIndex &index) {
+        verify(index==view.indexAt(tile),"held a different item");
+        ++holds;
+    });
+    QTest::qWait(210);
+    pointer(viewport,QEvent::MouseButtonPress,tile);
+    QTest::qWait(550);
+    pointer(viewport,QEvent::MouseButtonRelease,tile);
+    verify(holds==1 && clicks==before+2,"mouse hold did not suppress click");
+
+    const auto mapped=viewport->mapTo(&view,tile);
+    QTest::touchEvent(view.windowHandle(),device).press(0,mapped,view.windowHandle());
+    QTest::qWait(550);
+    QTest::touchEvent(view.windowHandle(),device).release(0,mapped,view.windowHandle());
+    mouseTap(viewport,tile,Qt::MouseEventSynthesizedBySystem);
+    verify(holds==2 && clicks==before+2,"touch hold or synthesized release activated item");
 }
 
 int main(int argc,char **argv)

@@ -48,6 +48,26 @@ def redirect_android_engine_method(source:str, return_type:str, name:str, androi
 
 
 def install_phone_brush_editor(root: Path):
+    resource_dir = root / "libs/resources"
+    protection = Path(__file__).resolve().parent / "mobile_core/factory_brush_preset.h"
+    (resource_dir / protection.name).write_text(protection.read_text(encoding="utf-8"), encoding="utf-8")
+    resource_model = resource_dir / "KisResourceModel.cpp"
+    resource_source = resource_model.read_text(encoding="utf-8")
+    resource_source = one(resource_source, '#include "KisResourceModel.h"',
+                          '#include "KisResourceModel.h"\n#ifdef Q_OS_ANDROID\n#include "factory_brush_preset.h"\n#endif',
+                          "factory brush protection include")
+    for signature, guard in [
+        ("bool KisAllResourcesModel::setResourceActive(const QModelIndex &index, bool value)",
+         "if (!value && index.isValid() && !MobileFactoryBrushPreset::sourcePath(resourceForIndex(index)).isEmpty()) return false;"),
+        ("bool KisAllResourcesModel::renameResource(KoResourceSP resource, const QString &name)",
+         "if (!MobileFactoryBrushPreset::sourcePath(resource).isEmpty()) return false;"),
+    ]:
+        anchor = signature + "\n{\n"
+        resource_source = one(resource_source, anchor,
+                              anchor + "#ifdef Q_OS_ANDROID\n    " + guard + "\n#endif\n",
+                              "protect factory brush preset")
+    resource_model.write_text(resource_source, encoding="utf-8")
+
     paintop_box = root / "libs/ui/kis_paintop_box.cc"
     source = paintop_box.read_text(encoding="utf-8")
     source = one(source, "    m_presetsEditor = new KisPaintOpPresetsEditor(",

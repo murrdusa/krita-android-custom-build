@@ -15,6 +15,7 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QVBoxLayout>
+#include <functional>
 #include <QScroller>
 #include <QTimer>
 #include <QTouchEvent>
@@ -129,7 +130,20 @@ public:
     {
         setObjectName(QStringLiteral("_mobileItemViewPointer"));
         m_clock.start();
+        m_holdTimer.setSingleShot(true);
+        connect(&m_holdTimer,&QTimer::timeout,this,[this]() {
+            if(!m_holdIndex.isValid() || m_holdIndex!=m_view->indexAt(m_last))return;
+            m_held=true;
+            if(m_input==Mouse)cancelNativePress();
+            m_holdAction(m_holdIndex);
+        });
         m_viewport->installEventFilter(this);
+    }
+
+    void setHoldAction(std::function<void(const QModelIndex &)> action)
+    {
+        m_holdTimer.stop();
+        m_holdAction=std::move(action);
     }
 
 protected:
@@ -148,16 +162,18 @@ protected:
         case QEvent::MouseButtonRelease:
             return mouse(static_cast<QMouseEvent*>(event));
         case QEvent::Hide:
+            m_holdTimer.stop();
             if(m_input==Touch) {
                 m_input=None;
                 m_scroller->stop();
             }
             Q_FALLTHROUGH();
         case QEvent::UngrabMouse:
+            m_holdTimer.stop();
             if(m_input==Mouse) {
                 m_input=None;
                 m_scroller->stop();
-                if(!m_dragging && !m_stopTap)cancelNativePress();
+                if(!m_dragging && !m_stopTap && !m_held)cancelNativePress();
             }
             return false;
         default:
@@ -177,16 +193,23 @@ private:
         m_cancelled=false;
         m_stopTap=m_scroller->state()==QScroller::Scrolling;
         if(m_stopTap)m_scroller->stop();
+        m_held=false;
+        m_holdTimer.stop();
+        if(m_holdAction && !m_stopTap) {
+            m_holdIndex=m_view->indexAt(pos);
+            if(m_holdIndex.isValid())m_holdTimer.start(480);
+        }
     }
 
     void move(const QPoint &pos)
     {
-        if(pos==m_last)return;
+        if(m_held || pos==m_last)return;
         m_last=pos;
         const qint64 now=m_clock.elapsed()+1;
         if(!m_dragging) {
             if((pos-m_start).manhattanLength()<QApplication::startDragDistance())return;
             m_dragging=true;
+            m_holdTimer.stop();
             if(m_input==Mouse && !m_stopTap)cancelNativePress();
             m_scroller->handleInput(QScroller::InputPress,m_start,m_pressedAt);
         }
@@ -195,11 +218,12 @@ private:
 
     bool finish(const QPoint &pos)
     {
+        m_holdTimer.stop();
         if(!m_cancelled)move(pos);
         if(m_dragging)
             m_scroller->handleInput(QScroller::InputRelease,pos,m_clock.elapsed()+1);
         m_input=None;
-        return !m_dragging && !m_cancelled && !m_stopTap;
+        return !m_dragging && !m_cancelled && !m_stopTap && !m_held;
     }
 
     void sendMouse(QEvent::Type type,const QPoint &pos)
@@ -224,6 +248,7 @@ private:
     {
         event->accept(); // Qt must not generate a second mouse tap for this stream.
         if(event->type()==QEvent::TouchCancel) {
+            m_holdTimer.stop();
             if(m_input==Touch) {
                 m_lastTouchEnd=m_clock.elapsed();
                 m_lastTouchStart=m_start;
@@ -241,7 +266,7 @@ private:
         const QPoint pos=points.isEmpty()?m_last:points.first().pos().toPoint();
 #endif
         if(event->type()==QEvent::TouchBegin) {
-            const bool cancelMouse=m_input==Mouse && !m_dragging && !m_stopTap;
+            const bool cancelMouse=m_input==Mouse && !m_dragging && !m_stopTap && !m_held;
             begin(Touch,pos);
             if(cancelMouse)cancelNativePress();
             m_touchIndex=m_view->indexAt(pos);
@@ -251,6 +276,7 @@ private:
         const bool ending=event->type()==QEvent::TouchEnd;
         if(points.size()!=1 && !(ending && points.isEmpty()) && !m_cancelled) {
             m_cancelled=true;
+            m_holdTimer.stop();
             m_scroller->stop();
         }
         if(ending) {
@@ -300,7 +326,7 @@ private:
         if(type==QEvent::MouseMove) {
             if(!(event->buttons() & Qt::LeftButton))return false;
             move(pos);
-            return m_dragging || m_stopTap;
+            return m_dragging || m_stopTap || m_held;
         }
         return !finish(pos);
     }
@@ -316,6 +342,10 @@ private:
     qint64 m_pressedAt=0,m_lastTouchEnd=-200;
     bool m_dragging=false,m_cancelled=false,m_stopTap=false,m_ignoreMouse=false;
     bool m_touchOnItem=false;
+    QTimer m_holdTimer;
+    QPersistentModelIndex m_holdIndex;
+    std::function<void(const QModelIndex &)> m_holdAction;
+    bool m_held=false;
 };
 
 inline void configure(QAbstractScrollArea *area)
@@ -336,11 +366,17 @@ inline void configure(QAbstractScrollArea *area)
     }
 }
 
-inline void configureList(QAbstractItemView *view)
+inline void configureList(QAbstractItemView *view,
+                          std::function<void(const QModelIndex &)> hold={})
 {
     view->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     view->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
     configure(view);
+    if(hold) {
+        auto *filter=view->viewport()->findChild<QObject*>(
+            QStringLiteral("_mobileItemViewPointer"),Qt::FindDirectChildrenOnly);
+        static_cast<ItemViewPointer*>(filter)->setHoldAction(std::move(hold));
+    }
 }
 
 }

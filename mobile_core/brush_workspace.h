@@ -8,12 +8,20 @@
 #include <QHBoxLayout>
 #include <QHash>
 #include <QLabel>
+#include <QFile>
+#include <QInputDialog>
+#include <QMessageBox>
 #include <QLineEdit>
 #include <QListView>
 #include <QTreeWidget>
 #include <QListWidget>
 #include <QUuid>
 #include "transient_panel.h"
+#include "touch_action_picker.h"
+#include <factory_brush_preset.h>
+#include <KoResourceBundle.h>
+#include <KisGlobalResourcesInterface.h>
+#include <KisResourceUserOperations.h>
 #include <QSortFilterProxyModel>
 #include <QPointer>
 #include <QPalette>
@@ -247,13 +255,13 @@ public:
 
     bool isActiveMode(int slot) const
     {
-        if(!m_hasSelectedMode || m_slot!=slot ||
-           m_engine.activeTool().section(QLatin1Char('/'),-1)!=
-               QStringLiteral("KisToolBrush"))
+        if(m_engine.activeTool().section(QLatin1Char('/'),-1)!=QStringLiteral("KisToolBrush"))
             return false;
         const QAction *eraser=m_engine.action("erase_action");
-        if(eraser && eraser->isChecked()!=(slot==1))return false;
-        return slot!=2 || (resources() && capabilities(resources()->currentPreset()).blend);
+        if(eraser && eraser->isChecked())return slot==1;
+        if(slot==1)return false;
+        const bool blending=resources() && capabilities(resources()->currentPreset()).blend;
+        return slot==(blending?2:0);
     }
 
     bool activateCloneBrush()
@@ -854,6 +862,138 @@ private:
         refresh();
     }
 
+    bool savePresetCopy(const KisPaintOpPresetSP &copy,const QString &name)
+    {
+        copy->setResourceId(-1);
+        copy->setVersion(-1);
+        copy->setMD5Sum(QString());
+        copy->setFilename(QStringLiteral("studio-brush-")+
+                          QUuid::createUuid().toString(QUuid::WithoutBraces)+QStringLiteral(".kpp"));
+        copy->setName(name);
+        return model()->addResourceDeduplicateFileName(copy);
+    }
+
+    bool revertPreset(const KisPaintOpPresetSP &preset,const QString &factorySource)
+    {
+        if(factorySource.isEmpty())return model()->reloadResource(preset);
+
+        const QString filename=MobileFactoryBrushPreset::originalFilename(preset);
+        auto original=KisPaintOpPresetSP::create(filename);
+        if(factorySource.endsWith(QStringLiteral(".bundle"),Qt::CaseInsensitive)) {
+            KoResourceBundle bundle(factorySource);
+            if(!bundle.loadResource(original))return false;
+        } else {
+            QFile file(factorySource);
+            if(!file.open(QIODevice::ReadOnly) ||
+               !original->loadFromDevice(&file,KisGlobalResourcesInterface::instance()))return false;
+        }
+        if(!original->valid())return false;
+
+        preset->setSettings(original->settings());
+        preset->setImage(original->image());
+        preset->setName(original->name());
+        return model()->updateResource(preset);
+    }
+
+    static void renamePersonalEntries(const QString &oldName,const QString &newName)
+    {
+        QSettings settings;
+        QStringList keys={QStringLiteral("MobileStudio/brushFavorites")};
+        for(int slot=0;slot<3;++slot) {
+            const QString key=QStringLiteral("MobilePilot/brushSlot%1").arg(slot);
+            if(settings.value(key).toString()==oldName) {
+                if(newName.isEmpty()) {
+                    settings.remove(key);
+                    settings.remove(key+QStringLiteral("ResourceId"));
+                } else settings.setValue(key,newName);
+            }
+            keys.append(QStringLiteral("MobileStudio/brushRecent%1").arg(slot));
+        }
+        for(const auto &key:keys) {
+            auto names=settings.value(key).toStringList();
+            if(!names.contains(oldName))continue;
+            if(newName.isEmpty())names.removeAll(oldName);
+            else for(auto &name:names) {
+                if(name==oldName)name=newName;
+            }
+            names.removeDuplicates();
+            settings.setValue(key,names);
+        }
+    }
+
+    void showPresetActions(MobileTransientPanel *drawer,const KisPaintOpPresetSP &preset,
+                           std::function<void()> refreshList)
+    {
+        if(!preset || preset->resourceId()<0)return;
+        enum Operation { Duplicate, Revert, Rename, Remove };
+        const int id=preset->resourceId();
+        const QString factory=MobileFactoryBrushPreset::sourcePath(preset);
+        const QString title=displayPresetName(preset->name());
+        QMenu menu(title);
+        menu.addAction(i18n("Duplicate brush"))->setData(Duplicate);
+        menu.addAction(factory.isEmpty()?i18n("Revert to saved preset"):
+                                        i18n("Restore factory preset"))->setData(Revert);
+        if(factory.isEmpty()) {
+            menu.addAction(i18n("Rename brush…"))->setData(Rename);
+            menu.addAction(i18n("Delete brush…"))->setData(Remove);
+        }
+        const QPointer<MobileTransientPanel> alive=drawer;
+        mobileShowActionList(drawer,nullptr,menu,this,[this,alive,id,title,refreshList](const QVariant &value) {
+            if(!alive || !alive->isVisible())return;
+            auto *source=model();
+            auto preset=source->resourceForId(id).dynamicCast<KisPaintOpPreset>();
+            if(!preset)return;
+            const QString factory=MobileFactoryBrushPreset::sourcePath(preset);
+            const QString oldName=preset->name();
+            bool success=false;
+            switch(value.toInt()) {
+            case Duplicate: {
+                bool accepted=false;
+                const auto name=QInputDialog::getText(parentWidget(),i18n("Duplicate brush"),i18n("Name"),
+                    QLineEdit::Normal,i18n("%1 Copy",title),&accepted).trimmed();
+                if(!accepted || name.isEmpty())return;
+                const auto copy=preset->clone().dynamicCast<KisPaintOpPreset>();
+                success=copy && savePresetCopy(copy,name);
+                break;
+            }
+            case Revert:
+                if(!factory.isEmpty() && QMessageBox::question(parentWidget(),i18n("Restore factory preset"),
+                    i18n("Restore the original settings for “%1”?",title))!=QMessageBox::Yes)return;
+                success=revertPreset(preset,factory);
+                if(success && oldName!=preset->name())renamePersonalEntries(oldName,preset->name());
+                break;
+            case Rename: {
+                if(!factory.isEmpty())return;
+                bool accepted=false;
+                const auto name=QInputDialog::getText(parentWidget(),i18n("Rename brush"),i18n("Name"),
+                    QLineEdit::Normal,oldName,&accepted).trimmed();
+                if(!accepted || name.isEmpty() || name==oldName)return;
+                success=KisResourceUserOperations::renameResourceWithUserInput(parentWidget(),preset,name);
+                if(success)renamePersonalEntries(oldName,name);
+                break;
+            }
+            case Remove: {
+                if(!factory.isEmpty() || QMessageBox::question(parentWidget(),i18n("Delete brush"),
+                    i18n("Remove “%1” from your presets?",title))!=QMessageBox::Yes)return;
+                const auto index=source->indexForResourceId(id);
+                if(!index.isValid())return;
+                success=source->setResourceActive(index,false);
+                if(success) {
+                    renamePersonalEntries(oldName,{});
+                    if(resources() && resources()->currentPreset() &&
+                       resources()->currentPreset()->resourceId()==id) {
+                        if(auto fallback=firstPresetFor(m_slot))usePreset(m_slot,fallback);
+                    }
+                }
+                break;
+            }
+            }
+            if(!success)QMessageBox::warning(parentWidget(),i18n("Brush presets"),i18n("Could not update “%1”.",title));
+            if(alive && alive->isVisible())refreshList();
+            refresh();
+        });
+    }
+
     KisPaintOpPresetSP makeBlender(const KisPaintOpPresetSP &source)
     {
         if(!capabilities(source).convertible)return {};
@@ -889,14 +1029,9 @@ private:
         settings->setProperty(QStringLiteral("SmudgeRateValue"),
                               qMax(0.35,settings->getDouble(QStringLiteral("SmudgeRateValue"),0.5)));
         preset->setSettings(settings);
-        preset->setResourceId(-1);
-        preset->setVersion(-1);
-        preset->setMD5Sum(QString());
-        const QString id=QUuid::createUuid().toString(QUuid::WithoutBraces);
-        preset->setFilename(QStringLiteral("studio-blender-")+id+QStringLiteral(".kpp"));
-        preset->setName(i18n("%1 Blender",displayPresetName(source->name())));
         preset->setImage(source->image());
-        return model()->addResourceDeduplicateFileName(preset)?preset:KisPaintOpPresetSP();
+        return savePresetCopy(preset,i18n("%1 Blender",displayPresetName(source->name())))?
+            preset:KisPaintOpPresetSP();
     }
 
     void openPresetBrowser(int slot,QAction *action=nullptr,QWidget *opener=nullptr)
@@ -953,7 +1088,7 @@ private:
         family(i18n("Watercolor"),14);
         family(i18n("Airbrush"),15);
         family(i18n("Texture"),12);
-        const int defaultCategory=slot==1?3:2;
+        const int defaultCategory=2;
         categories->setCurrentRow(defaultCategory);
 
         auto *body=new QVBoxLayout;
@@ -970,35 +1105,12 @@ private:
         list->setAccessibleName(i18n("Brush presets"));
         list->setUniformItemSizes(true);
         list->setEditTriggers(QAbstractItemView::NoEditTriggers);
-        MobileTouchScroll::configureList(list);
         body->addWidget(list,1);
         auto *empty=new QLabel(i18n("No matching brushes"),panel);
         empty->setAlignment(Qt::AlignCenter);
         empty->setWordWrap(true);
         empty->hide();
         body->addWidget(empty,1);
-
-        auto *quick=new QWidget(panel);
-        auto *adjusters=new QVBoxLayout(quick);
-        adjusters->setContentsMargins(0,0,0,0);
-        adjusters->setSpacing(2);
-        auto *size=new KisDoubleSliderSpinBox(quick);
-        auto *opacity=new KisDoubleSliderSpinBox(quick);
-        auto *flow=new KisDoubleSliderSpinBox(quick);
-        size->setRange(0.01,KisImageConfig(true).maxBrushSize(),2);
-        size->setExponentRatio(3.0);
-        size->setPrefix(i18n("Size: "));
-        opacity->setRange(0,100,0);
-        opacity->setPrefix(i18n("Opacity: "));
-        flow->setRange(0,100,0);
-        flow->setPrefix(i18n("Flow: "));
-        for(auto *control:{size,opacity,flow}) {
-            control->setButtonSymbols(QAbstractSpinBox::NoButtons);
-            control->setMinimumHeight(38);
-            adjusters->addWidget(control);
-        }
-        body->addWidget(quick);
-        quick->hide();
 
         auto *conversion=new QToolButton(panel);
         conversion->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
@@ -1030,8 +1142,7 @@ private:
             });
         });
         list->setItemDelegate(delegate);
-        const auto clearExtras=[quick,conversion,candidate]() {
-            quick->hide();
+        const auto clearExtras=[conversion,candidate]() {
             conversion->hide();
             candidate->clear();
         };
@@ -1057,18 +1168,14 @@ private:
             list->scrollToTop();
             updateSelected();
         });
-        connect(size,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),this,[this,valid](qreal value) {
-            if(valid())resources()->setSize(value);
-        });
-        connect(opacity,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),this,[this,valid](qreal value) {
-            if(valid())resources()->setOpacity(value/100.0);
-        });
-        connect(flow,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),this,[this,valid](qreal value) {
+        MobileTouchScroll::configureList(list,[this,valid,panel,source,filter,updateSelected](const QModelIndex &index) {
             if(!valid())return;
-            const auto preset=resources()->currentPreset();
-            if(!supportsFlow(preset))return;
-            preset->settings()->setPaintOpFlow(value/100.0);
-            resources()->setFlow(value/100.0);
+            const auto selected=filter->mapToSource(index);
+            const auto preset=source->resourceForIndex(selected).dynamicCast<KisPaintOpPreset>();
+            showPresetActions(panel,preset,[filter,updateSelected]() {
+                filter->reloadPersonalLists();
+                updateSelected();
+            });
         });
         connect(list,&QListView::clicked,this,[=](const QModelIndex &index) {
             if(!valid() || list->property("_mobileFavoriteTap").toBool())return;
@@ -1079,7 +1186,6 @@ private:
             const auto available=capabilities(preset);
             if(!available.supports(slot))return;
             if(slot==2 && !available.blend) {
-                quick->hide();
                 *candidate=preset;
                 conversion->setText(i18n("Create blender from %1",displayPresetName(preset->name())));
                 conversion->show();
@@ -1090,12 +1196,7 @@ private:
                 (current==preset || (preset->resourceId()>=0 &&
                                      current->resourceId()==preset->resourceId()));
             if(already) {
-                const QSignalBlocker sizeBlock(size),opacityBlock(opacity),flowBlock(flow);
-                size->setValue(resources()->size());
-                opacity->setValue(resources()->opacity()*100.0);
-                flow->setValue(resources()->flow()*100.0);
-                flow->setVisible(supportsFlow(preset));
-                quick->setVisible(!quick->isVisible());
+                panel->close();
                 return;
             }
             clearExtras();
@@ -1123,6 +1224,7 @@ private:
         panel->onRefresh=fit;
         panel->anchorTo(nullptr,QSize(510,650));
         panel->present();
+        categories->scrollToTop();
         fit();
         updateSelected();
         updateList();
