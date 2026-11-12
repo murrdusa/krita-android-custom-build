@@ -980,6 +980,9 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
     (root/"libs/ui/mobile_draft_recovery.h").write_text(
         (own/"mobile_core/mobile_draft_recovery.h").read_text(encoding="utf-8"),
         encoding="utf-8")
+    (root/"libs/ui/native_layer_identity.h").write_text(
+        (own/"mobile_core/native_layer_identity.h").read_text(encoding="utf-8"),
+        encoding="utf-8")
     (root/"libs/ui/engine_bridge.h").write_text(
         bridge.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/document_service.h").write_text(

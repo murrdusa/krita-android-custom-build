@@ -1252,10 +1252,7 @@ private:
 
     static bool inImage(KisNodeSP node,const KisImageSP &image)
     {
-        if(!node || !image || !image->root())return false;
-        for(KisNodeSP ancestor=node;ancestor;ancestor=ancestor->parent())
-            if(ancestor==image->root())return true;
-        return false;
+        return image && MobileLayerIdentity::inTree(node,image->root());
     }
 
     static KisNodeSP logicalParent(KisNodeSP node)
@@ -1586,8 +1583,8 @@ private:
         // Plain layer moves do not need the asynchronous clip wrapper
         // teardown/rebuild. Use the same native undoable image stroke
         // as Up/Down, only regroup when a clipping run is involved.
-        const bool transparencyMask=source->inherits("KisTransparencyMask");
-        if(transparencyMask || (!hasCompactClipStructure(oldParent) &&
+        const bool mask=source->inherits("KisMask");
+        if(mask || (!hasCompactClipStructure(oldParent) &&
            !hasCompactClipStructure(destination) && !inheritsAlpha(source))) {
             KisNodeSP below=intoGroup?destination->lastChild():
                 (insertAbove?target:target->prevSibling());
@@ -1613,7 +1610,11 @@ private:
                !destination->allowAsChild(source))return;
             KisNodeSP below=intoGroup?destination->lastChild():
                 (insertAbove?target:target->prevSibling());
-            if(below==source && source->parent()==destination)return;
+            for(KisNodeSP parent=destination;parent;parent=parent->parent())
+                if(parent==source)return;
+            if((below && below->parent()!=destination) ||
+               (source->parent()==destination &&
+                (below==source || below==source->prevSibling())))return;
             m_clipMoveSource=source;
             m_clipExpectedParent=destination;
             m_clipExpectedBelow=below;
@@ -1707,7 +1708,7 @@ private:
     {
         const bool center=qAbs(along(point)-along(rect.center()))<
             (m_horizontalRail?rect.width():rect.height())/4;
-        if(source->inherits("KisTransparencyMask"))
+        if(source->inherits("KisMask"))
             return center && target->inherits("KisLayer") && target->allowAsChild(source);
         return target->inherits("KisGroupLayer") &&
             ((m_horizontalRail?point.y()>rect.bottom()-20:point.x()>rect.right()-20) ||

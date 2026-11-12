@@ -22,6 +22,7 @@
 #include "kis_canvas_resource_provider.h"
 #include "kis_node_manager.h"
 #include "kis_node.h"
+#include "native_layer_identity.h"
 
 class MobileEngineBridge final {
 public:
@@ -109,8 +110,12 @@ public:
     }
     bool selectLayer(KisNodeSP node) const {
         if(!node || !m_manager || !m_manager->nodeManager())return false;
+        const KisImageSP image=m_manager->image().toStrongRef();
+        if(!image || node==image->root() || !MobileLayerIdentity::inTree(node,image->root()))
+            return false;
         auto *nodes=m_manager->nodeManager();
         nodes->slotUiActivatedNode(node);
+        if(nodes->activeNode()!=node)return false;
         nodes->slotSetSelectedNodes(KisNodeList{node});
         return true;
     }
@@ -118,43 +123,29 @@ public:
     QVector<MobileTool> tools() const { return m_commands.tools(); }
     QString activeTool() const { return m_commands.activeTool(); }
     bool selectTool(const QString &id) const {
-        // Krita's Transform tool snapshots the native selected-node
-        // list *when it activates*. The global canvas selection is
-        // internally a root-level KisSelectionMask; if it slipped into
-        // that list while making a marquee, the transform could
-        // incorrectly report "Cannot transform empty layer" even
-        // though the visibly selected paint layer contains content.
-        //
-        // Normalize before activating Transform, not while its image
-        // stroke is running. Preserve intentional multi-layer targets.
-        const QString toolFamily=id.section(QLatin1Char('/'),-1);
-        if(m_manager && (toolFamily==QStringLiteral("KisToolTransform") ||
-                         toolFamily==QStringLiteral("KisToolMove"))) {
-            auto *nodes=m_manager->nodeManager();
-            const KisImageSP image=m_manager->image().toStrongRef();
-            if(nodes && image && image->root()) {
-                const auto belongsToImage=[&image](KisNodeSP node) {
-                    for(KisNodeSP p=node;p;p=p->parent())
-                        if(p==image->root())return true;
-                    return false;
-                };
-                const KisNodeList existing=nodes->selectedNodes();
-                KisNodeList targets;
-                for(const KisNodeSP &node:existing) {
-                    if(belongsToImage(node) &&
-                       !KisNodeManager::isNodeHidden(node,true) &&
-                       !targets.contains(node))
-                        targets.append(node);
-                }
-                const KisNodeSP active=m_manager->activeNode();
-                if(belongsToImage(active) &&
-                   !KisNodeManager::isNodeHidden(active,true) &&
-                   targets.size()<=1) {
-                    targets=KisNodeList{active};
-                }
-                if(!targets.isEmpty() && targets!=existing)
-                    nodes->slotSetSelectedNodes(targets);
+        const QString family=id.section(QLatin1Char('/'),-1);
+        const bool transform=family==QStringLiteral("KisToolTransform");
+        if(id!=activeTool() && (transform || family==QStringLiteral("KisToolMove"))) {
+            auto *nodes=m_manager?m_manager->nodeManager():nullptr;
+            const KisImageSP image=m_manager?m_manager->image().toStrongRef():KisImageSP();
+            if(!nodes || !image || !image->root())return false;
+            const KisNodeList existing=nodes->selectedNodes();
+            const KisNodeSP active=m_manager->activeNode();
+            const auto internal=[](const KisNodeSP &node) {
+                return KisNodeManager::isNodeHidden(node,true);
+            };
+            const bool editingSelection=transform && active && internal(active) &&
+                !KisNodeManager::isNodeHidden(active,false);
+            const auto targets=MobileLayerIdentity::transformTargets(
+                image->root(),existing,active,internal,editingSelection);
+            // Native Transform captures both the current node and the
+            // selected targets when it starts a stroke.
+            if(targets.isEmpty())return false;
+            if(!targets.contains(active)) {
+                nodes->slotUiActivatedNode(targets.first());
+                if(nodes->activeNode()!=targets.first())return false;
             }
+            if(nodes->selectedNodes()!=targets)nodes->slotSetSelectedNodes(targets);
         }
         return m_commands.selectTool(id);
     }
