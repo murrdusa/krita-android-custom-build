@@ -98,6 +98,8 @@ public:
         auto *exportAction=makeAction("Export Copy…");
         auto *versionsAction=makeAction("Saved versions…");
         auto *closeAction=makeAction("Close view");
+        auto *previousCanvasAction=makeAction("Previous Canvas");
+        auto *nextCanvasAction=makeAction("Next Canvas");
         auto *brushesAction=makeAction("Paint");
         auto *eraserAction=makeAction("Erase");
         auto *blendBrushAction=makeAction("Blend");
@@ -377,6 +379,26 @@ public:
             }
         });
         documentMenu->addMenu(openCanvases);
+        // Native next/previous navigation is also available through
+        // customizable Quick Actions. Resolve positions on each invocation
+        // rather than keeping stale indices across tab closures.
+        auto cycleCanvas=[views=services.views](int step) {
+            if(!views)return;
+            const auto open=views->openViews();
+            if(open.size()<2)return;
+            for(int i=0;i<open.size();++i) {
+                if(!open.at(i).active)continue;
+                const int next=(i+step+open.size())%open.size();
+                const auto identity=open.at(next).nativeView;
+                if(identity)views->activateView(identity);
+                return;
+            }
+        };
+        QObject::connect(previousCanvasAction,&QAction::triggered,window,
+                         [cycleCanvas]() {cycleCanvas(-1);});
+        QObject::connect(nextCanvasAction,&QAction::triggered,window,
+                         [cycleCanvas]() {cycleCanvas(1);});
+        documentMenu->addActions({previousCanvasAction,nextCanvasAction});
         documentMenu->addSeparator();
         documentMenu->addAction(closeAction);
         QList<QAction*> moreActions{
@@ -407,6 +429,7 @@ public:
             {"tool-settings",optionsAction},{"color",colorAction},{"layers",layersAction},
             {"tools",toolsAction},{"undo",undoAction},{"redo",redoAction},{"save",saveAction},
             {"new",newAction},{"open",openAction},
+            {"previous-canvas",previousCanvasAction},{"next-canvas",nextCanvasAction},
             {"save-as",saveAsAction},{"export",exportAction},{"versions",versionsAction},
             {"close",closeAction},{"canvas-only",canvasOnlyAction},
             {"clone-source",cloneSourceAction},{"input-settings",inputAction},
