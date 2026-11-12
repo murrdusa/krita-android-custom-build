@@ -177,6 +177,42 @@ int main(int argc,char **argv)
     if(!require(recoveredImported,
                 "migrated draft preserves original bytes"))return 1;
 
+    // A migrated history can collide with a filename already present
+    // in the target archive. Both original KRA/checksum pairs must survive
+    // with independent, verified recovery copies.
+    const QString collisionDraft=temp.filePath(QStringLiteral("CollisionDraft.kra"));
+    const QByteArray collisionBytes=QByteArray::fromHex("504b0304")+
+        QByteArray("incoming collision content");
+    if(!require(writeBytes(collisionDraft,collisionBytes) &&
+                Archive::snapshot(collisionDraft,root),
+                "create colliding draft"))return 1;
+    const auto incoming=Archive::list(collisionDraft,root);
+    if(!require(incoming.size()==1,"incoming collision snapshot"))return 1;
+    const auto namedBeforeCollision=Archive::list(saved,root);
+    const QString duplicateName=QDir(Archive::folderFor(saved,root)).filePath(
+        QFileInfo(incoming.first().path).fileName());
+    if(!require(QFile::copy(namedBeforeCollision.first().path,duplicateName) &&
+                QFile::copy(namedBeforeCollision.first().path+
+                            QStringLiteral(".sha256"),
+                            duplicateName+QStringLiteral(".sha256")),
+                "prepare colliding destination archive"))return 1;
+    Archive::adoptHistory(collisionDraft,saved,root);
+    const auto afterCollision=Archive::list(saved,root);
+    if(!require(afterCollision.size()==namedBeforeCollision.size()+2,
+                "both collided archive entries retained"))return 1;
+    bool recoveredCollision=false;
+    for(const auto &version:afterCollision) {
+        const QString path=Archive::materializeRecovery(
+            version,temp.filePath(QStringLiteral("recovery")));
+        if(!require(!path.isEmpty(),"collided history integrity"))return 1;
+        QFile file(path);
+        if(!require(file.open(QIODevice::ReadOnly),
+                    "read collided recovery"))return 1;
+        if(file.readAll()==collisionBytes)recoveredCollision=true;
+    }
+    if(!require(recoveredCollision,"incoming collision archive recoverable"))
+        return 1;
+
     // The archive directory can contain unrelated symlinks. Never expose
     // them as recoverable snapshots to the project browser.
     const QString folder=Archive::folderFor(spaced,root);
@@ -204,6 +240,6 @@ int main(int argc,char **argv)
 
     qInfo() << "PASS: archive deduplication, recovery integrity, checksum repair,"
                " corruption handling, periodic spacing, forced checkpoints,"
-               " retention, merged draft history, symlinks and Android identities";
+               " retention, merged and collided histories, symlinks and Android identities";
     return 0;
 }
