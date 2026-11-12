@@ -49,15 +49,18 @@
 class MobileContextToolBar final : public QFrame
 {
 public:
-    explicit MobileContextToolBar(QWidget *parent,QAction *options) : QFrame(parent)
+    explicit MobileContextToolBar(QWidget *parent) : QFrame(parent)
     {
         setObjectName(QStringLiteral("mobileContextToolBar"));
         setStyleSheet(QStringLiteral(
-            "QFrame#mobileContextToolBar{background:rgba(26,29,34,175);"
-            "border:1px solid #48484e;border-radius:10px;}"
+            "QFrame#mobileContextToolBar{background:rgba(26,29,34,210);"
+            "border:0;border-radius:12px;}"
             "QWidget#mobileContextControls,QScrollArea{background:transparent;border:0;}"
-            "QToolButton{color:#f4f4f5;background:#34343a;border:0;"
-            "border-radius:6px;padding:0 5px;}"
+            "QToolButton{color:#dadce5;background:#303137;border:0;"
+            "font-size:11px;border-radius:8px;padding:0 3px;}"
+            "QToolButton#mobileContextCancel{color:#f18c97;background:#4c292f;}"
+            "QToolButton#mobileContextDone{color:#182232;background:#8da7d9;}"
+            "QToolButton#mobileContextDone:disabled{color:#667080;background:#4d5667;}"
             "QToolButton:checked,QToolButton:pressed{background:#536278;}"
             "QToolButton:disabled{color:#98989f;background:#2c2c31;}"
             "QScrollBar:horizontal{height:5px;background:#252529;}"
@@ -67,25 +70,23 @@ public:
         layout->setContentsMargins(2,2,2,2);
         layout->setSpacing(2);
         m_tool=new QToolButton(this);
-        m_tool->setFixedHeight(44);
+        m_tool->setFixedHeight(38);
         m_tool->setToolTip(QObject::tr("Choose a tool"));
         connect(m_tool,&QToolButton::clicked,this,[this]() {
             if(chooseTool)chooseTool();
         });
         layout->addWidget(m_tool);
         m_scroll=new QScrollArea(this);
+        m_scroll->setFrameShape(QFrame::NoFrame);
         m_scroll->setWidgetResizable(true);
         m_scroll->setMinimumWidth(0);
+        m_scroll->setFixedHeight(38);
+        // A single compact row may pan horizontally, never vertically.
+        // In particular, ignore touch drag attempts in the cross axis.
+        m_scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        m_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         MobileTouchScroll::configure(m_scroll);
         layout->addWidget(m_scroll,1);
-        auto *gear=new QToolButton(this);
-        gear->setDefaultAction(options);
-        gear->setToolButtonStyle(Qt::ToolButtonIconOnly);
-        gear->setIconSize(QSize(22,22));
-        gear->setFixedSize(44,44);
-        gear->setAccessibleName(QObject::tr("Full Krita Tool Options"));
-        gear->setToolTip(QObject::tr("Open Krita's complete native Tool Options"));
-        layout->addWidget(gear);
         m_sync=new QTimer(this);
         m_sync->setInterval(180);
         connect(m_sync,&QTimer::timeout,this,[this]() {
@@ -125,6 +126,7 @@ public:
         m_row=new QHBoxLayout(content);
         m_row->setContentsMargins(0,0,0,0);
         m_row->setSpacing(2);
+        content->setFixedHeight(38);
         // Never let QScrollArea compress the children to its viewport.
         // Qt's tool-button minimum size otherwise permits clipped text.
         m_row->setSizeConstraint(QLayout::SetMinimumSize);
@@ -238,7 +240,7 @@ public:
             // Call exactly the same native slots as the working gear panel.
             addTransformModeMenu();
             if(auto *box=qobject_cast<QDialogButtonBox*>(findOption("buttonBox"))) {
-                addOption(box->button(QDialogButtonBox::Apply),QObject::tr("Apply"));
+                addOption(box->button(QDialogButtonBox::Apply),QObject::tr("Done"));
                 addOption(box->button(QDialogButtonBox::Reset),QObject::tr("Reset"));
             }
             const auto modeOption=[this](const char *name,const QString &label) {
@@ -403,6 +405,17 @@ public:
         named("cmbOutline",QObject::tr("Outline"));
         named("cmbFill",QObject::tr("Fill"));
         if(m_row->count()==0)addCommonOptions();
+        // Keep critical native transaction controls easy to spot.
+        for(int i=0;i<m_row->count();++i) {
+            auto *entry=m_row->itemAt(i);
+            auto *control=entry?qobject_cast<QToolButton*>(entry->widget()):nullptr;
+            if(!control)continue;
+            const QString name=control->accessibleName();
+            if(name==QObject::tr("Cancel"))control->setObjectName(QStringLiteral("mobileContextCancel"));
+            else if(name==QObject::tr("Done") || name==QObject::tr("Finish"))
+                control->setObjectName(QStringLiteral("mobileContextDone"));
+            if(!control->objectName().isEmpty())control->style()->polish(control);
+        }
         m_row->addStretch();
         m_scroll->setWidget(content);
         // Each tool starts with its most common controls; a long strip on
@@ -458,7 +471,7 @@ private:
         setChipText(control,label);
         control->setAccessibleName(label);
         control->setToolTip(label);
-        control->setFixedHeight(44);
+        control->setFixedHeight(36);
         m_row->addWidget(control);
         return control;
     }
@@ -956,12 +969,12 @@ private:
         control->setAccessibleName(text);
     }
 
-    static void setChipText(QToolButton *control,const QString &text,int limit=124)
+    static void setChipText(QToolButton *control,const QString &text,int limit=86)
     {
         const auto metrics=control->fontMetrics();
         const QString shown=metrics.elidedText(text,Qt::ElideRight,limit);
         control->setText(shown);
-        control->setFixedWidth(qMax(44,metrics.horizontalAdvance(shown)+14));
+        control->setFixedWidth(qMax(43,metrics.horizontalAdvance(shown)+12));
     }
 
     static void styleMenu(QMenu &menu)
