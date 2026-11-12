@@ -128,8 +128,26 @@ int main(int argc,char **argv)
     if(QFile(source).link(link))
         if(!require(Archive::list(spaced,root).size()==2,
                     "symlink not included in archive browser"))return 1;
+    // Android's tree and direct document URIs identify the same file.
+    const QString tree=QStringLiteral(
+        "content://com.example.documents/tree/folder%3A1/document/folder%3Aart.kra");
+    const QString direct=QStringLiteral(
+        "content://com.example.documents/document/folder%3Aart.kra");
+    if(!require(Archive::canonicalIdentity(tree)==
+                Archive::canonicalIdentity(direct) &&
+                Archive::canonicalIdentity(direct+QStringLiteral("?grant=1#part"))==
+                Archive::canonicalIdentity(direct),
+                "equivalent Android document identities"))return 1;
+
+    // Do not snapshot another file through a symlink in a draft path.
+    const QString linkedSource=temp.filePath(QStringLiteral("linked.kra"));
+    if(QFile(spaced).link(linkedSource)) {
+        if(!require(!Archive::snapshot(linkedSource,root),
+                    "symlink source excluded"))return 1;
+    }
+
     qInfo() << "PASS: archive deduplication, recovery integrity, checksum repair,"
                " corruption handling, periodic spacing, forced checkpoints,"
-               " retention, discarded drafts, symlink exclusion and canonical identity";
+               " retention, discarded drafts, symlink exclusion and Android identities";
     return 0;
 }
