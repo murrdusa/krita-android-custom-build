@@ -14,7 +14,7 @@ The built-in portrait workspace puts the ten essential commands along the bottom
 
 Screen profiles match tolerant logical dimensions and orientation. Keyboard transitions are excluded from profile switching while Android reports the input method visible. Existing geometry is migrated into the first matched screen profile and the old settings are retained. Layer collapse, floating slider visibility, toolbar layout, and panel placements are restored per screen. Input preferences remain global. Android folding, insets, and keyboard timing require runtime verification.
 
-New defaults enable stroke-color history, Paint size drag, Brush Settings opacity drag, Color sampling, and panel fading to 30% after three seconds. The persistent wheel and floating sliders start off. One-finger double tap and two-finger tap mirror around the tap location. Native pinch continues to change the view. Finger pressure retains its existing 1–10 calibration and volume uses Undo/Redo with a 200 ms hold threshold. Explicit Studio preference overrides remain in effect.
+New defaults enable stroke-color history, Paint size drag, Brush Settings opacity drag, Color sampling, and panel fading to 30% after three seconds. The persistent wheel and floating sliders start off. One-finger double-tap mirrors the view around the tap location, while two-finger tap defaults to Undo. Native pinch continues to change the view. Finger pressure retains its existing 1–10 calibration and volume uses Undo/Redo with a 200 ms hold threshold. Explicit Studio preference overrides remain in effect.
 
 ## Mirror anchor and brush color history
 
