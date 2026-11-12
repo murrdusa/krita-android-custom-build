@@ -31,6 +31,7 @@
 #include "native_document_rollback.h"
 #include "view_host_port.h"
 #include "view_identity_guard.h"
+#include "saved_version_archive.h"
 
 class MobileDocumentService final
 {
@@ -140,7 +141,8 @@ public:
         if(path.isEmpty())return 0;
         if(!m_host->openFile(path)) {
             QMessageBox::warning(parent,QObject::tr("Drawing not opened"),
-                QObject::tr("Could not open %1.").arg(QFileInfo(path).fileName()));
+                QObject::tr("Could not open %1.").arg(
+                    MobileSavedVersionArchive::projectName(path)));
             return 0;
         }
         return 1;
@@ -189,7 +191,7 @@ public:
         if(!document)return {};
         const QString path=document->path();
         return path.isEmpty()?QStringLiteral("Untitled"):
-            QFileInfo(path).fileName();
+            MobileSavedVersionArchive::projectName(path);
     }
     bool documentModified() const
     {
