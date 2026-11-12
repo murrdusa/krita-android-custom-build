@@ -568,10 +568,9 @@ private:
     {
         if(choices.isEmpty())return;
         auto *control=button(label);
-        connect(control,&QToolButton::clicked,this,[this,label,choices]() {
+        connect(control,&QToolButton::clicked,this,[this,control,label,choices]() {
             QMenu menu(label);
             const quint64 generation=m_generation;
-            const QPointer<MobileContextToolBar> alive=this;
             const QPointer<QObject> invokedTool=m_nativeTool;
             for(int i=0;i<choices.size();++i) {
                 const auto &choice=choices.at(i);
@@ -587,22 +586,12 @@ private:
                 item->setChecked(checked);
                 item->setData(i);
             }
-            auto *picked=mobilePickAction(window(),menu);
-            if(picked && alive) {
-                const auto action=choices.at(picked->data().toInt()).action;
-                QTimer::singleShot(0,alive.data(),
-                    [this,generation,invokedTool,action]() {
-                    // Android can briefly hide the floating toolbar while
-                    // closing a QMenu. Visibility is not proof the active
-                    // native tool changed; dropping these callbacks made
-                    // selection/shape commands intermittently do nothing.
-                    // Reject stale callbacks by tool identity and generation.
-                    if(generation==m_generation && invokedTool &&
-                       m_nativeTool==invokedTool.data() &&
-                       action && action->isEnabled())
-                        action->trigger();
+            mobileShowActionList(parentWidget(),control,menu,this,
+                [this,generation,invokedTool,choices](const QVariant &picked) {
+                    const auto action=choices.value(picked.toInt()).action;
+                    if(generation==m_generation && invokedTool==m_nativeTool &&
+                       action && action->isEnabled())action->trigger();
                 });
-            }
         });
         m_refresh.append([control,label,choices]() {
             bool enabled=false;
@@ -667,7 +656,7 @@ private:
         }
         if(choices.isEmpty())return;
         auto *control=button(QObject::tr("Mode"));
-        connect(control,&QToolButton::clicked,this,[this,choices]() {
+        connect(control,&QToolButton::clicked,this,[this,control,choices]() {
             QMenu menu;
             styleMenu(menu);
             const quint64 generation=m_generation;
@@ -681,13 +670,9 @@ private:
                     m_nativeTool->property("transformMode").toInt()==choice.mode);
                 item->setEnabled(choice.config && optionAvailable(choice.button));
             }
-            // Native QMenu could open as a narrow strip on Android.
-            auto *picked=mobilePickAction(window(),menu);
-            if(!picked)return;
-            const int index=picked->data().toInt();
-            if(index<0 || index>=choices.size())return;
-            const Choice choice=choices.at(index);
-            QTimer::singleShot(0,this,[this,generation,invokedTool,choice]() {
+            mobileShowActionList(parentWidget(),control,menu,this,
+                [this,generation,invokedTool,choices](const QVariant &picked) {
+                const auto choice=choices.value(picked.toInt());
                 // QMenu may briefly hide the floating bar while Android
                 // transfers focus. Visibility is NOT proof that the native
                 // Transform tool was deactivated, and was dropping taps.
@@ -752,10 +737,9 @@ private:
     {
         if(choices.isEmpty())return;
         auto *control=button(label);
-        connect(control,&QToolButton::clicked,this,[this,label,choices]() {
+        connect(control,&QToolButton::clicked,this,[this,control,label,choices]() {
             QMenu menu(label);
             const quint64 generation=m_generation;
-            const QPointer<MobileContextToolBar> alive=this;
             const QPointer<QObject> invokedTool=m_nativeTool;
             for(int i=0;i<choices.size();++i) {
                 const auto &choice=choices.at(i);
@@ -769,17 +753,12 @@ private:
                     item->setEnabled(false);
                 }
             }
-            auto *picked=mobilePickAction(window(),menu);
-            if(picked && alive) {
-                const auto source=choices.at(picked->data().toInt()).button;
-                QTimer::singleShot(0,alive.data(),
-                    [this,generation,invokedTool,source]() {
-                    if(generation==m_generation && invokedTool &&
-                       m_nativeTool==invokedTool.data() &&
-                       optionAvailable(source))
-                        source->click();
+            mobileShowActionList(parentWidget(),control,menu,this,
+                [this,generation,invokedTool,choices](const QVariant &picked) {
+                    const auto source=choices.value(picked.toInt()).button;
+                    if(generation==m_generation && invokedTool==m_nativeTool &&
+                       optionAvailable(source))source->click();
                 });
-            }
         });
         m_refresh.append([this,control,label,choices]() {
             bool enabled=false;
@@ -871,13 +850,11 @@ private:
         } else if(auto *combo=qobject_cast<QComboBox*>(source)) {
             auto *control=button(label);
             const QPointer<QComboBox> native=combo;
-            connect(control,&QToolButton::clicked,this,[this,native]() {
+            connect(control,&QToolButton::clicked,this,[this,control,label,native]() {
                 if(!optionAvailable(native))return;
                 const quint64 generation=m_generation;
-                const QPointer<MobileContextToolBar> alive=this;
                 const QPointer<QObject> invokedTool=m_nativeTool;
-                MobileTouchComboBox choices(window());
-                choices.hide();
+                QMenu choices(label);
                 const QStringList preferred=native->objectName()==
                     QStringLiteral("availableAssistantsComboBox")?
                     QStringList{QStringLiteral("vanishing point"),QStringLiteral("two point"),
@@ -890,30 +867,29 @@ private:
                 }
                 for(int row=0;row<native->count();++row)
                     if(!rows.contains(row))rows.append(row);
-                auto *model=qobject_cast<QStandardItemModel*>(choices.model());
                 for(const int row:rows) {
                     const QString text=native->itemText(row);
                     if(text.isEmpty())continue;
-                    choices.addItem(text,row);
-                    const int index=choices.count()-1;
-                    const auto flags=native->model()->index(row,native->modelColumn(),
-                                                           native->rootModelIndex()).flags();
-                    model->item(index)->setEnabled(flags.testFlag(Qt::ItemIsEnabled));
-                    if(row==native->currentIndex())choices.setCurrentIndex(index);
+                    auto *item=choices.addAction(text);
+                    item->setData(QVariantList{row,text});
+                    item->setEnabled(native->model()->index(row,native->modelColumn(),
+                        native->rootModelIndex()).flags().testFlag(Qt::ItemIsEnabled));
+                    item->setCheckable(true);
+                    item->setChecked(row==native->currentIndex());
                 }
-                int picked=-1;
-                connect(&choices,QOverload<int>::of(&QComboBox::activated),&choices,
-                    [&choices,&picked](int index) {picked=choices.itemData(index).toInt();});
-                choices.showPopup();
-                if(!alive || generation!=m_generation || !invokedTool ||
-                   m_nativeTool!=invokedTool.data() || !optionAvailable(native) ||
-                   picked<0 || picked>=native->count() ||
-                   native->itemText(picked)!=choices.currentText())return;
-                if(invokedTool->property("mobilePerspectivePlacement").toBool())
-                    QMetaObject::invokeMethod(invokedTool.data(),"mobileToggleThreePointPlacement");
-                if(!native)return;
-                native->setCurrentIndex(picked);
-                if(native)Q_EMIT native->activated(picked);
+                mobileShowActionList(parentWidget(),control,choices,this,
+                    [this,native,generation,invokedTool](const QVariant &selection) {
+                    const auto data=selection.toList();
+                    if(data.size()!=2 || generation!=m_generation || !invokedTool ||
+                       m_nativeTool!=invokedTool.data() || !optionAvailable(native))return;
+                    const int row=data.first().toInt();
+                    if(row<0 || row>=native->count() || native->itemText(row)!=data.at(1).toString())return;
+                    if(invokedTool->property("mobilePerspectivePlacement").toBool())
+                        QMetaObject::invokeMethod(invokedTool.data(),"mobileToggleThreePointPlacement");
+                    if(!native)return;
+                    native->setCurrentIndex(row);
+                    if(native)Q_EMIT native->activated(row);
+                });
             });
             m_refresh.append([this,control,label,native]() {
                 control->setEnabled(optionAvailable(native));
@@ -936,46 +912,51 @@ private:
     {
         auto *control=button(label);
         const QPointer<SpinBox> native=source;
-        connect(control,&QToolButton::clicked,this,[this,label,native]() {
+        connect(control,&QToolButton::clicked,this,[this,control,label,native]() {
             if(!optionAvailable(native))return;
-            const quint64 generation=m_generation;
-            const QPointer<MobileContextToolBar> alive=this;
-            const QPointer<QObject> invokedTool=m_nativeTool;
-            QDialog dialog(window());
-            dialog.setWindowTitle(label);
-            dialog.setStyleSheet(QStringLiteral(
-                "QDialog{background:#252529;}"
-                "QLabel{color:#f4f4f5;}"
-                "QPushButton{min-height:44px;padding:3px 12px;}"));
-            auto *layout=new QVBoxLayout(&dialog);
-            layout->addWidget(new QLabel(label,&dialog));
-            using Editor=std::conditional_t<std::is_same<SpinBox,QDoubleSpinBox>::value,
-                                            KisDoubleSliderSpinBox,KisSliderSpinBox>;
-            auto *editor=new Editor(&dialog);
-            if constexpr(std::is_same<SpinBox,QDoubleSpinBox>::value)
-                editor->setRange(native->minimum(),native->maximum(),native->decimals());
-            else
-                editor->setRange(native->minimum(),native->maximum());
-            editor->setSingleStep(native->singleStep());
-            if constexpr(!std::is_same<SpinBox,QSlider>::value)
-                editor->setSuffix(native->suffix());
-            editor->setValue(native->value());
-            editor->setMinimumSize(220,44);
-            layout->addWidget(editor);
-            auto *buttons=new QDialogButtonBox(
-                QDialogButtonBox::Ok|QDialogButtonBox::Cancel,&dialog);
-            connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);
-            connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
-            layout->addWidget(buttons);
-            if(dialog.exec()==QDialog::Accepted && alive &&
-               generation==alive->m_generation && invokedTool &&
-               alive->m_nativeTool==invokedTool.data() &&
-               alive->optionAvailable(native)) {
-                native->setValue(editor->value());
-                if constexpr(!std::is_same<SpinBox,QSlider>::value) {
-                    if(native)Q_EMIT native->editingFinished();
-                }
+            const auto generation=m_generation;
+            const auto invokedTool=m_nativeTool;
+            auto *panel=new MobileTransientPanel(parentWidget());
+            panel->setObjectName(QStringLiteral("mobileNumericOption"));
+            panel->setStyleSheet(QStringLiteral(
+                "QFrame#mobileNumericOption{background:#252529;border:1px solid #55555c;border-radius:8px;}"
+                "QLabel{color:#f4f4f5;}"));
+            auto *layout=new QVBoxLayout(panel);
+            auto *value=new QLabel(panel);
+            auto *slider=new QSlider(Qt::Horizontal,panel);
+            slider->setMinimumHeight(38);
+            slider->setAccessibleName(label);
+            const double low=native->minimum(),high=native->maximum();
+            constexpr bool decimal=std::is_same<SpinBox,QDoubleSpinBox>::value;
+            const int steps=decimal?1000:qMax(1,int(high-low));
+            slider->setRange(0,steps);
+            slider->setValue(high>low?qRound(steps*(native->value()-low)/(high-low)):0);
+            const auto updateLabel=[label,value,native]() {
+                if(!native)return;
+                if constexpr(std::is_same<SpinBox,QSlider>::value)
+                    value->setText(QStringLiteral("%1  %2").arg(label).arg(native->value()));
+                else value->setText(QStringLiteral("%1  %2").arg(label,native->cleanText()));
+            };
+            updateLabel();
+            layout->addWidget(value);
+            layout->addWidget(slider);
+            connect(slider,&QSlider::valueChanged,this,
+                [this,panel,native,generation,invokedTool,low,high,steps,updateLabel](int position) {
+                    if(generation!=m_generation || invokedTool!=m_nativeTool ||
+                       !optionAvailable(native)) {panel->close();return;}
+                    const double setting=low+(high-low)*position/steps;
+                    if constexpr(decimal)native->setValue(setting);
+                    else native->setValue(qRound(setting));
+                    updateLabel();
+                });
+            if constexpr(!std::is_same<SpinBox,QSlider>::value) {
+                connect(slider,&QSlider::sliderReleased,this,[this,native,generation,invokedTool]() {
+                    if(generation==m_generation && invokedTool==m_nativeTool && optionAvailable(native))
+                        Q_EMIT native->editingFinished();
+                });
             }
+            panel->anchorTo(control,QSize(245,85));
+            panel->present();
         });
         m_refresh.append([this,control,label,native]() {
             control->setEnabled(optionAvailable(native));

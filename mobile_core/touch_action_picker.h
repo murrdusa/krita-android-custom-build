@@ -53,3 +53,45 @@ inline QAction *mobilePickAction(QWidget *parent,const QMenu &menu)
     if(auto *submenu=selected->menu())return mobilePickAction(parent,*submenu);
     return selected.data();
 }
+
+
+// Contextual options use a compact list over the canvas. The QMenu
+// supplies action metadata and can be destroyed as soon as this returns.
+#include "transient_panel.h"
+
+inline void mobileShowActionList(QWidget *host,QWidget *anchor,const QMenu &menu,
+                                 QObject *receiver,std::function<void(const QVariant &)> picked)
+{
+    auto *panel=new MobileTransientPanel(host);
+    panel->setObjectName(QStringLiteral("mobileContextOptionList"));
+    panel->setAccessibleName(menu.title());
+    panel->setStyleSheet(QStringLiteral(
+        "QFrame#mobileContextOptionList,QListWidget{background:#252529;color:#f4f4f5;"
+        "border:1px solid #55555c;border-radius:8px;}"
+        "QListWidget::item{min-height:40px;padding:0 9px;}"
+        "QListWidget::item:disabled{color:#909097;}"
+        "QListWidget::item:selected{background:#3b586f;color:white;}"));
+    auto *layout=new QVBoxLayout(panel);
+    layout->setContentsMargins(4,4,4,4);
+    auto *list=new QListWidget(panel);
+    for(auto *action:menu.actions()) {
+        if(!action->isVisible() || action->isSeparator())continue;
+        auto *item=new QListWidgetItem(action->icon(),
+            (action->isCheckable() && action->isChecked()?QStringLiteral("✓  "):QString())+
+            action->text(),list);
+        item->setData(Qt::UserRole,action->data());
+        if(!action->isEnabled())item->setFlags(Qt::NoItemFlags);
+    }
+    if(!list->count()) {panel->deleteLater();return;}
+    MobileTouchScroll::configureList(list);
+    layout->addWidget(list);
+    const QPointer<QObject> alive=receiver;
+    QObject::connect(list,&QListWidget::itemClicked,panel,[panel,alive,picked](QListWidgetItem *item) {
+        if(!alive || !item || !(item->flags()&Qt::ItemIsEnabled))return;
+        const QVariant value=item->data(Qt::UserRole);
+        panel->close();
+        QTimer::singleShot(0,alive,[picked,value]() {picked(value);});
+    });
+    panel->anchorTo(anchor,QSize(245,qMin(330,10+41*list->count())));
+    panel->present();
+}

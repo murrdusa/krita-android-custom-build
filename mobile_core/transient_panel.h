@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QFrame>
 #include <QKeyEvent>
+#include <QPointer>
 #include <QTimer>
 #include <QWindow>
 #include <functional>
@@ -28,6 +29,12 @@ public:
             m_refreshPending=false;
             if(isVisible() && onRefresh)onRefresh();
         });
+    }
+
+    void anchorTo(QWidget *anchor,const QSize &preferred)
+    {
+        m_anchor=anchor;
+        m_preferred=preferred;
     }
 
     void present()
@@ -71,13 +78,27 @@ protected:
 
 private:
     bool m_refreshPending=false;
+    QPointer<QWidget> m_anchor;
+    QSize m_preferred;
 
     void position()
     {
         const QSize bounds=parentWidget()->size();
-        const QSize size(qMin(450,qMax(1,bounds.width()-28)),
-                         qMin(440,qMax(1,bounds.height()*3/5)));
-        setGeometry(QRect(QPoint((bounds.width()-size.width())/2,
-                                 (bounds.height()-size.height())/2),size));
+        const QSize preferred=m_preferred.isValid()?m_preferred:
+            QSize(450,qMin(440,qMax(1,bounds.height()*3/5)));
+        const QSize size(qMin(preferred.width(),qMax(1,bounds.width()-16)),
+                         qMin(preferred.height(),qMax(1,bounds.height()-16)));
+        QPoint origin((bounds.width()-size.width())/2,(bounds.height()-size.height())/2);
+        if(m_anchor) {
+            const QPoint anchor=parentWidget()->mapFromGlobal(m_anchor->mapToGlobal(QPoint()));
+            const int below=anchor.y()+m_anchor->height()+4;
+            const int above=anchor.y()-size.height()-4;
+            const bool useAbove=below+size.height()>bounds.height()-8 &&
+                                anchor.y()>bounds.height()-below;
+            origin=QPoint(anchor.x()+(m_anchor->width()-size.width())/2,useAbove?above:below);
+            origin.setX(qBound(0,origin.x(),qMax(0,bounds.width()-size.width())));
+            origin.setY(qBound(0,origin.y(),qMax(0,bounds.height()-size.height())));
+        }
+        setGeometry(QRect(origin,size));
     }
 };
