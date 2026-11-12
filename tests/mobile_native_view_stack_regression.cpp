@@ -4,6 +4,8 @@
 #define KRITA_MOBILE_QT_TEST
 #include "../mobile_core/native_view_stack.h"
 #include "../mobile_core/view_identity_guard.h"
+#include "../mobile_core/deferred_view_command.h"
+#include <QSharedPointer>
 #include <QApplication>
 #include <QWidget>
 #include <QObject>
@@ -63,6 +65,27 @@ int main(int argc,char **argv)
     if(!require(stack.activateView(secondIdentity) &&
                 stack.currentDocument()==&secondDocument,
                 "switch to second document"))return 1;
+    // A click is bound to the selected document at dispatch time, not
+    // whichever canvas becomes current before Qt's queued callback runs.
+    QSharedPointer<MobileViewHostPort> port(
+        new MobileNativeViewPortAdapter(&stack));
+    int dispatched=0;
+    if(!require(MobileDeferredViewCommand::schedule(&stack,port,
+                    [&dispatched](const QPointer<QObject> &) {++dispatched;}),
+                "schedule deferred command"))return 1;
+    if(!require(stack.activateView(firstIdentity),
+                "switch before deferred dispatch"))return 1;
+    app.processEvents();
+    if(!require(dispatched==0,"stale deferred command rejected"))return 1;
+    if(!require(stack.activateView(secondIdentity) &&
+                MobileDeferredViewCommand::schedule(&stack,port,
+                    [&dispatched,secondIdentity](const QPointer<QObject> &id) {
+                        if(id==secondIdentity)++dispatched;
+                    }),
+                "schedule correct current document command"))return 1;
+    app.processEvents();
+    if(!require(dispatched==1,"valid deferred command dispatched once"))
+        return 1;
     if(!require(stack.updateViewState(secondIdentity,
                     QStringLiteral("Second edited"),true),
                 "update document state"))return 1;
