@@ -637,8 +637,6 @@ private:
             sort(KisAbstractResourceModel::Name);
         }
 
-        int category() const {return m_category;}
-
         bool hasFamily(int family) const
         {
             for(int row=0;row<m_source->rowCount();++row) {
@@ -881,9 +879,12 @@ private:
         settings->setResourcesInterface(original->resourcesInterface());
         settings->setPaintOpSize(original->paintOpSize());
         settings->setProperty(QStringLiteral("CompositeOp"),COMPOSITE_OVER);
-        settings->setEraserMode(false);
+        settings->setProperty(QStringLiteral("EraserMode"),false);
         settings->setProperty(QStringLiteral("PressureColorRate"),false);
         settings->setProperty(QStringLiteral("ColorRateValue"),0.0);
+        // Cross-engine tips can use lightness maps, which require
+        // Krita's current smudge algorithm.
+        if(!isSmudge(source))settings->setProperty(QStringLiteral("SmudgeRateUseNewEngine"),true);
         settings->setProperty(QStringLiteral("PressureSmudgeRate"),true);
         settings->setProperty(QStringLiteral("SmudgeRateValue"),
                               qMax(0.35,settings->getDouble(QStringLiteral("SmudgeRateValue"),0.5)));
@@ -1099,7 +1100,7 @@ private:
             }
             clearExtras();
             usePreset(slot,preset);
-            if(filter->category()==-5)filter->reloadPersonalLists();
+            filter->reloadPersonalLists();
             updateSelected();
         });
         connect(conversion,&QToolButton::clicked,this,[=]() {
@@ -1111,6 +1112,7 @@ private:
             }
             clearExtras();
             usePreset(2,result);
+            filter->reloadPersonalLists();
             search->clear();
             categories->setCurrentRow(defaultCategory);
             chooseCategory(categories->currentItem());
