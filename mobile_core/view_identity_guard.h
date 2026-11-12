@@ -83,7 +83,10 @@ public:
             }
             if(chosen)return chosen;
         }
-        if(views.size()==1)return views.first().nativeView;
+        // If the engine cannot identify an active document yet, even a
+        // single remaining native view is not sufficient authority to
+        // close it. This can happen between initial widget attachment
+        // and Krita view-manager activation.
         return {};
     }
 };
