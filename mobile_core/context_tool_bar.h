@@ -173,6 +173,7 @@ public:
             });
             native("deselect",QObject::tr("Deselect"));
             named("sliderThreshold",QObject::tr("Tolerance"));
+            named("mobileSelectDragTolerance",QObject::tr("Drag tolerance"));
             named("sliderCloseGap",QObject::tr("Close gap"));
             if(shortId==QStringLiteral("KisToolSelectMagnetic"))
                 named("radius",QObject::tr("Radius"));

@@ -16,7 +16,7 @@ Transform and Move preserve explicit layer selections across activation, reject 
 
 ## Native Fill tolerance and guide access
 
-Standard Fill offers opt-in **Drag tolerance** for contiguous regions. A horizontal drag shows the threshold, then release fills once at the original point through Krita's normal undoable stroke. It leaves the configured default tolerance intact. Cancelled input and tool changes abandon the pending operation. The contextual selector uses a shared touch-scrolling dialog and puts the native Vanishing Point, 2 Point Perspective, Perspective, and Parallel Ruler guides first. Contiguous selection tolerance, a live filled-region preview, and dedicated three-point or isometric workflows remain open.
+Standard Fill and Contiguous Area Selection each offer opt-in **Drag tolerance**. The gesture keeps its original seed, shows the threshold and a tinted affected-region preview, and applies one native undoable operation on release. Contiguous selection captures the native combine action at press. The preview uses a bounded 384 × 384 pixel window and coalesces threshold changes while the native flood engine computes on a worker. Current-layer and all-layer sources are supported. Color-labeled references and wrapped Fill show numeric feedback only. The committed operation always uses the full native source and settings, so pixels connected through paths outside the preview window may only appear after release. The gesture does not change the saved tolerance. Android input and overlay rendering have not been verified on the Fold 6.
 
 ## Android app-exit automatic checkpoint (November 11)
 

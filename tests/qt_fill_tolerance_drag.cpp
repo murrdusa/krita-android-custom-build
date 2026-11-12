@@ -10,4 +10,8 @@ int main()
        mobileFillTolerance(30,-36)!=20)return 2;
     if(mobileFillTolerance(70,1000)!=100 ||
        mobileFillTolerance(15,-1000)!=1)return 3;
+    const QRect canvas(0,0,2000,1600);
+    if(mobileFillPreviewWindow(canvas,QPoint(500,500))!=QRect(308,308,384,384) ||
+       mobileFillPreviewWindow(canvas,QPoint(0,0))!=QRect(0,0,192,192) ||
+       !mobileFillPreviewWindow(canvas,QPoint(-1,0)).isEmpty())return 4;
 }

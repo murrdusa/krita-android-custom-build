@@ -1803,20 +1803,23 @@ void KisToolFreehand::beginPrimaryAction(KoPointerEvent *event)
     (fill_dir/"fill_tolerance_drag.h").write_text(
         (own/"mobile_core/fill_tolerance_drag.h").read_text(encoding="utf-8"),
         encoding="utf-8")
+    (fill_dir/"fill_tolerance_preview.h").write_text(
+        (own/"mobile_core/fill_tolerance_preview.h").read_text(encoding="utf-8"),
+        encoding="utf-8")
     fill_header=fill_dir/"kis_tool_fill.h"
     fill=fill_header.read_text(encoding="utf-8")
     fill=one(fill,"#include <QVector>",
-        "#include <QVector>\n#ifdef Q_OS_ANDROID\n#include <QLabel>\n#include <QPointer>\n#endif",
+        "#include <QVector>\n#ifdef Q_OS_ANDROID\n#include <QPointer>\n#endif\nclass MobileFillTolerancePreview;",
         "Fill tolerance preview widget")
     fill=one(fill,"    Q_OBJECT",
         """    Q_OBJECT
 #ifdef Q_OS_ANDROID
-    Q_PROPERTY(bool mobileFillTolerancePending READ mobileFillTolerancePending)
+    Q_PROPERTY(bool mobileTolerancePending READ mobileTolerancePending)
 #endif""","expose pending Fill gesture to the native input proxy")
     fill=one(fill,"    QWidget* createOptionWidget() override;",
         """    QWidget* createOptionWidget() override;
 #ifdef Q_OS_ANDROID
-    bool mobileFillTolerancePending() const {return bool(m_mobileFillTarget);}
+    bool mobileTolerancePending() const {return bool(m_mobileFillTarget);}
     void requestStrokeCancellation() override;
     void requestStrokeEnd() override;
 #endif""","discard incomplete Fill gestures through native stroke requests")
@@ -1829,7 +1832,7 @@ void KisToolFreehand::beginPrimaryAction(KoPointerEvent *event)
     int m_mobilePreviewTolerance = 8;
     KisNodeSP m_mobileFillTarget;
     QPoint m_mobileFillSeed;
-    QPointer<QLabel> m_mobileToleranceBadge;
+    QPointer<MobileFillTolerancePreview> m_mobileTolerancePreview;
 #endif
     FillMode m_fillMode {FillMode_FillContiguousRegion};""","store the Fill seed and target until release")
     fill_header.write_text(fill,encoding="utf-8")
@@ -1838,14 +1841,15 @@ void KisToolFreehand::beginPrimaryAction(KoPointerEvent *event)
     fill=one(fill,'#include "kis_tool_fill.h"',
         '''#include "kis_tool_fill.h"
 #ifdef Q_OS_ANDROID
-#include "fill_tolerance_drag.h"
+#include "fill_tolerance_preview.h"
 #include <QScopedValueRollback>
+#include <KisView.h>
 #endif''',"Fill tolerance calculation")
     fill=one(fill,"KisToolFill::~KisToolFill()\n{\n}",
         """KisToolFill::~KisToolFill()
 {
 #ifdef Q_OS_ANDROID
-    delete m_mobileToleranceBadge.data();
+    delete m_mobileTolerancePreview.data();
 #endif
 }""","destroy any remaining Fill preview")
     fill=one(fill,"void KisToolFill::deactivate()\n{",
@@ -1861,14 +1865,25 @@ void KisToolFreehand::beginPrimaryAction(KoPointerEvent *event)
         m_mobileFillSeed = lastImagePosition;
         m_mobileInitialTolerance = m_threshold;
         setMode(KisTool::PAINT_MODE);
-        if (auto *widget = canvas()->canvasWidget()) {
-            m_mobileToleranceBadge = new QLabel(widget);
-            m_mobileToleranceBadge->setAttribute(Qt::WA_TransparentForMouseEvents);
-            m_mobileToleranceBadge->setStyleSheet(QStringLiteral(
-                "QLabel{background:#dd252529;color:white;border-radius:7px;padding:6px 10px;}"));
+        if (auto *kisCanvas=dynamic_cast<KisCanvas2*>(canvas())) {
+            const auto selection=kisCanvas->imageView()?kisCanvas->imageView()->selection():KisSelectionSP();
+            const auto source=image()->wrapAroundModePermitted()?KisPaintDeviceSP():
+                m_reference==Reference_CurrentLayer?currentNode()->paintDevice():
+                m_reference==Reference_AllLayers?currentImage()->projection():KisPaintDeviceSP();
+            MobileFillTolerancePreview::Options options;
+            options.spread=m_opacitySpread;
+            options.closeGap=m_closeGap;
+            options.boundaryFill=m_contiguousFillMode==ContiguousFillMode_BoundaryFill;
+            options.boundaryColor=m_contiguousFillBoundaryColor;
+            options.selectionBoundary=m_useSelectionAsBoundary;
+            options.clipToSelection=true;
+            options.antiAlias=m_antiAlias;
+            options.grow=m_sizemod;
+            options.feather=m_feather;
+            options.stopGrowingAtDarkest=m_stopGrowingAtDarkestPixel;
+            m_mobileTolerancePreview=new MobileFillTolerancePreview(kisCanvas,currentImage(),source,
+                selection?selection->projection():KisPixelSelectionSP(),lastImagePosition,options);
             updateMobileFillTolerance(event->pos().x());
-            m_mobileToleranceBadge->raise();
-            m_mobileToleranceBadge->show();
         }
         return;
     }
@@ -1878,7 +1893,7 @@ void KisToolFreehand::beginPrimaryAction(KoPointerEvent *event)
         """void KisToolFill::continuePrimaryAction(KoPointerEvent *event)
 {
 #ifdef Q_OS_ANDROID
-    if (mobileFillTolerancePending()) {
+    if (mobileTolerancePending()) {
         updateMobileFillTolerance(event->pos().x());
         return;
     }
@@ -1889,20 +1904,14 @@ void KisToolFill::updateMobileFillTolerance(int widgetX)
 {
     m_mobilePreviewTolerance = mobileFillTolerance(
         m_mobileInitialTolerance,widgetX - m_fillStartWidgetPosition.x());
-    if (!m_mobileToleranceBadge) return;
-    const QString label = i18n("Tolerance: %1",m_mobilePreviewTolerance);
-    if (m_mobileToleranceBadge->text() == label) return;
-    m_mobileToleranceBadge->setText(label);
-    m_mobileToleranceBadge->adjustSize();
-    m_mobileToleranceBadge->move(qMax(0,(m_mobileToleranceBadge->parentWidget()->width() -
-                                        m_mobileToleranceBadge->width()) / 2),16);
+    if (m_mobileTolerancePreview) m_mobileTolerancePreview->setThreshold(m_mobilePreviewTolerance);
 }
 
 void KisToolFill::clearMobileFillTolerance()
 {
-    if (!mobileFillTolerancePending()) return;
+    if (!mobileTolerancePending()) return;
     m_mobileFillTarget.clear();
-    delete m_mobileToleranceBadge.data();
+    delete m_mobileTolerancePreview.data();
     setMode(KisTool::HOVER_MODE);
 }
 
@@ -1922,7 +1931,7 @@ void KisToolFill::requestStrokeEnd()
 void KisToolFill::endPrimaryAction(KoPointerEvent *event)
 {
 #ifdef Q_OS_ANDROID
-    if (mobileFillTolerancePending()) {
+    if (mobileTolerancePending()) {
         const KisNodeSP target = m_mobileFillTarget;
         const QPoint seed = m_mobileFillSeed;
         if (event) updateMobileFillTolerance(event->pos().x());
@@ -1962,6 +1971,168 @@ void KisToolFill::endPrimaryAction(KoPointerEvent *event)
 #endif""","persist the Android Fill gesture preference")
     fill_source.write_text(fill,encoding="utf-8")
 
+    select_dir=root/"plugins/tools/selectiontools"
+    select_header=select_dir/"kis_tool_select_contiguous.h"
+    select=select_header.read_text(encoding="utf-8")
+    select=one(select,"class KoGroupButton;","class KoGroupButton;\nclass MobileFillTolerancePreview;",
+               "declare shared contiguous preview")
+    select=one(select,"    Q_OBJECT",
+        """    Q_OBJECT
+#ifdef Q_OS_ANDROID
+    Q_PROPERTY(bool mobileTolerancePending READ mobileTolerancePending)
+#endif""","route cancelled input through contiguous selection")
+    select=one(select,"    void endPrimaryAction(KoPointerEvent *event) override;",
+        """    void endPrimaryAction(KoPointerEvent *event) override;
+#ifdef Q_OS_ANDROID
+    void continuePrimaryAction(KoPointerEvent *event) override;
+    bool mobileTolerancePending() const {return bool(m_mobileTarget);}
+    void requestStrokeEnd() override;
+    void requestStrokeCancellation() override;
+#endif""","defer opt-in native selection to release")
+    select=one(select,"    ContiguousSelectionMode m_contiguousSelectionMode {FloodFill};",
+        """    void selectAt(const QPoint &pos, SelectionAction action, int threshold);
+#ifdef Q_OS_ANDROID
+    void clearMobileTolerance();
+    bool m_mobileDragTolerance=false;
+    int m_mobileInitialTolerance=8;
+    int m_mobileStartX=0;
+    QPoint m_mobileSeed;
+    KisNodeSP m_mobileTarget;
+    SelectionAction m_mobileSelectionAction=SELECTION_REPLACE;
+    QPointer<MobileFillTolerancePreview> m_mobilePreview;
+#endif
+    ContiguousSelectionMode m_contiguousSelectionMode {FloodFill};""",
+        "capture native selection action and target at press")
+    select=one(select,"class MobileFillTolerancePreview;",
+        "#include <QPointer>\nclass MobileFillTolerancePreview;","guard preview widget lifetime")
+    select_header.write_text(select,encoding="utf-8")
+
+    select_source=select_dir/"kis_tool_select_contiguous.cc"
+    select=select_source.read_text(encoding="utf-8")
+    select=one(select,'#include "kis_tool_select_contiguous.h"',
+        '''#include "kis_tool_select_contiguous.h"
+#ifdef Q_OS_ANDROID
+#include "../basictools/fill_tolerance_preview.h"
+#include <KisView.h>
+#include <kis_selection.h>
+#endif''',"reuse the native Fill preview engine")
+    select=one(select,"KisToolSelectContiguous::~KisToolSelectContiguous()\n{\n}",
+        """KisToolSelectContiguous::~KisToolSelectContiguous()
+{
+#ifdef Q_OS_ANDROID
+    delete m_mobilePreview.data();
+#endif
+}""","release the selection preview")
+    select=one(select,"void KisToolSelectContiguous::deactivate()\n{",
+        """void KisToolSelectContiguous::deactivate()
+{
+#ifdef Q_OS_ANDROID
+    clearMobileTolerance();
+#endif""","cancel an unfinished contiguous selection when switching tools")
+    select=one(select,"    beginSelectInteraction();\n\n    KisCursorOverrideLock",
+        """    beginSelectInteraction();
+    const QPoint pos = convertToImagePixelCoordFloored(event);
+#ifdef Q_OS_ANDROID
+    if (m_mobileDragTolerance && currentImage()->bounds().contains(pos)) {
+        m_mobileTarget=currentNode();
+        m_mobileSelectionAction=selectionAction();
+        m_mobileSeed=pos;
+        m_mobileInitialTolerance=m_threshold;
+        m_mobileStartX=event->pos().x();
+        if (auto *kisCanvas=dynamic_cast<KisCanvas2*>(canvas())) {
+            const auto selection=kisCanvas->imageView()?kisCanvas->imageView()->selection():KisSelectionSP();
+            const auto reference=sampleLayersMode()==SampleCurrentLayer?dev:
+                sampleLayersMode()==SampleAllLayers?currentImage()->projection():KisPaintDeviceSP();
+            MobileFillTolerancePreview::Options options;
+            options.spread=m_opacitySpread;
+            options.closeGap=m_closeGap;
+            options.boundaryFill=m_contiguousSelectionMode==BoundaryFill;
+            options.boundaryColor=m_contiguousSelectionBoundaryColor;
+            options.selectionBoundary=m_useSelectionAsBoundary;
+            options.antiAlias=antiAliasSelection();
+            options.grow=growSelection();
+            options.feather=featherSelection();
+            options.stopGrowingAtDarkest=stopGrowingAtDarkestPixel();
+            m_mobilePreview=new MobileFillTolerancePreview(kisCanvas,currentImage(),reference,
+                selection?selection->pixelSelection():KisPixelSelectionSP(),pos,options);
+            m_mobilePreview->setThreshold(m_threshold);
+        }
+        return;
+    }
+#endif
+    selectAt(pos,selectionAction(),m_threshold);
+}
+
+void KisToolSelectContiguous::selectAt(const QPoint &pos,SelectionAction action,int threshold)
+{
+    const auto dev=currentNode()->projection();
+    KisCursorOverrideLock""","share the native contiguous selection transaction")
+    select=one(select,"    QPoint pos = convertToImagePixelCoordFloored(event);\n","",
+               "use the original seed rather than the release position")
+    select=one(select,"    int threshold = m_threshold;\n","",
+               "feed gesture tolerance into the native command")
+    select=one(select,"helper.selectPixelSelection(applicator, selection, selectionAction());",
+               "helper.selectPixelSelection(applicator, selection, action);","keep the native combine action")
+    select=one(select,"void KisToolSelectContiguous::endPrimaryAction(KoPointerEvent *event)\n{",
+        """#ifdef Q_OS_ANDROID
+void KisToolSelectContiguous::continuePrimaryAction(KoPointerEvent *event)
+{
+    if (mobileTolerancePending()) {
+        if (m_mobilePreview) m_mobilePreview->setThreshold(
+            mobileFillTolerance(m_mobileInitialTolerance,event->pos().x()-m_mobileStartX));
+        return;
+    }
+    KisToolSelectBase::continuePrimaryAction(event);
+}
+
+void KisToolSelectContiguous::clearMobileTolerance()
+{
+    if (!mobileTolerancePending()) return;
+    m_mobileTarget.clear();
+    delete m_mobilePreview.data();
+    endSelectInteraction();
+}
+
+void KisToolSelectContiguous::requestStrokeEnd()
+{
+    clearMobileTolerance();
+    KisToolSelectBase::requestStrokeEnd();
+}
+
+void KisToolSelectContiguous::requestStrokeCancellation()
+{
+    clearMobileTolerance();
+    KisToolSelectBase::requestStrokeCancellation();
+}
+#endif
+
+void KisToolSelectContiguous::endPrimaryAction(KoPointerEvent *event)
+{
+#ifdef Q_OS_ANDROID
+    if (mobileTolerancePending()) {
+        const auto target=m_mobileTarget;
+        if (event && currentNode()==target && target->projection() && selectionEditable()) {
+            const int threshold=mobileFillTolerance(m_mobileInitialTolerance,event->pos().x()-m_mobileStartX);
+            selectAt(m_mobileSeed,m_mobileSelectionAction,threshold);
+        }
+        clearMobileTolerance();
+        return;
+    }
+#endif""","apply exactly one native contiguous selection on release")
+    select=one(select,'    sectionSelectionExtent->appendWidget("sliderThreshold", sliderThreshold);',
+        """    sectionSelectionExtent->appendWidget("sliderThreshold", sliderThreshold);
+#ifdef Q_OS_ANDROID
+    auto *dragTolerance=new QCheckBox(i18n("Adjust tolerance by dragging"));
+    m_mobileDragTolerance=m_configGroup.readEntry("mobileDragTolerance",false);
+    dragTolerance->setChecked(m_mobileDragTolerance);
+    sectionSelectionExtent->appendWidget("mobileSelectDragTolerance",dragTolerance);
+    connect(dragTolerance,&QCheckBox::toggled,this,[this](bool enabled) {
+        m_mobileDragTolerance=enabled;
+        m_configGroup.writeEntry("mobileDragTolerance",enabled);
+    });
+#endif""","expose a separate contiguous selection preference")
+    select_source.write_text(select,encoding="utf-8")
+
     tool_proxy_file=root/"libs/ui/canvas/kis_tool_proxy.cpp"
     tool_proxy=tool_proxy_file.read_text(encoding="utf-8")
     tool_proxy=one(tool_proxy,
@@ -1969,7 +2140,7 @@ void KisToolFill::endPrimaryAction(KoPointerEvent *event)
         """    QTouchEvent *touchEvent = dynamic_cast<QTouchEvent *> (event);
 #ifdef Q_OS_ANDROID
     if (state == END && priv()->activeTool &&
-        priv()->activeTool->property("mobileFillTolerancePending").toBool() &&
+        priv()->activeTool->property("mobileTolerancePending").toBool() &&
         (!event || (event->type() != QEvent::TouchEnd &&
                     event->type() != QEvent::TabletRelease &&
                     event->type() != QEvent::MouseButtonRelease) ||
