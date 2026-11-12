@@ -651,7 +651,7 @@ private:
         if(QFileInfo(digestPath).isSymLink())return false;
         QFile digest(digestPath);
         if(!digest.open(QIODevice::ReadOnly))return false;
-        const QByteArray sha=digest.readAll(65).trimmed().toLower();
+        const QByteArray sha=digest.read(65).trimmed().toLower();
         return sha.size()==64 &&
             QRegularExpression(QStringLiteral("^[0-9a-f]{64}$"))
                 .match(QString::fromLatin1(sha)).hasMatch();
