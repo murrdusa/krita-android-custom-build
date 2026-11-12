@@ -8,6 +8,7 @@
 
 #include <QDialog>
 #include <QGridLayout>
+#include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -242,6 +243,13 @@ public:
         MobileTouchScroll::configure(scroll);
         layout->addWidget(scroll,1);
 
+        // The main screen stays concise like a mobile tool drawer.
+        // Advanced Krita actions remain available one tap away or by
+        // searching, rather than occupying dozens of rows by default.
+        auto *more=new QPushButton(i18n("More Krita tools and commands"),&dialog);
+        more->setCheckable(true);
+        layout->addWidget(more);
+
         auto *buttons=new QHBoxLayout;
         auto *close=new QPushButton(i18n("Close"),&dialog);
         buttons->addWidget(close);
@@ -259,6 +267,8 @@ public:
         // Two compact columns remain legible on phones as well as tablets.
         // Extremely narrow windows fall back to one column.
         const int columns=parent->window()->width()<300?1:2;
+        const int textSpace=qMax(62,
+            (qMin(520,qMax(1,parent->window()->width()-20))-36)/columns-47);
         const auto refill=[&]() {
             const QString phrase=search->text().trimmed();
             auto *content=new QWidget(scroll);
@@ -267,6 +277,9 @@ public:
             sections->setContentsMargins(0,0,0,0);
             sections->setSpacing(4);
             for(const Group &group:groups) {
+                if(phrase.isEmpty() && !more->isChecked() &&
+                   !primaryOrder.contains(group.label) &&
+                   group.label!=i18n("Other tools"))continue;
                 auto *grid=new QGridLayout;
                 grid->setSpacing(2);
                 int count=0;
@@ -290,7 +303,8 @@ public:
                     symbol->setAttribute(Qt::WA_TransparentForMouseEvents);
                     symbol->setFixedSize(25,28);
                     tileLayout->addWidget(symbol);
-                    auto *label=new QLabel(tile.label,button);
+                    auto *label=new QLabel(
+                        labelFontElided(tile.label,button->font(),textSpace),button);
                     label->setWordWrap(false);
                     label->setAlignment(Qt::AlignLeft|Qt::AlignVCenter);
                     label->setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -328,6 +342,12 @@ public:
         };
         QObject::connect(search,&QLineEdit::textChanged,&dialog,
                          [&refill](const QString &) {refill();});
+        QObject::connect(more,&QPushButton::toggled,&dialog,
+                         [&refill,more](bool expanded) {
+            more->setText(expanded?i18n("Fewer tools"):
+                                    i18n("More Krita tools and commands"));
+            refill();
+        });
         refill();
         const QSize bounds=parent->window()->size();
         dialog.resize(qMin(520,qMax(1,bounds.width()-20)),
@@ -346,6 +366,11 @@ public:
     }
 
 private:
+    static QString labelFontElided(const QString &label,const QFont &font,int width)
+    {
+        return QFontMetrics(font).elidedText(label,Qt::ElideRight,width);
+    }
+
     struct ToolTile { const char *id; QString label; };
     struct ActionTile { const char *id; QString label; const char *icon; };
     struct Tile {
