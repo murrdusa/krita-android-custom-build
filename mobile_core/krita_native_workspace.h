@@ -161,11 +161,22 @@ public:
                                  host->nativeCanvas()) : nullptr) {
             root->installEventFilter(this);
             QObject::connect(root,&QStackedWidget::currentChanged,this,
-                             [this](int) {
-                QTimer::singleShot(0,this,[this]() {
-                    refresh();
-                    placeDrawingOverlays();
-                    raiseOverlays();
+                             [this,root=QPointer<MobileNativeViewStack>(root)](int) {
+                if(!root)return;
+                const QPointer<QWidget> selected=root->currentWidget();
+                // The native factory schedules manager->setCurrentView()
+                // on the first event-loop turn. The workspace is wired
+                // earlier than that factory, so its original single-shot
+                // refresh ran before Krita switched tools and documents.
+                // A second queued turn follows native activation; reject
+                // obsolete refreshes when the user switches again quickly.
+                QTimer::singleShot(0,this,[this,root,selected]() {
+                    QTimer::singleShot(0,this,[this,root,selected]() {
+                        if(!root || root->currentWidget()!=selected)return;
+                        refresh();
+                        placeDrawingOverlays();
+                        raiseOverlays();
+                    });
                 });
             });
         }
