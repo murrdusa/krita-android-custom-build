@@ -21,6 +21,7 @@
 #include <QLineEdit>
 #include <QScroller>
 #include "touch_scroll.h"
+#include "touch_action_picker.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QLabel>
@@ -299,20 +300,14 @@ public:
                 [addHold,held]() {*held=false;addHold->start();});
         connect(addType,&QPushButton::released,addType,
                 [addHold]() {addHold->stop();});
-        const auto openAddTypes=[this,addType]() {
+        const auto openAddTypes=[this]() {
             auto *view=m_engine.manager();
             auto *nodes=manager();
             if(!nodes || !view)return;
             const KisImageSP original=view->image().toStrongRef();
             if(!original)return;
             QMenu menu(this);
-            menu.setStyleSheet(
-                "QMenu{background:#2c4051;color:#f4f9fe;"
-                "border:1px solid #769bb8;}"
-                "QMenu::item{color:#f4f9fe;min-height:44px;"
-                "padding:9px 14px;}"
-                "QMenu::item:selected{background:#3b7394;"
-                "color:#ffffff;}");
+            menu.setTitle(i18n("Add layer or mask"));
             QMenu *layers=menu.addMenu(i18n("Layer types"));
             QMenu *masks=menu.addMenu(i18n("Masks"));
             struct NewType { QAction *action; const char *type; };
@@ -334,8 +329,7 @@ public:
             add(layers,i18n("Clone layer"),"KisCloneLayer","add_new_clone_layer");
             add(layers,i18n("File layer"),"KisFileLayer","add_new_file_layer");
             addMaskTypes(masks,true);
-            QAction *chosen=menu.exec(
-                addType->mapToGlobal(QPoint(0,addType->height())));
+            QAction *chosen=mobilePickAction(window(),menu);
             if(!chosen || !m_engine.manager() ||
                m_engine.manager()->image().toStrongRef()!=original)
                 return;
@@ -741,11 +735,7 @@ private:
         const KisImageSP originalImage=view?view->image().toStrongRef():KisImageSP();
         if(!m || !inImage(node,originalImage) || !item)return;
         QMenu menu(this);
-        menu.setStyleSheet(
-            "QMenu{background:#2c4051;color:#f4f9fe;"
-            "border:1px solid #769bb8;}"
-            "QMenu::item{min-height:45px;padding:9px 14px;}"
-            "QMenu::item:selected{background:#3b7394;}");
+        menu.setTitle(i18n("More layer options"));
         QAction *rename=menu.addAction(i18n("Rename layer"));
         QAction *opacityAction=menu.addAction(
             i18n("Opacity… (%1%)").arg(
@@ -900,14 +890,13 @@ private:
                      qMin(sheetHeight,qMax(1,window()->height()-24)));
         sheet.setMaximumSize(qMax(1,window()->width()-12),
                              qMax(1,window()->height()-12));
-        const QPoint point=railViewport()->mapToGlobal(layerRect(item).bottomLeft());
         const int result=sheet.exec();
         if(result==QDialog::Rejected || !validTarget())return;
         if(opacitySlider->value()!=initialOpacity)
             m->setNodeOpacity(node,(opacitySlider->value()*255+50)/100);
-        if(result==2)chosen=menu.exec(point);
-        else if(chosen==select->menuAction())chosen=select->exec(point);
-        else if(chosen==mask->menuAction())chosen=mask->exec(point);
+        if(result==2)chosen=mobilePickAction(window(),menu);
+        else if(chosen==select->menuAction())chosen=mobilePickAction(window(),*select);
+        else if(chosen==mask->menuAction())chosen=mobilePickAction(window(),*mask);
         if(!chosen || !validTarget())return;
         if(chosen==visibility || chosen==lock) {
             if(chosen==visibility)

@@ -29,6 +29,7 @@
 #include <QSlider>
 #include <QScrollBar>
 #include "touch_scroll.h"
+#include "touch_action_picker.h"
 #include <QSet>
 #include <QSpinBox>
 #include <QStandardItemModel>
@@ -344,6 +345,16 @@ public:
             named("bnCrop",QObject::tr("Apply crop"));
         } else if(shortId==QStringLiteral("KisAssistantTool")) {
             named("availableAssistantsComboBox",QObject::tr("Guide type"));
+            const QPointer<KoToolBase> assistant=m_nativeTool;
+            auto *threePoint=button(QObject::tr("3-point perspective"));
+            connect(threePoint,&QToolButton::clicked,this,[this,assistant]() {
+                if(assistant && assistant==m_nativeTool)
+                    QMetaObject::invokeMethod(assistant.data(),"mobileToggleThreePointPlacement");
+            });
+            m_refresh.append([assistant,threePoint]() {
+                setChipText(threePoint,assistant && assistant->property("mobilePerspectivePlacement").toBool()?
+                    QObject::tr("Cancel placement"):QObject::tr("3-point perspective"));
+            });
             named("localAssistantCheckbox",QObject::tr("Local"));
             addNamedChoices(QObject::tr("Guide files"),{
                 {"loadAssistantButton",QObject::tr("Import guides")},
@@ -473,9 +484,8 @@ private:
     {
         if(choices.isEmpty())return;
         auto *control=button(label);
-        connect(control,&QToolButton::clicked,this,[this,control,choices]() {
-            QMenu menu;
-            styleMenu(menu);
+        connect(control,&QToolButton::clicked,this,[this,label,choices]() {
+            QMenu menu(label);
             const quint64 generation=m_generation;
             const QPointer<MobileContextToolBar> alive=this;
             const QPointer<QObject> invokedTool=m_nativeTool;
@@ -493,7 +503,7 @@ private:
                 item->setChecked(checked);
                 item->setData(i);
             }
-            auto *picked=menu.exec(control->mapToGlobal(QPoint(0,control->height())));
+            auto *picked=mobilePickAction(window(),menu);
             if(picked && alive) {
                 const auto action=choices.at(picked->data().toInt()).action;
                 QTimer::singleShot(0,alive.data(),
@@ -657,9 +667,8 @@ private:
     {
         if(choices.isEmpty())return;
         auto *control=button(label);
-        connect(control,&QToolButton::clicked,this,[this,control,choices]() {
-            QMenu menu;
-            styleMenu(menu);
+        connect(control,&QToolButton::clicked,this,[this,label,choices]() {
+            QMenu menu(label);
             const quint64 generation=m_generation;
             const QPointer<MobileContextToolBar> alive=this;
             const QPointer<QObject> invokedTool=m_nativeTool;
@@ -675,7 +684,7 @@ private:
                     item->setEnabled(false);
                 }
             }
-            auto *picked=menu.exec(control->mapToGlobal(QPoint(0,control->height())));
+            auto *picked=mobilePickAction(window(),menu);
             if(picked && alive) {
                 const auto source=choices.at(picked->data().toInt()).button;
                 QTimer::singleShot(0,alive.data(),
@@ -815,6 +824,9 @@ private:
                    m_nativeTool!=invokedTool.data() || !optionAvailable(native) ||
                    picked<0 || picked>=native->count() ||
                    native->itemText(picked)!=choices.currentText())return;
+                if(invokedTool->property("mobilePerspectivePlacement").toBool())
+                    QMetaObject::invokeMethod(invokedTool.data(),"mobileToggleThreePointPlacement");
+                if(!native)return;
                 native->setCurrentIndex(picked);
                 if(native)Q_EMIT native->activated(picked);
             });

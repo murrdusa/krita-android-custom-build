@@ -1019,6 +1019,8 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
         pressure_calibration.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/finger_pressure_settings.h").write_text(
         pressure_settings.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/touch_action_picker.h").write_text(
+        (own/"mobile_core/touch_action_picker.h").read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/touch_scroll.h").write_text(
         (own/"mobile_core/touch_scroll.h").read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/recent_colors.h").write_text(
@@ -1814,12 +1816,12 @@ void KisToolFreehand::beginPrimaryAction(KoPointerEvent *event)
     fill=one(fill,"    Q_OBJECT",
         """    Q_OBJECT
 #ifdef Q_OS_ANDROID
-    Q_PROPERTY(bool mobileTolerancePending READ mobileTolerancePending)
+    Q_PROPERTY(bool mobileGesturePending READ mobileGesturePending)
 #endif""","expose pending Fill gesture to the native input proxy")
     fill=one(fill,"    QWidget* createOptionWidget() override;",
         """    QWidget* createOptionWidget() override;
 #ifdef Q_OS_ANDROID
-    bool mobileTolerancePending() const {return bool(m_mobileFillTarget);}
+    bool mobileGesturePending() const {return bool(m_mobileFillTarget);}
     void requestStrokeCancellation() override;
     void requestStrokeEnd() override;
 #endif""","discard incomplete Fill gestures through native stroke requests")
@@ -1893,7 +1895,7 @@ void KisToolFreehand::beginPrimaryAction(KoPointerEvent *event)
         """void KisToolFill::continuePrimaryAction(KoPointerEvent *event)
 {
 #ifdef Q_OS_ANDROID
-    if (mobileTolerancePending()) {
+    if (mobileGesturePending()) {
         updateMobileFillTolerance(event->pos().x());
         return;
     }
@@ -1909,7 +1911,7 @@ void KisToolFill::updateMobileFillTolerance(int widgetX)
 
 void KisToolFill::clearMobileFillTolerance()
 {
-    if (!mobileTolerancePending()) return;
+    if (!mobileGesturePending()) return;
     m_mobileFillTarget.clear();
     delete m_mobileTolerancePreview.data();
     setMode(KisTool::HOVER_MODE);
@@ -1931,7 +1933,7 @@ void KisToolFill::requestStrokeEnd()
 void KisToolFill::endPrimaryAction(KoPointerEvent *event)
 {
 #ifdef Q_OS_ANDROID
-    if (mobileTolerancePending()) {
+    if (mobileGesturePending()) {
         const KisNodeSP target = m_mobileFillTarget;
         const QPoint seed = m_mobileFillSeed;
         if (event) updateMobileFillTolerance(event->pos().x());
@@ -1979,13 +1981,13 @@ void KisToolFill::endPrimaryAction(KoPointerEvent *event)
     select=one(select,"    Q_OBJECT",
         """    Q_OBJECT
 #ifdef Q_OS_ANDROID
-    Q_PROPERTY(bool mobileTolerancePending READ mobileTolerancePending)
+    Q_PROPERTY(bool mobileGesturePending READ mobileGesturePending)
 #endif""","route cancelled input through contiguous selection")
     select=one(select,"    void endPrimaryAction(KoPointerEvent *event) override;",
         """    void endPrimaryAction(KoPointerEvent *event) override;
 #ifdef Q_OS_ANDROID
     void continuePrimaryAction(KoPointerEvent *event) override;
-    bool mobileTolerancePending() const {return bool(m_mobileTarget);}
+    bool mobileGesturePending() const {return bool(m_mobileTarget);}
     void requestStrokeEnd() override;
     void requestStrokeCancellation() override;
 #endif""","defer opt-in native selection to release")
@@ -2077,7 +2079,7 @@ void KisToolSelectContiguous::selectAt(const QPoint &pos,SelectionAction action,
         """#ifdef Q_OS_ANDROID
 void KisToolSelectContiguous::continuePrimaryAction(KoPointerEvent *event)
 {
-    if (mobileTolerancePending()) {
+    if (mobileGesturePending()) {
         if (m_mobilePreview) m_mobilePreview->setThreshold(
             mobileFillTolerance(m_mobileInitialTolerance,event->pos().x()-m_mobileStartX));
         return;
@@ -2087,7 +2089,7 @@ void KisToolSelectContiguous::continuePrimaryAction(KoPointerEvent *event)
 
 void KisToolSelectContiguous::clearMobileTolerance()
 {
-    if (!mobileTolerancePending()) return;
+    if (!mobileGesturePending()) return;
     m_mobileTarget.clear();
     delete m_mobilePreview.data();
     endSelectInteraction();
@@ -2109,7 +2111,7 @@ void KisToolSelectContiguous::requestStrokeCancellation()
 void KisToolSelectContiguous::endPrimaryAction(KoPointerEvent *event)
 {
 #ifdef Q_OS_ANDROID
-    if (mobileTolerancePending()) {
+    if (mobileGesturePending()) {
         const auto target=m_mobileTarget;
         if (event && currentNode()==target && target->projection() && selectionEditable()) {
             const int threshold=mobileFillTolerance(m_mobileInitialTolerance,event->pos().x()-m_mobileStartX);
@@ -2140,7 +2142,7 @@ void KisToolSelectContiguous::endPrimaryAction(KoPointerEvent *event)
         """    QTouchEvent *touchEvent = dynamic_cast<QTouchEvent *> (event);
 #ifdef Q_OS_ANDROID
     if (state == END && priv()->activeTool &&
-        priv()->activeTool->property("mobileTolerancePending").toBool() &&
+        priv()->activeTool->property("mobileGesturePending").toBool() &&
         (!event || (event->type() != QEvent::TouchEnd &&
                     event->type() != QEvent::TabletRelease &&
                     event->type() != QEvent::MouseButtonRelease) ||
@@ -2152,8 +2154,184 @@ void KisToolSelectContiguous::endPrimaryAction(KoPointerEvent *event)
     if (touchEvent && touchEvent->touchPoints().isEmpty()) return true;
 #endif
 
-    if (tabletEvent)""","guard empty Android touch events and cancel interrupted Fill gestures")
+    if (tabletEvent)""","guard empty Android touch events and cancel interrupted tool gestures")
     tool_proxy_file.write_text(tool_proxy,encoding="utf-8")
+
+    assistant_dir=root/"plugins/assistants/Assistants"
+    (assistant_dir/"perspective_placement.h").write_text(
+        (own/"mobile_core/perspective_placement.h").read_text(encoding="utf-8"),
+        encoding="utf-8")
+    assistant_header=assistant_dir/"kis_assistant_tool.h"
+    assistant=assistant_header.read_text(encoding="utf-8")
+    assistant=one(assistant,"#include <QPointer>","#include <QPointer>\n#include <QVector>",
+                  "mobile perspective points")
+    assistant=one(assistant,"    Q_OBJECT\n    enum PerspectiveAssistantEditionMode",
+        """    Q_OBJECT
+#ifdef Q_OS_ANDROID
+    Q_PROPERTY(bool mobilePerspectivePlacement READ mobilePerspectivePlacement)
+    Q_PROPERTY(bool mobileGesturePending READ mobilePerspectivePlacement)
+#endif
+    enum PerspectiveAssistantEditionMode""","route cancellation while placing vanishing points")
+    assistant=one(assistant,"    void beginPrimaryAction(KoPointerEvent *event) override;",
+        """    void beginPrimaryAction(KoPointerEvent *event) override;
+#ifdef Q_OS_ANDROID
+    Q_INVOKABLE void mobileToggleThreePointPlacement();
+    bool mobilePerspectivePlacement() const {return m_mobilePerspectivePlacement;}
+    void requestStrokeCancellation() override;
+    void requestStrokeEnd() override;
+#endif""","expose three-point placement on the mobile tool strip")
+    assistant=one(assistant,"private:\n    // adds and removes assistant.",
+        """private:
+#ifdef Q_OS_ANDROID
+    void mobileCancelThreePointPlacement();
+    void mobilePlaceVanishingPoint(KoPointerEvent *event);
+    bool m_mobilePerspectivePlacement=false;
+    QVector<QPointF> m_mobileVanishingPoints;
+#endif
+    // adds and removes assistant.""","store pending guide points until the set is complete")
+    assistant_header.write_text(assistant,encoding="utf-8")
+    assistant_source=assistant_dir/"kis_assistant_tool.cc"
+    assistant=assistant_source.read_text(encoding="utf-8")
+    assistant=one(assistant,'#include <kis_assistant_tool.h>',
+        '''#include <kis_assistant_tool.h>
+#ifdef Q_OS_ANDROID
+#include "perspective_placement.h"
+#endif''',"native assistant placement helpers")
+    assistant=one(assistant,"void KisAssistantTool::deactivate()\n{",
+        """void KisAssistantTool::deactivate()
+{
+#ifdef Q_OS_ANDROID
+    mobileCancelThreePointPlacement();
+#endif""","discard incomplete guide sets when switching tools")
+    assistant=one(assistant,"            m_options.availableAssistantsComboBox->addItem(id.name(), id.id());",
+        """            QString label=id.name();
+#ifdef Q_OS_ANDROID
+            if (id.id()=="vanishing point") label=i18n("1-point perspective (Vanishing Point)");
+            if (id.id()=="two point") label=i18n("2-point perspective");
+#endif
+            m_options.availableAssistantsComboBox->addItem(label, id.id());""","label native one- and two-point workflows explicitly")
+    assistant=one(assistant,"    // show special display while a new assistant is in the process of being created",
+        """#ifdef Q_OS_ANDROID
+    if (m_mobilePerspectivePlacement) {
+        _gc.save();
+        _gc.setPen(QPen(QColor(63,198,255),2));
+        _gc.setBrush(QColor(37,37,41,230));
+        for (int i=0;i<m_mobileVanishingPoints.size();++i) {
+            const QPointF center=_converter.documentToView(m_mobileVanishingPoints.at(i));
+            _gc.drawEllipse(center,14,14);
+            _gc.drawText(QRectF(center-QPointF(14,14),QSizeF(28,28)),
+                         Qt::AlignCenter,QString::number(i+1));
+        }
+        _gc.restore();
+    }
+#endif
+
+    // show special display while a new assistant is in the process of being created""",
+        "draw numbered markers for uncommitted vanishing points")
+    assistant=one(assistant,"void KisAssistantTool::beginPrimaryAction(KoPointerEvent *event)\n{",
+        """#ifdef Q_OS_ANDROID
+void KisAssistantTool::mobileToggleThreePointPlacement()
+{
+    if (m_mobilePerspectivePlacement) {
+        mobileCancelThreePointPlacement();
+        return;
+    }
+    if (mode()!=HOVER_MODE) return;
+    m_newAssistant.clear();
+    m_mobilePerspectivePlacement=true;
+    m_canvas->viewManager()->showFloatingMessage(
+        i18n("Place the first and second vanishing points on the horizon, then the third above or below."),
+        QIcon(),3500,KisFloatingMessage::Medium);
+    m_canvas->updateCanvas();
+}
+
+void KisAssistantTool::mobileCancelThreePointPlacement()
+{
+    if (!m_mobilePerspectivePlacement) return;
+    m_mobilePerspectivePlacement=false;
+    m_mobileVanishingPoints.clear();
+    setMode(HOVER_MODE);
+    m_canvas->updateCanvas();
+}
+
+void KisAssistantTool::requestStrokeCancellation()
+{
+    mobileCancelThreePointPlacement();
+    KisTool::requestStrokeCancellation();
+}
+
+void KisAssistantTool::requestStrokeEnd()
+{
+    mobileCancelThreePointPlacement();
+    KisTool::requestStrokeEnd();
+}
+
+void KisAssistantTool::mobilePlaceVanishingPoint(KoPointerEvent *event)
+{
+    setMode(HOVER_MODE);
+    if (!event) {
+        mobileCancelThreePointPlacement();
+        return;
+    }
+    const auto transform=m_canvas->coordinatesConverter()->documentToWidgetTransform();
+    QVector<QPointF> placed;
+    for (const auto &point:m_mobileVanishingPoints) placed.append(transform.map(point));
+    if (!mobileCanPlaceVanishingPoint(placed,transform.map(event->point))) {
+        m_canvas->viewManager()->showFloatingMessage(
+            i18n("Place the vanishing point farther from the others and off the horizon."),
+            QIcon(),2000,KisFloatingMessage::Medium);
+        return;
+    }
+    m_mobileVanishingPoints.append(event->point);
+    if (m_mobileVanishingPoints.size()<3) {
+        m_canvas->updateCanvas();
+        return;
+    }
+
+    auto *factory=KisPaintingAssistantFactoryRegistry::instance()->get("vanishing point");
+    if (factory) {
+        auto decoration=m_canvas->paintingAssistantsDecoration();
+        const auto before=KisPaintingAssistant::cloneAssistantList(decoration->assistants());
+        for (const QPointF &point:m_mobileVanishingPoints) {
+            auto guide=toQShared(factory->createPaintingAssistant());
+            guide->setLocal(false);
+            guide->addHandle(new KisPaintingAssistantHandle(point),HandleType::NORMAL);
+            decoration->addAssistant(guide);
+        }
+        const auto after=KisPaintingAssistant::cloneAssistantList(decoration->assistants());
+        m_canvas->viewManager()->undoAdapter()->addCommand(new EditAssistantsCommand(
+            m_canvas,before,after,EditAssistantsCommand::ADD,before.size()));
+        m_handles=decoration->handles();
+        updateToolOptionsUI();
+    }
+    mobileCancelThreePointPlacement();
+}
+#endif
+
+void KisAssistantTool::beginPrimaryAction(KoPointerEvent *event)
+{
+#ifdef Q_OS_ANDROID
+    if (m_mobilePerspectivePlacement) {
+        setMode(PAINT_MODE);
+        return;
+    }
+#endif""","compose three native Vanishing Point assistants in one undo command")
+    assistant=one(assistant,"void KisAssistantTool::continuePrimaryAction(KoPointerEvent *event)\n{",
+        """void KisAssistantTool::continuePrimaryAction(KoPointerEvent *event)
+{
+#ifdef Q_OS_ANDROID
+    if (m_mobilePerspectivePlacement) return;
+#endif""","defer guide placement to release")
+    assistant=one(assistant,"void KisAssistantTool::endPrimaryAction(KoPointerEvent *event)\n{",
+        """void KisAssistantTool::endPrimaryAction(KoPointerEvent *event)
+{
+#ifdef Q_OS_ANDROID
+    if (m_mobilePerspectivePlacement) {
+        mobilePlaceVanishingPoint(event);
+        return;
+    }
+#endif""","place a vanishing point on release")
+    assistant_source.write_text(assistant,encoding="utf-8")
 
     transform_dir=root/"plugins/tools/tool_transform2"
     transform_header=transform_dir/"kis_tool_transform.h"
