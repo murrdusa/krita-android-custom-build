@@ -571,7 +571,10 @@ private:
         if(!fromDir.exists())return;
 
         if(!QDir(to).exists()) {
-            if(QDir().rename(from,to))return;
+            if(QDir().rename(from,to)) {
+                prune(to);
+                return;
+            }
         }
 
         if(!QDir().mkpath(to))return;
@@ -594,10 +597,19 @@ private:
                 } while(QFile::exists(targetPath) ||
                         QFile::exists(targetPath+QStringLiteral(".sha256")));
             }
-            if(!QFile::rename(entry.absoluteFilePath(),targetPath))
-                continue; // retain source if moving fails
-            if(QFile::exists(oldDigest))
-                QFile::rename(oldDigest,targetPath+QStringLiteral(".sha256"));
+            const QString targetDigest=targetPath+QStringLiteral(".sha256");
+            const bool hasDigest=QFile::exists(oldDigest);
+            // Install the tiny checksum sidecar first. If that copy
+            // fails, leave the original KRA/digest pair untouched so
+            // history migration can be retried. A failed KRA rename
+            // removes only the newly copied destination sidecar.
+            if(hasDigest && !QFile::copy(oldDigest,targetDigest))
+                continue;
+            if(!QFile::rename(entry.absoluteFilePath(),targetPath)) {
+                if(hasDigest)QFile::remove(targetDigest);
+                continue;
+            }
+            if(hasDigest)QFile::remove(oldDigest);
         }
         // Preserve any other metadata files; never overwrite unrelated
         // destination content, even if migration is retried.
