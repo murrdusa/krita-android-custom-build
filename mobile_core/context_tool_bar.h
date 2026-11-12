@@ -83,8 +83,8 @@ public:
         gear->setToolButtonStyle(Qt::ToolButtonIconOnly);
         gear->setIconSize(QSize(22,22));
         gear->setFixedSize(44,44);
-        gear->setAccessibleName(QObject::tr("Advanced Tool Options"));
-        gear->setToolTip(gear->accessibleName());
+        gear->setAccessibleName(QObject::tr("Full Krita Tool Options"));
+        gear->setToolTip(QObject::tr("Open Krita's complete native Tool Options"));
         layout->addWidget(gear);
         m_sync=new QTimer(this);
         m_sync->setInterval(180);
@@ -165,6 +165,18 @@ public:
             });
             connect(button(QObject::tr("Cancel")),&QToolButton::clicked,this,[this,path]() {
                 if(path && m_nativeTool==path.data())path->requestStrokeCancellation();
+            });
+        }
+        if(shortId.startsWith(QStringLiteral("KisToolSelect")) ||
+           shortId==QStringLiteral("KisToolTransform")) {
+            // Dismiss an incomplete native selection/transform gesture.
+            // Do not implement a separate undo stack or replace Krita's
+            // own Apply/Reset actions.
+            const QPointer<KoToolBase> cancellable=nativeTool;
+            auto *cancel=button(QObject::tr("Cancel"));
+            connect(cancel,&QToolButton::clicked,this,[this,cancellable]() {
+                if(cancellable && cancellable==m_nativeTool)
+                    cancellable->requestStrokeCancellation();
             });
         }
         if(shortId.startsWith(QStringLiteral("KisToolSelect"))) {
