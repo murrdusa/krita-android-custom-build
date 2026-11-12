@@ -366,7 +366,7 @@ private:
     struct Tile {
         QString tool,label,description,icon;
         QPointer<QAction> action;
-        QString actionId;
+        QString actionId={};
         QString favoriteId() const {
             return tool.isEmpty()?QStringLiteral("action/")+actionId:
                                   QStringLiteral("tool/")+tool;

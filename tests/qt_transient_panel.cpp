@@ -50,6 +50,7 @@ int main(int argc,char **argv)
     QObject::connect(star,&QPushButton::clicked,[&]() {++starClicks;});
     QObject::connect(&nextMenu,&QPushButton::clicked,[&]() {++menuClicks;});
     click(star);
+    click(panel);
     if(!panel->isVisible() || starClicks!=1)return 1;
     click(&nextMenu);
     if(panel->isVisible() || menuClicks!=1)return 2;

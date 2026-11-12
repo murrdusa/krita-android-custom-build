@@ -14,6 +14,7 @@ public:
     explicit MobileTransientPanel(QWidget *host) : QFrame(host)
     {
         setAttribute(Qt::WA_DeleteOnClose);
+        setAttribute(Qt::WA_NoMousePropagation);
         qApp->installEventFilter(this);
     }
 
