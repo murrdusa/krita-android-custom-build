@@ -200,9 +200,14 @@ public:
         if(minGapMs>0) {
             const auto versions=scan(folder);
             if(!versions.isEmpty()) {
-                const qint64 elapsed=versions.first().createdUtc.msecsTo(
+                const Version &recent=versions.first();
+                const qint64 elapsed=recent.createdUtc.msecsTo(
                     QDateTime::currentDateTimeUtc());
-                if(elapsed>=0 && elapsed<minGapMs)return true;
+                // Rate-limit only against a complete, parseable archive
+                // pair. A missing/corrupt SHA sidecar or replaced KRA
+                // must not suppress a fresh recoverable checkpoint.
+                if(elapsed>=0 && elapsed<minGapMs &&
+                   hasPublishedCheckpoint(recent))return true;
             }
         }
         if(!QDir().mkpath(folder))return false;
@@ -632,6 +637,24 @@ private:
         }
         fromDir.rmdir(from); // succeeds only if fully migrated
         prune(to);
+    }
+
+    static bool hasPublishedCheckpoint(const Version &version)
+    {
+        if(version.path.isEmpty() || QFileInfo(version.path).isSymLink())
+            return false;
+        QFile archive(version.path);
+        if(!archive.open(QIODevice::ReadOnly) ||
+           archive.peek(4)!=QByteArray::fromHex("504b0304") ||
+           archive.size()!=version.bytes)return false;
+        const QString digestPath=version.path+QStringLiteral(".sha256");
+        if(QFileInfo(digestPath).isSymLink())return false;
+        QFile digest(digestPath);
+        if(!digest.open(QIODevice::ReadOnly))return false;
+        const QByteArray sha=digest.readAll(65).trimmed().toLower();
+        return sha.size()==64 &&
+            QRegularExpression(QStringLiteral("^[0-9a-f]{64}$"))
+                .match(QString::fromLatin1(sha)).hasMatch();
     }
 
     static QVector<Version> scan(const QString &folder)
