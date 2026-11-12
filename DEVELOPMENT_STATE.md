@@ -4,6 +4,10 @@
 
 Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1). This file records *current* status, not a commit-by-commit log. The preceding complete log is preserved verbatim in [DEVELOPMENT_HISTORY_2026-11-11.md](DEVELOPMENT_HISTORY_2026-11-11.md). More focused runbooks live under `mobile_core/`.
 
+## Compact Layers and brush blend follow-up (November 12)
+
+User device screenshot showed horizontal Layers Add/Minimize adjacent, excessive short-axis gutter and reversed name orientation. The compact Layers header now keeps Add above a smaller Minimize button regardless of rail orientation, rotates the horizontal active-layer name counterclockwise, narrows outer margins and scales tiles closer to the short axis. Brush Settings replaces the flat blending-mode combo with a touch-scrolling category tree matching Layer Blending Mode: Favorites first, nested native color-space-compatible categories, checked current mode and native brush resource assignment. Android default two-finger tap now maps to Undo, while one-finger double-tap continues to mirror/flip the view around the tap. Explicit saved gesture bindings remain unchanged. Source commit sequence `6f8c6736`, `acacda70`, `41187f3c`, `e355d3f6`; check build Issue #1 for the exact compiled SHA. Fold 6 verification pending; do not request manual tests until user is ready.
+
 ## Adaptive Android workspace
 
 The built-in portrait workspace puts the ten essential commands along the bottom and Layers at the top. Landscape and near-square windows use the left toolbar and right Layers rail. The toolbar fits a single strip by adapting icon and touch-target sizes, with scrolling as a fallback when fewer than about 308 logical pixels are available. Layers expand with content, collapse at their anchor, and place the tile controls inward. The horizontal rail uses a rotated name at the end. Edit UI Layout adjusts rail thickness and offers per-screen reset and layout copying.
