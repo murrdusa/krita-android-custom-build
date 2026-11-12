@@ -106,8 +106,9 @@ protected:
         painter.setPen(Qt::NoPen);
         painter.setBrush(QColor("#252e39"));
         painter.drawRoundedRect(rect(),5,5);
-        painter.translate(width(),0);
-        painter.rotate(90);
+        // Read bottom-to-top on the right edge of a horizontal rail.
+        painter.translate(0,height());
+        painter.rotate(-90);
         painter.setPen(QColor("#edf5fb"));
         painter.drawText(QRect(0,0,height(),width()),Qt::AlignCenter,text());
     }
@@ -150,7 +151,10 @@ public:
             "QPushButton:pressed{background:#5685a6;}"
             "QPushButton:disabled{color:#8696a3;background:#303d48;}");
         auto *layout=new QVBoxLayout(this);
-        layout->setContentsMargins(2,2,2,2);
+        // Compact rails should hug their thumbnails instead of carrying
+        // desktop docker padding along their short axis.
+        layout->setContentsMargins(compactRail?1:2,compactRail?1:2,
+                                  compactRail?1:2,compactRail?1:2);
         layout->setSpacing(1);
         if(!compactRail) {
             auto *close=new QPushButton(i18n("Close Layers"),this);
@@ -187,7 +191,7 @@ public:
                          [this](int) {updateVisibleLayerThumbnails();});
         m_railLayout=new QBoxLayout(QBoxLayout::TopToBottom);
         m_railLayout->setContentsMargins(0,0,0,0);
-        m_railLayout->setSpacing(1);
+        m_railLayout->setSpacing(0);
         m_railLayout->addWidget(m_tree,1);
         layout->addLayout(m_railLayout,1);
         if(compactRail) {
@@ -323,7 +327,8 @@ public:
         addType->setAccessibleName(i18n("Add layer"));
         addType->setToolTip(i18n("Tap: new paint layer. Hold: all layer and mask types"));
         auto *railHeader=new QWidget(this);
-        auto *header=new QHBoxLayout(railHeader);
+        // Keep Add and Minimize stacked even after the rail rotates.
+        auto *header=new QVBoxLayout(railHeader);
         header->setContentsMargins(0,0,0,0);
         header->setSpacing(1);
         header->setAlignment(Qt::AlignCenter);
@@ -336,11 +341,11 @@ public:
                 "QPushButton{background:#34343a;color:white;border:1px solid #55555c;"
                 "border-radius:5px;min-height:0;padding:0;font-size:16px;}"
                 "QPushButton:pressed{background:#5685a6;}");
-            for(auto *button:{addType,minimize}) {
-                button->setStyleSheet(style);
-                button->setFixedSize(29,34);
-            }
-            header->addWidget(minimize);
+            addType->setStyleSheet(style);
+            addType->setFixedSize(29,34);
+            minimize->setStyleSheet(style);
+            minimize->setFixedSize(24,22);
+            header->addWidget(minimize,0,Qt::AlignHCenter);
             connect(minimize,&QPushButton::clicked,this,[this]() {
                 if(onRequestClose)onRequestClose();
             });
