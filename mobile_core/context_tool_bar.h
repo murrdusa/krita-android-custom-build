@@ -170,21 +170,13 @@ public:
                 QObject::tr("Replace"),QObject::tr("Intersect"),QObject::tr("Add"),
                 QObject::tr("Subtract"),QObject::tr("Symmetric difference")
             });
-            named("sliderThreshold",QObject::tr("Tol."));
-            named("sliderCloseGap",QObject::tr("Gap"));
+            native("deselect",QObject::tr("Deselect"));
+            named("sliderThreshold",QObject::tr("Tolerance"));
+            named("sliderCloseGap",QObject::tr("Close gap"));
+            if(shortId==QStringLiteral("KisToolSelectMagnetic"))
+                named("radius",QObject::tr("Radius"));
             addSectionChoices("sectionMode",QObject::tr("Type"),
                               {QObject::tr("Pixel"),QObject::tr("Vector")});
-            native("deselect",QObject::tr("Deselect"));
-            if(shortId==QStringLiteral("KisToolSelectMagnetic")) {
-                named("radius",QObject::tr("Radius"));
-                named("threshold",QObject::tr("Edge"));
-                named("frequency",QObject::tr("Search"));
-                named("anchorgap",QObject::tr("Anchor gap"));
-            } else {
-                named("sliderGrowSelection",QObject::tr("Grow"));
-                named("sliderFeather",QObject::tr("Feather"));
-                named("checkBoxAntiAliasSelection",QObject::tr("Anti-alias"));
-            }
             // Keep everyday selection controls visible; preserve the full
             // native command set in a single touch-friendly menu.
             nativeMenu(QObject::tr("Selection"),{
@@ -200,12 +192,10 @@ public:
                 {"borderselection",QObject::tr("Border")},
                 {"smoothselection",QObject::tr("Smooth")}
             });
-            nativeMenu(QObject::tr("Convert"),{
+            nativeMenu(QObject::tr("Convert and copy"),{
                 {"convert_to_vector_selection",QObject::tr("Vector selection")},
                 {"convert_to_raster_selection",QObject::tr("Raster selection")},
-                {"colorrange",QObject::tr("Color range")}
-            });
-            nativeMenu(QObject::tr("Extract"),{
+                {"colorrange",QObject::tr("Color range")},
                 {"copy_merged",QObject::tr("Copy merged")},
                 {"copy_selection_to_new_layer",QObject::tr("Copy to layer")},
                 {"cut_selection_to_new_layer",QObject::tr("Cut to layer")}
@@ -232,6 +222,10 @@ public:
             // can differ in this independent, main-window-free host.
             // Call exactly the same native slots as the working gear panel.
             addTransformModeMenu();
+            if(auto *box=qobject_cast<QDialogButtonBox*>(findOption("buttonBox"))) {
+                addOption(box->button(QDialogButtonBox::Apply),QObject::tr("Apply"));
+                addOption(box->button(QDialogButtonBox::Reset),QObject::tr("Reset"));
+            }
             const auto modeOption=[this](const char *name,const QString &label) {
                 QPointer<QWidget> source=findOption(name);
                 const int before=m_row->count();
@@ -242,21 +236,9 @@ public:
                     if(control)control->setVisible(optionAvailable(source));
                 });
             };
-            modeOption("translateXBox",QObject::tr("X"));
-            modeOption("translateYBox",QObject::tr("Y"));
-            modeOption("scaleXBox",QObject::tr("Width %"));
-            modeOption("scaleYBox",QObject::tr("Height %"));
-            modeOption("densityBox",QObject::tr("Grid"));
             modeOption("liquifySizeSlider",QObject::tr("Size"));
             modeOption("liquifyAmountSlider",QObject::tr("Strength"));
-            modeOption("liquifyFlowSlider",QObject::tr("Speed"));
-            modeOption("liquifyReverseDirectionChk",QObject::tr("Reverse"));
             modeOption("chkShowControlPoints",QObject::tr("Mesh points"));
-            modeOption("chkSymmetricalHandles",QObject::tr("Symmetric"));
-            if(auto *box=qobject_cast<QDialogButtonBox*>(findOption("buttonBox"))) {
-                addOption(box->button(QDialogButtonBox::Apply),QObject::tr("Apply"));
-                addOption(box->button(QDialogButtonBox::Reset),QObject::tr("Reset"));
-            }
             addNamedChoices(QObject::tr("Adjust"),{
                 {"flipXButton",QObject::tr("Flip H")},
                 {"flipYButton",QObject::tr("Flip V")},
@@ -269,11 +251,10 @@ public:
             addSectionChoices("sectionFillWith",QObject::tr("Source"),
                 {QObject::tr("Foreground"),QObject::tr("Background"),QObject::tr("Pattern")});
             addFillResource(false);
-            named("sliderThreshold",QObject::tr("Tol."));
-            named("sliderCloseGap",QObject::tr("Gap"));
+            named("sliderThreshold",QObject::tr("Tolerance"));
+            named("sliderCloseGap",QObject::tr("Close gap"));
             addSectionChoices("sectionReference",QObject::tr("Reference"),
                 {QObject::tr("Current layer"),QObject::tr("All layers"),QObject::tr("Color labels")});
-            named("checkBoxAntiAlias",QObject::tr("Anti-alias"));
         } else if(shortId==QStringLiteral("KisToolEncloseAndFill")) {
             addSectionChoices("sectionEnclosingMethod",QObject::tr("Enclose with"),
                 {QObject::tr("Rectangle"),QObject::tr("Ellipse"),QObject::tr("Path"),
@@ -284,9 +265,8 @@ public:
             addSectionChoices("sectionFillWith",QObject::tr("Source"),
                 {QObject::tr("Foreground"),QObject::tr("Background"),QObject::tr("Pattern")});
             addFillResource(false);
-            named("sliderThreshold",QObject::tr("Tol."));
-            named("sliderCloseGap",QObject::tr("Gap"));
-            named("checkBoxSelectionAsBoundary",QObject::tr("Selection boundary"));
+            named("sliderThreshold",QObject::tr("Tolerance"));
+            named("sliderCloseGap",QObject::tr("Close gap"));
             addSectionChoices("sectionReference",QObject::tr("Reference"),
                 {QObject::tr("Current layer"),QObject::tr("All layers"),QObject::tr("Color labels")});
         } else if(shortId==QStringLiteral("ToolReferenceImages")) {
@@ -297,7 +277,6 @@ public:
                 {"bnAddReferenceImageFromVisible",QObject::tr("From visible layers")}
             });
             named("opacitySlider",QObject::tr("Opacity"));
-            named("saturationSlider",QObject::tr("Saturation"));
             named("chkKeepAspectRatio",QObject::tr("Lock ratio"));
             named("bnDeleteSelectedImages",QObject::tr("Remove"));
             addNamedChoices(QObject::tr("Reference set"),{
@@ -318,10 +297,7 @@ public:
             named("chkAutoUpdates",QObject::tr("Auto update"));
             named("chkShowKeyStrokes",QObject::tr("Strokes"));
             named("chkShowOutput",QObject::tr("Output"));
-            named("chkUseEdgeDetection",QObject::tr("Detect edges"));
-            named("intEdgeDetectionSize",QObject::tr("Edge size"));
             named("intRadius",QObject::tr("Gap"));
-            named("intCleanUp",QObject::tr("Clean up"));
         } else if(shortId==QStringLiteral("KisToolKnife")) {
             addStripChoices(qobject_cast<KisOptionButtonStrip*>(
                 findOption("optionButtonStripToolMode")),QObject::tr("Gutter"),
@@ -332,7 +308,6 @@ public:
                 {"specialGapWidthRadioButton",QObject::tr("Custom")},
                 {"automaticGapWidthRadioButton",QObject::tr("Automatic")}
             });
-            named("unitsCombobox",QObject::tr("Units"));
             named("thickGapWidth",QObject::tr("Thick width"));
             named("thinGapWidth",QObject::tr("Thin width"));
             named("customGapWidth",QObject::tr("Custom width"));
@@ -351,8 +326,6 @@ public:
             named("shape_combo",QObject::tr("Shape"));
             named("repeat_combo",QObject::tr("Repeat"));
             named("reverse_check",QObject::tr("Reverse"));
-            named("dither_check",QObject::tr("Dither"));
-            named("threshold_slider",QObject::tr("Anti-alias"));
         } else if(shortId==QStringLiteral("KisToolMove")) {
             addNamedChoices(QObject::tr("Move target"),{
                 {"radioSelectedLayer",QObject::tr("Selected layer")},
@@ -366,21 +339,17 @@ public:
             named("intHeight",QObject::tr("Height"));
             named("lockRatioButton",QObject::tr("Lock ratio"));
             named("bnCrop",QObject::tr("Apply crop"));
-            named("intX",QObject::tr("X"));
-            named("intY",QObject::tr("Y"));
-            named("boolGrow",QObject::tr("Grow canvas"));
         } else if(shortId==QStringLiteral("KisAssistantTool")) {
             named("availableAssistantsComboBox",QObject::tr("Guide type"));
             named("localAssistantCheckbox",QObject::tr("Local"));
-            named("twoPointUseVerticalCheckbox",QObject::tr("Vertical"));
-            named("twoPointDensitySpinbox",QObject::tr("Density"));
-            named("subdivisionsSpinbox",QObject::tr("Divisions"));
             addNamedChoices(QObject::tr("Guide files"),{
                 {"loadAssistantButton",QObject::tr("Import guides")},
                 {"saveAssistantButton",QObject::tr("Export guides")}
             });
-            native("view_toggle_painting_assistants",QObject::tr("Guides"));
-            native("view_toggle_assistant_previews",QObject::tr("Preview"));
+            nativeMenu(QObject::tr("Visibility"),{
+                {"view_toggle_painting_assistants",QObject::tr("Guides")},
+                {"view_toggle_assistant_previews",QObject::tr("Preview")}
+            });
         } else if(shortId==QStringLiteral("KisToolColorSampler")) {
             named("cmbSources",QObject::tr("Sample from"));
             named("radius",QObject::tr("Radius"));
@@ -395,8 +364,6 @@ public:
             named("verticalCheckbox",QObject::tr("Vertical"));
             named("moveOriginButton",QObject::tr("Move origin"));
             named("resetOriginButton",QObject::tr("Reset origin"));
-            named("intervalXSpinBox",QObject::tr("X spacing"));
-            named("intervalYSpinBox",QObject::tr("Y spacing"));
         } else if(shortId==QStringLiteral("SvgTextTool")) {
             named("mobileEditSvgText",QObject::tr("Edit text"));
             if(openTextFormatting) {
@@ -409,9 +376,7 @@ public:
         }
         named("cmbOutline",QObject::tr("Outline"));
         named("cmbFill",QObject::tr("Fill"));
-        if(m_row->count()<4)addCommonOptions();
-        if(m_row->count()==0)
-            m_row->addWidget(new QLabel(QObject::tr("Tool options"),content));
+        if(m_row->count()==0)addCommonOptions();
         m_row->addStretch();
         m_scroll->setWidget(content);
         // Each tool starts with its most common controls; a long strip on
