@@ -289,10 +289,15 @@ public:
         }
         if(!output.commit())return false;
         QSaveFile digestFile(target+QStringLiteral(".sha256"));
-        if(digestFile.open(QIODevice::WriteOnly)) {
-            if(digestFile.write(sha)==sha.size())
-                digestFile.commit();
-            else digestFile.cancelWriting();
+        // A freshly published version must carry its checksum. Otherwise
+        // a disk-full/permission failure silently leaves an unverifiable
+        // entry that recovery may later treat as a legacy archive.
+        if(!digestFile.open(QIODevice::WriteOnly) ||
+           digestFile.write(sha)!=sha.size() ||
+           !digestFile.commit()) {
+            digestFile.cancelWriting();
+            QFile::remove(target);
+            return false;
         }
         prune(folder);
         return true;
