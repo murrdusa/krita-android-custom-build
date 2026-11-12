@@ -149,6 +149,34 @@ int main(int argc,char **argv)
                 Archive::list(saved,root).size()==3,
                 "named project continues existing version history"))return 1;
 
+    // Import a second draft into an already populated project history.
+    // This follows the per-file migration branch, where checksums must
+    // remain paired with their moved KRA files.
+    const QString secondDraft=temp.filePath(QStringLiteral("LaterUntitled.kra"));
+    const QByteArray imported=QByteArray::fromHex("504b0304")+
+        QByteArray("imported draft");
+    if(!require(writeBytes(secondDraft,imported) &&
+                Archive::snapshot(secondDraft,root),
+                "second draft history initial"))return 1;
+    Archive::adoptHistory(secondDraft,saved,root);
+    const auto merged=Archive::list(saved,root);
+    if(!require(Archive::list(secondDraft,root).isEmpty() &&
+                merged.size()==4,
+                "merge draft history into existing named project"))return 1;
+    bool recoveredImported=false;
+    for(const auto &version:merged) {
+        const QString path=Archive::materializeRecovery(
+            version,temp.filePath(QStringLiteral("recovery")));
+        if(!require(!path.isEmpty(),
+                    "every merged archive retains a valid checksum"))return 1;
+        QFile file(path);
+        if(!require(file.open(QIODevice::ReadOnly),
+                    "open merged recovery copy"))return 1;
+        if(file.readAll()==imported)recoveredImported=true;
+    }
+    if(!require(recoveredImported,
+                "migrated draft preserves original bytes"))return 1;
+
     // The archive directory can contain unrelated symlinks. Never expose
     // them as recoverable snapshots to the project browser.
     const QString folder=Archive::folderFor(spaced,root);
@@ -176,6 +204,6 @@ int main(int argc,char **argv)
 
     qInfo() << "PASS: archive deduplication, recovery integrity, checksum repair,"
                " corruption handling, periodic spacing, forced checkpoints,"
-               " retention, draft history migration, symlinks and Android identities";
+               " retention, merged draft history, symlinks and Android identities";
     return 0;
 }
