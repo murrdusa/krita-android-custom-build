@@ -414,7 +414,7 @@ def main(root:Path):
     viewcpp=root/"libs/ui/KisView.cpp"
     vc=viewcpp.read_text(encoding="utf-8")
     vc=one(vc,'#include "KisViewManager.h"',
-           '#include "KisViewManager.h"\n#ifdef Q_OS_ANDROID\n#include <KoCanvasSupervisor.h>\n#include "native_krita_save_host.h"\n#endif',
+           '#include "KisViewManager.h"\n#ifdef Q_OS_ANDROID\n#include <KoCanvasSupervisor.h>\n#include "native_krita_save_host.h"\n#include "document_close_prompt.h"\n#endif',
            "KisView native save host include")
     vc=one(vc,'''        , canvasController(_q, viewManager->mainWindow(), viewManager->actionCollection())''',
            '''#ifdef Q_OS_ANDROID
@@ -460,6 +460,15 @@ MobileKritaNativeSaveHost *KisView::mobileNativeSaveHost() const
 
 KisMainWindow * KisView::mainWindow() const''',
            "KisView native save host methods")
+    vc=one(vc,'''        int res = QMessageBox::warning(this,''',
+           '''        int res;
+#ifdef Q_OS_ANDROID
+        if (!viewManager()->mainWindow())
+            res = mobileConfirmDocumentClose(this, name);
+        else
+#endif
+        res = QMessageBox::warning(this,''',
+           "KisView mobile close prompt")
     vc=one(vc,'''            if (!viewManager()->mainWindow()->saveDocument(document(), !isNative, false))
                 return false;''',
            '''#ifdef Q_OS_ANDROID
@@ -467,13 +476,24 @@ KisMainWindow * KisView::mainWindow() const''',
                 // Without a live injected host, refuse Save and retain
                 // the modified painting. Never silently discard it.
                 if (!d->mobileNativeSaveHost ||
-                    !d->mobileNativeSaveHost->save(document(), !isNative))
+                    !d->mobileNativeSaveHost->save(document(), !isNative &&
+                        document()->mimeType() != "application/x-krita-archive") ||
+                    document()->isModified())
                     return false;
             } else
 #endif
             if (!viewManager()->mainWindow()->saveDocument(document(), !isNative, false))
                 return false;''',
            "KisView native close Save")
+    vc=one(vc,'''        case QMessageBox::No : {
+            KisImageSP image = document()->image();''',
+           '''        case QMessageBox::No : {
+#ifdef Q_OS_ANDROID
+            if (!viewManager()->mainWindow())
+                document()->waitForSavingToComplete();
+#endif
+            KisImageSP image = document()->image();''',
+           "KisView wait for pending checkpoint before discard")
     vc=one(vc,'''void KisView::dropEvent(QDropEvent *event)
 {
     dbgUI << Q_FUNC_INFO;''',
@@ -948,6 +968,9 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
     ui_cmake_file.write_text(ui_cmake,encoding="utf-8")
     (root/"libs/ui/document_switcher.h").write_text(
         switcher.read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/document_close_prompt.h").write_text(
+        (own/"mobile_core/document_close_prompt.h").read_text(encoding="utf-8"),
+        encoding="utf-8")
     (root/"libs/ui/document_home.h").write_text(
         (own/"mobile_core/document_home.h").read_text(encoding="utf-8"),
         encoding="utf-8")
@@ -2003,6 +2026,7 @@ void KisNodeManager::slotSomethingActivatedNodeImpl(KisNodeSP node, bool allowGl
         QFile::remove(draftPath);
         QFile::remove(draftPath + QStringLiteral(".pending.kra"));
         QFile::remove(draftPath + QStringLiteral(".project"));
+        QFile::remove(draftPath + QStringLiteral(".title"));
     }
     // Eliminate any auto-save file
     QString asf = generateAutoSaveFileName(autosaveBaseName);""",

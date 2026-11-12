@@ -516,9 +516,7 @@ public:
                 return;
             }
             deferViewCommand([alive,home,documents](const QPointer<QObject> &selected) {
-                if(documents->returnHome(selected))home->showHome();
-                else if(alive)QMessageBox::warning(alive.data(),QObject::tr("Drawing kept open"),
-                    QObject::tr("Studio could not save the drawing or its recovery draft."));
+                if(alive && documents->closeDocumentView(selected))home->showHome();
             });
         });
 
@@ -589,7 +587,7 @@ public:
             if(!alive)return;
             const int opened=MobileAndroidDocumentIntents::attachAndOpen(
                 alive.data(),intentHost);
-            if(opened==0 && !home->restoreSingleDraft()) {
+            if(opened==0) {
                 home->showHome();
                 stage("Document Home ready",false);
             } else {

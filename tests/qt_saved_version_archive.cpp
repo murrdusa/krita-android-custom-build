@@ -230,6 +230,17 @@ int main(int argc,char **argv)
             MobileDraftRecovery::title(drafts.first())==QStringLiteral("a_b") &&
             !MobileDraftRecovery::isDraft(source),
             "draft listing exposed staging or external files");
+    require(MobileDraftRecovery::displayTitle(drafts.first(),QStringLiteral("Recovered"))==
+                QStringLiteral("Recovered") &&
+            MobileDraftRecovery::displayTitle(drafts.first(),QStringLiteral("Later"))==
+                QStringLiteral("Recovered"),
+            "a draft keeps its generated name across checkpoints");
+    require(!MobileDraftRecovery::rename(source,QStringLiteral("External")) &&
+            !MobileDraftRecovery::rename(draft,QStringLiteral("  ")) &&
+            MobileDraftRecovery::rename(draft,QStringLiteral("  Sketch  ")) &&
+            MobileDraftRecovery::displayTitle(drafts.first(),QStringLiteral("Later"))==
+                QStringLiteral("Sketch"),
+            "renaming a private draft must preserve its file identity");
     require(MobileSavedVersionArchive::isKritaProjectName(QStringLiteral("Untitled.kra (2)")) &&
             !MobileSavedVersionArchive::isKritaProjectName(QStringLiteral("drawing.kra.zip")),
             "recognize Android numbered KRA names without matching arbitrary archives");

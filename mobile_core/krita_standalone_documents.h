@@ -13,7 +13,6 @@
 #include <QAndroidJniObject>
 #include <QFile>
 #include <QFileInfo>
-#include <cstdio>
 #include <QMessageBox>
 #include <QPointer>
 #include <QScopedValueRollback>
@@ -67,8 +66,7 @@ public:
     bool openFile(const QString &path) const override
     {
         if(!available() || m_opening || m_replacing || m_saving ||
-           !MobileNativeDocumentPathPolicy::mayAttemptOpen(path))
-            return false;
+           path.trimmed().isEmpty())return false;
         const QScopedValueRollback<bool> transaction(m_opening,true);
 
         // Opening the current document again must keep its unsaved edits.
@@ -83,14 +81,16 @@ public:
         }
 
         const auto checkpoint=MobileDraftRecovery::latestFor(
-            path,MobileSavedVersionArchive::projectModified(path));
+            path,qMax(MobileSavedVersionArchive::projectModified(path),
+                MobileSavedVersionArchive::previewRevisions().value(
+                    MobileSavedVersionArchive::canonicalIdentity(path)).toLongLong()));
         // A newer draft can survive an interrupted save with invalid
         // bytes. Prefer the completed project rather than repeatedly
         // attempting that draft whenever the named file is opened.
         // Keep the damaged draft available for manual inspection.
-        const QString latest=checkpoint.exists() &&
-            MobileDraftRecovery::hasKraHeader(checkpoint.absoluteFilePath())?
-            checkpoint.absoluteFilePath():QString();
+        const QString latest=checkpoint.absoluteFilePath();
+        const bool originalAvailable=MobileNativeDocumentPathPolicy::mayAttemptOpen(path);
+        if(latest.isEmpty() && !originalAvailable)return false;
         const QString source=latest.isEmpty()?path:latest;
         KisDocument *document=KisPart::instance()->createDocument();
         if(!document)return false;
@@ -102,7 +102,7 @@ public:
         const bool savedVersion=MobileSavedVersionArchive::isRecoveryCopy(path);
         if(!openProjectSource(document,source,privateDraft || savedVersion || !latest.isEmpty())) {
             delete document;
-            if(latest.isEmpty())return false;
+            if(latest.isEmpty() || !originalAvailable)return false;
             document=KisPart::instance()->createDocument();
             if(!document || !openProjectSource(document,path,false)) {
                 delete document;
@@ -153,52 +153,6 @@ public:
     bool save(KisDocument *document,bool saveAs) const override
     {
         return writeDocument(document,saveAs,false);
-    }
-
-    bool prepareHomeClose(KisDocument *document) const override
-    {
-        if(!available() || m_saving || m_opening || m_replacing ||
-           !document || !m_runtime->ownsDocument(document))return false;
-        QPointer<KisDocument> guarded=document;
-        const QString path=document->path();
-        const QByteArray mime=document->mimeType();
-        if(!document->isRecovered() && !path.isEmpty() &&
-           (mime==document->nativeFormatMimeType() || mime=="application/x-krita-archive")) {
-            if(!MobileNativeDocumentPathPolicy::mayAttemptOpen(path))return false;
-            return save(document,false) && guarded && !guarded->isModified();
-        }
-
-        const QScopedValueRollback<bool> saving(m_saving,true);
-        document->waitForSavingToComplete();
-        if(!guarded || !m_runtime->ownsDocument(guarded))return false;
-        KisDelayedSaveDialog idle(guarded->image(),KisDelayedSaveDialog::SaveDialog,0,
-                                  m_runtime->window());
-        idle.blockIfImageIsBusy();
-        if(idle.result()!=KisDelayedSaveDialog::Accepted || !guarded ||
-           !m_runtime->ownsDocument(guarded))return false;
-        const QString draft=guarded->property("_mobileDraftPath").toString();
-        if(draft.isEmpty())return false;
-        const QString staging=draft+QStringLiteral(".home.pending.kra");
-        bool completed=false,changed=false;
-        auto image=guarded->image().toStrongRef();
-        if(!image)return false;
-        const auto modified=QObject::connect(image.data(),&KisImage::sigImageModified,
-            guarded.data(),[&changed]() {changed=true;});
-        const auto connection=QObject::connect(guarded.data(),&KisDocument::sigSavingFinished,
-            guarded.data(),[&](const QString &saved) {completed=saved==staging;});
-        const bool started=guarded->exportDocument(staging,guarded->nativeFormatMimeType(),false,true);
-        if(started && guarded)guarded->waitForSavingToComplete();
-        QObject::disconnect(connection);
-        QObject::disconnect(modified);
-        if(!completed || changed || !guarded || !m_runtime->ownsDocument(guarded) ||
-           !image->isIdle() || std::rename(QFile::encodeName(staging).constData(),
-                       QFile::encodeName(draft).constData())!=0) {
-            QFile::remove(staging);
-            return false;
-        }
-        MobileDraftRecovery::setProject(draft,QString());
-        MobileSavedVersionArchive::enqueueDraftCheckpoint(draft,draft,true);
-        return true;
     }
 
     bool exportCopy(KisDocument *document) const override
@@ -326,6 +280,7 @@ private:
            !m_runtime->ownsDocument(guardedDocument))return false;
 
         if(!exporting) {
+            MobileSavedVersionArchive::recordPreviewRevision(target);
             rememberPath(target);
             if(targetMime==guardedDocument->nativeFormatMimeType() ||
                targetMime=="application/x-krita-archive") {

@@ -5,6 +5,8 @@
  * document providers. Unsaved edits are handled by private draft recovery.
  */
 #pragma once
+#include <QSettings>
+#include <algorithm>
 #include <QRegularExpression>
 #ifdef Q_OS_ANDROID
 #include <QAndroidJniObject>
@@ -74,6 +76,25 @@ public:
         }
 #endif
         return QFileInfo(path).lastModified().toMSecsSinceEpoch();
+    }
+
+    static QVariantMap previewRevisions()
+    {
+        return QSettings().value(QStringLiteral("MobileStudio/savedPreviewRevisions")).toMap();
+    }
+
+    static void recordPreviewRevision(const QString &path)
+    {
+        const QString identity=canonicalIdentity(path);
+        if(identity.isEmpty())return;
+        auto revisions=previewRevisions();
+        revisions.insert(identity,QDateTime::currentMSecsSinceEpoch());
+        if(revisions.size()>128) {
+            const auto oldest=std::min_element(revisions.cbegin(),revisions.cend(),
+                [](const QVariant &a,const QVariant &b) {return a.toLongLong()<b.toLongLong();});
+            revisions.remove(oldest.key());
+        }
+        QSettings().setValue(QStringLiteral("MobileStudio/savedPreviewRevisions"),revisions);
     }
 
     // Normalizes file and provider identities so that different access methods

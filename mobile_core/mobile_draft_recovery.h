@@ -13,6 +13,10 @@
 #include "saved_version_archive.h"
 #include <QStandardPaths>
 #include <QUuid>
+#ifdef Q_OS_ANDROID
+#include <KoStore.h>
+#include <QScopedPointer>
+#endif
 
 class MobileDraftRecovery final
 {
@@ -62,6 +66,17 @@ public:
             file.peek(4)==QByteArray::fromHex("504b0304");
     }
 
+    static bool hasReadableProject(const QString &path)
+    {
+        if(!hasKraHeader(path))return false;
+#ifdef Q_OS_ANDROID
+        QScopedPointer<KoStore> store(KoStore::createStore(path,KoStore::Read));
+        return store && !store->bad() && store->hasFile(QStringLiteral("maindoc.xml"));
+#else
+        return true;
+#endif
+    }
+
     static QFileInfoList list()
     {
         const QString folder=directory();
@@ -104,10 +119,31 @@ public:
             if(draft.lastModified().toMSecsSinceEpoch()<=savedModified)break;
             if(MobileSavedVersionArchive::canonicalIdentity(
                    projectFor(draft.absoluteFilePath()))==identity &&
-               hasKraHeader(draft.absoluteFilePath()))
+               hasReadableProject(draft.absoluteFilePath()))
                 return draft;
         }
         return {};
+    }
+
+    static bool rename(const QString &path,const QString &name)
+    {
+        const QByteArray data=name.trimmed().left(96).toUtf8();
+        if(data.isEmpty() || !isDraft(path))return false;
+        QSaveFile file(path+QStringLiteral(".title"));
+        return file.open(QIODevice::WriteOnly) && file.write(data)==data.size() &&
+            file.commit();
+    }
+
+    static QString displayTitle(const QFileInfo &draft,const QString &generated)
+    {
+        const QString path=draft.absoluteFilePath();
+        QFile titleFile(path+QStringLiteral(".title"));
+        if(titleFile.open(QIODevice::ReadOnly) && titleFile.size()<=384) {
+            const QString saved=QString::fromUtf8(titleFile.readAll()).trimmed();
+            if(!saved.isEmpty())return saved;
+        }
+        rename(path,generated);
+        return generated;
     }
 
     static QString title(const QFileInfo &draft)

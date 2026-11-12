@@ -30,6 +30,7 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QImageReader>
+#include <QInputDialog>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -108,7 +109,7 @@ public:
         for(const auto &v:arr) {
             const auto o=v.toObject();
             const QString p=o.value(QStringLiteral("path")).toString();
-            if(p.isEmpty())continue;
+            if(p.isEmpty() || MobileDraftRecovery::isDraft(p))continue;
             MobileProjectIndexEntry e;
             e.path=p;
             e.title=o.value(QStringLiteral("title")).toString();
@@ -212,7 +213,13 @@ public:
         if(modified>0)
             output.setFileTime(QDateTime::fromMSecsSinceEpoch(modified),
                                QFileDevice::FileModificationTime);
-        output.commit();
+        if(!output.commit())return;
+        static std::atomic_uint writes{0};
+        if(writes++%64!=0)return;
+        const auto entries=QDir(dir).entryInfoList({QStringLiteral("*.png")},
+            QDir::Files|QDir::NoSymLinks,QDir::Time);
+        for(int i=512;i<entries.size();++i)
+            QFile::remove(entries.at(i).absoluteFilePath());
     }
 };
 
@@ -341,7 +348,7 @@ public:
         connect(KisRecentFilesManager::instance(),&KisRecentFilesManager::fileAdded,
                 this,[this](const QUrl &url) {
             const auto path=url.isLocalFile()?url.toLocalFile():url.toString();
-            if(url.isLocalFile() && !isKra(path))return;
+            if(url.isLocalFile() && (!isKra(path) || MobileDraftRecovery::isDraft(path)))return;
             // Persist new locations even if the user never visits All Projects.
             m_scanner.start([path]() {
                 const MobileProjectIndexEntry entry{
@@ -362,7 +369,7 @@ public:
             const Mode mode=m_mode;
             QTimer::singleShot(0,this,[this,path,title,mode]() {
                 if(isVisible() && m_mode==mode && !path.isEmpty())
-                    projectActions(path,title,mode==RecoveryDrafts);
+                    projectActions(path,title,mode==RecoveryDrafts || MobileDraftRecovery::isDraft(path));
             });
         });
         connect(m_list->verticalScrollBar(),&QScrollBar::valueChanged,
@@ -404,30 +411,6 @@ public:
         }
     }
 
-    bool restoreSingleDraft()
-    {
-        const auto drafts=MobileDraftRecovery::list();
-        if(drafts.size()!=1 || !m_files)return false;
-        const auto &draft=drafts.first();
-        if(!MobileDraftRecovery::projectFor(draft.absoluteFilePath()).isEmpty())return false;
-        // A damaged or interrupted private KRA must not be the first
-        // automatic document opened during startup. Keep it visible
-        // under Recover drafts for manual handling instead.
-        if(!MobileDraftRecovery::hasKraHeader(draft.absoluteFilePath()))
-            return false;
-        const QString attempt=draft.fileName()+QLatin1Char(':')+
-            QString::number(draft.lastModified().toMSecsSinceEpoch());
-        const QString key=QStringLiteral("MobileStudio/lastAutomaticDraft");
-        QSettings settings;
-        if(settings.value(key).toString()==attempt)return false;
-        // Persist before opening. If a damaged draft terminates the app,
-        // the next launch still reaches Home and offers manual recovery.
-        settings.setValue(key,attempt);
-        settings.sync();
-        return settings.status()==QSettings::NoError &&
-               m_files->openFile(draft.absoluteFilePath());
-    }
-
     void showSavedVersions(const QString &path)
     {
         if(m_restoringVersion || !m_files)return;
@@ -447,13 +430,24 @@ public:
         explanation->setWordWrap(true);
         layout->addWidget(explanation);
         auto *list=new QListWidget(&dialog);
-        list->setStyleSheet(QStringLiteral("QListWidget::item{min-height:44px;padding:5px;}"));
+        list->setIconSize(QSize(64,54));
+        list->setStyleSheet(QStringLiteral("QListWidget::item{min-height:54px;padding:5px;}"));
         MobileTouchScroll::configureList(list);
         for(const auto &version:versions) {
-            new QListWidgetItem(i18n("%1  •  %2 MB",
+            new QListWidgetItem(m_placeholder,i18n("%1  •  %2 MB",
                 version.createdUtc.toLocalTime().toString(QStringLiteral("yyyy-MM-dd  HH:mm")),
                 QString::number(version.bytes/(1024.0*1024.0),'f',1)),list);
         }
+        const QPointer<QListWidget> target(list);
+        m_thumbnails.start([target,versions]() {
+            for(int row=0;row<versions.size();++row) {
+                const QImage image=preview(versions.at(row).path);
+                if(image.isNull())continue;
+                QMetaObject::invokeMethod(qApp,[target,image,row]() {
+                    if(target)target->item(row)->setIcon(QIcon(QPixmap::fromImage(image)));
+                },Qt::QueuedConnection);
+            }
+        });
         list->setCurrentRow(0);
         layout->addWidget(list,1);
         auto *buttons=new QDialogButtonBox(
@@ -519,7 +513,7 @@ private:
         QDialog dialog(window());
         dialog.setWindowTitle(title);
         auto *layout=new QVBoxLayout(&dialog);
-        enum Action {Open=1,Duplicate,History,Star,Delete};
+        enum Action {Open=1,Duplicate,History,Star,Delete,Rename};
         const auto add=[&](const QString &label,Action action) {
             auto *button=new QPushButton(label,&dialog);
             button->setMinimumHeight(44);
@@ -527,7 +521,9 @@ private:
             connect(button,&QPushButton::clicked,&dialog,[&dialog,action]() {dialog.done(action);});
         };
         const QString key=projectKey(path);
+        const QString draftProject=draft?MobileDraftRecovery::projectFor(path):QString();
         add(i18n("Open"),Open);
+        if(draft && draftProject.isEmpty())add(i18n("Rename draft…"),Rename);
         if(!draft && isKra(title))add(i18n("Duplicate"),Duplicate);
         add(i18n("Version history"),History);
         if(!draft)add(m_starred.contains(key)?i18n("Remove star"):i18n("Star project"),Star);
@@ -538,8 +534,18 @@ private:
         connect(cancel,&QPushButton::clicked,&dialog,&QDialog::reject);
         const int chosen=dialog.exec();
         if(!isVisible())return;
-        const QString draftProject=draft?MobileDraftRecovery::projectFor(path):QString();
         switch(chosen) {
+        case Rename: {
+            bool accepted=false;
+            const QString name=QInputDialog::getText(this,i18n("Rename draft"),
+                i18n("Name"),QLineEdit::Normal,title,&accepted).trimmed();
+            if(accepted && !name.isEmpty()) {
+                if(MobileDraftRecovery::rename(path,name))showList(m_mode);
+                else QMessageBox::warning(this,i18n("Could not rename draft"),
+                    i18n("The recovery file could not be updated."));
+            }
+            break;
+        }
         case Open:
             if(!draftProject.isEmpty()) {
                 MobileSavedVersionArchive::Version source;
@@ -670,8 +676,7 @@ private:
 
     void discardDraft(const QString &path)
     {
-        if(!isVisible() || m_mode!=RecoveryDrafts ||
-           !MobileDraftRecovery::isDraft(path))return;
+        if(!isVisible() || !MobileDraftRecovery::isDraft(path))return;
         if(draftIsOpen(path)) {
             QMessageBox::information(this,i18n("Draft is open"),
                 i18n("Close the drawing without saving to discard its draft."));
@@ -693,8 +698,9 @@ private:
         // .pending.kra consuming space or a project association behind.
         QFile::remove(path+QStringLiteral(".pending.kra"));
         QFile::remove(path+QStringLiteral(".project"));
+        QFile::remove(path+QStringLiteral(".title"));
         m_cache.remove(path);
-        showList(RecoveryDrafts);
+        showList(m_mode);
     }
 
     static bool isKra(const QString &path)
@@ -785,24 +791,42 @@ private:
         return {};
     }
 
+    static QString draftTitle(const QFileInfo &draft)
+    {
+        const QString generated=i18n("Recovered drawing %1 · %2",
+            draft.lastModified().toLocalTime().toString(QStringLiteral("yyyy-MM-dd HH:mm")),
+            draft.fileName().left(6));
+        return MobileDraftRecovery::displayTitle(draft,generated);
+    }
+
     void showList(Mode mode,bool forceScan=false)
     {
         if(m_mode==AllProjects && m_list->count()>0)persistIndex();
         m_mode=mode;
+        m_savedPreviewRevisions=MobileSavedVersionArchive::previewRevisions();
         m_forceThumbnailRefresh=forceScan;
         if(forceScan)m_cache.clear();
         m_recent->setChecked(mode==Recent);
         m_library->setChecked(mode==AllProjects);
         const auto drafts=MobileDraftRecovery::list();
         m_latestDrafts.clear();
-        for(const auto &draft:drafts) {
-            // Keep invalid draft files in Recover Drafts but do not
-            // let them replace a valid named project's Home preview.
-            if(!MobileDraftRecovery::hasKraHeader(draft.absoluteFilePath()))
-                continue;
-            const auto path=MobileDraftRecovery::projectFor(draft.absoluteFilePath());
-            if(!path.isEmpty() && !m_latestDrafts.contains(projectKey(path)))
-                m_latestDrafts.insert(projectKey(path),draft);
+        QVector<Project> unnamed;
+        QHash<QString,QString> draftProjects;
+        if(mode!=RecoveryDrafts) {
+            for(const auto &draft:drafts) {
+                const QString path=draft.absoluteFilePath();
+                if(!MobileDraftRecovery::hasReadableProject(path))continue;
+                const auto project=MobileDraftRecovery::projectFor(path);
+                if(project.isEmpty()) {
+                    unnamed.append({path,draftTitle(draft),
+                                    draft.lastModified().toMSecsSinceEpoch(),{}});
+                } else {
+                    const QString key=projectKey(project);
+                    if(m_latestDrafts.contains(key))continue;
+                    m_latestDrafts.insert(key,draft);
+                    draftProjects.insert(key,project);
+                }
+            }
         }
         m_drafts->setChecked(mode==RecoveryDrafts);
         m_drafts->setVisible(mode==RecoveryDrafts || !drafts.isEmpty());
@@ -817,6 +841,8 @@ private:
         m_pending.clear();
         m_attempted.clear();
         if(m_scanCancel)m_scanCancel->store(true);
+        if(mode!=RecoveryDrafts)
+            for(const auto &draft:unnamed)addProject(draft);
         if(mode==Recent) {
             m_message->setText(i18n("Recently opened drawings"));
             QHash<QString,MobileProjectIndexEntry> indexed;
@@ -827,17 +853,21 @@ private:
                 if(it->m_url.isEmpty())continue;
                 const QString path=it->m_url.isLocalFile()?
                     it->m_url.toLocalFile():it->m_url.toString();
+                if(MobileDraftRecovery::isDraft(path))continue;
                 const auto known=indexed.value(projectKey(path));
                 const QString name=!known.title.isEmpty()?known.title:
                     it->m_displayName.isEmpty()?QFileInfo(path).fileName():it->m_displayName;
-                const qint64 modified=it->m_url.isLocalFile()?
-                    QFileInfo(path).lastModified().toMSecsSinceEpoch():known.modified;
+                const qint64 modified=qMax(known.modified,
+                    MobileSavedVersionArchive::projectModified(path));
                 addProject({path,name,modified,{}});
             }
+            addMissingDraftProjects(draftProjects);
         } else if(mode==RecoveryDrafts) {
             m_message->setText(i18n("Recovered drafts open as unsaved drawings."));
             for(const auto &draft:drafts)
-                addProject({draft.absoluteFilePath(),MobileDraftRecovery::title(draft),
+                addProject({draft.absoluteFilePath(),
+                            MobileDraftRecovery::projectFor(draft.absoluteFilePath()).isEmpty()?
+                                draftTitle(draft):MobileDraftRecovery::title(draft),
                             draft.lastModified().toMSecsSinceEpoch(),{}});
         } else {
             m_message->setText(m_lastAccess?
@@ -858,15 +888,16 @@ private:
                     if(it->m_url.isEmpty())continue;
                     const QString p=it->m_url.isLocalFile()?
                         it->m_url.toLocalFile():it->m_url.toString();
-                    if(p.isEmpty())continue;
+                    if(p.isEmpty() || MobileDraftRecovery::isDraft(p))continue;
                     const auto *known=m_projectItems.value(projectKey(p));
                     const QString name=known?known->data(Qt::UserRole+3).toString():
                         it->m_displayName.isEmpty()?QFileInfo(p).fileName():it->m_displayName;
-                    const qint64 mod=it->m_url.isLocalFile()?
-                        QFileInfo(p).lastModified().toMSecsSinceEpoch():0;
+                    const qint64 mod=qMax(known?known->data(Qt::UserRole+1).toLongLong():0,
+                        MobileSavedVersionArchive::projectModified(p));
                     addProject({p,name,mod,{}});
                 }
             }
+            addMissingDraftProjects(draftProjects);
             // Keep the index visible during refresh and reuse it between scans.
             const qint64 now=QDateTime::currentMSecsSinceEpoch();
             const qint64 last=QSettings().value(
@@ -899,6 +930,16 @@ private:
         }
         if(mode==AllProjects)sortProjects();
         else filterItems();
+    }
+
+    void addMissingDraftProjects(const QHash<QString,QString> &draftProjects)
+    {
+        for(auto it=draftProjects.cbegin();it!=draftProjects.cend();++it) {
+            if(m_projectItems.contains(it.key()))continue;
+            const QString &path=it.value();
+            addProject({path,MobileSavedVersionArchive::projectName(path),
+                        MobileSavedVersionArchive::projectModified(path),{}});
+        }
     }
 
     void addProject(const Project &project)
@@ -963,7 +1004,8 @@ private:
     void updatePreviewSource(QListWidgetItem *item)
     {
         const QString project=item->data(Qt::UserRole).toString();
-        const qint64 savedTime=item->data(Qt::UserRole+1).toLongLong();
+        const qint64 savedTime=qMax(item->data(Qt::UserRole+1).toLongLong(),
+            m_savedPreviewRevisions.value(projectKey(project)).toLongLong());
         const auto draft=m_latestDrafts.value(projectKey(project));
         const qint64 draftTime=draft.lastModified().toMSecsSinceEpoch();
         const bool useDraft=draftTime>savedTime;
@@ -1099,6 +1141,7 @@ private:
             if(!item || item->data(Qt::UserRole).toString().isEmpty())continue;
             MobileProjectIndexEntry entry;
             entry.path=item->data(Qt::UserRole).toString();
+            if(MobileDraftRecovery::isDraft(entry.path))continue;
             entry.title=item->data(Qt::UserRole+3).toString();
             entry.modified=item->data(Qt::UserRole+1).toLongLong();
             entry.source=QStringLiteral("index");
@@ -1255,6 +1298,7 @@ private:
     QThreadPool m_scanner,m_thumbnails;
     QHash<QString,QListWidgetItem*> m_projectItems;
     QHash<QString,QFileInfo> m_latestDrafts;
+    QVariantMap m_savedPreviewRevisions;
     QSet<QString> m_pending,m_attempted;
     struct CachedPreview {QIcon icon; qint64 modified=0;};
     QHash<QString,CachedPreview> m_cache;

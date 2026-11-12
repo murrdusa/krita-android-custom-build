@@ -4,6 +4,14 @@
 
 Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1). This file records *current* status, not a commit-by-commit log. The preceding complete log is preserved verbatim in [DEVELOPMENT_HISTORY_2026-11-11.md](DEVELOPMENT_HISTORY_2026-11-11.md). More focused runbooks live under `mobile_core/`.
 
+## Fold 6 handoff follow-up
+
+The prior Fold 6 pass covered responsive layout, Layers resizing and rotation, Workspace Settings, reference gestures, toolbar swipes, native Tool Options and document safety. Advanced Brush Settings was not tested. The next batch makes editable fields request Android's keyboard on finger or pen taps, gives floating size and opacity compact translucent tracks, and allows the Color button to adjust size or opacity along the toolbar while retaining perpendicular sampling and tap-to-open.
+
+In-app Home and Close now share the native save transaction. A dirty canvas offers Save, Cancel, or a two-second hold with progress to discard. Android backgrounding still checkpoints independently. Recent and All Projects include readable recovery checkpoints. Named projects keep their identity, and unnamed checkpoints get a stable, editable display name. Recover Drafts remains available until the unified flow is verified on-device. Home refreshes previews after completed saves or newer checkpoints and bounds its disk cache. Version History shows timestamped thumbnails and opens versions as separate unsaved canvases. Existing archive deduplication and retention apply.
+
+Pending Fold 6 checks include finger and pen keyboard activation, both toolbar orientations and Color gesture axes, floating panel reflow, and Advanced Brush Settings. For documents, verify short and interrupted holds, Cancel, successful and failed Save, system Home versus in-app Home, crash recovery for named and unnamed drawings, draft rename across restart, and thumbnail/version freshness after repeated saves. Use Issue #1 for the exact WSL Android build status.
+
 ## Responsive canvas and phone brush editor
 
 The canvas reflows toolbars and floating controls on resize, favoring saved anchors and keeping items apart. Toolbars grow to fit commands where possible and scroll on narrower displays. Canvas Only is under **Canvas View**. Fade delay and opacity use touch sliders. Color history shares its toolbar background.
