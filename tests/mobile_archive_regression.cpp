@@ -30,6 +30,14 @@ int main(int argc,char **argv)
     if(!require(Archive::snapshot(source,root),"initial archive"))return 1;
     auto versions=Archive::list(source,root);
     if(!require(versions.size()==1,"one version created"))return 1;
+    // New archives must have a committed SHA-256 sidecar. Earlier
+    // versions may lack it, but silent checksum publication failures
+    // must not be accepted for newly written recovery history.
+    QFile firstDigest(versions.first().path+QStringLiteral(".sha256"));
+    if(!require(firstDigest.open(QIODevice::ReadOnly) &&
+                firstDigest.readAll().trimmed()==
+                    QCryptographicHash::hash(initial,QCryptographicHash::Sha256).toHex(),
+                "published archive checksum matches contents"))return 1;
     if(!require(Archive::snapshot(source,root),"deduplicated archive"))return 1;
     if(!require(Archive::list(source,root).size()==1,"duplicate not retained"))return 1;
 
