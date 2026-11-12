@@ -800,6 +800,24 @@ private:
         };
         updateFavorite();
         layout->addWidget(favoriteCurrent);
+        if(slot==2) {
+            // Paint and Color Smudge are distinct Krita engines. Do not
+            // invent a preset-engine conversion that corrupts brush settings.
+            // Instead start from a real smudge preset in Krita's editor,
+            // where Save As creates a valid new blending preset.
+            auto *createBlend=new QPushButton(i18n("Create blending brush…"),&dialog);
+            createBlend->setToolTip(i18n("Edit a native Color Smudge brush and save a new preset"));
+            createBlend->setEnabled(m_engine.action("show_brush_editor")!=nullptr);
+            layout->addWidget(createBlend);
+            connect(createBlend,&QPushButton::clicked,&dialog,[this,&dialog]() {
+                dialog.accept();
+                QTimer::singleShot(0,this,[this]() {
+                    switchMode(2);
+                    if(auto *editor=m_engine.action("show_brush_editor");
+                       editor && editor->isEnabled())editor->trigger();
+                });
+            });
+        }
 
         auto *grid=new QListView(&dialog);
         grid->setViewMode(QListView::IconMode);
