@@ -4,6 +4,10 @@
 
 Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1). This file records *current* status, not a commit-by-commit log. The preceding complete log is preserved verbatim in [DEVELOPMENT_HISTORY_2026-11-11.md](DEVELOPMENT_HISTORY_2026-11-11.md). More focused runbooks live under `mobile_core/`.
 
+## Brush picker and contextual controls
+
+Contextual tool options use compact lists or sliders anchored to their toolbar buttons. Brush presets use a dismissible drawer with search, category tabs, stars, and per-mode recents. One tap selects and keeps the drawer open. A second tap opens size, opacity, and supported flow controls. Erase can use any preset through Krita’s eraser toggle. Blend can create a separate Color Smudge preset from a compatible native brush tip. The conversion copies shared size, opacity, rotation, and scatter dynamics when present, and specialized engine effects remain specific to their original preset.
+
 ## Compact Tools picker
 
 Tools is a nonmodal canvas panel. A press on the canvas or another control dismisses it and continues to the original target. The picker displays all of its tool and command groups in one scroll area. Each tile can be starred independently of activating it, and favorites are saved by native ID and pinned above the groups. Advanced Tool Options remains available from the contextual gear and its existing toolbar command. Back or Escape also dismisses the panel.

@@ -164,6 +164,7 @@ public:
                              [this,root=QPointer<MobileNativeViewStack>(root)](int) {
                 if(!root)return;
                 MobileToolBrowser::dismiss(m_host);
+                if(m_brush)m_brush->dismissPresetBrowser();
                 const QPointer<QWidget> selected=root->currentWidget();
                 // The native factory schedules manager->setCurrentView()
                 // on the first event-loop turn. The workspace is wired
@@ -213,11 +214,10 @@ public:
         if(!m_brush->isActiveMode(slot)) {
             m_brush->activateMode(slot);
             syncBrushModes();
-            return;
         }
-        syncBrushModes();
-        QTimer::singleShot(0,this,[this,slot]() {
-            if(m_brush && m_engine.hasDocument() && m_brush->isActiveMode(slot))
+        const auto view=MobileViewIdentityGuard::uniqueActive(m_engine.openDocuments());
+        QTimer::singleShot(0,this,[this,slot,view]() {
+            if(m_brush && view && view==MobileViewIdentityGuard::uniqueActive(m_engine.openDocuments()))
                 m_brush->browsePresets(slot);
             syncBrushModes();
         });
@@ -1171,6 +1171,7 @@ public:
     void hidePanels()
     {
         MobileToolBrowser::dismiss(m_host);
+        if(m_brush)m_brush->dismissPresetBrowser();
         clearToolbarPreview();
         if(m_layers)m_layers->hide();
         if(m_showLayers)m_showLayers->hide();
