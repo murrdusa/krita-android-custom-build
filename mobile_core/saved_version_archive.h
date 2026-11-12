@@ -380,11 +380,59 @@ public:
     static void enqueueAfterSave(const QString &source,
                                  const QString &previousDraft=QString())
     {
-        if(canonicalIdentity(source).isEmpty())return;
-        QThreadPool::globalInstance()->start([source,previousDraft]() {
-            if(!previousDraft.isEmpty())
-                adoptHistory(previousDraft,source);
-            snapshot(source);
+        const QString key=canonicalIdentity(source);
+        if(key.isEmpty())return;
+        {
+            // A sequence of explicit Saves must not queue an unbounded
+            // sequence of full-sized KRA copies. Preserve adoption from
+            // every untitled draft and the newest completed Save request.
+            QMutexLocker guard(&requestLock());
+            auto &pending=pendingSaves();
+            auto it=pending.find(key);
+            if(it!=pending.end()) {
+                ++it->generation;
+                it->source=source;
+                if(!previousDraft.isEmpty() &&
+                   !it->drafts.contains(previousDraft))
+                    it->drafts.append(previousDraft);
+                return;
+            }
+            PendingSaveRequest request;
+            request.source=source;
+            if(!previousDraft.isEmpty())request.drafts.append(previousDraft);
+            pending.insert(key,request);
+        }
+        QThreadPool::globalInstance()->start([key]() {
+            for(;;) {
+                quint64 generation=0;
+                QString source;
+                QStringList drafts;
+                {
+                    QMutexLocker guard(&requestLock());
+                    const auto it=pendingSaves().constFind(key);
+                    if(it==pendingSaves().cend())return;
+                    generation=it->generation;
+                    source=it->source;
+                    drafts=it->drafts;
+                }
+                for(const QString &draft:drafts)
+                    adoptHistory(draft,source);
+                snapshot(source);
+                {
+                    QMutexLocker guard(&requestLock());
+                    auto &pending=pendingSaves();
+                    auto it=pending.find(key);
+                    if(it==pending.end())return;
+                    if(it->generation==generation) {
+                        pending.erase(it);
+                        return;
+                    }
+                    // The completed migrations need not run again on
+                    // the next pass; retain only newly received drafts.
+                    for(const QString &draft:drafts)
+                        it->drafts.removeAll(draft);
+                }
+            }
         });
     }
 
@@ -496,6 +544,18 @@ private:
         return requests;
     }
 
+    struct PendingSaveRequest {
+        quint64 generation=1;
+        QString source;
+        QStringList drafts;
+    };
+
+    static QHash<QString,PendingSaveRequest> &pendingSaves()
+    {
+        static QHash<QString,PendingSaveRequest> requests;
+        return requests;
+    }
+
     static void migrateFolder(const QString &from, const QString &to)
     {
         if(from.isEmpty() || to.isEmpty() || from==to)return;
@@ -557,7 +617,7 @@ private:
         const QDir dir(folder);
         if(!dir.exists())return result;
         const auto files=dir.entryInfoList({QStringLiteral("*.kra")},
-                         QDir::Files|QDir::Readable,
+                         QDir::Files|QDir::Readable|QDir::NoSymLinks,
                          QDir::Name|QDir::Reversed);
         for(const QFileInfo &entry:files)
             if(entry.size()>0)
