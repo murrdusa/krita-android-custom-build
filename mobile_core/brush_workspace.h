@@ -6,6 +6,7 @@
 #ifdef Q_OS_ANDROID
 
 #include <QHBoxLayout>
+#include <QHash>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListView>
@@ -252,7 +253,7 @@ public:
             return false;
         const QAction *eraser=m_engine.action("erase_action");
         if(eraser && eraser->isChecked()!=(slot==1))return false;
-        return slot!=2 || (resources() && isSmudge(resources()->currentPreset()));
+        return slot!=2 || (resources() && capabilities(resources()->currentPreset()).blend);
     }
 
     bool activateCloneBrush()
@@ -566,37 +567,41 @@ private:
         QSettings().setValue(
             QStringLiteral("MobileStudio/brushDetailsExpanded"),expanded);
     }
-    static bool inCategory(const QString &name,const QString &engine,int slot)
-    {
-        const bool clone=engine==QStringLiteral("duplicate");
-        if(slot==3)return clone;
-        const QString lower=name.toLower();
-        const bool eraser=lower.contains(QStringLiteral("erase")) ||
-                          lower.contains(QStringLiteral("rubber"));
-        const bool smudge=engine==QStringLiteral("colorsmudge");
-        const bool blend=smudge || lower.contains(QStringLiteral("blend")) ||
-            lower.contains(QStringLiteral("smudge")) ||
-            lower.contains(QStringLiteral("blur")) ||
-            lower.contains(QStringLiteral("mixing"));
-        if(slot==1)return eraser;
-        if(slot==2)return smudge && !eraser;
-        return !eraser && !blend && !clone;
-    }
+    struct PresetCapabilities {
+        bool paint=false;
+        bool eraser=false;
+        bool blend=false;
+        bool convertible=false;
 
-    static bool inCategory(const KisPaintOpPresetSP &preset,int slot)
-    {
-        return preset && inCategory(preset->name(),preset->paintOp().id(),slot);
-    }
+        bool supports(int slot) const
+        {
+            if(slot==0)return paint;
+            if(slot==1)return paint || eraser;
+            return blend || convertible;
+        }
+    };
 
-    static QString presetEngine(KisResourceModel *source,int row)
+    static PresetCapabilities capabilities(const KisPaintOpPresetSP &preset)
     {
-        const auto index=source->index(row,0);
-        const QString engine=index.data(Qt::UserRole+KisAbstractResourceModel::MetaData)
-            .toMap().value(QStringLiteral("paintopid")).toString();
-        if(!engine.isEmpty())return engine;
-        // Presets indexed before paintop metadata was stored still work.
-        const auto preset=source->resourceForIndex(index).dynamicCast<KisPaintOpPreset>();
-        return preset?preset->paintOp().id():QString();
+        if(!preset || !preset->valid() || !preset->settings())return {};
+        const auto settings=preset->settings();
+        const QString engine=preset->paintOp().id();
+        const bool eraser=settings->getString(QStringLiteral("CompositeOp"))==COMPOSITE_ERASE;
+        const bool smudgeOnly=isSmudge(preset) &&
+            (!settings->getBool(QStringLiteral("PressureColorRate")) ||
+             settings->getDouble(QStringLiteral("ColorRateValue"),1.0)<=0.0);
+        const bool samplesCanvas=
+            (engine==QStringLiteral("gridbrush") &&
+             settings->getBool(QStringLiteral("ColorOption/sampleInputColor"))) ||
+            (engine==QStringLiteral("hairybrush") &&
+             settings->getBool(QStringLiteral("HairyInk/enabled")) &&
+             settings->getBool(QStringLiteral("HairyInk/soak")));
+        const bool effect=engine==QStringLiteral("duplicate") ||
+                          engine==QStringLiteral("filter") ||
+                          engine==QStringLiteral("deform");
+        const bool paint=!eraser && !smudgeOnly && !samplesCanvas && !effect;
+        return {paint,eraser && !effect,!eraser && (smudgeOnly || samplesCanvas),
+                paint && !settings->getString(QStringLiteral("brush_definition")).isEmpty()};
     }
 
     static int paintingFamily(const QString &name)
@@ -622,6 +627,10 @@ private:
             : QSortFilterProxyModel(parent),m_source(source),m_category(slot),
               m_slot(slot)
         {
+            const auto clearCapabilities=[this]() {m_capabilities.clear();};
+            connect(source,&QAbstractItemModel::dataChanged,this,clearCapabilities);
+            connect(source,&QAbstractItemModel::modelReset,this,clearCapabilities);
+            connect(source,&QAbstractItemModel::rowsRemoved,this,clearCapabilities);
             setSourceModel(source);
             setDynamicSortFilter(true);
             reloadPersonalLists();
@@ -629,6 +638,15 @@ private:
         }
 
         int category() const {return m_category;}
+
+        bool hasFamily(int family) const
+        {
+            for(int row=0;row<m_source->rowCount();++row) {
+                const QString name=m_source->index(row,KisAbstractResourceModel::Name).data().toString();
+                if(paintingFamily(name)==family && rowCapabilities(row).convertible)return true;
+            }
+            return false;
+        }
 
         void setCategory(int category)
         {
@@ -707,12 +725,28 @@ private:
             if(!name.contains(m_search,Qt::CaseInsensitive))return false;
             if(m_category==-4 && !m_favorites.contains(name))return false;
             if(m_category==-5 && !m_recent.contains(name))return false;
-            if(m_category<0)return true;
-            if(m_category>=9)return paintingFamily(name)==m_category;
-            return inCategory(name,presetEngine(m_source,row),m_category);
+            if(m_category>=9 && paintingFamily(name)!=m_category)return false;
+            const auto available=rowCapabilities(row);
+            if(!available.supports(m_slot))return false;
+            if(m_category==1)return available.eraser;
+            if(m_category==2)return available.blend;
+            if(m_slot==2 && m_category>=9)return available.convertible;
+            return true;
         }
 
     private:
+        PresetCapabilities rowCapabilities(int row) const
+        {
+            const auto index=m_source->index(row,KisAbstractResourceModel::Id);
+            const int id=index.data().toInt();
+            const auto cached=m_capabilities.constFind(id);
+            if(cached!=m_capabilities.cend())return cached.value();
+            const auto available=capabilities(m_source->resourceForIndex(index).dynamicCast<KisPaintOpPreset>());
+            m_capabilities.insert(id,available);
+            return available;
+        }
+
+        mutable QHash<int,PresetCapabilities> m_capabilities;
         KisResourceModel *m_source;
         int m_category;
         QString m_search;
@@ -767,18 +801,19 @@ private:
         }
         return {};
     }
-    KisPaintOpPresetSP firstPresetFor(int slot)
+    KisPaintOpPresetSP firstPresetFor(int slot,bool smudgeEngineOnly=false)
     {
         auto *src=model();
-        for(int i=0;i<src->rowCount();++i) {
-            const QString name=src->index(i,KisAbstractResourceModel::Name).data().toString();
-            if(!inCategory(name,presetEngine(src,i),slot))continue;
-            auto preset=src->resourceForIndex(src->index(i,0))
-                           .dynamicCast<KisPaintOpPreset>();
-            if(preset && preset->valid())
-                return preset;
+        KisPaintOpPresetSP fallback;
+        for(int row=0;row<src->rowCount();++row) {
+            auto preset=src->resourceForIndex(src->index(row,0)).dynamicCast<KisPaintOpPreset>();
+            const auto available=capabilities(preset);
+            if(slot==0 && available.paint)return preset;
+            if(slot==1 && available.eraser)return preset;
+            if(slot==1 && available.paint && !fallback)fallback=preset;
+            if(slot==2 && available.blend && (!smudgeEngineOnly || isSmudge(preset)))return preset;
         }
-        return KisPaintOpPresetSP();
+        return fallback;
     }
     void setEraser(bool enabled)
     {
@@ -797,11 +832,9 @@ private:
         // Changing presets never replaces Krita's tool or input manager.
         m_engine.freehandBrush();
         KisPaintOpPresetSP preset=findPreset(slot);
-        if(slot==2 && !isSmudge(preset))preset.clear();
-        // Never restore a cached eraser or blender as the Paint preset.
-        // An unsaved mode receives a matching native Krita preset.
-        if(!preset && slot==0 &&
-           inCategory(resources()->currentPreset(),0))
+        const auto available=capabilities(preset);
+        if(!available.supports(slot) || (slot==2 && !available.blend))preset.clear();
+        if(!preset && slot==0 && capabilities(resources()->currentPreset()).paint)
             preset=resources()->currentPreset();
         if(!preset)preset=firstPresetFor(slot);
         if(slot==2 && !preset)return;
@@ -823,16 +856,10 @@ private:
         refresh();
     }
 
-    static bool canMakeBlender(const KisPaintOpPresetSP &preset)
-    {
-        return preset && preset->settings() &&
-            !preset->settings()->getString(QStringLiteral("brush_definition")).isEmpty();
-    }
-
     KisPaintOpPresetSP makeBlender(const KisPaintOpPresetSP &source)
     {
-        if(!canMakeBlender(source))return {};
-        const auto base=firstPresetFor(2);
+        if(!capabilities(source).convertible)return {};
+        const auto base=isSmudge(source)?source:firstPresetFor(2,true);
         if(!base)return {};
         auto preset=base->clone().dynamicCast<KisPaintOpPreset>();
         if(!preset)return {};
@@ -853,6 +880,8 @@ private:
         }
         settings->setResourcesInterface(original->resourcesInterface());
         settings->setPaintOpSize(original->paintOpSize());
+        settings->setProperty(QStringLiteral("CompositeOp"),COMPOSITE_OVER);
+        settings->setEraserMode(false);
         settings->setProperty(QStringLiteral("PressureColorRate"),false);
         settings->setProperty(QStringLiteral("ColorRateValue"),0.0);
         settings->setProperty(QStringLiteral("PressureSmudgeRate"),true);
@@ -906,21 +935,25 @@ private:
             auto *item=new QListWidgetItem(name,categories);
             item->setData(Qt::UserRole,id);
         };
-        if(slot==1)category(i18n("Erasers"),1);
-        if(slot==2)category(i18n("Blenders"),2);
-        category(i18n("All"),-1);
+        auto *source=model();
+        auto *filter=new PresetFilter(source,slot,panel);
         category(i18n("Favorites"),-4);
         category(i18n("Recent"),-5);
-        category(i18n("Basic"),9);
-        if(slot!=1)category(i18n("Erasers"),1);
-        if(slot!=2)category(i18n("Blenders"),2);
-        category(i18n("Sketch"),10);
-        category(i18n("Inking"),11);
-        category(i18n("Painting"),13);
-        category(i18n("Watercolor"),14);
-        category(i18n("Airbrush"),15);
-        category(i18n("Texture"),12);
-        categories->setCurrentRow(0);
+        if(slot==2)category(i18n("Blenders"),2);
+        category(i18n("All"),-1);
+        if(slot==1)category(i18n("Erasers"),1);
+        const auto family=[slot,filter,category](const QString &name,int id) {
+            if(slot!=2 || filter->hasFamily(id))category(name,id);
+        };
+        family(i18n("Basic"),9);
+        family(i18n("Sketch"),10);
+        family(i18n("Inking"),11);
+        family(i18n("Painting"),13);
+        family(i18n("Watercolor"),14);
+        family(i18n("Airbrush"),15);
+        family(i18n("Texture"),12);
+        const int defaultCategory=slot==1?3:2;
+        categories->setCurrentRow(defaultCategory);
 
         auto *body=new QVBoxLayout;
         body->setSpacing(4);
@@ -971,8 +1004,6 @@ private:
         body->addWidget(conversion);
         conversion->hide();
         auto candidate=std::make_shared<KisPaintOpPresetSP>();
-        auto *source=model();
-        auto *filter=new PresetFilter(source,slot,panel);
         list->setModel(filter);
         list->setModelColumn(KisAbstractResourceModel::Name);
         filter->setCategory(categories->currentItem()->data(Qt::UserRole).toInt());
@@ -1044,12 +1075,12 @@ private:
             const auto preset=source->resourceForIndex(selected.sibling(selected.row(),0))
                 .dynamicCast<KisPaintOpPreset>();
             if(!preset || !preset->valid())return;
-            if(slot==2 && !isSmudge(preset)) {
+            const auto available=capabilities(preset);
+            if(!available.supports(slot))return;
+            if(slot==2 && !available.blend) {
                 quick->hide();
                 *candidate=preset;
-                conversion->setText(canMakeBlender(preset)?i18n("Create blender from %1",displayPresetName(preset->name())):
-                                                            i18n("This brush tip cannot be converted"));
-                conversion->setEnabled(canMakeBlender(preset));
+                conversion->setText(i18n("Create blender from %1",displayPresetName(preset->name())));
                 conversion->show();
                 return;
             }
@@ -1081,7 +1112,7 @@ private:
             clearExtras();
             usePreset(2,result);
             search->clear();
-            categories->setCurrentRow(0);
+            categories->setCurrentRow(defaultCategory);
             chooseCategory(categories->currentItem());
         });
         const auto fit=[panel,categories]() {
