@@ -25,6 +25,8 @@
 #include <QTimer>
 #include <QPixmap>
 #include <QImage>
+#include <QShowEvent>
+#include <QHideEvent>
 
 #include "engine_bridge.h"
 #include "kis_canvas_resource_provider.h"
@@ -229,11 +231,10 @@ public:
             });
         }
         m_refresh=new QTimer(this);
-        m_refresh->setInterval(500);
-        connect(m_refresh,&QTimer::timeout,this,[this]() {
-            if(isVisible())refresh();
-        });
-        m_refresh->start();
+        m_refresh->setInterval(700);
+        connect(m_refresh,&QTimer::timeout,this,[this]() {refresh();});
+        // Hidden brushes/sliders should not poll the engine. The show
+        // event starts a single timer and refreshes immediately.
         refresh();
     }
 
@@ -301,12 +302,22 @@ public:
             auto *view=m_engine.manager();
             const auto node=view?view->activeNode():KisNodeSP();
             const auto *space=node?node->colorSpace():nullptr;
-            const auto &registry=KoCompositeOpRegistry::instance();
-            const bool available=space && !registry.getCompositeOps(space).isEmpty();
-            m_composite->setVisible(available && !provider->eraserMode());
-            const QString name=registry.getCompositeOpDisplayName(provider->currentCompositeOp());
-            m_composite->setText(i18n("Blending mode: %1").arg(
-                name.isEmpty()?i18n("Normal"):name));
+            const bool eraser=provider->eraserMode();
+            const QString mode=provider->currentCompositeOp();
+            // Registry category walks and widget relayout are only needed
+            // when the active layer's color space or brush mode changes.
+            if(space!=m_compositeSpace || eraser!=m_compositeEraser ||
+               mode!=m_compositeMode) {
+                m_compositeSpace=space;
+                m_compositeEraser=eraser;
+                m_compositeMode=mode;
+                const auto &registry=KoCompositeOpRegistry::instance();
+                const bool available=space && !registry.getCompositeOps(space).isEmpty();
+                m_composite->setVisible(available && !eraser);
+                const QString name=registry.getCompositeOpDisplayName(mode);
+                m_composite->setText(i18n("Blending mode: %1").arg(
+                    name.isEmpty()?i18n("Normal"):name));
+            }
         }
         if(m_presetName) {
             const auto preset=provider->currentPreset();
@@ -315,6 +326,20 @@ public:
         m_syncing=false;
         for(int i=0;i<3;++i)
             if(m_modes[i])m_modes[i]->setChecked(m_hasSelectedMode && m_slot==i);
+    }
+
+protected:
+    void showEvent(QShowEvent *event) override
+    {
+        QFrame::showEvent(event);
+        if(m_refresh)m_refresh->start();
+        refresh();
+    }
+
+    void hideEvent(QHideEvent *event) override
+    {
+        if(m_refresh)m_refresh->stop();
+        QFrame::hideEvent(event);
     }
 
 private:
@@ -761,6 +786,9 @@ private:
     bool m_detailsExpanded=true;
     KisDoubleSliderSpinBox *m_size=nullptr,*m_opacity=nullptr,*m_flow=nullptr;
     QPushButton *m_composite=nullptr;
+    const KoColorSpace *m_compositeSpace=nullptr;
+    QString m_compositeMode;
+    bool m_compositeEraser=false;
     KisResourceModel *m_model=nullptr;
     QTimer *m_refresh=nullptr;
     bool m_syncing=false,m_internalChange=false,m_hasSelectedMode=true;
