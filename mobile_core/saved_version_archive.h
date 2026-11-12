@@ -182,6 +182,21 @@ public:
         QMutexLocker guard(&lock());
         const QString folder=folderFor(identity,rootOverride);
         if(folder.isEmpty())return false;
+        // Check the source before acknowledging a rate-limited request.
+        // A draft explicitly discarded or removed after its last archive
+        // must never be reported as successfully checkpointed.
+        constexpr qint64 copyLimit=8LL*1024*1024*1024;
+        const bool provider=isProviderUri(source);
+        QFileInfo original;
+        if(!provider) {
+            original.setFile(source);
+            if(!original.isFile() || original.isSymLink())return false;
+        }
+        QFile input(source);
+        if(!input.open(QIODevice::ReadOnly) ||
+           input.peek(4)!=QByteArray::fromHex("504b0304"))return false;
+        const qint64 expected=provider?input.size():original.size();
+        if(expected<=0 || expected>copyLimit)return false;
         if(minGapMs>0) {
             const auto versions=scan(folder);
             if(!versions.isEmpty()) {
@@ -190,19 +205,6 @@ public:
                 if(elapsed>=0 && elapsed<minGapMs)return true;
             }
         }
-        constexpr qint64 copyLimit=8LL*1024*1024*1024;
-        const bool provider=isProviderUri(source);
-        QFileInfo original;
-        if(!provider) {
-            original.setFile(source);
-            if(!original.isFile())return false;
-        }
-
-        QFile input(source);
-        if(!input.open(QIODevice::ReadOnly) ||
-           input.peek(4)!=QByteArray::fromHex("504b0304"))return false;
-        const qint64 expected=provider?input.size():original.size();
-        if(expected>copyLimit || (!provider && expected<=0))return false;
         if(!QDir().mkpath(folder))return false;
         const QStorageInfo disk(folder);
         if(disk.isValid() && disk.isReady() &&
