@@ -20,7 +20,7 @@ Standard Fill and Contiguous Area Selection each offer opt-in **Drag tolerance**
 
 The Assistant tool labels the native one- and two-point choices explicitly. **3-point perspective** places three native Vanishing Point assistants in one undoable action and saves them in the KRA as normal guides. Placement rejects coincident or nearly collinear points and can be cancelled before any guide is added. Completed points use Krita's existing assistant editor. Dedicated isometric geometry remains open.
 
-Layer Options → More, Select, Mask, and long-press Add use touch-scrolling sheets. Selection combination and common contextual action menus use the same picker. Native action availability and layer/document target checks still apply.
+Layer Options → More, Select, Mask, and long-press Add use touch-scrolling sheets. Selection combination and common contextual action menus use the same picker. Native action availability and layer/document target checks still apply. Clone source picking is scoped to the active document and preset and samples on release without painting. Duplicate tool-options notifications no longer force a full Layers rail rebuild when the layer state and selection mode match.
 
 ## Android app-exit automatic checkpoint (November 11)
 

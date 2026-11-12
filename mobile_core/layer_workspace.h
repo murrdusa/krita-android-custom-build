@@ -487,7 +487,7 @@ public:
                 m->slotSetSelectedNodes(m_selected);
             }
         }
-        if(isVisible())refreshNow();
+        refreshFromEngine();
     }
     void refreshFromEngine()
     {
@@ -1097,7 +1097,8 @@ private:
         if(!view || !manager())return QStringLiteral("no-view");
         const auto image=view->image().toStrongRef();
         if(!image || !image->root())return QStringLiteral("no-image");
-        QString key=QString::number(quintptr(image.data()),16);
+        QString key=QString::number(quintptr(image.data()),16)+
+            QLatin1Char(allowsMultiple()?'+':'-');
         int count=0;
         std::function<void(KisNodeSP,int)> inspect;
         inspect=[&](KisNodeSP parent,int depth) {

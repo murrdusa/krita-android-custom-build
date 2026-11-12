@@ -345,7 +345,7 @@ public:
             named("bnCrop",QObject::tr("Apply crop"));
         } else if(shortId==QStringLiteral("KisAssistantTool")) {
             named("availableAssistantsComboBox",QObject::tr("Guide type"));
-            const QPointer<KoToolBase> assistant=m_nativeTool;
+            const auto assistant=m_nativeTool;
             auto *threePoint=button(QObject::tr("3-point perspective"));
             connect(threePoint,&QToolButton::clicked,this,[this,assistant]() {
                 if(assistant && assistant==m_nativeTool)

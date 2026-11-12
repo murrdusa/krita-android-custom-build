@@ -200,14 +200,17 @@ public:
 
     void pickCloneSource()
     {
-        if(!m_engine.hasDocument())return;
-        QTimer::singleShot(0,this,[this]() {
+        const auto *view=m_engine.manager();
+        const QPointer<KisDocument> document=view?view->document():nullptr;
+        if(!document)return;
+        QTimer::singleShot(0,this,[this,document]() {
             auto *view=m_engine.manager();
-            if(!view || !m_engine.hasDocument() || !ensureBrushControls())return;
+            if(!document || !view || view->document()!=document || !ensureBrushControls())return;
             if(!m_brush->activateCloneBrush()) {
                 view->showFloatingMessage(tr("No Clone Brush preset is available."),QIcon());
                 return;
             }
+            if(!document || view->document()!=document)return;
             auto *tools=KoToolManager::instance();
             auto *controller=tools?tools->activeCanvasController():nullptr;
             if(!controller || controller->canvas()!=view->canvasBase() ||

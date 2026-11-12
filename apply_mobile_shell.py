@@ -1747,12 +1747,18 @@ install(FILES org.kde.krita.desktop''',
         """    bool trySampleByPaintOp(KoPointerEvent *event, AlternateAction action,
                             bool pickCloneSource = false);""",
         "Clone source sampling flag")
+    freehand=one(freehand,"    Q_OBJECT",
+        "    Q_OBJECT\n    Q_PROPERTY(bool mobileGesturePending READ mobileGesturePending)",
+        "cancel Clone source picking when Android interrupts the pointer")
     freehand=one(freehand,"    int flags() const override;",
         """    int flags() const override;
-    Q_INVOKABLE bool mobileArmCloneSource();""","Studio Clone source command")
+    Q_INVOKABLE bool mobileArmCloneSource();
+    bool mobileGesturePending() const {return m_mobileCloneSourceTap;}
+    void requestStrokeCancellation() override;
+    void requestStrokeEnd() override;""","Studio Clone source command")
     freehand=one(freehand,"    bool m_paintopBasedSamplingInAction {false};",
         """    bool m_paintopBasedSamplingInAction {false};
-    bool m_mobileCloneSourceArmed {false};
+    KisPaintOpPresetSP m_mobileClonePreset;
     bool m_mobileCloneSourceTap {false};""","one-shot Clone source state")
     freehand_header.write_text(freehand,encoding="utf-8")
 
@@ -1761,37 +1767,53 @@ install(FILES org.kde.krita.desktop''',
     freehand=one(freehand,"void KisToolFreehand::deactivate()\n{",
         """void KisToolFreehand::deactivate()
 {
-    m_mobileCloneSourceArmed = false;
+    m_mobileClonePreset.clear();
     m_mobileCloneSourceTap = false;""","clear Clone source state on tool change")
     freehand=one(freehand,"void KisToolFreehand::beginPrimaryAction(KoPointerEvent *event)\n{",
         """bool KisToolFreehand::mobileArmCloneSource()
 {
     const auto preset = currentPaintOpPreset();
-    m_mobileCloneSourceArmed = mode() == HOVER_MODE && preset &&
-        preset->paintOp().id() == QStringLiteral("duplicate");
-    return m_mobileCloneSourceArmed;
+    m_mobileClonePreset = mode()==HOVER_MODE && preset &&
+        preset->paintOp().id()==QStringLiteral("duplicate")?preset:KisPaintOpPresetSP();
+    return bool(m_mobileClonePreset);
+}
+
+void KisToolFreehand::requestStrokeCancellation()
+{
+    m_mobileCloneSourceTap = false;
+    m_mobileClonePreset.clear();
+    KisToolPaint::requestStrokeCancellation();
+}
+
+void KisToolFreehand::requestStrokeEnd()
+{
+    m_mobileCloneSourceTap = false;
+    m_mobileClonePreset.clear();
+    KisToolPaint::requestStrokeEnd();
 }
 
 void KisToolFreehand::beginPrimaryAction(KoPointerEvent *event)
 {
-    m_mobileCloneSourceTap = false;
-    if (m_mobileCloneSourceArmed) {
-        m_mobileCloneSourceArmed = false;
-        const auto preset = currentPaintOpPreset();
-        if (preset && preset->paintOp().id() == QStringLiteral("duplicate") &&
-            trySampleByPaintOp(event, SampleFgImage, true)) {
-            m_mobileCloneSourceTap = true;
-            requestUpdateOutline(event->point, event);
-            return;
-        }
-    }
+    m_mobileCloneSourceTap = m_mobileClonePreset && m_mobileClonePreset==currentPaintOpPreset();
+    if (m_mobileCloneSourceTap) return;
+    m_mobileClonePreset.clear();
 ""","use native Clone sampling on the next canvas tap")
-    for method in ("continuePrimaryAction","endPrimaryAction"):
-        anchor=f"void KisToolFreehand::{method}(KoPointerEvent *event)\n{{"
-        reset=" m_mobileCloneSourceTap = false;" if method=="endPrimaryAction" else ""
-        freehand=one(freehand,anchor,anchor+
-            f"\n    if (m_mobileCloneSourceTap) {{{reset} return; }}",
-            f"consume Clone source {method} without painting")
+    freehand=one(freehand,"void KisToolFreehand::continuePrimaryAction(KoPointerEvent *event)\n{",
+        """void KisToolFreehand::continuePrimaryAction(KoPointerEvent *event)
+{
+    if (m_mobileCloneSourceTap) return;""","avoid painting while picking a Clone source")
+    freehand=one(freehand,"void KisToolFreehand::endPrimaryAction(KoPointerEvent *event)\n{",
+        """void KisToolFreehand::endPrimaryAction(KoPointerEvent *event)
+{
+    if (m_mobileCloneSourceTap) {
+        const auto preset=m_mobileClonePreset;
+        m_mobileCloneSourceTap=false;
+        m_mobileClonePreset.clear();
+        if (event && preset && preset==currentPaintOpPreset() &&
+            trySampleByPaintOp(event, SampleFgImage, true))
+            requestUpdateOutline(event->point, event);
+        return;
+    }""","sample only on release and never leave an accidental paint mark")
     freehand=one(freehand,
         "bool KisToolFreehand::trySampleByPaintOp(KoPointerEvent *event, AlternateAction action)",
         """bool KisToolFreehand::trySampleByPaintOp(KoPointerEvent *event, AlternateAction action,
