@@ -96,11 +96,18 @@ int main(int argc,char **argv)
         return 1;
     // The active recovered canvas must also reject its own draft
     // backing file as the new Save As target, even without a named path.
-    if(!require(MobileOpenDocumentDestinationPolicy::sameFile(
-                    recoveredBacking,recoveredBacking) &&
-                !MobileOpenDocumentDestinationPolicy::sameFile(
-                    otherDestination,recoveredBacking),
-                "private recovery source identity for own Save As"))return 1;
+    if(!require(MobileOpenDocumentDestinationPolicy::conflictsWithOwnBackingFile(
+                    recoveredBacking,QString(),recoveredBacking,true,false) &&
+                MobileOpenDocumentDestinationPolicy::conflictsWithOwnBackingFile(
+                    recoveredBacking,QString(),recoveredBacking,true,true) &&
+                !MobileOpenDocumentDestinationPolicy::conflictsWithOwnBackingFile(
+                    otherDestination,QString(),recoveredBacking,true,false) &&
+                !MobileOpenDocumentDestinationPolicy::conflictsWithOwnBackingFile(
+                    recoveredBacking,QString(),recoveredBacking,false,false) &&
+                MobileOpenDocumentDestinationPolicy::conflictsWithOwnBackingFile(
+                    recoveredBacking,recoveredBacking,QString(),true,true),
+                "Save As and Export Copy protect own recovery/project sources"))
+        return 1;
     // Save As paths through a linked parent folder must refer to the
     // same not-yet-created file as their canonical destination.
     const QString realFolder=temp.filePath(QStringLiteral("real-folder"));
