@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — Save As dialog active-canvas binding
+
+- Commit `53b4bc4af7c7f70e1722780b841d18be101a07c5` strengthens `MobileKritaStandaloneDocuments::writeDocument`: Save, Save As and Export Copy require the target document to be the currently active native canvas at invocation, after the image-idle dialog, after the file picker, and just before invoking Krita's writer. Ownership alone was insufficient: another tab could become active during a dialog while the original document remained open, permitting unintended writes to the previously selected project. Canvas switches now cancel that pending save attempt instead of writing to an inactive document.
+- **Verification:** source committed; no device Save As dialog/canvas-switch test in this session. Last PC watcher-confirmed success before this patch was `14562d19bdff7d3bd2e1a0530164ae564032b0c0`, 164.75 MiB (172,750,414 bytes), confirming the previous async clipping batch. Wait for exact watcher SHA on the new Save As patch; native runtime/SAF behavior remains unverified. APK publication paused.
+
 ## November 13 follow-up — asynchronous clip-group hierarchy validation
 
 - Commit `0e50408648f2f1c4f60edf444b3f91decd9adae6` adds document/tree revalidation to the asynchronous compact clipping regroup operation. Before native grouping, it checks that the parent and all selected child nodes still belong to the current image, that node-manager identity and Krita move eligibility still hold after activation, and that the children retain their expected parent. Its delayed group rename also refuses a detached parent, child, or group. This is a preventative fix for stale hierarchy mutations during rapid editing or canvas changes.
