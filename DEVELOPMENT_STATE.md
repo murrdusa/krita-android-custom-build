@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — native layer/mask reorder target revalidation
+
+- Commit `e05a38ee83ac8d368376692fffe22c67a13c0bed`: the one-step native reorder path rechecks active image, source membership and original parent, parent editability, and sibling-anchor identity **after** leaving Transform and selecting the row, just before constructing the native undoable move. This prevents a reentrant selection/node change from queuing a move against detached/stale nodes. Applies to native layer/mask sibling reorders without replacing Krita's stroke or KRA storage.
+- **Verification:** change committed; no device runtime or desktop Qt execution in this session. Check Issue #1 for the exact build SHA and APK size (prior watcher successes are not proof of this revision). Outstanding hardware checks: mask attachment and reordering, multi-layer transforms commit/cancel/Undo, clipped-group KRA roundtrip and canvas switching during active operations. APK publishing remains paused.
+
 ## November 13 follow-up — pinch-to-group transaction safety
 
 - Commit `521f54184fb84c480f8fee9d8f41b3e364c5396a`: the two-finger pinch-to-group gesture now obeys the same pending-transform guard as native reorder. Immediately before native grouping, it rechecks image identity, node-manager identity, sibling parentage and move eligibility. Its delayed collapse/reload callback is scoped to the original image and still-attached nodes, so a canvas switch cannot apply group-presentation updates to the wrong painting.
