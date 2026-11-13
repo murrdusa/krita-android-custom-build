@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — bound historical KRA recovery streaming against file growth
+
+- Commit `8f729eb1d6bf41dd0c81a61eecae3aceaaa470b3`: `materializeRecovery` now enforces both the **initial opened KRA size** and the 8 GiB archive ceiling during each read/write iteration, not only before opening and after the copy completes. If another process grows an archive during recovery, Studio aborts the `QSaveFile` transaction before writing excess data; the existing end-of-copy exact byte count and SHA-256 checks remain in place. The original archive and prior versions are untouched.
+- **Verification:** the preceding exact-size recovery source `924553fe8ae6be9827bec43d98ae1e208cf512ac` passed local WSL Android SUCCESS (164.76 MiB, 172,762,214 bytes). The new source needs exact matching WSL build confirmation. Native KRA recovery and Fold 6 Undo tests remain pending; APK publishing paused.
+
 ## November 13 follow-up — exact byte count for legacy KRA recovery copies
 
 - Commit `924553fe8ae6be9827bec43d98ae1e208cf512ac`: version-history `materializeRecovery` now checks that the **entire size observed from the opened archive** was copied before publishing its private recovery KRA, even for old entries with no recorded `Version::bytes` or SHA-256 sidecar. If the archive shrinks or grows while streaming, the QSaveFile transaction is rejected rather than opening a partial copy. `2cfb07e6ea1a1d94bab2a64afa1989857d08e09d` adds a desktop Qt regression for successfully recovering legacy archives without stored size or checksum.
