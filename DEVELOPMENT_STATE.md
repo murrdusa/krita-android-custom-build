@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — pinch-to-group transaction safety
+
+- Commit `521f54184fb84c480f8fee9d8f41b3e364c5396a`: the two-finger pinch-to-group gesture now obeys the same pending-transform guard as native reorder. Immediately before native grouping, it rechecks image identity, node-manager identity, sibling parentage and move eligibility. Its delayed collapse/reload callback is scoped to the original image and still-attached nodes, so a canvas switch cannot apply group-presentation updates to the wrong painting.
+- **Verified baseline:** PC watcher reports SUCCESS for `09c588840166ff9e9841d061249b8ac6134199a6` at 164.74 MiB (172,745,246 bytes). The new pinch-to-group commit needs exact-SHA compilation confirmation; no standalone Qt execution or Fold 6 runtime test was performed. Hardware checks remain native transform commit/cancel/Undo, mask attachment/reorder, clipped-group KRA roundtrip and rapid canvas switches during edits. Keep APK publishing paused.
+
 ## November 13 follow-up — live multi-layer rail selection
 
 - Commits `463c26ea25227a736f48f8b47484f79797d3aa3b` and `5a04b77a821bb0d5a7ab03820ecb9ee6c7a70bde`: layer rail target selection in an already-active Transform/Move session now runs the same group/child de-duplication as tool entry; the displayed selected rows are synchronized with the actual native target list. This prevents newly tapped nested layers from submitting duplicate transform targets without changing Krita rendering or undo commands. Extended the identity regression for a live-selection update.
