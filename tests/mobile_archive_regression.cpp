@@ -80,6 +80,20 @@ int main(int argc,char **argv)
     if(!require(Archive::folderFor(source,root)==
                 Archive::folderFor(temp.filePath(QStringLiteral("./art.kra")),root),
                 "canonical file identity"))return 1;
+    // A recovered canvas calls resetPath(), so the visible path may
+    // be empty while its draft backing file is still in use.
+    const QString recoveredBacking=temp.filePath(
+        QStringLiteral("Recovered-previous.kra"));
+    const QString otherDestination=temp.filePath(
+        QStringLiteral("Different.kra"));
+    if(!require(MobileOpenDocumentDestinationPolicy::conflictsWithBackingFile(
+                    recoveredBacking,QString(),recoveredBacking) &&
+                Destination::conflictsWithBackingFile(
+                    recoveredBacking,recoveredBacking,QString()) &&
+                !Destination::conflictsWithBackingFile(
+                    otherDestination,QString(),recoveredBacking),
+                "Save As must protect both visible and recovered backing paths"))
+        return 1;
     // Save As paths through a linked parent folder must refer to the
     // same not-yet-created file as their canonical destination.
     const QString realFolder=temp.filePath(QStringLiteral("real-folder"));
