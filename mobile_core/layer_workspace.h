@@ -1207,6 +1207,14 @@ private:
                !m_engine.manager() ||
                m_engine.manager()->image().toStrongRef()!=image)return;
             m->slotSetSelectedNodes(KisNodeList{node});
+            // Merge/Flatten are native selection commands. A synchronous
+            // node-change callback must not retarget the operation to a
+            // different layer after the user's choice is applied.
+            if(!m_engine.manager() ||
+               m_engine.manager()->image().toStrongRef()!=image ||
+               manager()!=m || !inImage(node,image) ||
+               m->activeNode()!=node ||
+               m->selectedNodes()!=KisNodeList{node})return;
             if(!m_engine.run(chosen==merge?"merge_layer":"flatten_layer"))
                 qWarning() << "Mobile Studio: Krita layer operation unavailable";
         } else if(chosen==group) {
@@ -1221,6 +1229,12 @@ private:
                !m_engine.manager() ||
                m_engine.manager()->image().toStrongRef()!=originalImage)return;
             m->slotSetSelectedNodes(KisNodeList{node});
+            if(!m_engine.manager() ||
+               m_engine.manager()->image().toStrongRef()!=originalImage ||
+               manager()!=m || !inImage(node,originalImage) ||
+               !node->inherits("KisGroupLayer") ||
+               m->activeNode()!=node ||
+               m->selectedNodes()!=KisNodeList{node})return;
             m->quickUngroup();
         } else if(chosen==remove) {
             deleteLayers({node});
