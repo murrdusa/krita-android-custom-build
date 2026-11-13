@@ -1073,6 +1073,14 @@ private:
             // Masks and Clear target one specific layer even if a previous
             // multi-layer transform left several nodes selected.
             m->slotSetSelectedNodes(KisNodeList{node});
+            // Clear removes pixels and Add Mask attaches a new child.
+            // Both must remain bound to the tapped layer even if native
+            // selection callbacks run synchronously during the handoff.
+            if(!m_engine.manager() ||
+               m_engine.manager()->image().toStrongRef()!=originalImage ||
+               manager()!=m || !inImage(node,originalImage) ||
+               m->activeNode()!=node ||
+               m->selectedNodes()!=KisNodeList{node})return;
             if(chosen==clear)m_engine.run("clear");
             else m->createNode(chosen->data().toString());
         } else if(chosen==rename) {
@@ -1255,6 +1263,11 @@ private:
                    !inImage(node,originalImage) ||
                    !m_engine.selectLayer(node))return;
                 m->slotSetSelectedNodes(KisNodeList{node});
+                if(!m_engine.manager() ||
+                   m_engine.manager()->image().toStrongRef()!=originalImage ||
+                   manager()!=m || !inImage(node,originalImage) ||
+                   m->activeNode()!=node ||
+                   m->selectedNodes()!=KisNodeList{node})return;
                 m->duplicateActiveNode();
             } else {
                 m_engine.selectLayer(node);
