@@ -88,6 +88,14 @@ int main(int argc,char **argv)
             !MobileSavedVersionArchive::materializeRecovery(
                 MobileSavedVersionArchive::list(source,store).first(),recover).isEmpty(),
             "intact archive with bad metadata should recover after repair");
+    // An oversized or malformed sidecar must be rejected without
+    // replacing the immutable checkpoint or opening a recovered copy.
+    save(firstSnapshot+QStringLiteral(".sha256"),QByteArray(129,'0'));
+    require(MobileSavedVersionArchive::materializeRecovery(
+                MobileSavedVersionArchive::list(source,store).first(),recover).isEmpty(),
+            "oversized checksum metadata must fail recovery");
+    save(firstSnapshot+QStringLiteral(".sha256"),
+         QCryptographicHash::hash(initial,QCryptographicHash::Sha256).toHex());
     QThread::msleep(3);
     const QByteArray second=QByteArray::fromHex("504b0304")+"saved-B";
     save(source,second);
