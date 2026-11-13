@@ -1340,6 +1340,16 @@ private:
                !KisNodeManager::isNodeHidden(node,true) &&
                !result.contains(node))
                 result.append(node);
+        if(allowsMultiple() && image && image->root()) {
+            // A layer rail tap can change selection while Transform/Move
+            // is already active, bypassing the tool-entry normalization.
+            // A selected group owns its descendants: submit it only once.
+            const auto hidden=[](const KisNodeSP &node) {
+                return KisNodeManager::isNodeHidden(node,true);
+            };
+            return MobileLayerIdentity::transformTargets(
+                image->root(),result,KisNodeSP(),hidden,false);
+        }
         return result;
     }
     void addButton(QHBoxLayout *row,const QString &label,
@@ -2462,6 +2472,9 @@ private:
         auto *m=manager();
         if(!m)return;
         const KisNodeList nodes=selectedTargets();
+        // Keep the visual rail selection consistent with the targets
+        // actually submitted to Krita's native transform tool.
+        if(allowsMultiple())m_selected=nodes;
         if(!nodes.isEmpty()) {
             if(!nodes.contains(m_active))m_active=nodes.last();
             if(m->activeNode()!=m_active)m->slotUiActivatedNode(m_active);
