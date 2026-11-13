@@ -752,6 +752,16 @@ private:
         // image or Krita's desktop node-manager reorder action.
         if(!prepareLayerReorder(image) || !inImage(node,image) ||
            !m_engine.selectLayer(node))return;
+        // Leaving Transform and activating the row can dispatch native
+        // selection/node signals. Recheck the exact parent and sibling
+        // anchor immediately before handing ownership to Krita's stroke.
+        auto *currentView=m_engine.manager();
+        if(!currentView || currentView->image().toStrongRef()!=image ||
+           !inImage(node,image) || node->parent()!=parent ||
+           !parent->isEditable(false) || !parent->allowAsChild(node) ||
+           (above && (above==node || above->parent()!=parent)) ||
+           parent->index(node)<0 ||
+           (above && parent->index(above)<0))return;
 
         runNativeLayerStroke(image,
             new KisImageLayerMoveCommand(image,node,parent,above,true),
