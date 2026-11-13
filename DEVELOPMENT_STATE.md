@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — fail closed on incomplete native view stack during Save As
+
+- Commit `db3f43e6e88cc1a64960a84bd3715a90139a23c4`: the native Save / Save As / Export Copy transaction now requires **exactly one active native view, belonging to the document being saved**, plus exactly one matching owner view in the host's open view list. It aborts on a missing view identity or an uninspectable backing document rather than skipping that entry during cross-canvas collision checks. This prevents a synchronous tab transition or temporarily incomplete view stack from authorizing a write into another canvas's project; it retains canonical SAF and local destination collision checks and Krita's save-completion handling.
+- **Verification:** prior multi-canvas recovery guard `6b1bda5c31b215fd1fc3ed5e041c44d88982459c` has exact PC WSL Android SUCCESS (164.76 MiB, 172,759,934 bytes). This new Save As code requires exact-SHA build confirmation, with native multi-canvas Save As / Export and Fold 6 runtime testing pending. APK publishing remains paused.
+
 ## November 13 follow-up — reject recovery during native view activation gaps
 
 - `6b1bda5c31b215fd1fc3ed5e041c44d88982459c`: `MobileViewIdentityGuard::sameRecoveryWorkspace` requires **exactly one active native canvas** whenever any canvases are open. It still permits an empty view stack. This prevents delayed historical Open Copy from starting during no-active-view tab transitions, or when the view host ambiguously marks more than one canvas active. `dda6ebca5be3251fda4f00e94fb205971e2510a5` adds Qt view-stack regression cases for both states.
