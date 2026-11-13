@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — prioritize all verified recovery checkpoints during pruning
+
+- Commits `36ee661bc108496177a73f881a049ed3a6ae669e` and `c8d6d26cb514483a33b8f9a94f2ddbcaa65d3c57`: under a full version-history retention quota with a corrupt newest checkpoint, pruning now protects the newest entry for inspection, reserves the latest verified fallback, **then prioritizes other SHA-256-verified older KRAs before using any remaining slots for damaged or legacy entries**. This prevents corrupt intermediate copies from displacing multiple good checkpoints. Quota-free snapshots still skip expensive hashing. Updated Qt archive regression migrates two distinct intact donor histories into a full corrupted archive and asserts both can be recovered after pruning; recovered temporary copies are cleaned up.
+- **Verification:** new Qt archive regression is committed, not executed here (Qt development libraries unavailable). Check Issue #1 for the new source's exact WSL build SHA. Fold 6 version history UI and recovery not tested; APK publishing paused.
+
 ## November 13 follow-up — retain verified recovery history under corruption
 
 - Commits `9d34f0a6f3d31881eb28dc69c0cefe75b5fd3723`, `f33bf291bb5ffcfe432c27bf41b75a0afcd9bbde`, and `2db2c72ae091ec3867723423cc63ff1ac3a2a67a`: history pruning now preserves the newest archive for diagnosis **and** reserves a retention slot for the latest SHA-256-verified older checkpoint if the newest archive is corrupt. A corrupted newest checkpoint can no longer consume the mandatory retention slot while the quota removes the last intact historical version. Checksum sidecars are deleted only when their matching KRA file was removed. Expensive integrity checks are skipped entirely when the archive is within count and byte quotas. Added Qt archive regression that fills the quota with corrupted versions, merges an older valid donor, triggers prune, and verifies the donor remains recoverable while the bad newest entry remains inspectable.
