@@ -92,6 +92,18 @@ int main(int argc,char **argv)
                     recoveryBefore,missingDocument),
                 "recovery refuses detached document"))
         return 1;
+    auto noActiveRecovery=recoveryBefore;
+    for(auto &entry:noActiveRecovery)entry.active=false;
+    if(!require(!Identity::sameRecoveryWorkspace(
+                    noActiveRecovery,noActiveRecovery),
+                "recovery refuses a nonempty workspace with no active canvas"))
+        return 1;
+    auto twoActiveRecovery=recoveryBefore;
+    for(auto &entry:twoActiveRecovery)entry.active=true;
+    if(!require(!Identity::sameRecoveryWorkspace(
+                    twoActiveRecovery,twoActiveRecovery),
+                "recovery refuses ambiguous multiple active canvases"))
+        return 1;
     if(!require(Identity::sameRecoveryWorkspace({},{}),
                 "recovery accepts unchanged empty workspace"))
         return 1;
