@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — protect current recovered canvas on Save As
+
+- Commits `4824dbdd2a10045e2c11c02b9fbef352385aa7fa`, `7b5b0ea9716df2fd6e11bed422d2236eba849171`, `c3d47cfca608bfa60424dde2b5ce8a56dcbefd08`, `d1b6b85c04700f1444fe256b04b833d650bd3771` and `736cffb5bb10432fdb205b5e9eba51739f0b3f67`: Save As now refuses to write to its **own** private recovered draft/checkpoint path (previously only another tab's backing file and Export Copy were protected). The shared destination policy retains ordinary Save for existing named projects while blocking private draft overwrite for explicit Save As and preventing Export Copy from overwriting the current project. Extended the Qt archive regression with mode-specific positive/negative cases for the shared predicate.
+- **Verification:** the PC watcher has confirmed the preceding recovery cross-canvas protection at `6ecce421b36ce3b31fab1b9af2ad65c934e09acf`: SUCCESS, 164.75 MiB (172,751,198 bytes). This newly committed own-draft Save As patch requires a matching Android watcher result. The Qt archive regression was not executed here, and real Save As / provider / on-device KRA reopen behavior still needs testing. APK publishing remains paused.
+
 ## November 13 follow-up — protect open recovery drafts from Save As collisions
 
 - Commits `eb614cbde9c792563e298ba67a57ce24c4bb5486`, `3355ad7f778172a34994af81283314d553d2a492`, `e8ee106fe21fc514835c4e2e1c12a277a5bc18eb`, and `e62fb204eab0a81e6f0c601611143ed1ace85f8c`: Save As and Export Copy now compare their destination against both a second canvas's visible project path and its private `_mobileDraftPath` recovery backing file. A recovered/untitled canvas may have `resetPath()` and no visible project filename, but its private copy must remain protected from overwrites. Export Copy also refuses to overwrite the current canvas's own backing draft. Added Qt archive regression for a blank visible path with a live recovered backing path and a noncolliding destination. Fixed its test symbol naming before verification.
