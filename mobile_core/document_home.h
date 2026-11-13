@@ -554,30 +554,24 @@ private:
     void openCopy(const MobileSavedVersionArchive::Version &version)
     {
         m_restoringVersion=true;
-        const auto views=m_engine.openDocuments();
-        QVector<QPointer<QObject>> expectedViews;
-        QPointer<QObject> expectedActive;
-        expectedViews.reserve(views.size());
-        for(const auto &entry:views) {
-            if(!entry.nativeView) {
+        const auto expected=m_engine.openDocuments();
+        for(const auto &entry:expected) {
+            if(!entry.nativeView || !entry.document) {
                 m_restoringVersion=false;
                 return;
             }
-            expectedViews.append(entry.nativeView);
-            if(entry.active)expectedActive=entry.nativeView;
         }
         QPointer<MobileDocumentHome> home(this);
-        QThreadPool::globalInstance()->start(
-            [home,version,expectedViews,expectedActive]() {
+        QThreadPool::globalInstance()->start([home,version,expected]() {
             const QString copy=MobileSavedVersionArchive::materializeRecovery(version);
-            QMetaObject::invokeMethod(qApp,[home,copy,expectedViews,expectedActive]() {
+            QMetaObject::invokeMethod(qApp,[home,copy,expected]() {
                 const auto current=home?home->m_engine.openDocuments():
                     QVector<MobileEngineBridge::OpenDocument>{};
                 // A recovery may open beside multiple existing canvases,
                 // but never after a view was replaced or switched.
                 const bool sameCanvas=home &&
                     MobileViewIdentityGuard::sameRecoveryWorkspace(
-                        expectedViews,expectedActive,current);
+                        expected,current);
                 const bool opened=home && sameCanvas && !copy.isEmpty() && home->m_files &&
                     home->m_files->openFile(copy);
                 if(!copy.isEmpty())QFile::remove(copy);
