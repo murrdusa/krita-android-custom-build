@@ -213,10 +213,14 @@ int main(int argc,char **argv)
     const QString safeRoot=temp.filePath(QStringLiteral("fallback-history"));
     const QString safeProject=temp.filePath(QStringLiteral("fallback.kra"));
     const QString donorProject=temp.filePath(QStringLiteral("fallback-donor.kra"));
+    const QString secondDonor=temp.filePath(QStringLiteral("fallback-donor-2.kra"));
     const QByteArray lastGood=QByteArray::fromHex("504b0304")+"last-good";
+    const QByteArray secondGood=QByteArray::fromHex("504b0304")+"another-good";
     save(donorProject,lastGood);
-    require(MobileSavedVersionArchive::snapshot(donorProject,safeRoot),
-            "create older healthy checkpoint");
+    save(secondDonor,secondGood);
+    require(MobileSavedVersionArchive::snapshot(donorProject,safeRoot) &&
+            MobileSavedVersionArchive::snapshot(secondDonor,safeRoot),
+            "create older healthy checkpoints");
     for(int i=0;i<MobileSavedVersionArchive::maxVersions();++i) {
         QThread::msleep(2);
         save(safeProject,QByteArray::fromHex("504b0304")+
@@ -233,19 +237,25 @@ int main(int argc,char **argv)
     const QString corruptNewest=damagedVersions.first().path;
     MobileSavedVersionArchive::adoptHistory(
         donorProject,safeProject,safeRoot);
+    MobileSavedVersionArchive::adoptHistory(
+        secondDonor,safeProject,safeRoot);
     const auto retained=MobileSavedVersionArchive::list(safeProject,safeRoot);
     require(retained.size()<=MobileSavedVersionArchive::maxVersions() &&
             QFile::exists(corruptNewest),
             "retain damaged newest for inspection within quota");
     bool recoveredGood=false;
+    bool recoveredSecond=false;
     for(const auto &candidate:retained) {
         const QString restored=MobileSavedVersionArchive::materializeRecovery(
             candidate,recover);
-        if(!restored.isEmpty() && load(restored)==lastGood)
-            recoveredGood=true;
+        if(restored.isEmpty())continue;
+        const QByteArray payload=load(restored);
+        if(payload==lastGood)recoveredGood=true;
+        if(payload==secondGood)recoveredSecond=true;
+        QFile::remove(restored);
     }
-    require(recoveredGood,
-            "retention must preserve one verified older KRA after newest corruption");
+    require(recoveredGood && recoveredSecond,
+            "retention must prioritize both verified older KRAs over corrupt intermediates");
     const QString unsupported=QDir(temp.path()).filePath(
         QStringLiteral("not-a-KRA.kra"));
     save(unsupported,"not-a-valid-zip");
