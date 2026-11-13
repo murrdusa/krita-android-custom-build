@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — draft-path publication protection
+
+- Commits `4bfea1f04fb2f36f43401c62ff960527fa905fab` and `99e1c97784292dbb85e9a7ebe8dd6a90aefd8e22`: private draft publication and its project sidecar now reject paths outside the UUID-named app-private draft directory. The staging file must not be a symlink. A new Qt archive regression verifies a synthetic external project cannot be replaced by accidental draft publication.
+- **Verification:** source reviewed and changes committed; local build for `99e1c97784292dbb85e9a7ebe8dd6a90aefd8e22` is not yet confirmed, and the desktop Qt regression has not been executed in this session. Last confirmed APK remains `b24360b76ae2d757954672ae5bace1594360a8c2` at **164.74 MiB**. Recheck Issue #1 for exact PC build SHA; no device or runtime PASS implied.
+- Remaining hardware gates unchanged: interrupted/background saves, SAF provider write, Save As collisions, multiselection transforms, masks and clipping KRA reopen, UI/layout on Fold 6. APK publishing stays paused.
+
 ## November 13, 2026 — checkpoint integrity hardening
 
 - Source commits `c04f51d7fad607649825b4bfd511ea4a66aba134` and `75b9dd642f5527ef869cd42eabe9fc05631cbac8` on `main`: rate-limited history checkpoint requests now verify the *actual archived SHA-256*, not only the syntax of the sidecar digest. A corrupted newest archive (including same-size byte changes) cannot suppress a replacement checkpoint. Added a desktop Qt archive regression specifically for same-size archive corruption during the minimum snapshot interval.
