@@ -88,6 +88,10 @@ protected:
             }
         }
         if(!target || target==this || isAncestorOf(target))return false;
+        if(type==QEvent::Hide && target==parentWidget()) {
+            close();
+            return false;
+        }
         if(type==QEvent::Show && target->isWindow() && target->parentWidget() &&
            target->parentWidget()->window()==window()) {
             close();

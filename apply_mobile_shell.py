@@ -609,6 +609,44 @@ bool KisReferenceImagesLayer::allowAsChild""","render and hit-test screen-pinned
         layer->paintMobileScreenReferences(gc);
 #endif""","draw screen references over the canvas")
     path.write_text(source)
+    source=one(source,"""    d->updateBufferByImageCoordinates(dirtyRect);
+
+    QRectF documentRect = view()->viewConverter()->imageToDocument(dirtyRect);""","""#ifdef Q_OS_ANDROID
+    // Undo or deletion can remove the last screen reference. Its old
+    // viewport bounds need invalidation as well as its document bounds.
+    auto layer = d->layer.toStrongRef();
+    const auto references = layer ? layer->referenceImages() : QVector<KisReferenceImage*>();
+    if (d->hasScreenReferences || std::any_of(references.cbegin(), references.cend(),
+        [](auto *image) { return image->mobileScreenPinned(); })) {
+        invalidateInteractiveReferenceCache();
+        return;
+    }
+#endif
+    d->updateBufferByImageCoordinates(dirtyRect);
+
+    QRectF documentRect = view()->viewConverter()->imageToDocument(dirtyRect);""",
+        "invalidate the old screen bounds after a reference change")
+    source=one(source,"    QSizeF previousViewSize;","""    QSizeF previousViewSize;
+#ifdef Q_OS_ANDROID
+    bool hasScreenReferences = false;
+#endif""","track whether the last frame drew screen references")
+    source=one(source,"        layer->paintMobileScreenReferences(gc);","""        const auto images = layer->referenceImages();
+        d->hasScreenReferences = std::any_of(images.cbegin(), images.cend(),
+            [](auto *image) { return image->mobileScreenPinned(); });
+        layer->paintMobileScreenReferences(gc);""","track pinned references for repaint")
+    source=one(source,'#include "KisReferenceImagesLayer.h"','#include "KisReferenceImagesLayer.h"\n#include "KisReferenceImage.h"\n#include <algorithm>',
+        "reference redraw dependencies")
+    path.write_text(source)
+    path=root/"libs/ui/tool/KisAsyncColorSamplerHelper.cpp"
+    source=one(path.read_text(),'#include "kis_canvas2.h"','#include "kis_canvas2.h"\n#include "kis_coordinates_converter.h"',
+        "sample references using the canvas coordinate converter")
+    source=one(source,"            QColor color = referencesLayer->getPixel(imagePoint);","""#ifdef Q_OS_ANDROID
+            const auto transform = m_d->canvas->coordinatesConverter()->documentToWidgetTransform();
+            QColor color = referencesLayer->mobileReferencePixel(transform.map(docPoint), transform);
+#else
+            QColor color = referencesLayer->getPixel(imagePoint);
+#endif""","sample the displayed reference from the native sampler")
+    path.write_text(source)
 
     reference_input=root/"libs/ui/input/kis_input_manager.cpp"
     reference_source=reference_input.read_text(encoding="utf-8")
