@@ -1662,15 +1662,43 @@ private:
                         finishCompactClipRebuild();
                         return;
                     }
-                    bool attached=true;
-                    for(const KisNodeSP &node:cluster)
-                        if(!node || node->parent()!=parent ||
-                           !inImage(node,m_clipImage))attached=false;
-                    if(!attached) {
+                    const auto unchangedCluster=[this,m,parent,base,&cluster]() {
+                        if(!m_engine.manager() ||
+                           m_engine.manager()->image().toStrongRef()!=m_clipImage ||
+                           manager()!=m || !inImage(parent,m_clipImage) ||
+                           !m->canMoveLayers(cluster,false))return false;
+                        for(int index=0;index<cluster.size();++index) {
+                            const KisNodeSP node=cluster.at(index);
+                            if(!node || node->parent()!=parent ||
+                               !inImage(node,m_clipImage) ||
+                               (index>0 && cluster.at(index-1)->nextSibling()!=node))
+                                return false;
+                        }
+                        return base==cluster.first();
+                    };
+                    if(!unchangedCluster()) {
                         finishCompactClipRebuild();
                         return;
                     }
                     m->slotSetSelectedNodes(cluster);
+                    // Native callbacks can retarget or reorder the selected
+                    // cluster even after the first preflight. Never group
+                    // anything other than the intended contiguous clip run.
+                    if(!unchangedCluster()) {
+                        finishCompactClipRebuild();
+                        return;
+                    }
+                    const KisNodeList actual=m->selectedNodes();
+                    if(actual.size()!=cluster.size()) {
+                        finishCompactClipRebuild();
+                        return;
+                    }
+                    for(const KisNodeSP &node:cluster) {
+                        if(!actual.contains(node)) {
+                            finishCompactClipRebuild();
+                            return;
+                        }
+                    }
                     m->createQuickGroup();
                     QTimer::singleShot(100,this,[this,base,parent,cluster]() {
                         waitCompactClipGroup(base,parent,cluster,0);
