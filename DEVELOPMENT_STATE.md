@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — manual Group Layers validation after Transform
+
+- Commits `fb4735d8b22c992f70b05226731e8b4e74df3465` and `fe85e12a4e4e6066522198064d88a6abe455c689`: the manual **Group layers** dialog revalidates all selected native layers immediately after leaving an active Transform tool and again after applying the native multi-layer selection, before `createQuickGroup()`. It ensures the image/node manager still match, the parent remains in the image, all chosen nodes remain editable siblings in that parent, Krita still permits moving the chosen layers, and Krita's actual selected-node set matches the dialog's intended set. Reentrant selection/canvas changes now abort grouping rather than grouping different nodes. Root-level grouping remains supported.
+- **Verification:** previous root-sentinel transform selection revision `3125d3fe04a645e4795ddd8a71755a865b198bc4` reported exact PC WSL Android build SUCCESS (164.75 MiB, 172,753,890 bytes). New grouping code requires its own exact SHA from Issue #1. No Qt/Krita runtime or Fold 6 grouping/Undo/KRA test performed this session. APK publishing paused.
+
 ## November 13 follow-up — image root is not an explicit transform selection
 
 - Commits `078b0b1774a1a2d9fd4707a189827c687479a363` and `fc12f75a3d7a277da0213b03f62d6095dead1136`: the shared `MobileLayerIdentity::transformTargets` policy no longer treats Krita's image root sentinel as a real explicit transform target. If only root/hidden entries are selected, a validated visible active layer can be used instead. An explicit child selection still takes precedence; stale nodes from outside the image continue blocking fallback. Added three host regression cases for root, root+child, root+hidden mask.
