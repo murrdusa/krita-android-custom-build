@@ -837,6 +837,7 @@ private:
     {
         QDialog dialog(parent);
         dialog.setWindowTitle(QObject::tr("Add command"));
+        MobileTouchScroll::styleMenuDialog(dialog,QSize(510,650));
         auto *layout=new QVBoxLayout(&dialog);
         auto *tabs=new QTabBar(&dialog);
         tabs->addTab(QObject::tr("Common Tools"));
@@ -901,7 +902,6 @@ private:
         auto *cancel=new QDialogButtonBox(QDialogButtonBox::Cancel,&dialog);
         layout->addWidget(cancel);
         QObject::connect(cancel,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
-        dialog.resize(parent->width(),parent->height());
         search->setFocus(Qt::OtherFocusReason);
 #ifdef Q_OS_ANDROID
         QTimer::singleShot(0,search,[search]() {
@@ -917,6 +917,7 @@ private:
         QScopedValueRollback<bool> editing(m_editing,true);
         QDialog dialog(m_toolbar->window());
         dialog.setWindowTitle(QObject::tr("Customize toolbar commands"));
+        MobileTouchScroll::styleMenuDialog(dialog,QSize(520,660));
         auto *layout=new QVBoxLayout(&dialog);
         auto *selector=new MobileTouchComboBox(&dialog);
         selector->setMinimumHeight(44);
@@ -1083,7 +1084,6 @@ private:
         layout->addWidget(buttons);
         refillBars();
         sync(list->currentRow());
-        dialog.resize(qMin(470,m_toolbar->window()->width()),qMin(600,m_toolbar->window()->height()));
         if(dialog.exec()!=QDialog::Accepted)return;
         // Android may accept a dialog without moving focus out of the
         // currently edited QLineEdit. Commit its current text explicitly.

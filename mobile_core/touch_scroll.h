@@ -366,6 +366,25 @@ inline void configure(QAbstractScrollArea *area)
     }
 }
 
+inline void styleMenuDialog(QDialog &dialog,const QSize &preferred)
+{
+    dialog.setWindowFlag(Qt::FramelessWindowHint,true);
+    dialog.setStyleSheet(QStringLiteral(
+        "QDialog{background:#25262b;color:#f1f2f5;}"
+        "QScrollArea,QListWidget,QListView{background:#25262b;color:#f1f2f5;border:0;}"
+        "QLabel,QCheckBox{color:#f1f2f5;}"
+        "QComboBox,QSpinBox,QLineEdit,QPushButton{background:#30323b;color:#f1f2f5;"
+        "border:1px solid #44464f;border-radius:7px;padding:4px 8px;min-height:36px;}"
+        "QPushButton:pressed,QListView::item:selected{background:#394459;}"
+        "QPushButton:disabled{color:#989da9;}"
+        "QTabBar::tab{background:#30323b;color:#bfc3ce;padding:0 10px;min-height:40px;}"
+        "QTabBar::tab:selected{background:#394459;color:#f1f2f5;}"));
+    if(auto *parent=dialog.parentWidget()) {
+        const QSize room=parent->window()->size()-QSize(20,20);
+        dialog.resize(preferred.boundedTo(room.expandedTo(QSize(1,1))));
+    }
+}
+
 inline void configureList(QAbstractItemView *view,
                           std::function<void(const QModelIndex &)> hold={})
 {
@@ -394,6 +413,7 @@ public:
     {
         if(count()==0)return;
         QDialog choices(this);
+        MobileTouchScroll::styleMenuDialog(choices,QSize(qMax(width(),240),360));
         auto *layout=new QVBoxLayout(&choices);
         auto *list=new QListView(&choices);
         list->setStyleSheet(QStringLiteral("QListView::item{min-height:42px;}"));
@@ -424,9 +444,9 @@ public:
             selected=index.row();
             choices.accept();
         });
-        const QSize parentSize=window()->size();
-        choices.resize(qMin(qMax(width(),220),parentSize.width()),
-                       qMin(66+qMin(count(),7)*42,parentSize.height()));
+        const QSize room=window()->size()-QSize(16,16);
+        choices.resize(QSize(qMax(width(),240),66+qMin(count(),8)*42)
+                       .boundedTo(room.expandedTo(QSize(1,1))));
         if(choices.exec()==QDialog::Accepted && selected>=0 && selected<count()) {
             // A user selection on a regular QComboBox emits activated()
             // even if the choice was already current. Setting the index

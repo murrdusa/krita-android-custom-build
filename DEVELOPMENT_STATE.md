@@ -14,6 +14,8 @@ The horizontal Layers rail uses narrow rotated cards with rotated previews, badg
 
 The toolbar Add picker defaults to Common Tools, including Studio commands, with a searchable All Tools tab. The Add dialog focuses search and requests the Android keyboard.
 
+Brush capability checks are shared across picker instances and warmed in short idle batches. The picker paints its shell before attaching the native list, and queued opens are tied to the latest mode request and active document. Advanced Brush Settings is a fixed action below the scrollable quick controls. Workspace Settings separates panels from toolbar gestures. Studio settings and command lists share dark menu styling and screen-bounded sizing.
+
 ## Compact Tools picker
 
 Tools is a nonmodal canvas panel. Pressing its opener again closes it, as with the brush drawer and contextual menus. A press on the canvas or another control dismisses it and continues to the original target. The picker displays all of its tool and command groups in one scroll area. Each tile can be starred independently of activating it, and favorites are saved by native ID and pinned above the groups. Advanced Tool Options remains available from the contextual gear and its existing toolbar command. Back or Escape also dismisses the panel.

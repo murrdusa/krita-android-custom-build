@@ -46,6 +46,7 @@
 #include <QtMath>
 #include <QTouchEvent>
 #include <QTabWidget>
+#include <QTabBar>
 #include <resources/KoAbstractGradient.h>
 #include <resources/KoPattern.h>
 #include "widgets/gradient/KisGradientChooser.h"
@@ -213,7 +214,9 @@ public:
     void toggleBrushes(int slot)
     {
         if(!m_host || !m_engine.hasDocument())return;
-        if(!ensureBrushControls())return;
+        if(!ensureBrushControls() || m_switchingBrush)return;
+        const QScopedValueRollback<bool> switching(m_switchingBrush,true);
+        const auto request=++m_brushRequest;
         if(!m_brush->isActiveMode(slot)) {
             m_brush->dismissPresetBrowser();
             m_brush->activateMode(slot);
@@ -221,8 +224,9 @@ public:
             return;
         }
         const auto view=MobileViewIdentityGuard::uniqueActive(m_engine.openDocuments());
-        QTimer::singleShot(0,this,[this,slot,view]() {
-            if(m_brush && view && view==MobileViewIdentityGuard::uniqueActive(m_engine.openDocuments()))
+        QTimer::singleShot(0,this,[this,slot,view,request]() {
+            if(request!=m_brushRequest)return;
+            if(m_brush && m_brush->isActiveMode(slot) && view && view==MobileViewIdentityGuard::uniqueActive(m_engine.openDocuments()))
                 m_brush->browsePresets(slot,m_brushModes.value(slot));
             syncBrushModes();
         });
@@ -268,7 +272,8 @@ public:
     void toggleToolSettings()
     {
         if(!m_host || !m_engine.hasDocument() || m_canvasOnly)return;
-        if(m_engine.activeTool().section(QLatin1Char('/'),-1)!=QStringLiteral("KisToolBrush")) {
+        if(m_engine.activeTool().section(QLatin1Char('/'),-1)!=QStringLiteral("KisToolBrush") &&
+           !(m_brush && m_brush->isActiveMode(2))) {
             toggleToolOptions();
             return;
         }
@@ -529,8 +534,7 @@ public:
 
         QDialog dialog(parent);
         dialog.setWindowTitle(QObject::tr("Touch gestures"));
-        dialog.resize(qMin(440,qMax(1,m_host->width()-24)),
-                      qMin(620,qMax(1,m_host->height()-48)));
+        MobileTouchScroll::styleMenuDialog(dialog,QSize(480,640));
         auto *layout=new QVBoxLayout(&dialog);
         auto *scroll=new QScrollArea(&dialog);
         scroll->setFrameShape(QFrame::NoFrame);
@@ -650,22 +654,12 @@ public:
             if(!host)return;
             QDialog dialog(host);
             dialog.setWindowTitle(QObject::tr("Touch, Pressure & Buttons"));
-            // Do not demand a width greater than the folded phone viewport.
-            dialog.setMinimumWidth(qMin(300,qMax(1,host->width()-24)));
-            dialog.setStyleSheet(QStringLiteral(
-                "QDialog,QScrollArea,QWidget#mobileInputSettingsBody{"
-                "background:#252529;color:#f4f4f5;}"
-                "QLabel,QCheckBox{color:#f4f4f5;}"
-                "QCheckBox{min-height:44px;spacing:9px;}"
-                "QCheckBox::indicator{width:22px;height:22px;}"
-                "QComboBox,QSpinBox{color:#172530;background:#eef3f7;"
-                "border:1px solid #8f9ca6;border-radius:6px;"
-                "min-height:42px;padding:3px;}"
-                "QComboBox QAbstractItemView{background:#eef3f7;color:#172530;}"
-                "QPushButton{background:#34343a;color:#f4f4f5;"
-                "border:1px solid #55555c;border-radius:8px;min-height:44px;}"));
+            MobileTouchScroll::styleMenuDialog(dialog,QSize(500,660));
             auto *outer=new QVBoxLayout(&dialog);
-            outer->setContentsMargins(6,6,6,6);
+            outer->setContentsMargins(12,10,12,10);
+            auto *heading=new QLabel(tr("Touch, Pressure & Buttons"),&dialog);
+            heading->setStyleSheet(QStringLiteral("font-size:17px;font-weight:600;"));
+            outer->addWidget(heading);
             auto *scroll=new QScrollArea(&dialog);
             scroll->setWidgetResizable(true);
             scroll->setFrameShape(QFrame::NoFrame);
@@ -1012,26 +1006,34 @@ public:
             if(!m_host)return;
             QDialog dialog(m_host);
             dialog.setWindowTitle(QObject::tr("Workspace Settings"));
-            dialog.setStyleSheet(QStringLiteral(
-                "QDialog{background:#252529;color:#f4f4f5;}"
-                "QLabel,QCheckBox,QComboBox{color:#f4f4f5;}"
-                "QComboBox{background:#34343a;border:1px solid #55555c;"
-                "border-radius:8px;padding:4px;min-height:44px;}"
-                "QComboBox QAbstractItemView{background:#34343a;color:#f4f4f5;}"
-                "QCheckBox{min-height:44px;}"
-                "QCheckBox::indicator{width:22px;height:22px;}"
-                "QPushButton{background:#34343a;color:#f4f4f5;"
-                "border:1px solid #55555c;border-radius:8px;min-height:44px;}"));
+            MobileTouchScroll::styleMenuDialog(dialog,QSize(500,600));
             auto *outer=new QVBoxLayout(&dialog);
-            auto *scroll=new QScrollArea(&dialog);
-            scroll->setWidgetResizable(true);
-            scroll->setFrameShape(QFrame::NoFrame);
-            MobileTouchScroll::configure(scroll);
-            auto *body=new QWidget(scroll);
-            auto *layout=new QVBoxLayout(body);
-            scroll->setWidget(body);
-            outer->addWidget(scroll,1);
-            dialog.resize(qMin(400,m_host->width()),qMin(520,m_host->height()));
+            outer->setContentsMargins(12,10,12,10);
+            auto *heading=new QLabel(tr("Workspace Settings"),&dialog);
+            heading->setStyleSheet(QStringLiteral("font-size:17px;font-weight:600;"));
+            outer->addWidget(heading);
+            auto *tabs=new QTabBar(&dialog);
+            tabs->addTab(tr("Panels"));
+            tabs->addTab(tr("Toolbar gestures"));
+            outer->addWidget(tabs);
+            auto *pages=new QStackedWidget(&dialog);
+            outer->addWidget(pages,1);
+            connect(tabs,&QTabBar::currentChanged,pages,&QStackedWidget::setCurrentIndex);
+            const auto page=[pages]() {
+                auto *scroll=new QScrollArea(pages);
+                scroll->setWidgetResizable(true);
+                scroll->setFrameShape(QFrame::NoFrame);
+                MobileTouchScroll::configure(scroll);
+                auto *body=new QWidget(scroll);
+                auto *layout=new QVBoxLayout(body);
+                layout->setContentsMargins(3,8,3,8);
+                layout->setSpacing(7);
+                scroll->setWidget(body);
+                pages->addWidget(scroll);
+                return body;
+            };
+            auto *body=page();
+            auto *layout=qobject_cast<QVBoxLayout*>(body->layout());
             // Combine the two panel-retention checkboxes into a
             // single choice. All historical preference combinations
             // remain representable and use the same persisted keys.
@@ -1081,6 +1083,9 @@ public:
             fadeDetails->setVisible(fade->isChecked());
             connect(fade,&QCheckBox::toggled,fadeDetails,&QWidget::setVisible);
             layout->addWidget(fadeDetails);
+            layout->addStretch(1);
+            body=page();
+            layout=qobject_cast<QVBoxLayout*>(body->layout());
             auto *opacityDrag=new MobileTouchComboBox(body);
             auto *sizeDrag=new MobileTouchComboBox(body);
             const auto fillDragChoices=[](MobileTouchComboBox *combo,
@@ -1099,6 +1104,8 @@ public:
             };
             fillDragChoices(opacityDrag,MobileToolbarDrag::assignment("opacity"));
             fillDragChoices(sizeDrag,MobileToolbarDrag::assignment("size"));
+            for(auto *combo:{persistentPanels,floatingSliders,opacityDrag,sizeDrag})
+                combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
             // Visually resolve conflicts at selection time rather than
             // silently disabling one of the assignments on Save.
             connect(opacityDrag,QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -1119,8 +1126,7 @@ public:
             layout->addWidget(opacityDrag);
             layout->addWidget(new QLabel(QObject::tr("Brush size button"),body));
             layout->addWidget(sizeDrag);
-            auto *sampleColor=new QCheckBox(QObject::tr(
-                "Drag Color button away from toolbar to sample canvas color"),body);
+            auto *sampleColor=new QCheckBox(tr("Drag Color to sample"),body);
             sampleColor->setChecked(QSettings().value(
                 MobileToolbarDrag::preference("sample"),true).toBool());
             layout->addWidget(sampleColor);
@@ -1179,6 +1185,7 @@ public:
             hidePanels();
             return;
         }
+        if(ensureBrushControls())m_brush->schedulePresetWarmup();
         syncSelectionDismissButton();
         syncLayersVisibility();
         updateBrushSliders();
@@ -1199,6 +1206,7 @@ public:
     {
         armEyedropper(false);
         MobileToolBrowser::dismiss(m_host);
+        ++m_brushRequest;
         if(m_brush)m_brush->dismissPresetBrowser();
         clearToolbarPreview();
         if(m_layers)m_layers->hide();
@@ -2120,6 +2128,8 @@ private:
     QPointer<QAction> m_layersAction,m_colorAction,m_optionsAction,m_toolsAction;
     QPointer<QWidget> m_contextToolOpener,m_textFormatOpener;
     QList<QAction*> m_brushModes;
+    quint64 m_brushRequest=0;
+    bool m_switchingBrush=false;
     QPointer<KritaMobileLayersPanel> m_layers;
     QPointer<MobileColorWorkspace> m_color;
     QPointer<MobileContextToolBar> m_contextToolBar;

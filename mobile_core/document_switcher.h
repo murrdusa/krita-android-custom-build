@@ -6,6 +6,7 @@
  * paint-device duplication. Closing invokes Krita's native document view.
  */
 #pragma once
+#include "touch_scroll.h"
 #ifdef Q_OS_ANDROID
 
 #include <QAbstractItemView>
@@ -30,17 +31,7 @@ public:
         if(!parent)return;
         QDialog dialog(parent);
         dialog.setWindowTitle(i18n("Canvases"));
-        dialog.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
-        dialog.setStyleSheet(
-            "QDialog{background:#273746;color:#f4f8fd;}"
-            "QLabel{color:#e5f1fb;font-size:14px;}"
-            "QListWidget{background:#2e4354;color:#f5f9fc;"
-            "border:1px solid #7699b2;font-size:14px;}"
-            "QListWidget::item{min-height:55px;padding:8px;}"
-            "QListWidget::item:selected{background:#34718e;}"
-            "QPushButton{background:#42647f;color:#f6faff;"
-            "border:1px solid #83adc8;border-radius:8px;"
-            "padding:5px;min-height:45px;}");
+        MobileTouchScroll::styleMenuDialog(dialog,QSize(430,610));
         auto *layout=new QVBoxLayout(&dialog);
         layout->setContentsMargins(10,10,10,10);
         layout->setSpacing(7);
@@ -49,11 +40,7 @@ public:
             "font-size:18px;font-weight:600;"));
         layout->addWidget(header);
         auto *items=new QListWidget(&dialog);
-        items->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-        items->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        items->viewport()->setAttribute(Qt::WA_AcceptTouchEvents,false);
-        QScroller::grabGesture(items->viewport(),
-                               QScroller::LeftMouseButtonGesture);
+        MobileTouchScroll::configureList(items);
         layout->addWidget(items,1);
         const auto documents=engine.openDocuments();
         QPointer<QObject> activeView;

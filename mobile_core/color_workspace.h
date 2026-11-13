@@ -331,6 +331,7 @@ public:
         updateForViewport();
         QDialog dialog(window());
         dialog.setWindowTitle(i18n("Color options"));
+        MobileTouchScroll::styleMenuDialog(dialog,QSize(380,470));
         auto *layout=new QVBoxLayout(&dialog);
         if(!m_history.isEmpty()) {
             layout->addWidget(new QLabel(i18n("Recent colors"),&dialog));

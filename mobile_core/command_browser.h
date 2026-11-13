@@ -113,20 +113,7 @@ public:
 
         QDialog dialog(parent);
         dialog.setWindowTitle(i18n("Menus"));
-        dialog.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
-        dialog.setStyleSheet(
-            "QDialog{background:#263746;color:#edf6fc;}"
-            "QLabel{color:#edf6fc;font-size:13px;}"
-            "QLineEdit{background:#354d61;color:white;"
-            "border:1px solid #7c9fb9;border-radius:7px;"
-            "min-height:44px;padding:7px;font-size:14px;}"
-            "QListWidget{background:#2a3d4d;color:#f1f7fc;"
-            "border:0;font-size:14px;outline:0;}"
-            "QListWidget::item{min-height:48px;padding:7px;}"
-            "QListWidget::item:selected{background:#396f8c;}"
-            "QPushButton{background:#42647f;color:white;"
-            "border:1px solid #86adc7;border-radius:7px;"
-            "min-height:43px;padding:6px;}");
+        MobileTouchScroll::styleMenuDialog(dialog,QSize(535,725));
         auto *layout=new QVBoxLayout(&dialog);
         layout->setContentsMargins(9,8,9,9);
         layout->setSpacing(6);

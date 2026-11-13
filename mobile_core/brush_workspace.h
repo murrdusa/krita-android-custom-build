@@ -31,6 +31,8 @@
 #include <QPushButton>
 #include "touch_scroll.h"
 #include <QSettings>
+#include <QElapsedTimer>
+#include <QScopedValueRollback>
 #include <QSignalBlocker>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -282,19 +284,6 @@ public:
             details->addWidget(m_composite);
             connect(m_composite,&QPushButton::clicked,this,
                     [this]() {openBrushBlendModes();});
-            if(auto *editor=m_engine.action("show_brush_editor")) {
-                auto *advanced=new QPushButton(i18n("Advanced Brush Settings"),m_controls);
-                advanced->setMinimumHeight(44);
-                advanced->setEnabled(editor->isEnabled());
-                connect(editor,&QAction::changed,advanced,[advanced,editor]() {
-                    advanced->setEnabled(editor->isEnabled());
-                });
-                connect(advanced,&QPushButton::clicked,this,[this,editor]() {
-                    hide();
-                    if(editor->isEnabled())editor->trigger();
-                });
-                details->addWidget(advanced);
-            }
         }
         if(toolSettings) {
             auto *scroll=new QScrollArea(this);
@@ -302,7 +291,14 @@ public:
             scroll->setWidgetResizable(true);
             MobileTouchScroll::configure(scroll);
             scroll->setWidget(m_controls);
-            root->addWidget(scroll);
+            root->addWidget(scroll,1);
+            auto *advanced=new QPushButton(i18n("Advanced Brush Settings"),this);
+            advanced->setMinimumHeight(44);
+            root->addWidget(advanced);
+            connect(advanced,&QPushButton::clicked,this,[this]() {
+                hide();
+                openAdvancedBrushSettings();
+            });
         } else {
             root->addWidget(m_controls);
         }
@@ -338,6 +334,13 @@ public:
         // Hidden brushes/sliders should not poll the engine. The show
         // event starts a single timer and refreshes immediately.
         refresh();
+    }
+
+    void schedulePresetWarmup()
+    {
+        if(m_warmScheduled || (m_model && m_warmRow>=m_model->rowCount()))return;
+        m_warmScheduled=true;
+        QTimer::singleShot(500,this,[this]() {warmPresetIndex();});
     }
 
     bool isActiveMode(int slot) const
@@ -827,33 +830,30 @@ private:
         return QSettings().value(QStringLiteral("MobileStudio/brushCategories")).toStringList();
     }
 
+    void openAdvancedBrushSettings()
+    {
+        const auto view=MobileViewIdentityGuard::uniqueActive(m_engine.openDocuments());
+        QTimer::singleShot(0,this,[this,view]() {
+            if(!view || view!=MobileViewIdentityGuard::uniqueActive(m_engine.openDocuments()))return;
+            auto *manager=m_engine.manager();
+            if(manager && manager->paintOpBox() && resources() && resources()->currentPreset())
+                QMetaObject::invokeMethod(manager->paintOpBox(),"togglePresetEditor",Qt::DirectConnection);
+        });
+    }
+
     class PresetFilter final : public QSortFilterProxyModel
     {
     public:
-        PresetFilter(KisResourceModel *source,int slot,QObject *parent)
-            : QSortFilterProxyModel(parent),m_source(source),m_category(slot),
-              m_slot(slot)
+        PresetFilter(KritaMobileBrushWorkspace *owner,KisResourceModel *source,int slot,QObject *parent)
+            : QSortFilterProxyModel(parent),m_owner(owner),m_source(source),m_slot(slot)
         {
-            const auto clearCapabilities=[this]() {m_capabilities.clear();};
-            connect(source,&QAbstractItemModel::dataChanged,this,clearCapabilities);
-            connect(source,&QAbstractItemModel::modelReset,this,clearCapabilities);
-            connect(source,&QAbstractItemModel::rowsRemoved,this,clearCapabilities);
-            setSourceModel(source);
-            setDynamicSortFilter(true);
             reloadPersonalLists();
-            sort(KisAbstractResourceModel::Name);
         }
 
-        bool hasFamily(int family) const
+        void attach()
         {
-            for(int row=0;row<m_source->rowCount();++row) {
-                const QString name=m_source->index(row,KisAbstractResourceModel::Name).data().toString();
-                const auto assignment=categoryAssignment(row);
-                if(assignment==familyAssignment(family) && rowCapabilities(row).supports(m_slot))return true;
-                if(assignment.isEmpty() && paintingFamily(name)==family &&
-                   rowCapabilities(row).convertible)return true;
-            }
-            return false;
+            setSourceModel(m_source);
+            sort(KisAbstractResourceModel::Name);
         }
 
         void setCategory(int category,const QString &custom={})
@@ -960,18 +960,12 @@ private:
 
         PresetCapabilities rowCapabilities(int row) const
         {
-            const auto index=m_source->index(row,KisAbstractResourceModel::Id);
-            const int id=index.data().toInt();
-            const auto cached=m_capabilities.constFind(id);
-            if(cached!=m_capabilities.cend())return cached.value();
-            const auto available=capabilities(m_source->resourceForIndex(index).dynamicCast<KisPaintOpPreset>());
-            m_capabilities.insert(id,available);
-            return available;
+            return m_owner->cachedCapabilities(row);
         }
 
-        mutable QHash<int,PresetCapabilities> m_capabilities;
+        KritaMobileBrushWorkspace *m_owner;
         KisResourceModel *m_source;
-        int m_category;
+        int m_category=-1;
         QString m_search,m_custom;
         mutable QHash<int,QString> m_assignments;
         QStringList m_favorites,m_recent;
@@ -984,8 +978,42 @@ private:
     }
     KisResourceModel *model()
     {
-        if(!m_model)m_model=new KisResourceModel(ResourceType::PaintOpPresets,this);
+        if(!m_model) {
+            m_model=new KisResourceModel(ResourceType::PaintOpPresets,this);
+            const auto clear=[this]() {
+                m_presetCapabilities.clear();
+                m_warmRow=0;
+            };
+            connect(m_model,&QAbstractItemModel::dataChanged,this,clear);
+            connect(m_model,&QAbstractItemModel::modelReset,this,clear);
+            connect(m_model,&QAbstractItemModel::rowsRemoved,this,clear);
+        }
         return m_model;
+    }
+
+    PresetCapabilities cachedCapabilities(int row)
+    {
+        auto *source=model();
+        const auto index=source->index(row,KisAbstractResourceModel::Id);
+        const int id=index.data().toInt();
+        const auto cached=m_presetCapabilities.constFind(id);
+        if(cached!=m_presetCapabilities.cend())return cached.value();
+        const auto result=capabilities(source->resourceForIndex(index).dynamicCast<KisPaintOpPreset>());
+        m_presetCapabilities.insert(id,result);
+        return result;
+    }
+
+    void warmPresetIndex()
+    {
+        if(!resources() || !m_engine.hasDocument()) {m_warmScheduled=false;return;}
+        auto *source=model();
+        QElapsedTimer budget;
+        budget.start();
+        while(m_warmRow<source->rowCount() && budget.elapsed()<5)
+            cachedCapabilities(m_warmRow++);
+        if(m_warmRow<source->rowCount())
+            QTimer::singleShot(32,this,[this]() {warmPresetIndex();});
+        else m_warmScheduled=false;
     }
     static void rememberPreset(int slot,const KisPaintOpPresetSP &preset)
     {
@@ -1030,12 +1058,12 @@ private:
         auto *src=model();
         KisPaintOpPresetSP fallback;
         for(int row=0;row<src->rowCount();++row) {
+            const auto available=cachedCapabilities(row);
+            if(!available.supports(slot) || (slot==2 && !available.blend))continue;
+            if(slot==1 && !available.eraser && fallback)continue;
             auto preset=src->resourceForIndex(src->index(row,0)).dynamicCast<KisPaintOpPreset>();
-            const auto available=capabilities(preset);
-            if(slot==0 && available.paint)return preset;
-            if(slot==1 && available.eraser)return preset;
-            if(slot==1 && available.paint && !fallback)fallback=preset;
-            if(slot==2 && available.blend && (!smudgeEngineOnly || isSmudge(preset)))return preset;
+            if(slot==1 && !available.eraser)fallback=preset;
+            else if(slot!=2 || !smudgeEngineOnly || isSmudge(preset))return preset;
         }
         return fallback;
     }
@@ -1046,9 +1074,8 @@ private:
     void setNativePreset(KisPaintOpPresetSP preset)
     {
         if(!preset)return;
-        m_internalChange=true;
+        const QScopedValueRollback<bool> change(m_internalChange,true);
         m_engine.selectBrushPreset(preset);
-        m_internalChange=false;
     }
     void switchMode(int slot)
     {
@@ -1367,16 +1394,13 @@ private:
             item->setData(Qt::UserRole,id);
         };
         auto *source=model();
-        auto *filter=new PresetFilter(source,slot,panel);
+        auto *filter=new PresetFilter(this,source,slot,panel);
         category(i18n("Favorites"),-4);
         category(i18n("Recent"),-5);
         if(slot==2)category(i18n("Blenders"),2);
         category(i18n("All"),-1);
         if(slot==1)category(i18n("Erasers"),1);
-        const auto family=[slot,filter,category](const QString &name,int id) {
-            if(slot!=2 || filter->hasFamily(id))category(name,id);
-        };
-        for(const auto &entry:brushFamilies())family(entry.second,entry.first);
+        for(const auto &entry:brushFamilies())category(entry.second,entry.first);
         const auto addCustom=[categories](const QString &name) {
             auto *item=new QListWidgetItem(name,categories);
             item->setData(Qt::UserRole,-6);
@@ -1404,22 +1428,14 @@ private:
         search->setMinimumWidth(0);
         search->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
         body->addWidget(search);
-        if(auto *editor=m_engine.action("show_brush_editor")) {
-            auto *advanced=new QToolButton(panel);
-            advanced->setText(i18n("Advanced Brush Settings"));
-            advanced->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
-            advanced->setEnabled(editor->isEnabled());
-            connect(editor,&QAction::changed,advanced,[advanced,editor]() {
-                advanced->setEnabled(editor->isEnabled());
-            });
-            connect(advanced,&QToolButton::clicked,panel,[this,panel,editor]() {
-                panel->close();
-                QTimer::singleShot(0,this,[action=QPointer<QAction>(editor)]() {
-                    if(action && action->isEnabled())action->trigger();
-                });
-            });
-            body->addWidget(advanced);
-        }
+        auto *advanced=new QToolButton(panel);
+        advanced->setText(i18n("Advanced Brush Settings"));
+        advanced->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
+        connect(advanced,&QToolButton::clicked,panel,[this,panel]() {
+            panel->close();
+            openAdvancedBrushSettings();
+        });
+        body->addWidget(advanced);
 
         auto *list=new QListView(panel);
         list->setObjectName(QStringLiteral("brushRows"));
@@ -1439,7 +1455,6 @@ private:
         conversion->hide();
         auto candidate=std::make_shared<KisPaintOpPresetSP>();
         list->setModel(filter);
-        list->setModelColumn(KisAbstractResourceModel::Name);
         filter->setCategory(categories->currentItem()->data(Qt::UserRole).toInt(),
                             categories->currentItem()->data(Qt::UserRole+1).toString());
         const auto valid=[this,view]() {
@@ -1531,7 +1546,7 @@ private:
         list->setItemDelegate(delegate);
         MobileTouchScroll::configureList(list);
         connect(categories,&QListWidget::itemClicked,panel,hideSearchHandle);
-        connect(list,&QListView::clicked,this,[=](const QModelIndex &index) {
+        connect(list,&QListView::clicked,panel,[=](const QModelIndex &index) {
             hideSearchHandle();
             if(!valid() || list->property("_mobilePresetActionTap").toBool())return;
             const auto selected=filter->mapToSource(index);
@@ -1560,10 +1575,11 @@ private:
             }
             clearExtras();
             usePreset(slot,preset);
+            if(!panel->isVisible())return;
             filter->reloadPersonalLists();
             updateSelected();
         });
-        connect(conversion,&QToolButton::clicked,this,[=]() {
+        connect(conversion,&QToolButton::clicked,panel,[=]() {
             if(!valid() || !*candidate)return;
             const auto result=makeBlender(*candidate);
             if(!result) {
@@ -1584,8 +1600,17 @@ private:
         panel->setFocus(Qt::OtherFocusReason);
         categories->scrollToItem(categories->currentItem(),QAbstractItemView::EnsureVisible);
         fit();
-        updateSelected();
-        updateList();
+        list->hide();
+        empty->setText(i18n("Loading brushes…"));
+        empty->show();
+        QTimer::singleShot(24,panel,[=]() {
+            if(!panel->isVisible() || !valid())return;
+            filter->attach();
+            list->setModelColumn(KisAbstractResourceModel::Name);
+            empty->setText(i18n("No matching brushes"));
+            updateSelected();
+            updateList();
+        });
     }
 
     QPointer<MobileTransientPanel> m_presetBrowser;
@@ -1605,6 +1630,9 @@ private:
     QString m_compositeMode;
     bool m_compositeEraser=false;
     KisResourceModel *m_model=nullptr;
+    QHash<int,PresetCapabilities> m_presetCapabilities;
+    int m_warmRow=0;
+    bool m_warmScheduled=false;
     QTimer *m_refresh=nullptr;
     bool m_syncing=false,m_internalChange=false,m_hasSelectedMode=true;
     int m_slot=0;
