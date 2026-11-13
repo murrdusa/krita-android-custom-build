@@ -1198,18 +1198,27 @@ private:
                 QDialog dialog(parentWidget());
                 dialog.setWindowTitle(i18n("Move brush"));
                 auto *layout=new QVBoxLayout(&dialog);
-                auto *choices=new MobileTouchComboBox(&dialog);
-                choices->setMinimumHeight(44);
+                auto *choices=new QListWidget(&dialog);
                 choices->setAccessibleName(i18n("Brush category"));
-                choices->addItem(i18n("Automatic category"),QString());
+                choices->setStyleSheet(QStringLiteral(
+                    "QListWidget{background:#252529;color:#f4f4f5;}"
+                    "QListWidget::item{min-height:42px;padding:0 8px;}"
+                    "QListWidget::item:selected{background:#3b586f;}"));
+                const QString current=settings.value(key).toString();
+                const auto addChoice=[choices,&current](const QString &label,const QString &value) {
+                    auto *item=new QListWidgetItem(label,choices);
+                    item->setData(Qt::UserRole,value);
+                    if(value==current)choices->setCurrentItem(item);
+                };
+                addChoice(i18n("Automatic category"),{});
                 for(const auto &family:brushFamilies())
-                    choices->addItem(family.second,familyAssignment(family.first));
+                    addChoice(family.second,familyAssignment(family.first));
                 auto names=customCategories();
-                for(const auto &name:names)choices->addItem(name,name);
-                choices->addItem(i18n("New category…"));
-                const int createIndex=choices->count()-1;
-                choices->setCurrentIndex(qMax(0,choices->findData(settings.value(key,QString()))));
-                layout->addWidget(choices);
+                for(const auto &name:names)addChoice(name,name);
+                auto *createChoice=new QListWidgetItem(i18n("New category…"),choices);
+                if(!choices->currentItem())choices->setCurrentRow(0);
+                MobileTouchScroll::configureList(choices);
+                layout->addWidget(choices,1);
                 auto *newName=new QLineEdit(&dialog);
                 newName->setPlaceholderText(i18n("Category name"));
                 newName->setMinimumHeight(44);
@@ -1218,17 +1227,18 @@ private:
                 auto *buttons=new QDialogButtonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel,&dialog);
                 for(auto *button:buttons->buttons())button->setMinimumHeight(44);
                 layout->addWidget(buttons);
-                connect(choices,QOverload<int>::of(&QComboBox::currentIndexChanged),&dialog,
-                        [newName,createIndex](int index) {newName->setVisible(index==createIndex);});
+                connect(choices,&QListWidget::currentItemChanged,&dialog,
+                        [newName,createChoice](QListWidgetItem *item) {newName->setVisible(item==createChoice);});
                 connect(buttons,&QDialogButtonBox::accepted,&dialog,[&]() {
-                    if(choices->currentIndex()!=createIndex || !newName->text().trimmed().isEmpty())
+                    if(choices->currentItem()!=createChoice || !newName->text().trimmed().isEmpty())
                         dialog.accept();
                 });
                 connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
+                dialog.resize(qMin(350,parentWidget()->width()),qMin(470,parentWidget()->height()));
                 if(dialog.exec()!=QDialog::Accepted)return;
 
-                const bool create=choices->currentIndex()==createIndex;
-                QString assignment=choices->currentData().toString();
+                const bool create=choices->currentItem()==createChoice;
+                QString assignment=choices->currentItem()->data(Qt::UserRole).toString();
                 if(create) {
                     assignment=newName->text().trimmed();
                     for(const auto &existing:names) {
@@ -1394,6 +1404,23 @@ private:
         search->setMinimumWidth(0);
         search->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
         body->addWidget(search);
+        if(auto *editor=m_engine.action("show_brush_editor")) {
+            auto *advanced=new QToolButton(panel);
+            advanced->setText(i18n("Advanced Brush Settings"));
+            advanced->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
+            advanced->setEnabled(editor->isEnabled());
+            connect(editor,&QAction::changed,advanced,[advanced,editor]() {
+                advanced->setEnabled(editor->isEnabled());
+            });
+            connect(advanced,&QToolButton::clicked,panel,[this,panel,editor]() {
+                panel->close();
+                QTimer::singleShot(0,this,[action=QPointer<QAction>(editor)]() {
+                    if(action && action->isEnabled())action->trigger();
+                });
+            });
+            body->addWidget(advanced);
+        }
+
         auto *list=new QListView(panel);
         list->setObjectName(QStringLiteral("brushRows"));
         list->setAccessibleName(i18n("Brush presets"));

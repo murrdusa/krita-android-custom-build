@@ -49,13 +49,17 @@ public:
                         const QList<QAction*> &moreActions,QAction *canvasOnly=nullptr,
                         MobileToolbarGestureButton::InlineAdjustment adjust={},
                         MobileToolbarGestureButton::ColorSample sample={},
-                        std::function<void(const QColor &)> selectColor={})
+                        std::function<void(const QColor &)> selectColor={},
+                        MobileToolbarGestureButton::ColorSample eyedropperSample={},
+                        std::function<MobileToolbarGestureButton::Hold(const QString &)> holdFor={})
     {
         QWidget *canvas=host?host->centralWidget():nullptr;
         if(!canvas || !home || toolbar(canvas))return nullptr;
         auto *layout=new MobileNativeCommandLayout(canvas,commands,defaults);
         layout->m_adjust=std::move(adjust);
         layout->m_sample=std::move(sample);
+        layout->m_eyedropperSample=std::move(eyedropperSample);
+        layout->m_holdFor=std::move(holdFor);
         layout->m_selectColor=std::move(selectColor);
         layout->m_recentColors=MobileRecentColors::load();
         layout->m_historyEnabled=layout->m_selectColor &&
@@ -682,7 +686,8 @@ private:
             auto action=m_commands.value(id);
             if(!action)continue;
             QToolButton *button=nullptr;
-            if(MobileToolbarDrag::usesButton(id) ||
+            auto hold=m_holdFor?m_holdFor(id):MobileToolbarGestureButton::Hold{};
+            if(hold || MobileToolbarDrag::usesButton(id) ||
                id==QStringLiteral("color") ||
                id==QStringLiteral("tool-settings") ||
                id==QStringLiteral("paint") || id==QStringLiteral("erase") ||
@@ -691,7 +696,8 @@ private:
                 // Construct even for currently disabled assignments:
                 // settings can change without rebuilding toolbar layout.
                 auto *gesture=new MobileToolbarGestureButton(
-                    strip,id,vertical,m_adjust,m_sample);
+                    strip,id,vertical,m_adjust,
+                    id==QStringLiteral("eyedropper")?m_eyedropperSample:m_sample,std::move(hold));
                 gesture->setDefaultAction(action);
                 gesture->setFocusPolicy(Qt::NoFocus);
                 gesture->setIconSize(QSize(bar.icon,bar.icon));
@@ -1059,7 +1065,8 @@ private:
 
     Commands m_commands;
     MobileToolbarGestureButton::InlineAdjustment m_adjust;
-    MobileToolbarGestureButton::ColorSample m_sample;
+    MobileToolbarGestureButton::ColorSample m_sample,m_eyedropperSample;
+    std::function<MobileToolbarGestureButton::Hold(const QString &)> m_holdFor;
     std::function<void(const QColor &)> m_selectColor;
     QStringList m_recentColors;
     bool m_historyEnabled=false;

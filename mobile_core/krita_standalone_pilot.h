@@ -105,6 +105,18 @@ public:
         auto *blendBrushAction=makeAction("Blend");
         auto *layersAction=makeAction("Layers");
         auto *colorAction=makeAction("Color");
+        auto *eyedropperAction=makeAction("One-shot eyedropper");
+        workspace->bindEyedropper(eyedropperAction);
+        auto *referenceAction=makeAction("Reference images");
+        referenceAction->setToolTip(QObject::tr("Reference images. Tap for the tool, hold to show or hide."));
+        QObject::connect(referenceAction,&QAction::triggered,workspace,[nativeBridge]() {
+            for(const auto &tool:nativeBridge.tools()) {
+                if(tool.id.section(QLatin1Char('/'),-1)==QStringLiteral("ToolReferenceImages")) {
+                    nativeBridge.selectTool(tool.id);
+                    return;
+                }
+            }
+        });
         auto *toolsAction=makeAction("Tools");
         auto *optionsAction=makeAction("Tool Settings");
         auto *colorOptionsAction=makeAction("Color options…");
@@ -127,6 +139,7 @@ public:
         setStudioIcon(toolsAction,"tools-wizard");
         setStudioIcon(eraserAction,"draw-eraser");
         setStudioIcon(blendBrushAction,"colorsmudge");
+        setStudioIcon(referenceAction,"krita_tool_reference_images");
         if(auto *provider=nativeBridge.brushResources()) {
             const auto updateSwatch=[colorAction](const KoColor &foreground) {
                 QPixmap swatch(46,46);
@@ -427,6 +440,7 @@ public:
         const QList<QPair<const char*,QAction*>> studioCommands{
             {"paint",brushesAction},{"erase",eraserAction},{"blend",blendBrushAction},
             {"tool-settings",optionsAction},{"color",colorAction},{"layers",layersAction},
+            {"eyedropper",eyedropperAction},{"reference-images",referenceAction},
             {"tools",toolsAction},{"undo",undoAction},{"redo",redoAction},{"save",saveAction},
             {"new",newAction},{"open",openAction},
             {"previous-canvas",previousCanvasAction},{"next-canvas",nextCanvasAction},
@@ -455,6 +469,21 @@ public:
                     if(foreground.colorSpace())
                         provider->setFGColor(KoColor(color,foreground.colorSpace()));
                 }
+            },
+            [workspace](const QPoint &global,MobileToolbarDrag::Phase phase) {
+                workspace->sampleEyedropperDrag(global,phase);
+            },
+            [workspace,nativeBridge](const QString &id) -> MobileToolbarGestureButton::Hold {
+                if(id==QStringLiteral("eyedropper"))return [workspace]() {workspace->toggleEyedropperSource();};
+                if(id==QStringLiteral("reference-images") ||
+                   id==QStringLiteral("krita/view_toggle_reference_images") ||
+                   id==QStringLiteral("krita/ToolReferenceImages")) {
+                    return [nativeBridge]() {
+                        if(auto *toggle=nativeBridge.action("view_toggle_reference_images"))
+                            if(toggle->isEnabled())toggle->trigger();
+                    };
+                }
+                return {};
             });
         if(commandLayout) {
             commandLayout->bindWorkspace([workspace](const QString &id,bool portrait) {

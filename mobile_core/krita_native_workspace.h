@@ -14,6 +14,8 @@
 #include <QApplication>
 #include <QAction>
 #include <QCheckBox>
+#include <QCursor>
+#include <QKeyEvent>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -130,7 +132,7 @@ public:
         m_samplePreviewTimer.setSingleShot(true);
         m_samplePreviewTimer.setInterval(16);
         connect(&m_samplePreviewTimer,&QTimer::timeout,this,[this]() {
-            if(const auto sample=toolbarColorAt(m_samplePoint)) {
+            if(const auto sample=toolbarColorAt(m_samplePoint,m_sampleLayerOnly)) {
                 if(auto *preview=toolbarPreview())preview->color(sample->toQColor(),m_samplePoint);
             } else if(m_toolbarPreview) {
                 m_toolbarPreview->hide();
@@ -163,6 +165,7 @@ public:
             QObject::connect(root,&QStackedWidget::currentChanged,this,
                              [this,root=QPointer<MobileNativeViewStack>(root)](int) {
                 if(!root)return;
+                armEyedropper(false);
                 MobileToolBrowser::dismiss(m_host);
                 if(m_brush)m_brush->dismissPresetBrowser();
                 const QPointer<QWidget> selected=root->currentWidget();
@@ -960,20 +963,45 @@ public:
         }
     }
 
-    void sampleToolbarColor(const QPoint &global,MobileToolbarDrag::Phase phase)
+    void bindEyedropper(QAction *action)
+    {
+        m_eyedropper=action;
+        m_sampleActiveLayer=QSettings().value(QStringLiteral("MobileStudio/eyedropperActiveLayer"),false).toBool();
+        action->setCheckable(true);
+        connect(action,&QAction::triggered,this,[this](bool armed) {
+            armEyedropper(armed);
+        });
+        syncEyedropper();
+    }
+
+    void toggleEyedropperSource()
+    {
+        m_sampleActiveLayer=!m_sampleActiveLayer;
+        QSettings().setValue(QStringLiteral("MobileStudio/eyedropperActiveLayer"),m_sampleActiveLayer);
+        syncEyedropper();
+    }
+
+    void sampleEyedropperDrag(const QPoint &global,MobileToolbarDrag::Phase phase)
+    {
+        armEyedropper(false);
+        sampleToolbarColor(global,phase,m_sampleActiveLayer);
+    }
+
+    void sampleToolbarColor(const QPoint &global,MobileToolbarDrag::Phase phase,bool layerOnly=false)
     {
         using MobileToolbarDrag::Phase;
         if(phase!=Phase::Preview) {
             m_samplePreviewTimer.stop();
             if(phase==Phase::Commit) {
                 if(auto *provider=m_engine.brushResources())
-                    if(const auto sample=toolbarColorAt(global))
+                    if(const auto sample=toolbarColorAt(global,layerOnly))
                         provider->setFGColor(*sample);
             }
             clearToolbarPreview();
             return;
         }
         m_samplePoint=global;
+        m_sampleLayerOnly=layerOnly;
         if(!m_samplePreviewTimer.isActive())m_samplePreviewTimer.start();
     }
 
@@ -1169,6 +1197,7 @@ public:
 
     void hidePanels()
     {
+        armEyedropper(false);
         MobileToolBrowser::dismiss(m_host);
         if(m_brush)m_brush->dismissPresetBrowser();
         clearToolbarPreview();
@@ -1206,6 +1235,7 @@ protected:
             scheduleOverlayPlacement();
         }
         const auto type=event->type();
+        if(handleEyedropperInput(watched,event))return true;
         if(!m_canvasLayoutEditing && m_host && (type==QEvent::MouseButtonPress || type==QEvent::MouseButtonDblClick ||
                       type==QEvent::TabletPress || type==QEvent::TouchBegin)) {
             auto *target=pressTarget(watched,event);
@@ -1298,7 +1328,110 @@ private:
         m_dragParameter.clear();
     }
 
-    std::optional<KoColor> toolbarColorAt(const QPoint &global) const
+    void syncEyedropper()
+    {
+        if(!m_eyedropper)return;
+        const auto source=m_sampleActiveLayer?tr("Active layer"):tr("Visible colors");
+        m_eyedropper->setToolTip(tr("Eyedropper · %1. Tap to arm, drag to sample, hold to change source.").arg(source));
+        QPixmap icon(48,48);
+        icon.fill(Qt::transparent);
+        QPainter painter(&icon);
+        painter.setRenderHint(QPainter::Antialiasing);
+        QIcon(QStringLiteral(":/light_krita_tool_color_sampler.svg")).paint(&painter,QRect(0,0,39,39));
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor("#28596c"));
+        painter.drawRoundedRect(QRect(26,25,22,23),4,4);
+        painter.setPen(Qt::white);
+        QFont font=painter.font();
+        font.setPixelSize(18);
+        font.setBold(true);
+        painter.setFont(font);
+        painter.drawText(QRect(26,25,22,23),Qt::AlignCenter,
+                         m_sampleActiveLayer?tr("L","eyedropper active layer badge"):
+                                             tr("V","eyedropper visible colors badge"));
+        painter.end();
+        m_eyedropper->setIcon(QIcon(icon));
+    }
+
+    void armEyedropper(bool armed)
+    {
+        armed=armed && m_engine.hasDocument() && !m_canvasLayoutEditing;
+        if(m_eyedropper)m_eyedropper->setChecked(armed);
+        if(m_eyedropperArmed==armed)return;
+        m_eyedropperArmed=armed;
+        if(auto *manager=m_engine.manager()) {
+            if(auto *canvas=manager->canvasBase())
+                if(auto *widget=canvas->canvasWidget()) {
+                    if(armed) {
+                        m_eyedropperCanvas=widget;
+                        m_eyedropperCursor=widget->cursor();
+                        m_eyedropperHadCursor=widget->testAttribute(Qt::WA_SetCursor);
+                        widget->setCursor(Qt::CrossCursor);
+                    }
+                }
+        }
+        if(!armed && m_eyedropperCanvas) {
+            if(m_eyedropperHadCursor)m_eyedropperCanvas->setCursor(m_eyedropperCursor);
+            else m_eyedropperCanvas->unsetCursor();
+            m_eyedropperCanvas.clear();
+        }
+    }
+
+    bool handleEyedropperInput(QObject *watched,QEvent *event)
+    {
+        const auto type=event->type();
+        if(type==QEvent::ApplicationDeactivate) {
+            m_eyedropperInput=QEvent::None;
+            armEyedropper(false);
+            clearToolbarPreview();
+            return false;
+        }
+        if(m_eyedropperArmed && type==QEvent::KeyPress &&
+           static_cast<QKeyEvent*>(event)->key()==Qt::Key_Escape) {
+            armEyedropper(false);
+            return true;
+        }
+        if(m_eyedropperInput!=QEvent::None) {
+            const bool touch=m_eyedropperInput==QEvent::TouchBegin;
+            const bool tablet=m_eyedropperInput==QEvent::TabletPress;
+            const auto release=touch?QEvent::TouchEnd:tablet?QEvent::TabletRelease:QEvent::MouseButtonRelease;
+            const auto move=touch?QEvent::TouchUpdate:tablet?QEvent::TabletMove:QEvent::MouseMove;
+            if(type==release || (touch && type==QEvent::TouchCancel))m_eyedropperInput=QEvent::None;
+            else if(type!=move) {
+                const bool mouse=type==QEvent::MouseButtonPress || type==QEvent::MouseButtonDblClick ||
+                                 type==QEvent::MouseButtonRelease || type==QEvent::MouseMove;
+                if((!touch && !tablet) || !mouse ||
+                   static_cast<QMouseEvent*>(event)->source()==Qt::MouseEventNotSynthesized)return false;
+            }
+            event->accept();
+            return true;
+        }
+        if(!m_eyedropperArmed || !m_eyedropperCanvas ||
+           QApplication::activeModalWidget() || QApplication::activePopupWidget())return false;
+        if(type!=QEvent::TouchBegin && type!=QEvent::TabletPress &&
+           type!=QEvent::MouseButtonPress && type!=QEvent::MouseButtonDblClick)return false;
+        QPoint global;
+        auto *target=pressTarget(watched,event,&global);
+        if(!target || (target!=m_eyedropperCanvas && !m_eyedropperCanvas->isAncestorOf(target)))return false;
+        if(type==QEvent::TouchBegin) {
+            const auto *touch=static_cast<QTouchEvent*>(event);
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+            if(touch->points().size()!=1)return false;
+#else
+            if(touch->touchPoints().size()!=1)return false;
+#endif
+        }
+        if((type==QEvent::MouseButtonPress || type==QEvent::MouseButtonDblClick) &&
+           static_cast<QMouseEvent*>(event)->button()!=Qt::LeftButton)return false;
+        m_eyedropperInput=type==QEvent::MouseButtonDblClick?QEvent::MouseButtonPress:type;
+        dismissTemporaryPanels(target);
+        armEyedropper(false);
+        sampleToolbarColor(global,MobileToolbarDrag::Phase::Commit,m_sampleActiveLayer);
+        event->accept();
+        return true;
+    }
+
+    std::optional<KoColor> toolbarColorAt(const QPoint &global,bool layerOnly) const
     {
         if(!m_engine.hasDocument())return {};
         auto *manager=m_engine.manager();
@@ -1309,19 +1442,21 @@ private:
         const QPoint widgetPoint=canvas->canvasWidget()->mapFromGlobal(global);
         if(!canvas->canvasWidget()->rect().contains(widgetPoint))return {};
         const QPoint point=canvas->coordinatesConverter()->widgetToImage(widgetPoint).toPoint();
-        if(auto *view=canvas->imageView().data()) {
-            if(view->document() && canvas->referenceImagesDecoration() &&
-               canvas->referenceImagesDecoration()->visible()) {
-                const auto refs=view->document()->referenceImagesLayer();
-                if(refs) {
-                    const auto color=refs->getPixel(point);
-                    if(color.isValid())return KoColor(color,image->colorSpace());
-                }
+        if(!layerOnly && canvas->referenceImagesDecoration() &&
+           canvas->referenceImagesDecoration()->visible()) {
+            const auto *document=manager->document();
+            const auto refs=document?document->referenceImagesLayer():nullptr;
+            if(refs) {
+                const auto color=refs->getPixel(point);
+                if(color.isValid())return KoColor(color,image->colorSpace());
             }
         }
         if(!image->bounds().contains(point))return {};
+        const auto node=manager->activeNode();
+        const auto device=layerOnly?(node?node->projection():KisPaintDeviceSP{}):image->projection();
+        if(!device)return {};
         KoColor sampled;
-        image->projection()->pixel(point.x(),point.y(),&sampled);
+        device->pixel(point.x(),point.y(),&sampled);
         return sampled;
     }
 
@@ -1448,7 +1583,7 @@ private:
                              (m_brushOptions && m_brushOptions->isVisible()));
     }
 
-    static QWidget *pressTarget(QObject *watched,QEvent *event)
+    static QWidget *pressTarget(QObject *watched,QEvent *event,QPoint *position=nullptr)
     {
         auto *fallback=qobject_cast<QWidget*>(watched);
         QPoint global;
@@ -1479,6 +1614,7 @@ private:
 #endif
             break;
         }
+        if(position)*position=global;
         if(auto *hit=QApplication::widgetAt(global))return hit;
         return fallback;
     }
@@ -1991,6 +2127,12 @@ private:
     QPointer<QAction> m_volumeUndo;
     QPointer<QAction> m_volumeRedo;
     QPointer<MobileToolbarDragPreview> m_toolbarPreview;
+    QPointer<QAction> m_eyedropper;
+    QPointer<QWidget> m_eyedropperCanvas;
+    QCursor m_eyedropperCursor;
+    QEvent::Type m_eyedropperInput=QEvent::None;
+    bool m_eyedropperArmed=false,m_eyedropperHadCursor=false;
+    bool m_sampleActiveLayer=false,m_sampleLayerOnly=false;
     QTimer m_samplePreviewTimer;
     QPoint m_samplePoint;
     QString m_dragParameter;

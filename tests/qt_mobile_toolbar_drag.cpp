@@ -6,6 +6,7 @@
 #include <QMouseEvent>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QtTest/QTest>
 #include "mobile_core/toolbar_drag_gesture.h"
 
 static void require(bool ok,const char *reason)
@@ -31,7 +32,7 @@ int main(int argc,char **argv)
     app.setOrganizationName(QStringLiteral("KritaMobileToolbarDragTest"));
     app.setApplicationName(QStringLiteral("KritaMobileToolbarDragTest"));
     QSettings().clear();
-    require(MobileToolbarDrag::assignment("opacity")==QStringLiteral("tool-settings") &&
+    require(MobileToolbarDrag::assignment("opacity")==QStringLiteral("color") &&
             MobileToolbarDrag::assignment("size")==QStringLiteral("paint"),
             "new workspaces should enable distinct opacity and size drags");
     QSettings().setValue(MobileToolbarDrag::preference("opacity"),QString());
@@ -113,4 +114,32 @@ int main(int argc,char **argv)
     mouse(&settings,QEvent::MouseButtonRelease,QPoint(20,100));
     require(commits==2 && parameter==QStringLiteral("size") && adjustment==-80,
             "vertical toolbar brush size must decrease on downward drag");
+    int holds=0,arms=0;
+    QSettings().setValue(MobileToolbarDrag::preference("sample"),false);
+    MobileToolbarGestureButton eyedropper(nullptr,QStringLiteral("eyedropper"),false,adjust,sample,
+                                        [&]() {++holds;});
+    QAction eyedropperAction(QStringLiteral("Eyedropper"),&eyedropper);
+    QObject::connect(&eyedropperAction,&QAction::triggered,&eyedropper,[&]() {++arms;});
+    eyedropper.setDefaultAction(&eyedropperAction);
+    eyedropper.resize(48,48);
+    eyedropper.show();
+    const QPoint center(20,20);
+    mouse(&eyedropper,QEvent::MouseButtonPress,center);
+    mouse(&eyedropper,QEvent::MouseButtonRelease,center);
+    require(arms==1 && holds==0,"eyedropper tap must arm once");
+
+    mouse(&eyedropper,QEvent::MouseButtonPress,center);
+    QTest::qWait(520);
+    mouse(&eyedropper,QEvent::MouseButtonRelease,center);
+    require(holds==1 && arms==1,"holding must switch source without arming");
+
+    const int beforeDrag=sampled;
+    mouse(&eyedropper,QEvent::MouseButtonPress,center);
+    mouse(&eyedropper,QEvent::MouseMove,QPoint(85,20));
+    QTest::qWait(520);
+    mouse(&eyedropper,QEvent::MouseButtonRelease,QPoint(105,20));
+    require(holds==1 && arms==1 && sampled==beforeDrag+1 &&
+            lastSample==eyedropper.mapToGlobal(QPoint(105,20)),
+            "eyedropper drag must cancel the hold and sample in any direction");
+
 }

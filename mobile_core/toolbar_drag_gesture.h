@@ -7,6 +7,7 @@
 #include <QPainter>
 #include <QSettings>
 #include <QToolButton>
+#include <QTimer>
 #include <QTouchEvent>
 #include <functional>
 
@@ -31,6 +32,7 @@ inline QString assignment(const char *parameter)
 enum class Phase { Preview, Commit, Cancel };
 inline bool samplesColor(const QString &id)
 {
+    if(id==QStringLiteral("eyedropper"))return true;
     return id==QStringLiteral("color") &&
         QSettings().value(preference("sample"),true).toBool();
 }
@@ -59,15 +61,22 @@ class MobileToolbarGestureButton final : public QToolButton
 public:
     using InlineAdjustment=std::function<void(const QString &,qreal,const QPoint &,MobileToolbarDrag::Phase)>;
     using ColorSample=std::function<void(const QPoint &,MobileToolbarDrag::Phase)>;
+    using Hold=std::function<void()>;
 
     MobileToolbarGestureButton(QWidget *parent,const QString &command,
                                bool vertical,
-                               InlineAdjustment adjust,ColorSample sample)
+                               InlineAdjustment adjust,ColorSample sample,Hold hold={})
         : QToolButton(parent),m_command(command),m_vertical(vertical),
-          m_adjust(std::move(adjust)),m_sample(std::move(sample))
+          m_adjust(std::move(adjust)),m_sample(std::move(sample)),m_hold(std::move(hold))
     {
         setProperty("_mobileToolbarDragControl",true);
         setAttribute(Qt::WA_AcceptTouchEvents,true);
+        m_holdTimer.setSingleShot(true);
+        connect(&m_holdTimer,&QTimer::timeout,this,[this]() {
+            m_held=true;
+            setDown(false);
+            m_hold();
+        });
     }
 
 protected:
@@ -82,7 +91,7 @@ protected:
         case QEvent::TouchEnd:
         case QEvent::TouchCancel: {
             if(event->type()==QEvent::TouchBegin) {
-                if(!MobileToolbarDrag::usesButton(m_command))return QToolButton::event(event);
+                if(!handlesGesture())return QToolButton::event(event);
             } else if(!m_active) {
                 return QToolButton::event(event);
             }
@@ -110,7 +119,7 @@ protected:
 
     void mousePressEvent(QMouseEvent *event) override
     {
-        if(!MobileToolbarDrag::usesButton(m_command) ||
+        if(!handlesGesture() ||
            event->button()!=Qt::LeftButton) {
             QToolButton::mousePressEvent(event);
             return;
@@ -140,10 +149,14 @@ protected:
     }
 
 private:
+    bool handlesGesture() const {return bool(m_hold) || MobileToolbarDrag::usesButton(m_command);}
+
     void begin(const QPoint &pos)
     {
         m_active=true;
         m_dragged=false;
+        m_held=false;
+        if(m_hold)m_holdTimer.start(430);
         m_axis=0;
         m_sampling=MobileToolbarDrag::samplesColor(m_command);
         m_parameter=MobileToolbarDrag::adjustment(m_command);
@@ -153,14 +166,16 @@ private:
     }
     void update(const QPoint &pos)
     {
-        if(!m_active)return;
+        if(!m_active || m_held)return;
         const QPoint delta=pos-m_start;
         if(!m_dragged &&
            delta.manhattanLength()>=QApplication::startDragDistance()) {
             m_dragged=true;
+            m_holdTimer.stop();
             const bool inlineDrag=qAbs(MobileToolbarDrag::along(delta,m_vertical))>=
                                   qAbs(MobileToolbarDrag::away(delta,m_vertical));
-            if(m_command==QStringLiteral("color")) {
+            if(m_command==QStringLiteral("eyedropper"))m_axis=2;
+            else if(m_command==QStringLiteral("color")) {
                 if(!inlineDrag && m_sampling)m_axis=2;
                 else if(inlineDrag && !m_parameter.isEmpty()) {
                     m_axis=1;
@@ -187,9 +202,11 @@ private:
     void finish(const QPoint &pos,bool cancelled)
     {
         if(!m_active)return;
+        m_holdTimer.stop();
         if(!cancelled && !m_dragged && pos!=m_last)update(pos);
         m_active=false;
         setDown(false);
+        if(m_held)return;
         if(m_dragged) {
             dispatch(pos,cancelled?MobileToolbarDrag::Phase::Cancel:MobileToolbarDrag::Phase::Commit);
         } else if(!cancelled && rect().contains(mapFromGlobal(pos)) &&
@@ -206,6 +223,9 @@ private:
     QPoint m_start,m_last;
     InlineAdjustment m_adjust;
     ColorSample m_sample;
+    Hold m_hold;
+    QTimer m_holdTimer;
+    bool m_held=false;
 };
 class MobileToolbarDragPreview final : public QWidget
 {
