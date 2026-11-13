@@ -80,6 +80,24 @@ int main(int argc,char **argv)
     if(!require(Archive::folderFor(source,root)==
                 Archive::folderFor(temp.filePath(QStringLiteral("./art.kra")),root),
                 "canonical file identity"))return 1;
+    // Save As paths through a linked parent folder must refer to the
+    // same not-yet-created file as their canonical destination.
+    const QString realFolder=temp.filePath(QStringLiteral("real-folder"));
+    const QString aliasFolder=temp.filePath(QStringLiteral("linked-folder"));
+    if(!require(QDir().mkpath(realFolder),"create real parent folder"))return 1;
+    if(!require(QFile::link(realFolder,aliasFolder),"create symlink parent"))return 1;
+    const QString canonicalTarget=QDir(realFolder).filePath(
+        QStringLiteral("new-subfolder/unsaved.kra"));
+    const QString aliasedTarget=QDir(aliasFolder).filePath(
+        QStringLiteral("new-subfolder/unsaved.kra"));
+    if(!require(MobileOpenDocumentDestinationPolicy::sameFile(
+                    canonicalTarget,aliasedTarget),
+                "linked-parent Save As destination collision"))return 1;
+    if(!require(!MobileOpenDocumentDestinationPolicy::sameFile(
+                    canonicalTarget,QDir(realFolder).filePath(
+                        QStringLiteral("new-subfolder/other.kra"))),
+                "distinct Save As destinations must stay independent"))return 1;
+
     // Periodic autosaves must be rate-limited without overwriting an
     // earlier completed historical version.
     const QString spaced=temp.filePath(QStringLiteral("spaced.kra"));
