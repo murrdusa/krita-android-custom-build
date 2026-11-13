@@ -655,13 +655,25 @@ private:
         // Krita owns child removal, clone dependencies, replacement of the
         // last paint layer and Undo. Keep the compact tree out of the graph
         // while the native removal and its reselection are in flight.
+        if(targets.size()>1) {
+            // Krita's multi-delete operates on the node manager's live
+            // selection. Selection activation can synchronously notify
+            // other UI clients; refuse to delete a different target set.
+            nodes->slotSetSelectedNodes(targets);
+            if(!m_engine.manager() ||
+               m_engine.manager()->image().toStrongRef()!=image ||
+               manager()!=nodes || !nodes->canModifyLayers(targets))
+                return;
+            const KisNodeList actual=nodes->selectedNodes();
+            if(actual.size()!=targets.size())return;
+            for(const KisNodeSP &node:targets)
+                if(!inImage(node,image) || !node->parent() ||
+                   !actual.contains(node))return;
+        }
         m_deleteImage=image;
         setEnabled(false);
         if(targets.size()==1)nodes->removeSingleNode(targets.first());
-        else {
-            nodes->slotSetSelectedNodes(targets);
-            nodes->removeNode();
-        }
+        else nodes->removeNode();
         image->requestStrokeEnd();
         QTimer::singleShot(0,this,[this]() {finishDelete();});
     }
