@@ -64,7 +64,11 @@ public:
             if(!now.nativeView || !now.document)return false;
             if(now.active)++currentActive;
         }
-        return expectedActive<=1 && currentActive==expectedActive;
+        // A nonempty view stack without an active canvas is in a
+        // transition; delayed recovery must not attach during that gap.
+        const int requiredActive=expected.isEmpty()?0:1;
+        return expectedActive==requiredActive &&
+               currentActive==requiredActive;
     }
 
     static bool maySave(const QVector<View> &views,
