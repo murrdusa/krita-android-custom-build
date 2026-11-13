@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — native Merge/Flatten/Ungroup selection integrity
+
+- Commit `b1041e94d1ed37692552bdfc65e8bf2082cfcf9f`: the tapped-layer Merge, Flatten and Ungroup commands now recheck the active Krita image, node-manager identity, layer membership, active node and **exact native single-layer selection** immediately after `slotSetSelectedNodes({node})`. Ungroup also confirms the target still inherits `KisGroupLayer`. If reentrant callbacks retarget the selection, the destructive/hierarchy-modifying native action is aborted rather than applying to another layer. Krita continues to own operation and Undo semantics.
+- **Verification:** previous multi-delete protection at `8d7ac695a53ab939aed53d3126da2d0994ad07ce` is WSL Android SUCCESS (164.75 MiB, 172,755,750 bytes). New merge/flatten/ungroup revision needs its own exact watcher build. Native Android/phone operation, Undo and KRA reload behavior remain untested; APK publishing paused.
+
 ## November 13 follow-up — native multi-layer Delete target integrity
 
 - Commit `8d7ac695a53ab939aed53d3126da2d0994ad07ce`: multi-layer Delete now verifies Krita's **actual selected-node set** after `slotSetSelectedNodes(targets)`, before invoking the native `removeNode()` operation. It also rechecks active image, node manager, membership, parent attachment, and Krita's native edit eligibility. If synchronous native selection callbacks changed the target list, Delete aborts instead of deleting a different selection. Single-layer deletion continues to use Krita's `removeSingleNode` path. Native Undo remains Krita-owned.
