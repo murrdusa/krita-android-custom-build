@@ -1258,8 +1258,9 @@ install(FILES org.kde.krita.desktop''',
     gradle=gradlefile.read_text(encoding="utf-8")
     gradle=one(gradle,
         '    exclude "mlt-7/**"\n',
-        '    exclude "mlt-7/**", "libkrita_${abi}.so"\n',
-        "Skip the obsolete launcher left in incremental Android installs")
+        '    exclude "mlt-7/**", "libkrita_${abi}.so", '
+        '"libgettextlib*.so", "libgettextsrc*.so"\n',
+        "Skip the obsolete launcher and gettext command-line libraries")
     gradle=one(gradle,
         '''    from "$installPrefix/share/"
     into 'assets/'
@@ -1271,9 +1272,18 @@ install(FILES org.kde.krita.desktop''',
     // Host-side tool data and manuals are unused by the Android app.
     exclude 'ECM/**', 'aclocal/**', 'gettext/**', 'gettext-*/**',
             'info/**', 'man/**', 'locale/**/LC_MESSAGES/gettext-*.mo'
-    exclude 'doc/expat/**', 'doc/gettext/**', 'doc/libasprintf/**',
-            'doc/libjpeg-turbo/**', 'doc/libtextstyle/**', 'doc/ogg/**',
-            'doc/OpenEXR/**', 'doc/tiff/**', 'doc/zlib/**'
+    def dependencyDocs = ['expat', 'gettext', 'libasprintf', 'libjpeg-turbo',
+                          'libtextstyle', 'ogg', 'OpenEXR', 'tiff', 'zlib']
+    exclude { entry ->
+        def parts = entry.relativePath.segments
+        if (entry.directory || parts.length < 3 || parts[0] != 'doc' ||
+            !dependencyDocs.contains(parts[1])) {
+            return false
+        }
+        def name = entry.name.toLowerCase(java.util.Locale.ROOT)
+        return !['license', 'licence', 'copying', 'copyright', 'notice', 'readme']
+            .any { name.contains(it) }
+    }
 ''',
         "Skip bundled host build tools and third-party manuals")
     gradle=one(gradle,

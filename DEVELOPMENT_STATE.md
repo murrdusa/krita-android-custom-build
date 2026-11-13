@@ -4,7 +4,7 @@
 
 Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1). This file records *current* status, not a commit-by-commit log. The preceding complete log is preserved verbatim in [DEVELOPMENT_HISTORY_2026-11-11.md](DEVELOPMENT_HISTORY_2026-11-11.md). More focused runbooks live under `mobile_core/`.
 
-The Android package excludes the obsolete Krita launcher left by earlier incremental builds and third-party manuals, host build data, and gettext command-line catalogs. The previous arm64 debug APK was 177.04 MiB. Use Issue #1 for the size of the new build. The unused in-process shell prototype was removed. Layer thumbnails skip scrollbar callbacks during row rebuilds, the rail enforces its existing 500-card budget, and Delete checks that the original canvas is still active after confirmation.
+The Android package excludes the obsolete Krita launcher left by earlier incremental builds and third-party manuals, host build data, and gettext command-line libraries and catalogs. Dependency licenses and README files are retained. The previous arm64 debug APK was 177.04 MiB. Use Issue #1 for the size of the new build. The unused in-process shell prototype was removed. Layer thumbnails skip scrollbar callbacks during row rebuilds, the rail enforces its existing 500-card budget, and Delete checks that the original canvas is still active after confirmation.
 
 ## Brush picker and contextual controls
 
