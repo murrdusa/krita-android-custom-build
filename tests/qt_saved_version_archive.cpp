@@ -273,6 +273,24 @@ int main(int argc,char **argv)
             !MobileSavedVersionArchive::isKritaProjectName(QStringLiteral("drawing.kra.zip")),
             "recognize Android numbered KRA names without matching arbitrary archives");
     MobileDraftRecovery::setProject(draft,source);
+    const QString privateMetadata=draft+QStringLiteral(".project");
+    const QByteArray savedAssociation=load(privateMetadata);
+    const QString externalMetadata=QDir(temp.path()).filePath(
+        QStringLiteral("external-project-association"));
+    save(externalMetadata,savedAssociation);
+    require(MobileDraftRecovery::projectFor(external).isEmpty(),
+            "external paths cannot supply private project associations");
+    require(QFile::remove(privateMetadata),
+            "remove private project metadata before symlink test");
+    if(QFile::link(externalMetadata,privateMetadata)) {
+        require(MobileDraftRecovery::projectFor(draft).isEmpty(),
+                "linked project metadata must not redirect recovery");
+        require(QFile::remove(privateMetadata),
+                "remove linked private project metadata");
+    }
+    save(privateMetadata,savedAssociation);
+    require(MobileDraftRecovery::projectFor(draft)==source,
+            "restore private project association after symlink test");
     const qint64 draftTime=QFileInfo(draft).lastModified().toMSecsSinceEpoch();
     require(MobileDraftRecovery::projectFor(draft)==source &&
             MobileDraftRecovery::checkpointsFor(source,draftTime-1).value(0).absoluteFilePath()==draft &&
