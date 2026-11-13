@@ -12,6 +12,7 @@
 #include <QCheckBox>
 #include <QInputMethod>
 #include <QInputDialog>
+#include <QDialogButtonBox>
 #include <QMessageBox>
 #include <QLineEdit>
 #include <QListView>
@@ -604,8 +605,10 @@ private:
     class PresetRow final : public QStyledItemDelegate
     {
     public:
-        PresetRow(QListView *view,std::function<void(const QString &)> onFavorite)
+        PresetRow(QListView *view,std::function<void(const QString &)> onFavorite,
+                  std::function<void(const QModelIndex &)> onMenu)
             : QStyledItemDelegate(view),m_view(view),m_onFavorite(std::move(onFavorite)),
+              m_onMenu(std::move(onMenu)),
               m_favorites(QSettings().value(
                   QStringLiteral("MobileStudio/brushFavorites")).toStringList()) {}
 
@@ -650,6 +653,10 @@ private:
             painter->setFont(font);
             painter->setPen(favorite?QColor("#ffd478"):QColor("#9da4b3"));
             painter->drawText(star,Qt::AlignCenter,favorite?QStringLiteral("★"):QStringLiteral("☆"));
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(QColor("#c6ccd7"));
+            const QPoint center=menuArea(option.rect).center();
+            for(int offset:{-6,0,6})painter->drawEllipse(center+QPoint(0,offset),2,2);
             painter->restore();
         }
 
@@ -658,24 +665,34 @@ private:
         {
             if(event->type()!=QEvent::MouseButtonRelease)return false;
             auto *mouse=static_cast<QMouseEvent*>(event);
-            if(mouse->button()!=Qt::LeftButton || !starArea(option.rect).contains(mouse->pos()))return false;
-            const QString name=resourceName(index);
-            if(name.isEmpty())return false;
-            m_view->setProperty("_mobileFavoriteTap",true);
-            m_onFavorite(name);
-            m_favorites=QSettings().value(
-                QStringLiteral("MobileStudio/brushFavorites")).toStringList();
-            m_view->viewport()->update();
+            if(mouse->button()!=Qt::LeftButton)return false;
+            const bool menu=menuArea(option.rect).contains(mouse->pos());
+            if(!menu && !starArea(option.rect).contains(mouse->pos()))return false;
+            m_view->setProperty("_mobilePresetActionTap",true);
+            if(menu) {
+                const QPersistentModelIndex row(index);
+                QTimer::singleShot(0,this,[this,row]() {if(row.isValid())m_onMenu(row);});
+            } else {
+                m_onFavorite(resourceName(index));
+                m_favorites=QSettings().value(
+                    QStringLiteral("MobileStudio/brushFavorites")).toStringList();
+                m_view->viewport()->update();
+            }
             QTimer::singleShot(0,m_view,[view=m_view]() {
-                view->setProperty("_mobileFavoriteTap",false);
+                view->setProperty("_mobilePresetActionTap",false);
             });
             return true;
         }
 
     private:
-        static QRect starArea(const QRect &row)
+        static QRect menuArea(const QRect &row)
         {
             return QRect(row.right()-43,row.top(),44,row.height());
+        }
+
+        static QRect starArea(const QRect &row)
+        {
+            return menuArea(row).translated(-44,0);
         }
 
         static QString resourceName(const QModelIndex &index)
@@ -687,6 +704,7 @@ private:
 
         QListView *m_view;
         std::function<void(const QString &)> m_onFavorite;
+        std::function<void(const QModelIndex &)> m_onMenu;
         QStringList m_favorites;
     };
 
@@ -780,6 +798,25 @@ private:
         return 13;
     }
 
+    static QList<QPair<int,QString>> brushFamilies()
+    {
+        return {{9,i18n("Basic")},{10,i18n("Sketch")},{11,i18n("Inking")},
+                {13,i18n("Painting")},{14,i18n("Watercolor")},{15,i18n("Airbrush")},
+                {12,i18n("Texture")}};
+    }
+
+    static QString familyAssignment(int family)
+    {
+        return QStringLiteral("family/%1").arg(family);
+    }
+
+    static bool isFamilyAssignment(const QString &assignment)
+    {
+        for(const auto &family:brushFamilies())
+            if(assignment==familyAssignment(family.first))return true;
+        return false;
+    }
+
     static QString presetCategoryKey(int id)
     {
         return QStringLiteral("MobileStudio/brushCategory/%1").arg(id);
@@ -811,7 +848,10 @@ private:
         {
             for(int row=0;row<m_source->rowCount();++row) {
                 const QString name=m_source->index(row,KisAbstractResourceModel::Name).data().toString();
-                if(paintingFamily(name)==family && rowCapabilities(row).convertible)return true;
+                const auto assignment=categoryAssignment(row);
+                if(assignment==familyAssignment(family) && rowCapabilities(row).supports(m_slot))return true;
+                if(assignment.isEmpty() && paintingFamily(name)==family &&
+                   rowCapabilities(row).convertible)return true;
             }
             return false;
         }
@@ -895,24 +935,29 @@ private:
             if(!name.contains(m_search,Qt::CaseInsensitive))return false;
             if(m_category==-4 && !m_favorites.contains(name))return false;
             if(m_category==-5 && !m_recent.contains(name))return false;
-            if(m_category>=9 || !m_custom.isEmpty()) {
-                const int id=m_source->index(row,KisAbstractResourceModel::Id,parent).data().toInt();
-                auto it=m_assignments.constFind(id);
-                const QString custom=it!=m_assignments.cend()?it.value():
-                    m_assignments.insert(id,QSettings().value(presetCategoryKey(id)).toString()).value();
-                if(!m_custom.isEmpty()) {
-                    if(m_custom!=custom)return false;
-                } else if(!custom.isEmpty() || paintingFamily(name)!=m_category)return false;
+            const auto assignment=(m_category>=9 || !m_custom.isEmpty())?categoryAssignment(row):QString();
+            if(!m_custom.isEmpty() && assignment!=m_custom)return false;
+            if(m_category>=9) {
+                if(!assignment.isEmpty() && assignment!=familyAssignment(m_category))return false;
+                if(assignment.isEmpty() && paintingFamily(name)!=m_category)return false;
             }
             const auto available=rowCapabilities(row);
             if(!available.supports(m_slot))return false;
             if(m_category==1)return available.eraser;
             if(m_category==2)return available.blend;
-            if(m_slot==2 && m_category>=9)return available.convertible;
+            if(m_slot==2 && m_category>=9 && assignment.isEmpty())return available.convertible;
             return true;
         }
 
     private:
+        QString categoryAssignment(int row) const
+        {
+            const int id=m_source->index(row,KisAbstractResourceModel::Id).data().toInt();
+            auto it=m_assignments.constFind(id);
+            if(it!=m_assignments.cend())return it.value();
+            return m_assignments.insert(id,QSettings().value(presetCategoryKey(id)).toString()).value();
+        }
+
         PresetCapabilities rowCapabilities(int row) const
         {
             const auto index=m_source->index(row,KisAbstractResourceModel::Id);
@@ -1150,31 +1195,64 @@ private:
                 if(!factory.isEmpty())return;
                 QSettings settings;
                 const QString key=presetCategoryKey(id);
-                const QString automatic=i18n("Automatic category");
+                QDialog dialog(parentWidget());
+                dialog.setWindowTitle(i18n("Move brush"));
+                auto *layout=new QVBoxLayout(&dialog);
+                auto *choices=new MobileTouchComboBox(&dialog);
+                choices->setMinimumHeight(44);
+                choices->setAccessibleName(i18n("Brush category"));
+                choices->addItem(i18n("Automatic category"),QString());
+                for(const auto &family:brushFamilies())
+                    choices->addItem(family.second,familyAssignment(family.first));
                 auto names=customCategories();
-                QStringList choices=names;
-                choices.prepend(automatic);
-                const int current=qMax(0,choices.indexOf(settings.value(key).toString()));
-                bool accepted=false;
-                QString name=QInputDialog::getItem(parentWidget(),i18n("Move brush"),
-                    i18n("Select a category or type a new name"),choices,current,true,&accepted).trimmed();
-                if(!accepted || name.isEmpty())return;
-                if(name==automatic) {
-                    settings.remove(key);
-                    name.clear();
-                } else {
-                    for(const auto &existing:names)
-                        if(existing.compare(name,Qt::CaseInsensitive)==0) {name=existing;break;}
-                    if(!names.contains(name)) {
-                        names.append(name);
+                for(const auto &name:names)choices->addItem(name,name);
+                choices->addItem(i18n("New category…"));
+                const int createIndex=choices->count()-1;
+                choices->setCurrentIndex(qMax(0,choices->findData(settings.value(key,QString()))));
+                layout->addWidget(choices);
+                auto *newName=new QLineEdit(&dialog);
+                newName->setPlaceholderText(i18n("Category name"));
+                newName->setMinimumHeight(44);
+                newName->hide();
+                layout->addWidget(newName);
+                auto *buttons=new QDialogButtonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel,&dialog);
+                for(auto *button:buttons->buttons())button->setMinimumHeight(44);
+                layout->addWidget(buttons);
+                connect(choices,QOverload<int>::of(&QComboBox::currentIndexChanged),&dialog,
+                        [newName,createIndex](int index) {newName->setVisible(index==createIndex);});
+                connect(buttons,&QDialogButtonBox::accepted,&dialog,[&]() {
+                    if(choices->currentIndex()!=createIndex || !newName->text().trimmed().isEmpty())
+                        dialog.accept();
+                });
+                connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
+                if(dialog.exec()!=QDialog::Accepted)return;
+
+                const bool create=choices->currentIndex()==createIndex;
+                QString assignment=choices->currentData().toString();
+                if(create) {
+                    assignment=newName->text().trimmed();
+                    for(const auto &existing:names) {
+                        if(existing.compare(assignment,Qt::CaseInsensitive)==0) {assignment=existing;break;}
+                    }
+                    for(const auto &family:brushFamilies()) {
+                        if(family.second.compare(assignment,Qt::CaseInsensitive)==0) {
+                            assignment=familyAssignment(family.first);
+                            break;
+                        }
+                    }
+                    if(!isFamilyAssignment(assignment) && !names.contains(assignment)) {
+                        names.append(assignment);
                         settings.setValue(QStringLiteral("MobileStudio/brushCategories"),names);
                     }
-                    settings.setValue(key,name);
                 }
-                if(!name.isEmpty())settings.setValue(
-                    QStringLiteral("MobileStudio/brushLastCategory/%1").arg(m_browserSlot),
-                    QStringLiteral("custom/%1").arg(name));
-                if(alive && alive->isVisible())refreshList(name);
+                if(assignment.isEmpty())settings.remove(key);
+                else settings.setValue(key,assignment);
+                if(!assignment.isEmpty()) {
+                    const QString category=isFamilyAssignment(assignment)?
+                        assignment.mid(7):QStringLiteral("custom/%1").arg(assignment);
+                    settings.setValue(QStringLiteral("MobileStudio/brushLastCategory/%1").arg(m_browserSlot),category);
+                }
+                if(alive && alive->isVisible())refreshList(assignment);
                 return;
             }
             case Remove: {
@@ -1288,13 +1366,7 @@ private:
         const auto family=[slot,filter,category](const QString &name,int id) {
             if(slot!=2 || filter->hasFamily(id))category(name,id);
         };
-        family(i18n("Basic"),9);
-        family(i18n("Sketch"),10);
-        family(i18n("Inking"),11);
-        family(i18n("Painting"),13);
-        family(i18n("Watercolor"),14);
-        family(i18n("Airbrush"),15);
-        family(i18n("Texture"),12);
+        for(const auto &entry:brushFamilies())family(entry.second,entry.first);
         const auto addCustom=[categories](const QString &name) {
             auto *item=new QListWidgetItem(name,categories);
             item->setData(Qt::UserRole,-6);
@@ -1352,19 +1424,6 @@ private:
             const auto row=source->indexForResourceId(preset->resourceId());
             list->setCurrentIndex(filter->mapFromSource(row.sibling(row.row(),KisAbstractResourceModel::Name)));
         };
-        auto *delegate=new PresetRow(list,[filter,updateSelected](const QString &name) {
-            QSettings settings;
-            const QString key=QStringLiteral("MobileStudio/brushFavorites");
-            QStringList favorites=settings.value(key).toStringList();
-            if(favorites.contains(name))favorites.removeAll(name);
-            else favorites.prepend(name);
-            settings.setValue(key,favorites);
-            QTimer::singleShot(0,filter,[filter,updateSelected]() {
-                filter->reloadPersonalLists();
-                updateSelected();
-            });
-        });
-        list->setItemDelegate(delegate);
         const auto clearExtras=[conversion,candidate]() {
             conversion->hide();
             candidate->clear();
@@ -1392,7 +1451,14 @@ private:
             list->scrollToTop();
             updateSelected();
         });
-        MobileTouchScroll::configureList(list,[=](const QModelIndex &index) {
+        const auto hideSearchHandle=[search,panel]() {
+            search->deselect();
+            panel->setFocus(Qt::OtherFocusReason);
+            if(QGuiApplication::inputMethod()->isVisible())QGuiApplication::inputMethod()->hide();
+        };
+        const auto openRowMenu=[=](const QModelIndex &index) {
+            hideSearchHandle();
+            updateSelected();
             if(!valid())return;
             const auto selected=filter->mapToSource(index);
             const auto preset=source->resourceForIndex(selected).dynamicCast<KisPaintOpPreset>();
@@ -1405,22 +1471,42 @@ private:
                 QListWidgetItem *item=nullptr;
                 for(int row=0;row<categories->count();++row) {
                     auto *entry=categories->item(row);
-                    if(entry->data(Qt::UserRole+1).toString()==name) {item=entry;break;}
+                    if(entry->data(Qt::UserRole+1).toString()==name ||
+                       (entry->data(Qt::UserRole).toInt()>=9 &&
+                        familyAssignment(entry->data(Qt::UserRole).toInt())==name)) {item=entry;break;}
+                }
+                if(!item && isFamilyAssignment(name)) {
+                    const int id=name.mid(7).toInt();
+                    for(const auto &entry:brushFamilies()) {
+                        if(entry.first!=id)continue;
+                        item=new QListWidgetItem(entry.second,categories);
+                        item->setData(Qt::UserRole,id);
+                        break;
+                    }
                 }
                 if(!item)item=addCustom(name);
                 categories->setCurrentItem(item);
                 chooseCategory(item);
             });
-        });
-        const auto hideSearchHandle=[search,panel]() {
-            search->deselect();
-            panel->setFocus(Qt::OtherFocusReason);
-            if(QGuiApplication::inputMethod()->isVisible())QGuiApplication::inputMethod()->hide();
         };
+        auto *delegate=new PresetRow(list,[filter,updateSelected](const QString &name) {
+            QSettings settings;
+            const QString key=QStringLiteral("MobileStudio/brushFavorites");
+            QStringList favorites=settings.value(key).toStringList();
+            if(favorites.contains(name))favorites.removeAll(name);
+            else favorites.prepend(name);
+            settings.setValue(key,favorites);
+            QTimer::singleShot(0,filter,[filter,updateSelected]() {
+                filter->reloadPersonalLists();
+                updateSelected();
+            });
+        },openRowMenu);
+        list->setItemDelegate(delegate);
+        MobileTouchScroll::configureList(list);
         connect(categories,&QListWidget::itemClicked,panel,hideSearchHandle);
         connect(list,&QListView::clicked,this,[=](const QModelIndex &index) {
             hideSearchHandle();
-            if(!valid() || list->property("_mobileFavoriteTap").toBool())return;
+            if(!valid() || list->property("_mobilePresetActionTap").toBool())return;
             const auto selected=filter->mapToSource(index);
             const auto preset=source->resourceForIndex(selected.sibling(selected.row(),0))
                 .dynamicCast<KisPaintOpPreset>();
