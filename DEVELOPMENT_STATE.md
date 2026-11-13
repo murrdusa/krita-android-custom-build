@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — retain full live Fill preview near image edges
+
+- Commit `a636e7e7e403183940fd387ba3106aa74735698b`: the existing throttled 384×384 non-destructive live Fill tolerance preview now **shifts its sample window inside the image** when the seed lies near a border, instead of cropping the region to 192×192 at a corner. It still caps sampled pixels, preserves image-space offsets, supports smaller canvases and does not change actual Krita Fill or Undo behavior. Commit `4b7a5a10bf3e058e193d2d6fddbef9f90fb3a86c` updates host Qt geometry regressions for center, both opposite corners, out-of-bounds seed, small offset canvas and narrow canvas.
+- **Verification:** latest preview source requires exact WSL Android build confirmation and desktop Qt execution. Prior archive recovery fixes are committed and need status recheck. APK publishing paused.
+
 ## November 13 follow-up — reject oversized checkpoint SHA-256 metadata
 
 - Commit `8799cfca779171c6d5aca7f53b8815df72c04dc0`: historical KRA recovery now rejects an oversized SHA-256 checksum sidecar before reading its contents. The reader requires a bounded (at most 128 bytes) hex digest with optional whitespace instead of unbounded `readAll()` from a potentially corrupt or replaced metadata file. A damaged sidecar cannot cause large memory use during restoration; no archive or original project is modified. Commit `ba00d918bf950c6c9643f7cb0a0277a7d429b930` adds a desktop Qt regression for 129-byte checksum rejection and restores the valid metadata for subsequent tests.
