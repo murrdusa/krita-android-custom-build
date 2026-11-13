@@ -63,6 +63,7 @@ public:
     {
         QWidget *canvas=host?host->centralWidget():nullptr;
         if(!canvas || !home || toolbar(canvas))return nullptr;
+        MobileToolbarDrag::migrateSizeDefault();
         auto *layout=new MobileNativeCommandLayout(canvas,commands,defaults);
         layout->m_adjust=std::move(adjust);
         layout->m_sample=std::move(sample);
@@ -75,7 +76,7 @@ public:
         auto *row=new QHBoxLayout(layout->m_toolbar);
         row->setContentsMargins(1,1,1,1);
         row->setSpacing(1);
-        row->addWidget(makeButton(layout->m_toolbar,home));
+        row->addWidget(layout->makeButton(layout->m_toolbar,home,QStringLiteral("home")));
 
         layout->m_scroll=new QScrollArea(layout->m_toolbar);
         layout->m_scroll->setObjectName(QStringLiteral("_mobileNativeCommandScroll"));
@@ -88,7 +89,7 @@ public:
         row->addWidget(layout->m_scroll,1);
 
         auto *settings=new QAction(settingsIcon,QObject::tr("Settings and commands"),layout);
-        auto *more=makeButton(layout->m_toolbar,settings);
+        auto *more=layout->makeButton(layout->m_toolbar,settings,QStringLiteral("settings-menu"));
         more->setObjectName(QStringLiteral("_mobileNativeMoreButton"));
         row->addWidget(more);
         auto *menu=new QMenu(more);
@@ -184,6 +185,32 @@ public:
         layout->switchWorkspace();
         if(layout->m_profile.isEmpty())layout->rebuild();
         return layout;
+    }
+
+    QList<QPair<QString,QString>> visibleGestureButtons() const
+    {
+        QList<QPair<QString,QString>> result;
+        QSet<QString> seen;
+        const auto append=[&](QFrame *frame) {
+            if(!frame->isVisible())return;
+            for(auto *button:frame->findChildren<QToolButton*>()) {
+                const auto id=button->property("_mobileToolbarCommandId").toString();
+                if(id.isEmpty() || seen.contains(id) || !button->isVisibleTo(frame))continue;
+                seen.insert(id);
+                result.append({id,button->accessibleName()});
+            }
+        };
+        append(m_toolbar);
+        for(auto *frame:m_extra)append(frame);
+        return result;
+    }
+
+    void syncToolbarGestures()
+    {
+        for(auto *button:static_cast<QWidget*>(parent())->findChildren<QToolButton*>()) {
+            if(auto *gesture=dynamic_cast<MobileToolbarGestureButton*>(button))
+                gesture->syncGesturePolicy();
+        }
     }
 
     void setLayoutPanels(std::function<QVector<MobileCanvasLayoutEditor::Target>()> panels,
@@ -409,10 +436,13 @@ private:
             QStringLiteral("_mobileNativeToolbar"),Qt::FindDirectChildrenOnly):nullptr;
     }
 
-    static QToolButton *makeButton(QWidget *parent,QAction *action,
-                                   int target=44,int icon=24,bool vertical=false,bool square=false)
+    MobileToolbarGestureButton *makeButton(QWidget *parent,QAction *action,const QString &id,
+                                           int target=44,int icon=24,bool vertical=false,bool square=false)
     {
-        auto *button=new QToolButton(parent);
+        auto hold=m_holdFor?m_holdFor(id):MobileToolbarGestureButton::Hold{};
+        auto *button=new MobileToolbarGestureButton(parent,id,vertical,m_adjust,
+            id==QStringLiteral("eyedropper")?m_eyedropperSample:m_sample,std::move(hold));
+        button->setProperty("_mobileToolbarCommandId",id);
         button->setDefaultAction(action);
         button->setFocusPolicy(Qt::NoFocus);
         button->setIconSize(QSize(icon,icon));
@@ -718,39 +748,7 @@ private:
         for(const auto &id:bar.ids) {
             auto action=m_commands.value(id);
             if(!action)continue;
-            QToolButton *button=nullptr;
-            auto hold=m_holdFor?m_holdFor(id):MobileToolbarGestureButton::Hold{};
-            if(hold || MobileToolbarDrag::usesButton(id) ||
-               id==QStringLiteral("color") ||
-               id==QStringLiteral("tool-settings") ||
-               id==QStringLiteral("paint") || id==QStringLiteral("erase") ||
-               id==QStringLiteral("blend") || id==QStringLiteral("tools") ||
-               id==QStringLiteral("shortcut")) {
-                // Construct even for currently disabled assignments:
-                // settings can change without rebuilding toolbar layout.
-                auto *gesture=new MobileToolbarGestureButton(
-                    strip,id,vertical,m_adjust,
-                    id==QStringLiteral("eyedropper")?m_eyedropperSample:m_sample,std::move(hold));
-                gesture->setDefaultAction(action);
-                gesture->setFocusPolicy(Qt::NoFocus);
-                gesture->setIconSize(QSize(bar.icon,bar.icon));
-                button=gesture;
-                const auto sync=[gesture,action,bar,vertical]() {
-                    QString label=action->text();
-                    label.remove(QLatin1Char('&'));
-                    gesture->setAccessibleName(label);
-                    gesture->setVisible(action->isVisible());
-                    gesture->setToolButtonStyle(action->icon().isNull()?
-                        Qt::ToolButtonTextOnly:Qt::ToolButtonIconOnly);
-                    const int width=action->icon().isNull() && !vertical && !bar.adaptive?
-                        qBound(bar.target,gesture->fontMetrics().horizontalAdvance(label)+10,132):
-                        bar.target;
-                    gesture->setFixedSize(width,bar.target);
-                    gesture->setToolTip(action->toolTip().isEmpty()?label:action->toolTip());
-                };
-                QObject::connect(action,&QAction::changed,gesture,sync);
-                sync();
-            } else button=makeButton(strip,action,bar.target,bar.icon,vertical,bar.adaptive);
+            auto *button=makeButton(strip,action,id,bar.target,bar.icon,vertical,bar.adaptive);
             if(action==shortcut)shortcutButton=button;
             row->addWidget(button);
         }
@@ -824,7 +822,8 @@ private:
         mainRow->itemAt(0)->widget()->setFixedSize(main.target,main.target);
         mainRow->itemAt(2)->widget()->setFixedSize(main.target,main.target);
         for(int index:{0,2}) {
-            auto *button=static_cast<QToolButton*>(mainRow->itemAt(index)->widget());
+            auto *button=static_cast<MobileToolbarGestureButton*>(mainRow->itemAt(index)->widget());
+            button->setVertical(vertical);
             button->setIconSize(QSize(main.icon,main.icon));
         }
         m_scroll->setMinimumSize(vertical?main.target:0,vertical?0:main.target);

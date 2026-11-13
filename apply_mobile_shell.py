@@ -84,6 +84,33 @@ def install_phone_brush_editor(root: Path):
 #endif""", "use a dialog for the mobile brush editor")
     paintop_box.write_text(source, encoding="utf-8")
 
+    popup = root / "libs/widgetutils/KisPopupButton.cpp"
+    source = popup.read_text(encoding="utf-8")
+    source = one(source, "    void setDetached(bool detach, bool popupIsMenu)\n    {",
+                 """    void setDetached(bool detach, bool popupIsMenu)
+    {
+#ifdef Q_OS_ANDROID
+        if (property("_mobileBrushEditorFrame").toBool()) {
+            hide();
+            destroy();
+            setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
+            setFrameStyle(QFrame::NoFrame);
+            return;
+        }
+#endif""", "remove the native frame from Advanced Brush Settings")
+    source = one(source, "        m_d->frame->setWindowTitle(widget->windowTitle());",
+                 """        m_d->frame->setWindowTitle(widget->windowTitle());
+#ifdef Q_OS_ANDROID
+        if (property("_mobileBrushEditor").toBool()) {
+            m_d->frame->setProperty("_mobileBrushEditorFrame", true);
+            m_d->frame->setObjectName(QStringLiteral("mobileAdvancedBrushFrame"));
+            m_d->frame->setStyleSheet(QStringLiteral(
+                "QFrame#mobileAdvancedBrushFrame{background:#25262b;border:0;}"));
+            m_d->frame->setDetached(true, false);
+        }
+#endif""", "use the Studio brush editor surface")
+    popup.write_text(source, encoding="utf-8")
+
     editor = root / "libs/ui/widgets/kis_paintop_presets_editor.cpp"
     source = editor.read_text(encoding="utf-8")
     source = one(source, "#include <QSplitter>",
@@ -104,8 +131,18 @@ def install_phone_brush_editor(root: Path):
     source = one(source, "    // Responsive Layout\n", """#ifdef Q_OS_ANDROID
     if (parent && parent->property("_mobileBrushEditor").toBool()) {
         auto &ui = m_d->uiWdgPaintOpPresetSettings;
-        ui.gridLayout->setContentsMargins(6, 6, 6, 6);
-        ui.gridLayout->setSpacing(4);
+        setObjectName(QStringLiteral("mobileAdvancedBrushEditor"));
+        setAttribute(Qt::WA_StyledBackground, true);
+        setStyleSheet(QStringLiteral(
+            "QWidget#mobileAdvancedBrushEditor,QStackedWidget,QScrollArea,QListView{"
+            "background:#25262b;color:#f1f2f5;border:0;}"
+            "QLabel,QCheckBox,QRadioButton{color:#f1f2f5;}"
+            "QPushButton,QToolButton,QComboBox{background:#30323b;color:#f1f2f5;"
+            "border:1px solid #44464f;border-radius:7px;padding:3px 7px;}"
+            "QPushButton:pressed,QToolButton:checked,QListView::item:selected{background:#394459;}"
+            "QPushButton:disabled,QToolButton:disabled{color:#989da9;}"));
+        ui.gridLayout->setContentsMargins(10, 8, 10, 8);
+        ui.gridLayout->setSpacing(6);
         ui.brushEditorDashboard->setDirection(QBoxLayout::TopToBottom);
         ui.brushEditorDashboard->setSpacing(3);
         ui.presetThumbnailicon->hide();
@@ -134,7 +171,12 @@ def install_phone_brush_editor(root: Path):
         behaviorLayout->addStretch(1);
 
         m_d->mobileTabs = new QTabBar(this);
-        m_d->mobileTabs->setStyleSheet(QStringLiteral("QTabBar::tab{min-height:39px;padding:0 8px;}"));
+        m_d->mobileTabs->setExpanding(true);
+        m_d->mobileTabs->setElideMode(Qt::ElideRight);
+        m_d->mobileTabs->setStyleSheet(QStringLiteral(
+            "QTabBar::tab{background:#30323b;color:#bfc3ce;min-height:40px;padding:0 8px;}"
+            "QTabBar::tab:selected{background:#394459;color:#f1f2f5;}"
+            "QTabBar::tab:disabled{color:#989da9;}"));
         auto *pages = new QStackedWidget(this);
         const auto addPage = [this, pages](QWidget *page, const QString &label) {
             page->setMinimumSize(0, 0);
@@ -155,6 +197,7 @@ def install_phone_brush_editor(root: Path):
         connect(m_d->mobileTabs, &QTabBar::currentChanged, pages, &QStackedWidget::setCurrentIndex);
         auto *done = new QPushButton(i18n("Done"), this);
         done->setMinimumHeight(42);
+        done->setStyleSheet(QStringLiteral("QPushButton{background:#394459;font-weight:600;}"));
         connect(done, &QPushButton::clicked, this, [this]() {
             if (parentWidget()) parentWidget()->hide();
         });

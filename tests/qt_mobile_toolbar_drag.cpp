@@ -33,8 +33,16 @@ int main(int argc,char **argv)
     app.setApplicationName(QStringLiteral("KritaMobileToolbarDragTest"));
     QSettings().clear();
     require(MobileToolbarDrag::assignment("opacity")==QStringLiteral("color") &&
-            MobileToolbarDrag::assignment("size")==QStringLiteral("paint"),
+            MobileToolbarDrag::assignment("size")==QStringLiteral("tools"),
             "new workspaces should enable distinct opacity and size drags");
+    QSettings().setValue(MobileToolbarDrag::preference("size"),QStringLiteral("paint"));
+    MobileToolbarDrag::migrateSizeDefault();
+    require(MobileToolbarDrag::assignment("size")==QStringLiteral("tools"),
+            "saved legacy default must move to Tools");
+    QSettings().setValue(MobileToolbarDrag::preference("size"),QStringLiteral("paint"));
+    MobileToolbarDrag::migrateSizeDefault();
+    require(MobileToolbarDrag::assignment("size")==QStringLiteral("paint"),
+            "a later explicit assignment must survive");
     QSettings().setValue(MobileToolbarDrag::preference("opacity"),QString());
     require(MobileToolbarDrag::assignment("opacity").isEmpty(),"explicit Off was lost");
     QSettings().setValue(MobileToolbarDrag::preference("opacity"),QStringLiteral("paint"));
@@ -86,21 +94,21 @@ int main(int argc,char **argv)
     mouse(&color,QEvent::MouseButtonRelease,QPoint(80,20));
     require(commits==1 && parameter==QStringLiteral("opacity") && adjustment==60 && sampled==1,
             "Color must adjust inline while sampling stays perpendicular");
-    QSettings().setValue(MobileToolbarDrag::preference("opacity"),QStringLiteral("paint"));
+    QSettings().setValue(MobileToolbarDrag::preference("opacity"),QStringLiteral("krita/custom-action"));
     previews=commits=0;
 
-    MobileToolbarGestureButton paint(nullptr,QStringLiteral("paint"),false,adjust,sample);
+    MobileToolbarGestureButton paint(nullptr,QStringLiteral("krita/custom-action"),false,adjust,sample);
     QAction paintAction(QStringLiteral("Paint"),&paint);
     paint.setDefaultAction(&paintAction);
     paint.resize(48,48);
     paint.show();
     QApplication::processEvents();
     mouse(&paint,QEvent::MouseButtonPress,QPoint(20,20));
-    mouse(&paint,QEvent::MouseMove,QPoint(20,-24));
+    mouse(&paint,QEvent::MouseMove,QPoint(64,20));
     require(previews==1 && commits==0,"slider should preview without committing during drag");
-    mouse(&paint,QEvent::MouseButtonRelease,QPoint(20,-64));
+    mouse(&paint,QEvent::MouseButtonRelease,QPoint(104,20));
     require(commits==1 && parameter==QStringLiteral("opacity") && adjustment==84,
-            "horizontal toolbar opacity control must use upward displacement");
+            "custom command must adjust along the horizontal toolbar");
 
     MobileToolbarGestureButton settings(nullptr,QStringLiteral("tool-settings"),
                                         true,adjust,sample);

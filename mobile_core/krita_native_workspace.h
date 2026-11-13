@@ -1033,6 +1033,8 @@ public:
         if(!m_samplePreviewTimer.isActive())m_samplePreviewTimer.start();
     }
 
+    void bindToolbarLayout(MobileNativeCommandLayout *layout) {m_toolbarLayout=layout;}
+
     void openSettings()
     {
         if(!m_host)return;
@@ -1121,19 +1123,15 @@ public:
             layout=qobject_cast<QVBoxLayout*>(body->layout());
             auto *opacityDrag=new MobileTouchComboBox(body);
             auto *sizeDrag=new MobileTouchComboBox(body);
-            const auto fillDragChoices=[](MobileTouchComboBox *combo,
+            const auto fillDragChoices=[this](MobileTouchComboBox *combo,
                                           const QString &selected) {
                 combo->addItem(QObject::tr("Off"),QString());
-                for(const auto &pair:QList<QPair<QString,QString>>{
-                    {QStringLiteral("color"),QObject::tr("Color wheel button")},
-                    {QStringLiteral("tool-settings"),QObject::tr("Brush / Tool Settings button")},
-                    {QStringLiteral("paint"),QObject::tr("Paint button")},
-                    {QStringLiteral("erase"),QObject::tr("Erase button")},
-                    {QStringLiteral("blend"),QObject::tr("Blend button")},
-                    {QStringLiteral("tools"),QObject::tr("Tools button")}})
-                    combo->addItem(pair.second,pair.first);
-                const int index=combo->findData(selected);
-                combo->setCurrentIndex(index>=0?index:0);
+                if(m_toolbarLayout) {
+                    for(const auto &entry:m_toolbarLayout->visibleGestureButtons())
+                        combo->addItem(entry.second,entry.first);
+                }
+                combo->setPlaceholderText(tr("Assigned button is hidden"));
+                combo->setCurrentIndex(combo->findData(selected));
             };
             fillDragChoices(opacityDrag,MobileToolbarDrag::assignment("opacity"));
             fillDragChoices(sizeDrag,MobileToolbarDrag::assignment("size"));
@@ -1196,15 +1194,15 @@ public:
                 m_fadeTimer->start();
             else m_fadeTimer->stop();
             for(auto *panel:fadeTargets())wakePanel(panel);
-            QString selectedOpacity=opacityDrag->currentData().toString();
-            QString selectedSize=sizeDrag->currentData().toString();
-            // One button cannot control two independent parameters.
-            if(!selectedOpacity.isEmpty() && selectedOpacity==selectedSize)
-                selectedSize.clear();
-            settings.setValue(MobileToolbarDrag::preference("opacity"),selectedOpacity);
-            settings.setValue(MobileToolbarDrag::preference("size"),selectedSize);
+            if(opacityDrag->currentIndex()>=0)
+                settings.setValue(MobileToolbarDrag::preference("opacity"),
+                                  opacityDrag->currentData().toString());
+            if(sizeDrag->currentIndex()>=0)
+                settings.setValue(MobileToolbarDrag::preference("size"),
+                                  sizeDrag->currentData().toString());
             settings.setValue(MobileToolbarDrag::preference("sample"),
                               sampleColor->isChecked());
+            if(m_toolbarLayout)m_toolbarLayout->syncToolbarGestures();
             updateBrushSliders();
         });
     }
@@ -2355,6 +2353,7 @@ private:
         settings.sync();
     }
     QPointer<MobileLightweightCanvasHost> m_host;
+    QPointer<MobileNativeCommandLayout> m_toolbarLayout;
     QMap<QString,QPointer<QAction>> m_keyboardCommands;
     QMap<QString,QList<QKeySequence>> m_defaultKeys;
     bool m_preventCanvasBack=false;

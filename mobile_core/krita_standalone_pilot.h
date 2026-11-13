@@ -489,6 +489,7 @@ public:
                 return {};
             });
         if(commandLayout) {
+            workspace->bindToolbarLayout(commandLayout);
             commandLayout->bindWorkspace([workspace](const QString &id,bool portrait) {
                 workspace->applyScreenWorkspace(id,portrait);
             });

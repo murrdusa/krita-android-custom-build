@@ -1,5 +1,9 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — toolbar gestures and Advanced Brush Settings
+
+Brush-size drag defaults to Tools. A one-time migration treats a stored Paint assignment as the previous default. The gesture pickers use buttons on currently visible toolbars and retain bindings when a workspace hides their button. Advanced Brush Settings uses a frameless dark editor with touch-sized tabs and keeps Krita's brush-engine controls.
+
 ## November 13 follow-up — project menus and reference images
 
 Project actions on Home use the shared nonmodal menu and close when another control is pressed. The Reference Images toolbar switches between references and can pin the selected image to the viewport or reattach it to the canvas. Pinning is undoable and stored with the native reference in KRA. Android uses taps, finger drag and pinch/rotation in place of desktop transform handles. The compact toolbar omits Reference Set and Lock Ratio.

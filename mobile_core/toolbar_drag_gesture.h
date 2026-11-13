@@ -25,9 +25,19 @@ inline QString preference(const char *parameter)
 }
 inline QString assignment(const char *parameter)
 {
-    const QString fallback=qstrcmp(parameter,"size")==0?QStringLiteral("paint"):
+    const QString fallback=qstrcmp(parameter,"size")==0?QStringLiteral("tools"):
         qstrcmp(parameter,"opacity")==0?QStringLiteral("color"):QString();
     return QSettings().value(preference(parameter),fallback).toString();
+}
+inline void migrateSizeDefault()
+{
+    QSettings settings;
+    const auto migrated=QStringLiteral("MobileStudio/toolbarDrag/toolsSizeDefault");
+    if(settings.value(migrated,false).toBool())return;
+    const auto key=preference("size");
+    if(settings.value(key).toString()==QStringLiteral("paint"))
+        settings.remove(key);
+    settings.setValue(migrated,true);
 }
 enum class Phase { Preview, Commit, Cancel };
 inline bool samplesColor(const QString &id)
@@ -63,14 +73,21 @@ public:
     using ColorSample=std::function<void(const QPoint &,MobileToolbarDrag::Phase)>;
     using Hold=std::function<void()>;
 
+    void setVertical(bool vertical) {m_vertical=vertical;}
+    void syncGesturePolicy()
+    {
+        const bool enabled=handlesGesture();
+        setProperty("_mobileToolbarDragControl",enabled);
+        setAttribute(Qt::WA_AcceptTouchEvents,enabled);
+    }
+
     MobileToolbarGestureButton(QWidget *parent,const QString &command,
                                bool vertical,
                                InlineAdjustment adjust,ColorSample sample,Hold hold={})
         : QToolButton(parent),m_command(command),m_vertical(vertical),
           m_adjust(std::move(adjust)),m_sample(std::move(sample)),m_hold(std::move(hold))
     {
-        setProperty("_mobileToolbarDragControl",true);
-        setAttribute(Qt::WA_AcceptTouchEvents,true);
+        syncGesturePolicy();
         m_holdTimer.setSingleShot(true);
         connect(&m_holdTimer,&QTimer::timeout,this,[this]() {
             m_held=true;
@@ -174,16 +191,10 @@ private:
             m_holdTimer.stop();
             const bool inlineDrag=qAbs(MobileToolbarDrag::along(delta,m_vertical))>=
                                   qAbs(MobileToolbarDrag::away(delta,m_vertical));
-            if(m_command==QStringLiteral("eyedropper"))m_axis=2;
-            else if(m_command==QStringLiteral("color")) {
-                if(!inlineDrag && m_sampling)m_axis=2;
-                else if(inlineDrag && !m_parameter.isEmpty()) {
-                    m_axis=1;
-                    m_adjustVertical=m_vertical;
-                }
-            } else if(!m_parameter.isEmpty()) {
+            if(inlineDrag && !m_parameter.isEmpty()) {
                 m_axis=1;
-                m_adjustVertical=qAbs(delta.y())>=qAbs(delta.x());
+            } else if(m_sampling && (!inlineDrag || m_command==QStringLiteral("eyedropper"))) {
+                m_axis=2;
             }
             setDown(false);
         }
@@ -194,7 +205,7 @@ private:
     void dispatch(const QPoint &pos,MobileToolbarDrag::Phase phase)
     {
         if(m_axis==1 && m_adjust && !m_parameter.isEmpty())
-            m_adjust(m_parameter,m_adjustVertical?m_start.y()-pos.y():pos.x()-m_start.x(),
+            m_adjust(m_parameter,m_vertical?m_start.y()-pos.y():pos.x()-m_start.x(),
                      pos,phase);
         if(m_axis==2 && m_sample)m_sample(pos,phase);
     }
@@ -217,7 +228,7 @@ private:
 
     QString m_command,m_parameter;
     bool m_vertical=false,m_sampling=false;
-    bool m_active=false,m_adjustVertical=true;
+    bool m_active=false;
     bool m_dragged=false;
     int m_axis=0;
     QPoint m_start,m_last;
