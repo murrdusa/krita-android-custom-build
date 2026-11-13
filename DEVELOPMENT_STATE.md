@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — stale native Close after document switches
+
+- Commits `fd219322ab090efe997d270aca07d1f8cd658f07` and `07427846911bd3c278998782ad2a59b98ced4b1e`: the native view stack now rejects a Close on a view that is no longer the active painting canvas. Added standalone Qt regression coverage verifying that a stale background view Close cannot invoke its save/discard callback or remove the document; a freshly selected view can still close normally.
+- **Verification:** regression added but not executed locally (no Qt5 development libraries in this session). Await exact watcher result for the new commit; the most recently confirmed APK must be taken from Issue #1 and must not be attributed to the new patch. Fold 6 tests still needed for rapid switching while Save/Close dialogs are open, KRA recovery, SAF document access, transforms/masks, and panel geometry. Publishing remains paused.
+
 ## November 13 follow-up — Save As collision identity
 
 - Commits `d48c80a6c74fd9c860ae4f7fe64a30a9e374b34d` and `a036770850aba43d92fe398abd8800b3001ff2bf` on `main`: Save As/open-document collision comparisons canonicalize the nearest existing filesystem ancestor for missing target files. This prevents a symlinked parent directory from disguising a collision with a second open destination even when intermediate directories/files have not been created. Added a Qt archive regression using a linked folder and a still-missing target, plus a distinct-target negative control.
