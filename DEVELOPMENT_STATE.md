@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — private draft metadata identity
+
+- Commits `75265d42d75e2635fd357d301d175a49b88ff8d0` and `cde03dc0f76aa319a0853af85676ad348bd28b12`: `MobileDraftRecovery::projectFor` refuses metadata lookups outside its UUID-named app-private draft directory and refuses symlinked `.project` sidecars. This prevents a substituted project-association file from causing an automatic recovery attempt under the wrong project identity. Qt archive regression checks an external path, symlinked sidecar and restored legitimate sidecar.
+- **Verification:** previous own-recovery Save As revision `02d112512ec7ef59661ef1b45cad5fb97939d948` reported PC Android SUCCESS, 164.75 MiB (172,752,098 bytes). The new draft metadata source commit requires exact watcher build confirmation. Desktop Qt regression has been added but not executed here; no Fold 6 KRA/device checks. APK publishing remains paused.
+
 ## November 13 follow-up — protect current recovered canvas on Save As
 
 - Commits `4824dbdd2a10045e2c11c02b9fbef352385aa7fa`, `7b5b0ea9716df2fd6e11bed422d2236eba849171`, `c3d47cfca608bfa60424dde2b5ce8a56dcbefd08`, `d1b6b85c04700f1444fe256b04b833d650bd3771` and `736cffb5bb10432fdb205b5e9eba51739f0b3f67`: Save As now refuses to write to its **own** private recovered draft/checkpoint path (previously only another tab's backing file and Export Copy were protected). The shared destination policy retains ordinary Save for existing named projects while blocking private draft overwrite for explicit Save As and preventing Export Copy from overwriting the current project. Extended the Qt archive regression with mode-specific positive/negative cases for the shared predicate.
