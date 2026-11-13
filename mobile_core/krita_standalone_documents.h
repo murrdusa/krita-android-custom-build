@@ -288,10 +288,8 @@ private:
         // Export Copy may overwrite that source recovery file.
         const QString ownDraft=guardedDocument->property(
             "_mobileDraftPath").toString();
-        if((choosePath && MobileOpenDocumentDestinationPolicy::sameFile(
-                target,ownDraft)) ||
-           (exporting && MobileOpenDocumentDestinationPolicy::sameFile(
-                target,currentPath))) {
+        if(MobileOpenDocumentDestinationPolicy::conflictsWithOwnBackingFile(
+               target,currentPath,ownDraft,choosePath,exporting)) {
             QMessageBox::warning(m_runtime->window(),
                 exporting?QObject::tr("Export a copy"):QObject::tr("Save drawing"),
                 QObject::tr("Choose a different file from the open drawing "
