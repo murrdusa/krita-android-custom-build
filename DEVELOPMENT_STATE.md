@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — compact clip ungroup completion checks live tree membership
+
+- Commit `fe84b39c1951535743e8fc366da6242bfa57d543`: async `waitCompactClipUngroup` now regards a wrapper as pending **only while its node is still attached to the active image tree**, instead of checking whether the retained shared pointer has a non-null parent. Krita can detach a group while its parent pointer still references an orphaned subtree; the previous check could spin for the full timeout and abandon clipping regrouping even though the wrapper is no longer in the document. The new check avoids that false timeout while leaving native ungroup/Undo ownership unchanged.
+- **Verification:** source change committed; Android WSL build needs exact commit SHA confirmation from Issue #1. Actual Android clipping-group regroup/Undo and KRA save/reopen still require runtime tests. APK publishing paused.
+
 ## November 13 follow-up — compact clip rebuild target integrity
 
 - Commit `72baabbe424d6e8301441b1482cccbe16b6fafab`: rebuilding hidden compact clipping groups now revalidates the **entire adjacent clip run** after native `slotSetSelectedNodes(cluster)`, before `createQuickGroup()`. The guard checks the active image/node manager, each cluster member's parent and image membership, contiguous sibling order, native move eligibility and exact selected node set. If synchronous native callbacks changed the cluster, rebuilding aborts rather than grouping unintended layers. Krita retains native grouping, clipping behavior and Undo.
