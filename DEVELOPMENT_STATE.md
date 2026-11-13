@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — exact byte count for legacy KRA recovery copies
+
+- Commit `924553fe8ae6be9827bec43d98ae1e208cf512ac`: version-history `materializeRecovery` now checks that the **entire size observed from the opened archive** was copied before publishing its private recovery KRA, even for old entries with no recorded `Version::bytes` or SHA-256 sidecar. If the archive shrinks or grows while streaming, the QSaveFile transaction is rejected rather than opening a partial copy. `2cfb07e6ea1a1d94bab2a64afa1989857d08e09d` adds a desktop Qt regression for successfully recovering legacy archives without stored size or checksum.
+- **Verification:** previous clipping callback-generation source `7595099b76606fa7b75ca6630df38b6786907c95` passed local Android WSL build (164.76 MiB, 172,762,078 bytes). New archive source needs exact-SHA WSL build; desktop Qt regression committed but not executed. APK publication paused.
+
 ## November 13 follow-up — prevent stale clipping rebuild timers from affecting later edits
 
 - Commit `7595099b76606fa7b75ca6630df38b6786907c95`: the compact-clip async state machine now advances a transaction generation at the start and end of every rebuild. Timers for sequential ungroup, move settlement, native group completion, and continuation each capture the generation and do nothing if the rebuild was cancelled/finished and another has begun. This closes a race where queued callbacks from a prior failed operation could inspect or mutate a new rebuild on the **same document**, despite image-identity checks passing. Existing Krita Undo and layer commands are unchanged.
