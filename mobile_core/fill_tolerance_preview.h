@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 
+#include <atomic>
+#include <memory>
 #include <QApplication>
 #include <QEvent>
 #include <QImage>
@@ -61,6 +63,7 @@ public:
     {
         if(m_threshold==value)return;
         m_threshold=value;
+        m_requestGeneration->fetch_add(1,std::memory_order_relaxed);
         // A previous worker's region belongs to a different tolerance.
         // Hide that mask rather than falsely presenting it as the new one.
         m_mask=QImage();
@@ -123,9 +126,23 @@ private:
         const auto seed=m_seed-m_window.topLeft();
         const auto options=m_options;
         const auto threshold=m_threshold;
+        const auto generation=m_requestGeneration;
+        const int request=generation->load(std::memory_order_relaxed);
         const QPointer<MobileFillTolerancePreview> preview(this);
         m_running=true;
-        QThreadPool::globalInstance()->start([preview,pixels,selectionPixels,colorSpace,size,seed,options,threshold]() {
+        QThreadPool::globalInstance()->start([preview,pixels,selectionPixels,colorSpace,size,seed,options,threshold,generation,request]() {
+            // With a busy global pool, rapid pen movement can supersede
+            // this request before it even begins. Avoid spending a flood
+            // fill on an obsolete tolerance; the GUI callback schedules
+            // the latest value.
+            if(generation->load(std::memory_order_relaxed)!=request) {
+                QMetaObject::invokeMethod(qApp,[preview]() {
+                    if(!preview)return;
+                    preview->m_running=false;
+                    preview->m_delay.start();
+                },Qt::QueuedConnection);
+                return;
+            }
             const QRect rect(QPoint(),size);
             KisPaintDeviceSP source=new KisPaintDevice(colorSpace);
             source->writeBytes(reinterpret_cast<const quint8*>(pixels.constData()),rect);
@@ -196,6 +213,7 @@ private:
     const KoColorSpace *m_colorSpace=nullptr;
     QImage m_mask;
     QTimer m_delay;
+    std::shared_ptr<std::atomic<int>> m_requestGeneration=std::make_shared<std::atomic<int>>(0);
     int m_threshold=-1;
     bool m_running=false;
 };
