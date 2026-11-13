@@ -1089,7 +1089,7 @@ private:
                 }
                 if(!name.isEmpty())settings.setValue(
                     QStringLiteral("MobileStudio/brushLastCategory/%1").arg(m_browserSlot),
-                    QStringLiteral("custom/")+name);
+                    QStringLiteral("custom/%1").arg(name));
                 if(alive && alive->isVisible())refreshList(name);
                 return;
             }
