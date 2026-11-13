@@ -1543,12 +1543,22 @@ private:
             finishCompactClipRebuild();
             return;
         }
+        // A native grouping stroke completes asynchronously. The active
+        // image can remain selected even if a parent was detached by an
+        // intervening edit, so do not rename a group outside its tree.
+        if(!inImage(originalParent,m_clipImage) ||
+           !inImage(base,m_clipImage)) {
+            finishCompactClipRebuild();
+            return;
+        }
         KisNodeSP group=base?base->parent():KisNodeSP();
         bool ready=group && group!=originalParent &&
             group->parent()==originalParent &&
-            group->inherits("KisGroupLayer");
+            group->inherits("KisGroupLayer") &&
+            inImage(group,m_clipImage);
         for(const KisNodeSP &node:cluster)
-            if(!node || node->parent()!=group)ready=false;
+            if(!node || !inImage(node,m_clipImage) ||
+               node->parent()!=group)ready=false;
         if(ready) {
             manager()->setNodeName(
                 group,QStringLiteral("[Compact Clip] ")+base->name());
@@ -1577,7 +1587,11 @@ private:
         }
         while(!m_clipParents.isEmpty()) {
             KisNodeSP parent=m_clipParents.first();
-            if(!parent){m_clipParents.removeFirst();continue;}
+            if(!parent || !inImage(parent,m_clipImage)) {
+                // Never create a clip group in a detached hierarchy.
+                finishCompactClipRebuild();
+                return;
+            }
             KisNodeList ordered;
             for(KisNodeSP node=parent->firstChild();node;
                 node=node->nextSibling())ordered.append(node);
@@ -1593,6 +1607,24 @@ private:
                 if(cluster.size()>1 &&
                    m->canMoveLayers(cluster,false)) {
                     m->slotUiActivatedNode(base);
+                    // Selection activation can cause reentrant node
+                    // notifications. Do not group a different document
+                    // or siblings that have just been reparented.
+                    if(!m_engine.manager() ||
+                       m_engine.manager()->image().toStrongRef()!=m_clipImage ||
+                       manager()!=m || !inImage(parent,m_clipImage) ||
+                       !m->canMoveLayers(cluster,false)) {
+                        finishCompactClipRebuild();
+                        return;
+                    }
+                    bool attached=true;
+                    for(const KisNodeSP &node:cluster)
+                        if(!node || node->parent()!=parent ||
+                           !inImage(node,m_clipImage))attached=false;
+                    if(!attached) {
+                        finishCompactClipRebuild();
+                        return;
+                    }
                     m->slotSetSelectedNodes(cluster);
                     m->createQuickGroup();
                     QTimer::singleShot(100,this,[this,base,parent,cluster]() {
