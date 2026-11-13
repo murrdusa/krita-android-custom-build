@@ -1839,6 +1839,24 @@ private:
                 return;
             }
             if(!mask && !m_engine.selectLayer(source))return;
+            // Selecting the source can synchronously update Krita's
+            // active document or node hierarchy. Recheck the target
+            // *after* that callback, not only before it, so the native
+            // stroke never uses a detached destination or sibling.
+            auto *current=m_engine.manager();
+            if(!current || current->image().toStrongRef()!=image ||
+               manager()!=m || !inImage(source,image) ||
+               !inImage(target,image) || !inImage(destination,image) ||
+               source->parent()!=originalParent ||
+               destination!=(intoGroup?target:logicalParent(target)) ||
+               !destination->isEditable(false) ||
+               !destination->allowAsChild(source) ||
+               !m->canMoveLayer(source,false) ||
+               (below && (below==source || below->parent()!=destination)) ||
+               (source->parent()==destination &&
+                below==source->prevSibling()))return;
+            for(KisNodeSP parent=destination;parent;parent=parent->parent())
+                if(parent==source)return;
             runNativeLayerStroke(image,
                 new KisImageLayerMoveCommand(
                     image,source,destination,below,true),
