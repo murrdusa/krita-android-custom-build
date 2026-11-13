@@ -29,6 +29,22 @@ List transformTargets(const Node &root,const List &selected,const Node &active,
     if(targets.isEmpty() && !hasExplicitTarget && active && active!=root &&
        inTree(active,root) && !isInternal(active))
         targets.append(active);
-    return targets;
+    // A selected group already transforms its entire subtree. Passing
+    // any of its selected descendants to Krita as another transform
+    // target can apply the same motion twice (or make Undo inconsistent).
+    // Keep the outermost selected nodes regardless of selection order.
+    List independent;
+    for(const auto &node:targets) {
+        bool covered=false;
+        for(auto parent=node->parent();parent;parent=parent->parent()) {
+            if(targets.contains(parent)) {
+                covered=true;
+                break;
+            }
+            if(parent==root)break;
+        }
+        if(!covered)independent.append(node);
+    }
+    return independent;
 }
 }
