@@ -2106,13 +2106,31 @@ private:
         // prepareLayerReorder may switch away from a pending transform.
         // The selected nodes, parent and canvas must still be identical
         // before starting Krita's native grouping/undo operation.
-        auto *current=m_engine.manager();
-        if(!current || current->image().toStrongRef()!=image ||
-           manager()!=m || a->parent()!=parent || b->parent()!=parent ||
-           !inImage(a,image) || !inImage(b,image) ||
-           !m->canMoveLayers(chosen,false))return;
+        const auto stillContiguous=[this,image,parent,m,&chosen]() {
+            auto *current=m_engine.manager();
+            if(!current || current->image().toStrongRef()!=image ||
+               manager()!=m || !inImage(parent,image) ||
+               !m->canMoveLayers(chosen,false) || chosen.isEmpty())return false;
+            // Transform exit or a native selection callback can move a
+            // middle layer without moving either gesture endpoint.
+            for(int i=0;i<chosen.size();++i) {
+                const KisNodeSP node=chosen.at(i);
+                if(!node || node->parent()!=parent || !inImage(node,image) ||
+                   !node->inherits("KisLayer") ||
+                   (i>0 && chosen.at(i-1)->nextSibling()!=node))
+                    return false;
+            }
+            return true;
+        };
+        if(!stillContiguous())return;
         m->slotUiActivatedNode(a);
+        if(!stillContiguous())return;
         m->slotSetSelectedNodes(chosen);
+        if(!stillContiguous())return;
+        const KisNodeList actual=m->selectedNodes();
+        if(actual.size()!=chosen.size())return;
+        for(const KisNodeSP &node:chosen)
+            if(!actual.contains(node))return;
         m->createQuickGroup();
         QTimer::singleShot(250,this,[this,a,b,parent,image]() {
             auto *view=m_engine.manager();
