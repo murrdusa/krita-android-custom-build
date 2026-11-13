@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — prevent deleting projects with recovery drafts
+
+- Commits `8b35245503d870d9c9c57bdef16a5f09cac17279`, `4e17492d041945d41dea61125683f2d89213bd5c`, and `0c85324c3328d0cdad898677b473ddba96fff837`: project gallery deletion now rejects an open canvas whose private draft is associated with the selected project, and blocks deleting any named KRA that still has an associated private recovery draft (including a draft not currently open). The gallery informs the user to recover or discard draft edits first. A new `MobileDraftRecovery::hasProjectDraft` helper compares canonical KRA/SAF project identities; Qt regression verifies association detection and clearance after removing the association.
+- **Verification:** watcher previously confirmed `afd190a5135572f75b7ecf5858631999d5361ded` SUCCESS at 164.75 MiB (172,751,030 bytes); the gallery protection requires its own exact-SHA build. Qt regression added but not executed in this environment; Fold 6 actual project deletion/recovery still unverified. No APK publishing.
+
 ## November 13 follow-up — draft title sidecar confinement
 
 - Commits `f5618555610f4f59f51b19a267e778d5296602e3` and `370eefcc6c3782f902a55eef60ba40566487a331`: `MobileDraftRecovery::displayTitle` now reads stored labels only for UUID-named private drafts, rejecting symlinked `.title` sidecars. A substituted link is ignored in favor of a generated title, preventing an external file from determining the draft gallery label. Added Qt archive regression for an external title symlink and restoring a normal title afterward.
