@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — serialize native clipping wrapper ungroup strokes
+
+- Commit `ab2ead134da7de2fe9553462592be79ac062fc3d`: compact clip flatten/rebuild now executes native `quickUngroup()` **one wrapper at a time, innermost first**, checking the actual active image for detachment of each wrapper before dispatching the next asynchronous Krita stroke. Previously, all nested ungroup commands were enqueued back-to-back even though the native layer hierarchy had not settled, risking stale selection and incorrect regrouping. Each command still checks exact wrapper selection, image ownership and node manager. The same existing timeout aborts if one wrapper fails to detach. Native Undo ownership remains Krita's.
+- **Verification:** previous selection-integrity code through `12473523c6239c170f310c9f4c529a1fadc7ab3b` received local WSL Android SUCCESS (164.76 MiB, 172,761,674 bytes). This new sequencing commit requires exact SHA build confirmation. Fold 6 nested clip/Undo and KRA round-trip runtime tests still pending; APK publishing paused.
+
 ## November 13 follow-up — bind native compact clip ungroup to intended wrappers
 
 - Commit `6878157be6c4f8a443460cef1fc19cf86fc28bd3`: during compact clipping-group flatten/rebuild, every queued native `quickUngroup()` now verifies that its target is a live compact wrapper in the original image and that Krita's active node and full native selection still contain **only that wrapper** after native activation callbacks. If reentrant selection changes the target, the rebuild stops instead of ungrouping an unrelated user group. Native Krita still owns the ungroup and Undo implementation.
