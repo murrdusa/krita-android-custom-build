@@ -1560,6 +1560,7 @@ private:
 
     void finishCompactClipRebuild()
     {
+        ++m_clipGeneration; // Invalidate every queued callback from this rebuild.
         auto *m=manager();
         auto *vm=m_engine.manager();
         if(m && vm && vm->image().toStrongRef()==m_clipImage &&
@@ -1631,12 +1632,15 @@ private:
             nodes->setNodeName(
                 group,QStringLiteral("[Compact Clip] ")+base->name());
             group->setCollapsed(false);
-            QTimer::singleShot(110,this,[this]() {
-                continueCompactClipRebuild();
+            const quint64 generation=m_clipGeneration;
+            QTimer::singleShot(110,this,[this,generation]() {
+                if(m_clipGeneration==generation)continueCompactClipRebuild();
             });
         } else if(attempt<35) {
-            QTimer::singleShot(100,this,[this,base,originalParent,cluster,attempt]() {
-                waitCompactClipGroup(base,originalParent,cluster,attempt+1);
+            const quint64 generation=m_clipGeneration;
+            QTimer::singleShot(100,this,[this,base,originalParent,cluster,attempt,generation]() {
+                if(m_clipGeneration==generation)
+                    waitCompactClipGroup(base,originalParent,cluster,attempt+1);
             });
         } else {
             qWarning() << "Mobile Studio: compact clip group creation timed out";
@@ -1723,8 +1727,10 @@ private:
                         }
                     }
                     m->createQuickGroup();
-                    QTimer::singleShot(100,this,[this,base,parent,cluster]() {
-                        waitCompactClipGroup(base,parent,cluster,0);
+                    const quint64 generation=m_clipGeneration;
+                    QTimer::singleShot(100,this,[this,base,parent,cluster,generation]() {
+                        if(m_clipGeneration==generation)
+                            waitCompactClipGroup(base,parent,cluster,0);
                     });
                     return;
                 }
@@ -1777,8 +1783,9 @@ private:
                 finishCompactClipRebuild();
                 return;
             }
-            QTimer::singleShot(100,this,[this,attempt]() {
-                waitCompactClipUngroup(attempt+1);
+            const quint64 generation=m_clipGeneration;
+            QTimer::singleShot(100,this,[this,attempt,generation]() {
+                if(m_clipGeneration==generation)waitCompactClipUngroup(attempt+1);
             });
             return;
         }
@@ -1788,8 +1795,9 @@ private:
             auto operation=std::move(m_clipAfterUnwrap);
             m_clipAfterUnwrap=nullptr;
             operation();
-            QTimer::singleShot(95,this,[this]() {
-                waitCompactClipMove(0);
+            const quint64 generation=m_clipGeneration;
+            QTimer::singleShot(95,this,[this,generation]() {
+                if(m_clipGeneration==generation)waitCompactClipMove(0);
             });
         } else {
             continueCompactClipRebuild();
@@ -1808,8 +1816,9 @@ private:
             m_clipMoveSource->parent()!=m_clipExpectedParent ||
             m_clipMoveSource->prevSibling()!=m_clipExpectedBelow)) {
             if(attempt<35) {
-                QTimer::singleShot(95,this,[this,attempt]() {
-                    waitCompactClipMove(attempt+1);
+                const quint64 generation=m_clipGeneration;
+                QTimer::singleShot(95,this,[this,attempt,generation]() {
+                    if(m_clipGeneration==generation)waitCompactClipMove(attempt+1);
                 });
             } else {
                 qWarning() << "Mobile Studio: layer move did not settle";
@@ -1828,6 +1837,7 @@ private:
         if(m_clipBusy || !m || !vm || !parent)return;
         m_clipImage=vm->image().toStrongRef();
         if(!m_clipImage)return;
+        ++m_clipGeneration;
         m_clipBusy=true;
         m_clipParents=QList<KisNodeSP>{parent};
         if(otherParent && otherParent!=parent)
@@ -1859,7 +1869,10 @@ private:
         // Start with the innermost wrapper. Every subsequent native
         // ungroup is dispatched by waitCompactClipUngroup only after its
         // predecessor has detached from the active image.
-        QTimer::singleShot(0,this,[this]() {waitCompactClipUngroup(0);});
+        const quint64 generation=m_clipGeneration;
+        QTimer::singleShot(0,this,[this,generation]() {
+            if(m_clipGeneration==generation)waitCompactClipUngroup(0);
+        });
     }
 
     static bool hasCompactClipStructure(KisNodeSP parent)
@@ -3385,6 +3398,7 @@ private:
     qint64 m_lastActiveThumbnailRefresh=-2500;
     KisNodeList m_selected;
     KisNodeSP m_active;
+    quint64 m_clipGeneration=0;
     bool m_clipBusy=false;
     bool m_clipPropertyPending=false;
     KisImageSP m_clipPropertyImage;
