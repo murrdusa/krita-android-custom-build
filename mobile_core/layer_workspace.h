@@ -2487,14 +2487,38 @@ private:
                 chosen.append(node);
         }
         if(chosen.isEmpty())return;
+        auto *nodes=manager();
+        if(!nodes || !nodes->canMoveLayers(chosen,false))return;
         if(auto *transform=activeTransform()) {
             if(!canRetarget(transform))return;
             m_engine.freehandBrush();
         }
+        // Leaving Transform, activating a layer and applying a multi-row
+        // selection may trigger synchronous native node notifications.
+        // Never submit the subsequent group operation against a stale
+        // image, a detached child, or a newly changed sibling list.
+        const auto stillValid=[this,image,parent,nodes,&chosen]() {
+            if(!m_engine.manager() ||
+               m_engine.manager()->image().toStrongRef()!=image ||
+               manager()!=nodes || !inImage(parent,image) ||
+               !parent->isEditable(false) ||
+               !nodes->canMoveLayers(chosen,false))return false;
+            for(const KisNodeSP &node:chosen)
+                if(!node || node->parent()!=parent ||
+                   !inImage(node,image) || !node->isEditable())
+                    return false;
+            return true;
+        };
+        if(!stillValid())return;
         m_active=chosen.contains(origin)?origin:chosen.first();
         m_selected=chosen;
         applySelection();
-        manager()->createQuickGroup();
+        if(!stillValid())return;
+        const KisNodeList actual=nodes->selectedNodes();
+        if(actual.size()!=chosen.size())return;
+        for(const KisNodeSP &node:chosen)
+            if(!actual.contains(node))return;
+        nodes->createQuickGroup();
     }
 
     void tapLayer(KisNodeSP node,QTreeWidgetItem *item)
