@@ -4,7 +4,20 @@
 
 int main()
 {
-    using MobileLayerRailGeometry::expand;
+    using namespace MobileLayerRailGeometry;
+    if(tileExtent(82,true,true,false)!=38 || tileExtent(82,true,false,true)!=54 ||
+       tileExtent(82,true,false,false)>=82 || tileExtent(82,false,false,false)!=82)
+        qFatal("rotated cards must use compact extents");
+    const QRect card(5,2,76,38);
+    const QRect eye(52,6,26,26);
+    const QRect folder(5,6,26,26);
+    const auto rotatedCard=rotateTileRect(card,86);
+    const auto rotatedEye=rotateTileRect(eye,86);
+    const auto rotatedFolder=rotateTileRect(folder,86);
+    if(rotatedCard.size()!=QSize(38,76) || !rotatedCard.contains(rotatedEye) ||
+       !rotatedCard.contains(rotatedFolder) || rotatedEye.intersects(rotatedFolder) ||
+       rotatedEye.top()>=rotatedFolder.top())
+        qFatal("folder and visibility targets did not rotate with the card");
     const QRect bounds(2,2,398,596);
     const QRect rail(20,60,82,140);
     const QRect slider(2,400,160,44);

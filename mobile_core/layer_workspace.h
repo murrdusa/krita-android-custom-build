@@ -56,6 +56,8 @@
 #include <QRegion>
 #include <algorithm>
 #include <QStyle>
+#include <QStyleOptionToolButton>
+#include <QPainterPath>
 #include <QIcon>
 #include <QMetaObject>
 #include <KoToolManager.h>
@@ -67,6 +69,7 @@
 #include "engine_bridge.h"
 #include "kis_canvas2.h"
 #include "native_layer_reorder_policy.h"
+#include "layer_rail_geometry.h"
 #include <QSettings>
 #include <chrono>
 #include <future>
@@ -98,6 +101,8 @@ public:
         update();
     }
 
+    void setRotatedBackground(const QColor &background) {m_background=background;}
+
 protected:
     void paintEvent(QPaintEvent *event) override
     {
@@ -105,7 +110,7 @@ protected:
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor("#252e39"));
+        painter.setBrush(m_background);
         painter.drawRoundedRect(rect(),5,5);
         // Read bottom-to-top on the right edge of a horizontal rail.
         painter.translate(0,height());
@@ -116,6 +121,29 @@ protected:
 
 private:
     bool m_rotated=false;
+    QColor m_background=QColor("#252e39");
+};
+
+class MobileLayerTileButton final : public QToolButton
+{
+public:
+    MobileLayerTileButton(QWidget *parent,bool rotated) : QToolButton(parent),m_rotated(rotated) {}
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        if(!m_rotated) {QToolButton::paintEvent(event);return;}
+        QStyleOptionToolButton option;
+        initStyleOption(&option);
+        option.rect=QRect(0,0,height(),width());
+        QPainter painter(this);
+        painter.translate(0,height());
+        painter.rotate(-90);
+        style()->drawComplexControl(QStyle::CC_ToolButton,&option,&painter,this);
+    }
+
+private:
+    bool m_rotated;
 };
 
 class KritaMobileLayersPanel final : public QFrame
@@ -501,9 +529,9 @@ public:
         for(const auto *item:visibleItems()) {
             const auto node=m_nodes.value(item->data(0,Qt::UserRole).toInt());
             if(!node)continue;
-            if(horizontal)length+=horizontalTileSize(thickness)+4;
-            else length+=node->inherits("KisGroupLayer")?42:
-                node->inherits("KisMask")?58:verticalTileSize(thickness)+4;
+            const int cross=horizontal?horizontalTileSize(thickness):verticalTileSize(thickness);
+            length+=MobileLayerRailGeometry::tileExtent(cross,horizontal,
+                node->inherits("KisGroupLayer"),node->inherits("KisMask"))+4;
         }
         return (horizontal?85:(m_layerName?58:45))+qMax(24,length);
     }
@@ -1935,9 +1963,10 @@ private:
         if(!m_dragGhost->isVisible()) {
             const QImage thumb=source->createThumbnail(
                 54,54,Qt::KeepAspectRatio);
-            if(!thumb.isNull())
-                m_dragGhost->setPixmap(QPixmap::fromImage(thumb));
-            else m_dragGhost->setText(QStringLiteral("▣"));
+            if(!thumb.isNull()) {
+                const auto preview=m_horizontalRail?thumb.transformed(QTransform().rotate(-90)):thumb;
+                m_dragGhost->setPixmap(QPixmap::fromImage(preview));
+            } else m_dragGhost->setText(QStringLiteral("▣"));
             m_dragGhost->show();
         }
         m_dragGhost->move(
@@ -2494,8 +2523,9 @@ private:
                                         QStringLiteral("#536879");
                 setStyleIfChanged(frame,QStringLiteral(
                     "QFrame#mobileLayerTileRow{background:%1;"
-                    "border-left:%2px solid %3;border-radius:5px;}")
-                    .arg(background.name()).arg(clipped?4:1).arg(edge));
+                    "border-%2:%3px solid %4;border-radius:5px;}")
+                    .arg(background.name(),m_horizontalRail?QStringLiteral("bottom"):QStringLiteral("left"))
+                    .arg(clipped?4:1).arg(edge));
             }
             if(QToolButton *thumb=m_rowButtons.value(i).data()) {
                 if(group) {
@@ -2560,11 +2590,47 @@ private:
                     continue;
                 }
                 button->setIcon(QIcon(QPixmap::fromImage(thumb)));
-                button->setIconSize(QSize(56,56));
+                const int extent=qMax(12,qMin(button->width(),button->height())-10);
+                button->setIconSize(QSize(extent,extent));
             }
             m_thumbnailRetryAfter.remove(i);
             m_thumbnailReady[i]=true;
         }
+    }
+
+    static QIcon groupFolderIcon(bool expanded)
+    {
+        const auto draw=[](bool open) {
+            QPixmap icon(32,32);
+            icon.fill(Qt::transparent);
+            QPainter p(&icon);
+            p.setRenderHint(QPainter::Antialiasing);
+            p.setPen(QPen(open?QColor("#ffd084"):QColor("#f4f8ff"),2,Qt::SolidLine,
+                          Qt::RoundCap,Qt::RoundJoin));
+            p.setBrush(open?QColor("#9b682f"):QColor("#365167"));
+            QPainterPath folder;
+            folder.moveTo(4,25);
+            folder.lineTo(4,8);
+            folder.lineTo(12,8);
+            folder.lineTo(15,11);
+            folder.lineTo(27,11);
+            folder.lineTo(27,25);
+            folder.closeSubpath();
+            p.drawPath(folder);
+            if(open) {
+                QPainterPath flap;
+                flap.moveTo(4,25);
+                flap.lineTo(9,16);
+                flap.lineTo(30,16);
+                flap.lineTo(26,25);
+                flap.closeSubpath();
+                p.setBrush(QColor("#b78142"));
+                p.drawPath(flap);
+            }
+            return QIcon(icon);
+        };
+        static const QIcon closed=draw(false),open=draw(true);
+        return expanded?open:closed;
     }
 
     void makeLayerRow(QTreeWidgetItem *item,KisNodeSP node,int depth)
@@ -2573,36 +2639,31 @@ private:
         const bool group=node->inherits("KisGroupLayer");
         const bool mask=node->inherits("KisMask");
         const bool clipped=inheritsAlpha(node);
-        const int tileSize=m_horizontalRail?horizontalTileSize(height()):verticalTileSize(width());
-        const int tileHeight=m_horizontalRail?tileSize:group?38:mask?54:tileSize;
-        const int rowHeight=tileHeight+4;
+        const int cross=m_horizontalRail?horizontalTileSize(height()):verticalTileSize(width());
+        const int extent=MobileLayerRailGeometry::tileExtent(cross,m_horizontalRail,group,mask);
+        const int rowLength=extent+4;
         int groupDepth=group?1:0;
         for(auto *parent=item->parent();parent;parent=parent->parent()) {
             const auto ancestor=m_nodes.value(parent->data(0,Qt::UserRole).toInt());
             if(ancestor && ancestor->inherits("KisGroupLayer"))++groupDepth;
         }
         const int gutter=2+qMin(5,groupDepth)*3;
-        item->setSizeHint(0,QSize(0,rowHeight));
+        const int thickness=cross+4;
+        item->setSizeHint(0,QSize(0,rowLength));
         auto *frame=new QFrame(m_horizontalRail?m_horizontalBody:static_cast<QWidget*>(m_tree));
         frame->setObjectName(QStringLiteral("mobileLayerTileRow"));
-        frame->setFixedHeight(rowHeight);
-        if(m_horizontalRail)frame->setFixedWidth(tileSize+4);
+        frame->setFixedHeight(m_horizontalRail?thickness:rowLength);
+        if(m_horizontalRail)frame->setFixedWidth(rowLength);
         frame->setAttribute(Qt::WA_AcceptTouchEvents,true);
         frame->installEventFilter(this);
-        auto *tile=new QToolButton(frame);
-        if(m_horizontalRail)
-            tile->setGeometry(2,gutter,tileSize,qMax(24,rowHeight-2*gutter));
-        else
-            tile->setGeometry(gutter+(clipped?4:0),2,
-                              tileSize+4-2*gutter-(clipped?4:0),tileHeight);
-        tile->setToolButtonStyle(mask?
-            Qt::ToolButtonTextOnly:Qt::ToolButtonIconOnly);
+        const auto orient=[this,thickness](const QRect &rect) {
+            return m_horizontalRail?MobileLayerRailGeometry::rotateTileRect(rect,thickness):rect;
+        };
+        const QRect card(gutter+(clipped?4:0),2,thickness-2*gutter-(clipped?4:0),extent);
+        auto *tile=new MobileLayerTileButton(frame,m_horizontalRail);
+        tile->setGeometry(orient(card));
+        tile->setToolButtonStyle(mask?Qt::ToolButtonTextOnly:Qt::ToolButtonIconOnly);
         if(mask)tile->setText(maskKind(node));
-        if(group) {
-            const QIcon folder(QStringLiteral(":/dark_folder.svg"));
-            tile->setIcon(folder.pixmap(22,22).isNull()?
-                tile->style()->standardIcon(QStyle::SP_DirClosedIcon):folder);
-        }
         const auto base=clipped?clipBaseFor(node):KisNodeSP();
         tile->setToolTip((base?
             i18n("%1 — clipped to %2",node->name(),base->name()):
@@ -2612,7 +2673,6 @@ private:
             node->name()) + QStringLiteral(
             "\nTap: select; tap again: layer options"));
         if(base)tile->setAccessibleDescription(i18n("Clipped to %1",base->name()));
-        tile->setIconSize(group?QSize(26,26):QSize(tileSize-13,tileSize-13));
         tile->setAttribute(Qt::WA_AcceptTouchEvents,true);
         tile->installEventFilter(this);
         QObject::connect(tile,&QToolButton::pressed,this,[this,node,tile]() {
@@ -2629,65 +2689,73 @@ private:
                 return;
             tapLayer(node,item);
         });
-        const int count=group?1:qobject_cast<KisPaintLayer*>(node.data())?3:2;
-        const int overlay=m_horizontalRail?16:qMin(22,(tileHeight-4)/count);
-        const int iconX=m_controlsAtEnd?tile->x()+tile->width()-overlay:tile->x();
-        const int gap=qMax(0,(tileHeight-count*overlay)/(count+1));
-        auto addOverlay=[&](int n,const QString &icon,
-                            const QString &tooltip,
-                            const KoID &prop,bool desired) {
-            auto *button=new QToolButton(frame);
-            if(m_horizontalRail) {
-                const int step=qMax(0,(tile->width()-count*overlay)/(count+1));
-                const int y=m_controlsAtEnd?tile->geometry().bottom()-overlay+1:tile->y();
-                button->setGeometry(tile->x()+step*(n+1)+overlay*n,y,overlay,overlay);
-            } else {
-                button->setGeometry(iconX,1+gap*(n+1)+overlay*n,overlay,overlay);
-            }
-            button->setIcon(QIcon(icon));
-            button->setIconSize(QSize(16,16));
+        const int count=qobject_cast<KisPaintLayer*>(node.data())?3:2;
+        const int overlay=group?qMin(30,(card.width()-2)/2):qMin(22,(extent-4)/count);
+        // The rotation maps the card's right edge to
+        // the top. Keep the controls on the canvas-facing edge.
+        const bool controlsOnRight=m_controlsAtEnd!=m_horizontalRail;
+        const int iconX=controlsOnRight?card.right()-overlay+1:card.left();
+        const int gap=qMax(0,(extent-count*overlay)/(count+1));
+        const auto addOverlay=[&](const QRect &geometry,const QIcon &icon,const QString &tooltip) {
+            auto *button=new MobileLayerTileButton(frame,m_horizontalRail);
+            button->setGeometry(orient(geometry));
+            button->setIcon(icon);
+            const int iconSize=overlay-(group?4:3);
+            button->setIconSize(QSize(iconSize,iconSize));
             button->setAccessibleName(tooltip);
             button->setToolTip(tooltip);
             button->setStyleSheet(
                 "QToolButton{background:#34343a;color:#f3faff;"
                 "border:1px solid #66666d;border-radius:4px;padding:0;}"
+                "QToolButton:checked{background:#674f35;border-color:#efb969;}"
                 "QToolButton:pressed{background:#387d9c;}");
-            QObject::connect(button,&QToolButton::clicked,this,
-                             [this,node,prop,desired]() {
-                setLayerProperty(node,prop,desired);
+            return button;
+        };
+        const auto iconRect=[&](int n) {
+            return QRect(iconX,card.top()+gap*(n+1)+overlay*n,overlay,overlay);
+        };
+        const auto propertyButton=[&](const QRect &geometry,const QString &icon,const QString &tooltip,
+                                      const KoID &property,bool desired) {
+            auto *button=addOverlay(geometry,QIcon(icon),tooltip);
+            connect(button,&QToolButton::clicked,this,[this,node,property,desired]() {
+                setLayerProperty(node,property,desired);
                 QTimer::singleShot(0,this,[this]() {reload();});
             });
         };
-        addOverlay(0,node->visible()?QStringLiteral(":/light_visible.svg"):
-                                    QStringLiteral(":/light_novisible.svg"),
-                   i18n("Show or hide this layer"),
-                   KisLayerPropertiesIcons::visible,!node->visible());
-        if(!group)addOverlay(1,node->userLocked()?QStringLiteral(":/light_layer-locked.svg"):
-                                       QStringLiteral(":/light_layer-unlocked.svg"),
-                   i18n("Lock or unlock this layer"),
-                   KisLayerPropertiesIcons::locked,!node->userLocked());
-        if(auto *paint=qobject_cast<KisPaintLayer*>(node.data())) {
-            addOverlay(2,paint->alphaLocked()?QStringLiteral(":/transparency-locked.svg"):
-                                             QStringLiteral(":/transparency-unlocked.svg"),
-                       i18n("Alpha lock: affects ONLY this layer"),
-                       KisLayerPropertiesIcons::alphaLocked,
-                       !paint->alphaLocked());
-        }
+        const int centered=card.center().y()-overlay/2;
+        propertyButton(group?QRect(iconX,centered,overlay,overlay):iconRect(0),
+                       node->visible()?QStringLiteral(":/light_visible.svg"):
+                                       QStringLiteral(":/light_novisible.svg"),
+                       group?i18n("Show or hide this group"):i18n("Show or hide this layer"),
+                       KisLayerPropertiesIcons::visible,!node->visible());
         if(group) {
-            auto *disclose=new QToolButton(frame);
-            disclose->setGeometry(tile->x()+1,4,20,32);
-            disclose->setArrowType(item->isExpanded()?Qt::DownArrow:Qt::RightArrow);
-            disclose->setToolTip(item->isExpanded()?
-                i18n("Collapse group"):i18n("Expand group"));
-            disclose->setStyleSheet(
-                "QToolButton{background:transparent;color:#ffffff;border:0;}"
-                "QToolButton:pressed{background:#387d9c;}");
-            QObject::connect(disclose,&QToolButton::clicked,this,
-                             [this,node,item]() mutable {
-                item->setExpanded(!item->isExpanded());
-                node->setCollapsed(!item->isExpanded());
-                QTimer::singleShot(0,this,[this]() {reload();});
+            const bool expanded=!node->collapsed();
+            const int folderX=controlsOnRight?card.left():card.right()-overlay+1;
+            auto *folder=addOverlay(QRect(folderX,centered,overlay,overlay),groupFolderIcon(expanded),
+                                    expanded?i18n("Collapse group"):i18n("Expand group"));
+            folder->setCheckable(true);
+            folder->setChecked(expanded);
+            connect(folder,&QToolButton::clicked,this,[this,node,folder](bool open) {
+                if(auto *groupItem=itemForNode(node)) {
+                    groupItem->setExpanded(open);
+                    node->setCollapsed(!open);
+                    folder->setIcon(groupFolderIcon(open));
+                    const auto label=open?i18n("Collapse group"):i18n("Expand group");
+                    folder->setToolTip(label);
+                    folder->setAccessibleName(label);
+                    QTimer::singleShot(0,this,[this]() {reload();});
+                }
             });
+        } else {
+            propertyButton(iconRect(1),node->userLocked()?QStringLiteral(":/light_layer-locked.svg"):
+                                                         QStringLiteral(":/light_layer-unlocked.svg"),
+                           i18n("Lock or unlock this layer"),KisLayerPropertiesIcons::locked,!node->userLocked());
+            if(auto *paint=qobject_cast<KisPaintLayer*>(node.data())) {
+                propertyButton(iconRect(2),paint->alphaLocked()?QStringLiteral(":/transparency-locked.svg"):
+                                                                QStringLiteral(":/transparency-unlocked.svg"),
+                               i18n("Alpha lock: affects ONLY this layer"),
+                               KisLayerPropertiesIcons::alphaLocked,!paint->alphaLocked());
+            }
         }
         QString kind;
         if(node->inherits("KisShapeLayer"))kind=i18n("VECTOR");
@@ -2696,9 +2764,11 @@ private:
         else if(node->inherits("KisFileLayer"))kind=i18n("FILE");
         else if(node->inherits("KisCloneLayer"))kind=i18n("CLONE");
         if(mask || (!clipped && !kind.isEmpty())) {
-            auto *marker=new QLabel(frame);
-            marker->setGeometry(tile->x()+2,tileHeight-19,
-                                47,19);
+            auto *marker=new MobileLayerNameLabel(frame);
+            marker->setRotated(m_horizontalRail);
+            marker->setRotatedBackground(mask?QColor("#b87939"):QColor("#275b73"));
+            marker->setGeometry(orient(QRect(card.left()+2,card.bottom()-18,
+                                              qMin(47,card.width()-4),19)));
             marker->setText(mask?i18n("MASK"):kind);
             marker->setAlignment(Qt::AlignCenter);
             marker->setStyleSheet(mask?
@@ -2880,11 +2950,6 @@ private:
             return;
         }
         const int scroll=railScrollBar()->value();
-        const bool hadPreviousTree=!m_nodes.isEmpty();
-        QSet<KisNode*> expanded;
-        for(int i=0;i<m_nodes.size();++i)
-            if(auto *item=m_items.value(i,nullptr))
-                if(item->isExpanded())expanded.insert(m_nodes[i].data());
 
         const KisNodeList native=m->selectedNodes();
         const KisNodeSP engineActive=view->activeNode();
@@ -2976,8 +3041,7 @@ private:
                 // compact rail; keep those masks visible immediately.
                 const bool showAttachedMasks=node->childCount()>0 &&
                     !node->inherits("KisGroupLayer");
-                const bool expandedByUser=hadPreviousTree ?
-                    expanded.contains(node.data()):!node->collapsed();
+                const bool expandedByUser=!node->collapsed();
                 item->setExpanded(showAttachedMasks || expandedByUser);
                 makeLayerRow(item,node,depth);
                 if(node->childCount()>0) {

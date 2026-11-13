@@ -7,6 +7,18 @@
 
 namespace MobileLayerRailGeometry
 {
+inline int tileExtent(int thickness,bool horizontal,bool group,bool mask)
+{
+    if(group)return 38;
+    if(mask)return 54;
+    return horizontal?qBound(56,qRound(thickness*0.72),88):thickness;
+}
+
+inline QRect rotateTileRect(const QRect &rect,int thickness)
+{
+    return QRect(rect.y(),thickness-rect.x()-rect.width(),rect.height(),rect.width());
+}
+
 inline QRect expand(const QRect &anchor,const QRect &bounds,int desired,
                     bool horizontal,bool reverse,const QList<QRect> &obstacles)
 {

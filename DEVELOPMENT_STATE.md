@@ -10,6 +10,8 @@ Contextual tool options use compact lists or sliders anchored to their toolbar b
 
 The brush picker links directly to Advanced Brush Settings. Move to Category lists built-in families and custom categories in a scrollable dialog. The optional One-shot eyedropper toolbar command samples the next canvas press or a drag release and switches between visible colors and the active layer on hold. Holding Reference images toggles the native reference decoration.
 
+The horizontal Layers rail uses narrow rotated cards with rotated previews, badges, and inline controls. Group cards have separate eye and open/closed folder buttons. The folder uses Krita’s native collapsed state.
+
 ## Compact Tools picker
 
 Tools is a nonmodal canvas panel. Pressing its opener again closes it, as with the brush drawer and contextual menus. A press on the canvas or another control dismisses it and continues to the original target. The picker displays all of its tool and command groups in one scroll area. Each tile can be starred independently of activating it, and favorites are saved by native ID and pinned above the groups. Advanced Tool Options remains available from the contextual gear and its existing toolbar command. Back or Escape also dismisses the panel.
