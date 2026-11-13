@@ -1563,9 +1563,13 @@ private:
         auto *m=manager();
         auto *vm=m_engine.manager();
         if(m && vm && vm->image().toStrongRef()==m_clipImage &&
-           m_clipRestoreActive && m_clipRestoreActive->parent()) {
+           inImage(m_clipRestoreActive,m_clipImage)) {
+            // A cancelled/failed group move can leave a retained node
+            // in an orphaned subtree with a non-null parent pointer.
+            // Never reactivate a layer that is no longer in the canvas.
             m->slotUiActivatedNode(m_clipRestoreActive);
-            m->slotSetSelectedNodes(KisNodeList{m_clipRestoreActive});
+            if(m->activeNode()==m_clipRestoreActive)
+                m->slotSetSelectedNodes(KisNodeList{m_clipRestoreActive});
         }
         m_clipBusy=false;
         m_clipImage.clear();
@@ -1756,7 +1760,9 @@ private:
             finishCompactClipRebuild();return;
         }
         if(m_clipMoveSource &&
-           (m_clipMoveSource->parent()!=m_clipExpectedParent ||
+           (!inImage(m_clipMoveSource,m_clipImage) ||
+            !inImage(m_clipExpectedParent,m_clipImage) ||
+            m_clipMoveSource->parent()!=m_clipExpectedParent ||
             m_clipMoveSource->prevSibling()!=m_clipExpectedBelow)) {
             if(attempt<35) {
                 QTimer::singleShot(95,this,[this,attempt]() {
