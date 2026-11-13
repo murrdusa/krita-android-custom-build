@@ -708,22 +708,43 @@ private:
                 }
             }
         }
-        qint64 keptBytes=0;
-        int kept=0;
-        for(const auto &entry:versions) {
-            const bool protectedFallback=!fallback.isEmpty() &&
-                entry.path==fallback;
-            // Reserve one count slot for the verified fallback, even if
-            // it is older than all other candidates. Keep it despite the
-            // size budget: otherwise pruning could destroy the last good
-            // version while retaining a damaged latest one.
-            const int limit=maxVersions()-(fallback.isEmpty()?0:1);
-            if(kept==0 || protectedFallback ||
-               (kept<limit && keptBytes+entry.bytes<=maxBytes())) {
-                keptBytes+=entry.bytes;
-                ++kept;
-                continue;
+        qint64 keptBytes=versions.first().bytes;
+        QStringList retained{versions.first().path};
+        if(!fallback.isEmpty()) {
+            // Reserve the latest verified recovery regardless of budget:
+            // the newest entry is still retained for diagnostics.
+            for(const auto &entry:versions) {
+                if(entry.path==fallback) {
+                    retained.append(entry.path);
+                    keptBytes+=entry.bytes;
+                    break;
+                }
             }
+            // Under quota pressure, keep additional verified checkpoints
+            // before damaged/legacy entries. Otherwise several corrupted
+            // intermediate versions could displace perfectly good saves.
+            for(int i=1;i<versions.size() && retained.size()<maxVersions();++i) {
+                const auto &entry=versions.at(i);
+                if(entry.path==fallback || !hasPublishedCheckpoint(entry))continue;
+                if(keptBytes+entry.bytes<=maxBytes()) {
+                    retained.append(entry.path);
+                    keptBytes+=entry.bytes;
+                }
+            }
+        }
+        // Fill any remaining quota with older entries without deleting
+        // them just because they lack a checksum (legacy archives may
+        // still be recoverable).
+        for(int i=1;i<versions.size() && retained.size()<maxVersions();++i) {
+            const auto &entry=versions.at(i);
+            if(!retained.contains(entry.path) &&
+               keptBytes+entry.bytes<=maxBytes()) {
+                retained.append(entry.path);
+                keptBytes+=entry.bytes;
+            }
+        }
+        for(const auto &entry:versions) {
+            if(retained.contains(entry.path))continue;
             if(QFile::remove(entry.path))
                 QFile::remove(entry.path+QStringLiteral(".sha256"));
         }
