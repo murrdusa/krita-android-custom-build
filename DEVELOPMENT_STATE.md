@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — image root is not an explicit transform selection
+
+- Commits `078b0b1774a1a2d9fd4707a189827c687479a363` and `fc12f75a3d7a277da0213b03f62d6095dead1136`: the shared `MobileLayerIdentity::transformTargets` policy no longer treats Krita's image root sentinel as a real explicit transform target. If only root/hidden entries are selected, a validated visible active layer can be used instead. An explicit child selection still takes precedence; stale nodes from outside the image continue blocking fallback. Added three host regression cases for root, root+child, root+hidden mask.
+- **Verification:** host-side C++17 regression built with `-O2 -Wall -Wextra -Werror` and passed **22/22** cases in this session. The PC watcher last confirmed `dc18f17162221c7add1d4f9c0bd1f9c7d46f4814` SUCCESS (164.75 MiB, 172,754,114 bytes); the new source/test revisions require a matching exact-SHA Android build. No native Transform commit/cancel/Undo or Fold 6 runtime test performed. APK publishing remains paused.
+
 ## November 13 follow-up — keep active Transform/Move target on empty native selection
 
 - Commits `88c465cf59f9a62cbdecd88d95f34db708598f27` and `b446355428d00e6e2dcf7a12171d4df0a2cc4985`: the layer rail's native selection `reload()` now passes its validated visible active node to `MobileLayerIdentity::transformTargets`, matching the Transform/Move tool-entry policy. When native selected nodes are temporarily empty (or only hidden global-mask entries), a refresh restores the active layer as a native target rather than leaving Move/Transform with an empty selection. When actual visible selections exist, group-and-child de-duplication is unchanged. Added Qt-free regression cases for empty and hidden-only selection fallback.
