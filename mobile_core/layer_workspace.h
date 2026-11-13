@@ -2501,7 +2501,6 @@ private:
             if(!m_engine.manager() ||
                m_engine.manager()->image().toStrongRef()!=image ||
                manager()!=nodes || !inImage(parent,image) ||
-               !parent->isEditable(false) ||
                !nodes->canMoveLayers(chosen,false))return false;
             for(const KisNodeSP &node:chosen)
                 if(!node || node->parent()!=parent ||
