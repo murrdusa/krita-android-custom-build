@@ -268,9 +268,20 @@ private:
         // Compare canonical KRA identities, including equivalent SAF
         // document URI forms, before initiating any native disk write.
         const auto open=m_runtime->documentRoot()->openViews();
+        int activeViews=0;
+        int ownerViews=0;
         for(const auto &view:open) {
+            // Do not save while the native tab stack is transitioning or
+            // holds a view whose document cannot be inspected. Skipping
+            // such a view would bypass the cross-canvas overwrite check.
             const auto *other=qobject_cast<KisDocument*>(view.document.data());
-            if(!other || other==guardedDocument.data())continue;
+            if(!view.nativeView || !other)return false;
+            if(other==guardedDocument.data())++ownerViews;
+            if(view.active) {
+                ++activeViews;
+                if(other!=guardedDocument.data())return false;
+            }
+            if(other==guardedDocument.data())continue;
             const QString otherPath=other->path();
             const QString otherDraft=other->property(
                 "_mobileDraftPath").toString();
@@ -283,6 +294,10 @@ private:
                 return false;
             }
         }
+        // A save is authorized only by one uniquely selected native
+        // canvas. Engine currentDocument alone can lag behind a tab
+        // switch and must not authorize writes during that gap.
+        if(activeViews!=1 || ownerViews!=1)return false;
         // A recovered canvas can have no visible path even though its
         // private draft/checkpoint is still open. Neither Save As nor
         // Export Copy may overwrite that source recovery file.
