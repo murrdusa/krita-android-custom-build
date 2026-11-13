@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — keep active Transform/Move target on empty native selection
+
+- Commits `88c465cf59f9a62cbdecd88d95f34db708598f27` and `b446355428d00e6e2dcf7a12171d4df0a2cc4985`: the layer rail's native selection `reload()` now passes its validated visible active node to `MobileLayerIdentity::transformTargets`, matching the Transform/Move tool-entry policy. When native selected nodes are temporarily empty (or only hidden global-mask entries), a refresh restores the active layer as a native target rather than leaving Move/Transform with an empty selection. When actual visible selections exist, group-and-child de-duplication is unchanged. Added Qt-free regression cases for empty and hidden-only selection fallback.
+- **Verification:** the previous nested group refresh revision `dc18f17162221c7add1d4f9c0bd1f9c7d46f4814` has exact PC watcher SUCCESS, 164.75 MiB (172,754,114 bytes). The new change still needs its own exact-SHA build. Qt-free regression is committed but not executed in this session; Fold 6 native Move/Transform commit/cancel/Undo still requires device verification. APK publishing stays paused.
+
 ## November 13 follow-up — native selection reread in Transform/Move
 
 - Commits `a2cf7998e50d4e81a1bb228b98c403fa786c739f` and `2aae57ac6c15b49b59e30fce6baf1f5942033311`: the layer rail `reload()` now normalizes incoming native Transform/Move selection using the existing outermost-node policy, preventing an engine notification or rail refresh from reintroducing both a selected group and its descendants into Krita's transform target list. If the active node is a covered child, the rail activates one of the retained outermost nodes. Explicit global Edit Selection is not altered. Added three Qt-free hierarchy regression cases modeling reread order, masked nodes, and nested groups.
