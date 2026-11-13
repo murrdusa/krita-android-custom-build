@@ -28,6 +28,10 @@ int main(int argc,char **argv)
     // Layout edits after slightly resizing an existing Fold/split-screen
     // workspace should track the new viewport without duplicating an ID
     // or erasing that profile's command and panel settings.
+    if(sizeForSave(QSize(375,790),QSize(360,800),true)!=QSize(375,790) ||
+       sizeForSave(QSize(800,360),QSize(360,800),true)!=QSize(360,800) ||
+       sizeForSave(QSize(750,780),QSize(360,800),true)!=QSize(360,800))
+        return 14;
     remember(settings,QStringLiteral("folded"),QSize(375,790));
     if(saved(settings).size()!=1 ||
        settings.value(group(QStringLiteral("folded"))+
