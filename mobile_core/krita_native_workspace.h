@@ -175,6 +175,7 @@ public:
                              [this,root=QPointer<MobileNativeViewStack>(root)](int) {
                 if(!root)return;
                 armEyedropper(false);
+                if(m_colorPopup)m_colorPopup->close();
                 MobileToolBrowser::dismiss(m_host);
                 if(m_brush)m_brush->dismissPresetBrowser();
                 const QPointer<QWidget> selected=root->currentWidget();
@@ -417,6 +418,52 @@ public:
     }
 
     void toggleColor()
+    {
+        if(m_colorPopup && m_colorPopup->isVisible()) {
+            m_colorPopup->close();
+            return;
+        }
+        auto *canvas=m_host?m_host->nativeCanvas():nullptr;
+        auto *provider=m_engine.brushResources();
+        if(!canvas || !provider || !m_engine.hasDocument() || m_canvasOnly)return;
+        auto *panel=new MobileTransientPanel(canvas);
+        m_colorPopup=panel;
+        panel->setObjectName(QStringLiteral("mobileColorPicker"));
+        panel->setStyleSheet(QStringLiteral(
+            "QFrame#mobileColorPicker{background:#25262b;border:1px solid #55555c;border-radius:10px;}"
+            "QLabel{color:#f1f2f5;}"
+            "QPushButton,QComboBox,QLineEdit{background:#30323b;color:#f1f2f5;"
+            "border:1px solid #44464f;border-radius:6px;padding:2px 6px;}"));
+        auto *layout=new QVBoxLayout(panel);
+        layout->setContentsMargins(2,2,2,2);
+        m_colorPicker=new MobileColorPicker(panel,provider,m_lighting,m_sphere);
+        layout->addWidget(m_colorPicker);
+        panel->setOpener(nullptr,m_colorAction);
+        panel->anchorTo(nullptr,QSize(360,342));
+        panel->present();
+        syncPanelActions();
+    }
+
+    void toggleLightingSphere()
+    {
+        auto *canvas=m_host?m_host->nativeCanvas():nullptr;
+        if(!canvas || !m_engine.hasDocument() || m_canvasOnly)return;
+        if(!m_sphere) {
+            m_sphere=new MobileLightingSphere(canvas);
+            m_sphere->onColor=[this](const QColor &color) {
+                MobileColorPicker::setForeground(m_engine.brushResources(),color);
+            };
+            if(m_colorPicker)m_colorPicker->setFloatingSphere(m_sphere);
+        }
+        if(m_sphere->isVisible())m_sphere->hide();
+        else {
+            m_sphere->setLighting(m_lighting.base,m_lighting.light,m_lighting.shadow,
+                                  m_lighting.contrast/100.0);
+            showOverlay(m_sphere);
+        }
+    }
+
+    void toggleStandaloneColorWheel()
     {
         if(!m_host || !m_engine.hasDocument()) {
             checkpoint("Color wheel: no active native document");
@@ -915,7 +962,7 @@ public:
             auto *panel=entry.second;
             if(!panel || !panel->isVisible())continue;
             QSize minimum(120,44);
-            if(panel==m_color)minimum=QSize(104,104);
+            if(panel==m_color || panel==m_sphere)minimum=QSize(104,104);
             const bool layers=panel==m_layers;
             if(layers)minimum=m_layersHorizontal?QSize(110,58):QSize(64,68);
             targets.append({panel,minimum,layers,
@@ -1076,8 +1123,8 @@ public:
             auto *persistentPanels=new MobileTouchComboBox(body);
             persistentPanels->addItem(QObject::tr("Neither"),0);
             persistentPanels->addItem(QObject::tr("Layers only"),1);
-            persistentPanels->addItem(QObject::tr("Color Wheel only"),2);
-            persistentPanels->addItem(QObject::tr("Layers + Color Wheel"),3);
+            persistentPanels->addItem(QObject::tr("Floating wheel only"),2);
+            persistentPanels->addItem(QObject::tr("Layers + floating wheel"),3);
             persistentPanels->setCurrentIndex(
                 (m_keepLayers?1:0)|(m_keepColor?2:0));
             auto *floatingSliders=new MobileTouchComboBox(body);
@@ -1087,7 +1134,7 @@ public:
             floatingSliders->addItem(QObject::tr("Size + Opacity"),3);
             floatingSliders->setCurrentIndex(
                 (m_showSize?1:0)|(m_showOpacity?2:0));
-            layout->addWidget(new QLabel(QObject::tr("Keep panels open"),body));
+            layout->addWidget(new QLabel(QObject::tr("Keep panels fully visible"),body));
             layout->addWidget(persistentPanels);
             layout->addWidget(new QLabel(QObject::tr("Floating brush sliders"),body));
             layout->addWidget(floatingSliders);
@@ -1357,6 +1404,8 @@ public:
         if(m_brushOptions)m_brushOptions->hide();
         if(m_textFormatting)m_textFormatting->hide();
         if(m_color)m_color->hide();
+        if(m_sphere)m_sphere->hide();
+        if(m_colorPopup)m_colorPopup->close();
         if(m_contextToolBar)m_contextToolBar->hide();
         if(m_selectionDismiss)m_selectionDismiss->hide();
         if(m_cloneSourceButton)m_cloneSourceButton->hide();
@@ -1377,7 +1426,7 @@ public:
 protected:
     bool eventFilter(QObject *watched,QEvent *event) override
     {
-        if((watched==m_layers || watched==m_color || watched==m_toolOptions ||
+        if((watched==m_layers || watched==m_color || watched==m_colorPopup || watched==m_toolOptions ||
             watched==m_brushOptions || watched==m_textFormatting || watched==m_contextToolBar) &&
            (event->type()==QEvent::Show || event->type()==QEvent::Hide)) {
             syncPanelActions();
@@ -1447,6 +1496,7 @@ private:
     {
         return {{QStringLiteral("layers"),m_layers.data()},
                 {QStringLiteral("color"),m_color.data()},
+                {QStringLiteral("lighting-sphere"),m_sphere.data()},
                 {QStringLiteral("size"),m_brush.data()},
                 {QStringLiteral("opacity"),m_opacityStrip.data()},
                 {QStringLiteral("tool-options"),m_toolOptions.data()},
@@ -1762,7 +1812,7 @@ private:
         for(int i=0;i<int(targets.size());++i) {
             auto *panel=targets[i];
             if(!panel || !panel->isVisible())continue;
-            if((i==0 && !m_keepLayers) || (i==1 && !m_keepColor)) {
+            if((i==0 && !m_keepLayers) || (i==1 && m_keepColor)) {
                 wakePanel(panel);
                 continue;
             }
@@ -1799,7 +1849,7 @@ private:
             action->setChecked(open);
         };
         sync(m_layersAction,m_layers && m_layers->isVisible());
-        sync(m_colorAction,m_color && m_color->isVisible());
+        sync(m_colorAction,m_colorPopup && m_colorPopup->isVisible());
         sync(m_optionsAction,(m_toolOptions && m_toolOptions->isVisible()) ||
                              (m_brushOptions && m_brushOptions->isVisible()));
     }
@@ -1856,7 +1906,6 @@ private:
 
         if(!m_keepLayers && m_layers && m_layers->isVisible() && target!=m_layers &&
            !m_layers->isAncestorOf(target) && action!=m_layersAction)toggleLayers();
-        if(!m_keepColor)dismiss(m_color,m_colorAction);
         dismiss(m_brushOptions,m_optionsAction);
         dismiss(m_toolOptions,m_optionsAction);
         if(target!=m_textFormatOpener)dismiss(m_textFormatting,m_optionsAction);
@@ -2298,6 +2347,13 @@ private:
         }
         if(m_layers && m_layers->isVisible())obstacles.append(m_layers->geometry());
         if(m_color && m_color->isVisible())obstacles.append(m_color->geometry());
+        if(m_sphere && m_sphere->isVisible()) {
+            const int extent=qMin(164,qMin(viewport.width(),viewport.height()));
+            const QRect preferred(QPoint(viewport.right()-extent+1,viewport.bottom()-extent+1),
+                                  QSize(extent,extent));
+            placePanel(m_sphere,preferredPanel(m_sphere,canvasBounds,preferred),
+                       hasEditedPlacement(m_sphere)?canvasBounds:viewport,obstacles,QSize(92,92));
+        }
         for(auto *button:{m_selectionDismiss.data(),m_cloneSourceButton.data()}) {
             if(!button || !button->isVisible())continue;
             const QSize size=button->size();
@@ -2316,6 +2372,7 @@ private:
         for(QWidget *panel:{static_cast<QWidget*>(m_brush.data()),
                             static_cast<QWidget*>(m_opacityStrip.data()),
                             static_cast<QWidget*>(m_color.data()),
+                            static_cast<QWidget*>(m_sphere.data()),
                             static_cast<QWidget*>(m_toolOptions.data()),
                             static_cast<QWidget*>(m_brushOptions.data()),
                             static_cast<QWidget*>(m_textFormatting.data())}) {
@@ -2382,6 +2439,10 @@ private:
     bool m_switchingBrush=false;
     QPointer<KritaMobileLayersPanel> m_layers;
     QPointer<MobileColorWorkspace> m_color;
+    QPointer<MobileTransientPanel> m_colorPopup;
+    QPointer<MobileColorPicker> m_colorPicker;
+    QPointer<MobileLightingSphere> m_sphere;
+    MobileColorPicker::Lighting m_lighting;
     QPointer<MobileContextToolBar> m_contextToolBar;
     QPointer<QToolButton> m_selectionDismiss,m_cloneSourceButton;
     QPointer<QAction> m_volumeUndo;

@@ -1,5 +1,9 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — Color picker and lighting sphere
+
+Color opens a dismissible picker with Wheel, Values, Swatches and Lighting tabs plus recent stroke colors. Floating Color Wheel and Lighting Sphere are separate optional toolbar commands and can be positioned through Edit UI Layout. All three select Krita's native foreground color. The sphere shares its base color, light preset and contrast between the tab and floating widget.
+
 ## November 13 follow-up — toolbar gestures and Advanced Brush Settings
 
 Brush-size drag defaults to Tools. A one-time migration treats a stored Paint assignment as the previous default. The gesture pickers use buttons on currently visible toolbars and retain bindings when a workspace hides their button. Advanced Brush Settings uses a frameless dark editor with touch-sized tabs and keeps Krita's brush-engine controls.

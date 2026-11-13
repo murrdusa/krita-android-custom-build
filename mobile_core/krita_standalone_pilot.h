@@ -105,6 +105,8 @@ public:
         auto *blendBrushAction=makeAction("Blend");
         auto *layersAction=makeAction("Layers");
         auto *colorAction=makeAction("Color");
+        auto *colorWheelAction=makeAction("Floating color wheel");
+        auto *lightingSphereAction=makeAction("Floating lighting sphere");
         auto *eyedropperAction=makeAction("One-shot eyedropper");
         workspace->bindEyedropper(eyedropperAction);
         auto *referenceAction=makeAction("Reference images");
@@ -186,6 +188,10 @@ public:
                          [workspace]() {workspace->toggleLayers();});
         QObject::connect(colorAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleColor();});
+        QObject::connect(colorWheelAction,&QAction::triggered,workspace,
+                         [workspace]() {workspace->toggleStandaloneColorWheel();});
+        QObject::connect(lightingSphereAction,&QAction::triggered,workspace,
+                         [workspace]() {workspace->toggleLightingSphere();});
         QObject::connect(toolsAction,&QAction::triggered,window,
                          [workspace]() {workspace->chooseTool();});
         QObject::connect(optionsAction,&QAction::triggered,window,
@@ -430,7 +436,8 @@ public:
             moreActions.append(filtersMenu->menuAction());
         moreActions.append(commandsAction);
         auto *preferences=new QMenu(QObject::tr("Settings"),window);
-        preferences->addActions({settingsAction,colorOptionsAction,inputAction,keyboardAction});
+        preferences->addActions({settingsAction,colorWheelAction,lightingSphereAction,
+                                 colorOptionsAction,inputAction,keyboardAction});
         moreActions.append(preferences->menuAction());
         moreActions.append(exitAction);
         MobileNativeCommandLayout::Commands toolbarCommands;
@@ -451,6 +458,7 @@ public:
             {"close",closeAction},{"canvas-only",canvasOnlyAction},
             {"clone-source",cloneSourceAction},{"input-settings",inputAction},
             {"workspace-settings",settingsAction},{"color-options",colorOptionsAction},
+            {"floating-color-wheel",colorWheelAction},{"lighting-sphere",lightingSphereAction},
             {"commands",commandsAction},{"keyboard-shortcuts",keyboardAction}
         };
         for(const auto &entry:studioCommands)

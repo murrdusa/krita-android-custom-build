@@ -21,6 +21,11 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QGridLayout>
+#include <QFormLayout>
+#include <QImage>
+#include <QSignalBlocker>
+#include <QStackedWidget>
+#include <QTabBar>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QResizeEvent>
@@ -179,6 +184,337 @@ private:
     int m_hue=0,m_sat=255,m_val=255;
     DragMode m_dragMode=None;
     int m_rimInset;
+};
+
+class MobileLightingSphere final : public QWidget
+{
+public:
+    explicit MobileLightingSphere(QWidget *parent) : QWidget(parent)
+    {
+        setAccessibleName(tr("Lighting sphere"));
+        setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Expanding);
+    }
+
+    std::function<void(const QColor&)> onColor;
+
+    void setLighting(const QColor &base,const QColor &light,const QColor &shadow,qreal contrast)
+    {
+        if(m_base==base && m_light==light && m_shadow==shadow && m_contrast==contrast)return;
+        m_base=base;
+        m_light=light;
+        m_shadow=shadow;
+        m_contrast=contrast;
+        m_image=QImage();
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        const auto area=sphereRect();
+        if(area.isEmpty())return;
+        if(m_image.isNull()) {
+            constexpr int extent=192;
+            m_image=QImage(extent,extent,QImage::Format_ARGB32_Premultiplied);
+            for(int y=0;y<extent;++y) {
+                auto *row=reinterpret_cast<QRgb*>(m_image.scanLine(y));
+                for(int x=0;x<extent;++x) {
+                    const QPointF normal((2*x+1.0)/extent-1,(2*y+1.0)/extent-1);
+                    const qreal coverage=qBound(0.0,(1.0-qSqrt(QPointF::dotProduct(normal,normal)))*extent/2+0.5,1.0);
+                    QColor color=shade(normal);
+                    color.setAlphaF(coverage);
+                    row[x]=qPremultiply(color.rgba());
+                }
+            }
+        }
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        painter.drawImage(area,m_image);
+        if(m_hasSample) {
+            const QPointF point=area.center()+m_sample*area.width()/2;
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.setPen(QPen(Qt::black,3));
+            painter.drawEllipse(point,6,6);
+            painter.setPen(QPen(Qt::white,1.5));
+            painter.drawEllipse(point,6,6);
+        }
+    }
+
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        const auto area=sphereRect();
+        if(event->button()!=Qt::LeftButton || area.isEmpty())return;
+        const QPointF normal=(event->localPos()-area.center())/(area.width()/2);
+        if(QPointF::dotProduct(normal,normal)>1.0) {event->ignore();return;}
+        m_sampling=true;
+        pick(event->localPos());
+        event->accept();
+    }
+
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        if(!m_sampling)return;
+        pick(event->localPos());
+        event->accept();
+    }
+
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        if(!m_sampling || event->button()!=Qt::LeftButton)return;
+        m_sampling=false;
+        pick(event->localPos());
+        event->accept();
+    }
+
+private:
+    QRectF sphereRect() const
+    {
+        const qreal size=qMax(0,qMin(width(),height())-16);
+        return QRectF((width()-size)/2,(height()-size)/2,size,size);
+    }
+
+    QColor shade(const QPointF &normal) const
+    {
+        const qreal z=qSqrt(qMax(0.0,1.0-QPointF::dotProduct(normal,normal)));
+        const qreal light=-0.47*normal.x()-0.61*normal.y()+0.637*z;
+        const auto mix=[this](qreal base,qreal highlight,qreal shadow) {
+            return qBound(0.0,base*(1-m_contrast)+m_contrast*(highlight+shadow),1.0);
+        };
+        const qreal diffuse=qMax(0.0,light);
+        const qreal specular=qPow(diffuse,18.0)*0.16;
+        const qreal ambient=0.32+0.12*qMax(0.0,normal.y());
+        const auto channel=[&](qreal base,qreal highlight,qreal shadow) {
+            return mix(base,highlight*(0.68*base*diffuse+specular),base*shadow*ambient);
+        };
+        return QColor::fromRgbF(channel(m_base.redF(),m_light.redF(),m_shadow.redF()),
+                                channel(m_base.greenF(),m_light.greenF(),m_shadow.greenF()),
+                                channel(m_base.blueF(),m_light.blueF(),m_shadow.blueF()));
+    }
+
+    void pick(const QPointF &position)
+    {
+        const auto area=sphereRect();
+        if(area.isEmpty())return;
+        m_sample=(position-area.center())/(area.width()/2);
+        const qreal length=qSqrt(QPointF::dotProduct(m_sample,m_sample));
+        if(length>1)m_sample/=length;
+        m_hasSample=true;
+        update();
+        if(onColor)onColor(shade(m_sample));
+    }
+
+    QColor m_base=QColor("#c68462"),m_light=QColor("#fff4dc"),m_shadow=QColor("#8da9df");
+    qreal m_contrast=0.85;
+    QImage m_image;
+    QPointF m_sample;
+    bool m_sampling=false,m_hasSample=false;
+};
+
+class MobileColorPicker final : public QWidget
+{
+public:
+    struct Lighting {
+        QColor base=QColor("#c68462");
+        QColor light=QColor("#fff4dc");
+        QColor shadow=QColor("#8da9df");
+        int contrast=85;
+    };
+
+    MobileColorPicker(QWidget *parent,KisCanvasResourceProvider *provider,
+                      Lighting &lighting,MobileLightingSphere *floating)
+        : QWidget(parent),m_provider(provider),m_lighting(lighting),m_floating(floating)
+    {
+        auto *root=new QVBoxLayout(this);
+        root->setContentsMargins(6,6,6,6);
+        root->setSpacing(4);
+        auto *tabs=new QTabBar(this);
+        tabs->setExpanding(true);
+        tabs->setStyleSheet(QStringLiteral(
+            "QTabBar::tab{background:#30323b;color:#c3c6d1;min-height:38px;padding:0 7px;}"
+            "QTabBar::tab:selected{background:#394459;color:#fff;}"));
+        root->addWidget(tabs);
+        auto *pages=new QStackedWidget(this);
+        root->addWidget(pages,1);
+        const auto addPage=[tabs,pages](QWidget *page,const QString &name) {
+            pages->addWidget(page);
+            tabs->addTab(name);
+        };
+        connect(tabs,&QTabBar::currentChanged,pages,&QStackedWidget::setCurrentIndex);
+
+        m_wheel=new MobileHueWheel(pages);
+        m_wheel->setMinimumSize(0,0);
+        m_wheel->onChosen=[this](const QColor &color,bool) {select(color);};
+        addPage(m_wheel,tr("Wheel"));
+
+        auto *values=new QWidget(pages);
+        auto *form=new QFormLayout(values);
+        form->setContentsMargins(4,0,4,0);
+        form->setSpacing(0);
+        m_hex=new QLineEdit(values);
+        m_hex->setAccessibleName(tr("Hex color"));
+        m_hex->setMaxLength(7);
+        m_hex->setMinimumHeight(40);
+        form->addRow(tr("Hex"),m_hex);
+        const QStringList captions{tr("Hue"),tr("Saturation"),tr("Value")};
+        for(int i=0;i<3;++i) {
+            auto *row=new QHBoxLayout;
+            m_values[i]=new MobileTouchSlider(values);
+            m_values[i]->setAccessibleName(captions.at(i));
+            m_values[i]->setRange(0,i==0?359:100);
+            m_labels[i]=new QLabel(values);
+            m_labels[i]->setMinimumWidth(38);
+            row->addWidget(m_values[i],1);
+            row->addWidget(m_labels[i]);
+            form->addRow(captions.at(i),row);
+            connect(m_values[i],&QSlider::valueChanged,this,[this](int) {
+                m_hue=m_values[0]->value();
+                select(QColor::fromHsv(m_hue,qRound(m_values[1]->value()*2.55),
+                    qRound(m_values[2]->value()*2.55)));
+            });
+        }
+        connect(m_hex,&QLineEdit::editingFinished,this,[this]() {
+            const auto text=m_hex->text().trimmed();
+            const QColor color(text.startsWith(QLatin1Char('#'))?text:QStringLiteral("#")+text);
+            if(text.size()>=6 && color.isValid())select(color);
+            if(m_provider)m_hex->setText(m_provider->fgColor().toQColor().name());
+        });
+        addPage(values,tr("Values"));
+
+        auto *swatches=new QWidget(pages);
+        auto *colors=new QGridLayout(swatches);
+        colors->setContentsMargins(4,4,4,4);
+        colors->setSpacing(4);
+        const QStringList palette{
+            "#ffffff","#c0c0c0","#808080","#404040","#17171a","#000000",
+            "#e74758","#f2793e","#ecbc48","#84b552","#42a49a","#408ad6",
+            "#575bd5","#9a55bb","#d76b9a","#edb194","#b07351","#72493d"};
+        for(int i=0;i<palette.size();++i)
+            colors->addWidget(swatch(swatches,QColor(palette.at(i))),i/6,i%6);
+        colors->setRowStretch(3,1);
+        addPage(swatches,tr("Swatches"));
+
+        auto *lightingPage=new QWidget(pages);
+        auto *lightingLayout=new QVBoxLayout(lightingPage);
+        lightingLayout->setContentsMargins(0,0,0,0);
+        lightingLayout->setSpacing(2);
+        m_sphere=new MobileLightingSphere(lightingPage);
+        m_sphere->onColor=[this](const QColor &color) {select(color);};
+        lightingLayout->addWidget(m_sphere,1);
+        auto *lightingControls=new QHBoxLayout;
+        auto *base=new QPushButton(tr("Use current color"),lightingPage);
+        base->setMinimumHeight(40);
+        lightingControls->addWidget(base,1);
+        connect(base,&QPushButton::clicked,this,[this]() {
+            if(!m_provider)return;
+            m_lighting.base=m_provider->fgColor().toQColor();
+            refreshLighting();
+        });
+        auto *temperature=new QPushButton(lightingPage);
+        temperature->setMinimumHeight(40);
+        const QStringList lightingModes{tr("Warm light"),tr("Cool light"),tr("Neutral light")};
+        const auto mode=[this]() {
+            return m_lighting.light==QColor("#dceaff")?1:m_lighting.light==QColor(Qt::white)?2:0;
+        };
+        temperature->setText(lightingModes.at(mode()));
+        connect(temperature,&QPushButton::clicked,this,[this,temperature,lightingModes,mode]() {
+            const int index=(mode()+1)%lightingModes.size();
+            m_lighting.light=index==0?QColor("#fff4dc"):index==1?QColor("#dceaff"):QColor(Qt::white);
+            m_lighting.shadow=index==0?QColor("#8da9df"):index==1?QColor("#d39b82"):QColor("#a3a3a3");
+            temperature->setText(lightingModes.at(index));
+            refreshLighting();
+        });
+        lightingControls->addWidget(temperature,1);
+        lightingLayout->addLayout(lightingControls);
+        auto *contrastRow=new QHBoxLayout;
+        contrastRow->addWidget(new QLabel(tr("Contrast"),lightingPage));
+        auto *contrast=new MobileTouchSlider(lightingPage);
+        contrast->setAccessibleName(tr("Lighting contrast"));
+        contrast->setRange(0,100);
+        contrast->setValue(m_lighting.contrast);
+        contrastRow->addWidget(contrast,1);
+        lightingLayout->addLayout(contrastRow);
+        connect(contrast,&QSlider::valueChanged,this,[this](int value) {
+            m_lighting.contrast=value;
+            refreshLighting();
+        });
+        refreshLighting();
+        addPage(lightingPage,tr("Lighting"));
+
+        auto *history=new QHBoxLayout;
+        history->setSpacing(3);
+        for(const auto &color:MobileRecentColors::load())
+            history->addWidget(swatch(this,QColor(color)));
+        if(history->count())root->addLayout(history);
+        else delete history;
+        connect(provider,&KisCanvasResourceProvider::sigFGColorChanged,this,
+                [this](const KoColor &color) {showColor(color.toQColor());});
+        showColor(provider->fgColor().toQColor());
+    }
+
+    void setFloatingSphere(MobileLightingSphere *sphere)
+    {
+        m_floating=sphere;
+        refreshLighting();
+    }
+
+    static void setForeground(KisCanvasResourceProvider *provider,const QColor &color)
+    {
+        if(!provider || !color.isValid())return;
+        const KoColor current=provider->fgColor();
+        if(current.colorSpace() && current.toQColor()!=color)
+            provider->setFGColor(KoColor(color,current.colorSpace()));
+    }
+
+private:
+    QPushButton *swatch(QWidget *parent,const QColor &color)
+    {
+        auto *button=new QPushButton(parent);
+        button->setMinimumHeight(38);
+        button->setMinimumWidth(0);
+        button->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Preferred);
+        button->setAccessibleName(color.name());
+        button->setStyleSheet(QStringLiteral("QPushButton{background:%1;border:1px solid #767681;border-radius:6px;}")
+                              .arg(color.name()));
+        connect(button,&QPushButton::clicked,this,[this,color]() {select(color);});
+        return button;
+    }
+
+    void select(const QColor &color)
+    {
+        setForeground(m_provider,color);
+        if(m_provider)showColor(m_provider->fgColor().toQColor());
+    }
+
+    void showColor(const QColor &color)
+    {
+        if(!color.isValid())return;
+        m_wheel->showColor(color);
+        if(color.hsvHue()>=0)m_hue=color.hsvHue();
+        if(!m_hex->hasFocus())m_hex->setText(color.name());
+        const int values[]{m_hue,qRound(color.hsvSaturationF()*100),qRound(color.valueF()*100)};
+        for(int i=0;i<3;++i) {
+            const QSignalBlocker block(m_values[i]);
+            m_values[i]->setValue(values[i]);
+            m_labels[i]->setText(QString::number(values[i])+(i==0?QStringLiteral("°"):QStringLiteral("%")));
+        }
+    }
+
+    void refreshLighting()
+    {
+        for(auto *sphere:{m_sphere,m_floating.data()})
+            if(sphere)sphere->setLighting(m_lighting.base,m_lighting.light,m_lighting.shadow,
+                                         m_lighting.contrast/100.0);
+    }
+
+    QPointer<KisCanvasResourceProvider> m_provider;
+    Lighting &m_lighting;
+    QPointer<MobileLightingSphere> m_floating;
+    MobileLightingSphere *m_sphere=nullptr;
+    MobileHueWheel *m_wheel=nullptr;
+    QLineEdit *m_hex=nullptr;
+    MobileTouchSlider *m_values[3]{};
+    QLabel *m_labels[3]{};
+    int m_hue=0;
 };
 
 class MobileColorWorkspace final : public QFrame
