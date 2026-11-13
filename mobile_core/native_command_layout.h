@@ -26,6 +26,8 @@
 #include <QScrollArea>
 #include <QScopedValueRollback>
 #include <QTimer>
+#include <QTabBar>
+#include <QSet>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QVector>
@@ -836,30 +838,61 @@ private:
         QDialog dialog(parent);
         dialog.setWindowTitle(QObject::tr("Add command"));
         auto *layout=new QVBoxLayout(&dialog);
+        auto *tabs=new QTabBar(&dialog);
+        tabs->addTab(QObject::tr("Common Tools"));
+        tabs->addTab(QObject::tr("All Tools"));
+        tabs->setStyleSheet(QStringLiteral("QTabBar::tab{min-height:42px;padding:0 12px;}"));
+        layout->addWidget(tabs);
         auto *search=new QLineEdit(&dialog);
         search->setPlaceholderText(QObject::tr("Search commands"));
         search->setClearButtonEnabled(true);
+        search->setMinimumHeight(42);
         layout->addWidget(search);
         auto *list=new QListWidget(&dialog);
         list->setStyleSheet(QStringLiteral("QListWidget::item{min-height:42px;padding:4px;}"));
         MobileTouchScroll::configureList(list);
         layout->addWidget(list,1);
+        static const QSet<QString> commonNative={
+            QStringLiteral("KritaSelected/KisToolColorSampler"),
+            QStringLiteral("KritaFill/KisToolFill"),
+            QStringLiteral("KritaFill/KisToolGradient"),
+            QStringLiteral("KisToolSelectOutline"),
+            QStringLiteral("KisToolSelectRectangular"),
+            QStringLiteral("KisToolSelectContiguous"),
+            QStringLiteral("KritaTransform/KisToolMove"),
+            QStringLiteral("KisToolTransform"),
+            QStringLiteral("KisToolCrop"),
+            QStringLiteral("mirror_canvas"),
+            QStringLiteral("deselect")
+        };
         for(auto command=m_commands.cbegin();command!=m_commands.cend();++command) {
             if(!command.value() || existing.contains(command.key()))continue;
             QString name=command.value()->text();
             name.remove(QLatin1Char('&'));
             if(name.isEmpty())continue;
             auto *item=new QListWidgetItem(command.value()->icon(),name,list);
-            item->setData(Qt::UserRole,command.key());
+            const QString &id=command.key();
+            item->setData(Qt::UserRole,id);
+            // Studio commands use unprefixed IDs, so new custom commands
+            // automatically appear in Common Tools.
+            item->setData(Qt::UserRole+1,!id.startsWith(QStringLiteral("krita/")) ||
+                                        commonNative.contains(id.mid(6)));
         }
         list->sortItems();
-        QObject::connect(search,&QLineEdit::textChanged,&dialog,[list](const QString &term) {
+        const auto filter=[tabs,search,list]() {
+            const QString term=search->text().trimmed();
+            const bool common=tabs->currentIndex()==0;
             for(int i=0;i<list->count();++i) {
                 auto *item=list->item(i);
-                item->setHidden(!item->text().contains(term,Qt::CaseInsensitive) &&
-                    !item->data(Qt::UserRole).toString().contains(term,Qt::CaseInsensitive));
+                const bool matches=item->text().contains(term,Qt::CaseInsensitive) ||
+                    item->data(Qt::UserRole).toString().contains(term,Qt::CaseInsensitive);
+                item->setHidden(!matches || (common && !item->data(Qt::UserRole+1).toBool()));
             }
-        });
+            list->scrollToTop();
+        };
+        QObject::connect(tabs,&QTabBar::currentChanged,&dialog,filter);
+        QObject::connect(search,&QLineEdit::textChanged,&dialog,filter);
+        filter();
         QString selected;
         QObject::connect(list,&QListWidget::itemClicked,&dialog,[&](QListWidgetItem *item) {
             selected=item->data(Qt::UserRole).toString();
@@ -869,6 +902,12 @@ private:
         layout->addWidget(cancel);
         QObject::connect(cancel,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
         dialog.resize(parent->width(),parent->height());
+        search->setFocus(Qt::OtherFocusReason);
+#ifdef Q_OS_ANDROID
+        QTimer::singleShot(0,search,[search]() {
+            if(search->hasFocus())QGuiApplication::inputMethod()->show();
+        });
+#endif
         return dialog.exec()==QDialog::Accepted?selected:QString();
     }
 

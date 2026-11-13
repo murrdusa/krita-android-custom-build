@@ -12,6 +12,8 @@ The brush picker links directly to Advanced Brush Settings. Move to Category lis
 
 The horizontal Layers rail uses narrow rotated cards with rotated previews, badges, and inline controls. Group cards have separate eye and open/closed folder buttons. The folder uses Krita’s native collapsed state.
 
+The toolbar Add picker defaults to Common Tools, including Studio commands, with a searchable All Tools tab. The Add dialog focuses search and requests the Android keyboard.
+
 ## Compact Tools picker
 
 Tools is a nonmodal canvas panel. Pressing its opener again closes it, as with the brush drawer and contextual menus. A press on the canvas or another control dismisses it and continues to the original target. The picker displays all of its tool and command groups in one scroll area. Each tile can be starred independently of activating it, and favorites are saved by native ID and pinned above the groups. Advanced Tool Options remains available from the contextual gear and its existing toolbar command. Back or Escape also dismisses the panel.
