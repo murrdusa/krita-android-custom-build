@@ -2,6 +2,7 @@
 #pragma once
 
 #include <QApplication>
+#include <QEvent>
 #include <QImage>
 #include <QPainter>
 #include <QPointer>
@@ -45,6 +46,10 @@ public:
         setAttribute(Qt::WA_TransparentForMouseEvents);
         setAttribute(Qt::WA_NoSystemBackground);
         setGeometry(parentWidget()->rect());
+        // The drawing view can resize while the stylus is down (fold,
+        // split screen, panel changes). Keep the transparent preview
+        // aligned with the live canvas instead of retaining its old size.
+        parentWidget()->installEventFilter(this);
         m_delay.setSingleShot(true);
         m_delay.setInterval(55);
         connect(&m_delay,&QTimer::timeout,this,[this]() {requestMask();});
@@ -65,6 +70,15 @@ public:
     }
 
 protected:
+    bool eventFilter(QObject *watched,QEvent *event) override
+    {
+        if(watched==parentWidget() && event->type()==QEvent::Resize) {
+            setGeometry(parentWidget()->rect());
+            update();
+        }
+        return QWidget::eventFilter(watched,event);
+    }
+
     void paintEvent(QPaintEvent *) override
     {
         QPainter painter(this);
