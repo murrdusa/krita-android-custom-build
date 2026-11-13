@@ -243,10 +243,10 @@ public:
                 if(auto active=settings())active->setProperty(QStringLiteral("MergedPaint"),enabled);
             });
             connect(m_blurAmount,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),this,[settings](qreal value) {
-                const auto active=settings();
+                auto active=settings();
                 if(!active)return;
                 const auto filter=blurFilter(active);
-                const auto config=blurConfiguration(active,filter);
+                auto config=blurConfiguration(active,filter);
                 if(!config)return;
                 const auto id=filter->id();
                 if(id==QStringLiteral("gaussian blur")) {
@@ -261,11 +261,11 @@ public:
                 active->setProperty(QStringLiteral("Filter/configuration"),config->toXML());
             });
             connect(m_blurAngle,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),this,[settings](qreal value) {
-                const auto active=settings();
+                auto active=settings();
                 if(!active)return;
                 const auto filter=blurFilter(active);
                 if(!filter || filter->id()!=QStringLiteral("motion blur"))return;
-                const auto config=blurConfiguration(active,filter);
+                auto config=blurConfiguration(active,filter);
                 config->setProperty(QStringLiteral("blurAngle"),qRound(value));
                 active->setProperty(QStringLiteral("Filter/configuration"),config->toXML());
             });
@@ -721,7 +721,7 @@ private:
                                                       const KisFilterSP &filter)
     {
         if(!filter)return {};
-        const auto config=filter->defaultConfiguration(settings->resourcesInterface());
+        auto config=filter->defaultConfiguration(settings->resourcesInterface());
         config->fromXML(settings->getString(QStringLiteral("Filter/configuration")),false);
         return config;
     }
