@@ -39,6 +39,35 @@ public:
         return chosen;
     }
 
+    // Opening a recovered version after asynchronous KRA validation is
+    // safe if the complete set of native canvases and the active canvas
+    // are unchanged. Native tab order may change without replacing views.
+    static bool sameRecoveryWorkspace(
+        const QVector<QPointer<QObject>> &expectedViews,
+        const QPointer<QObject> &expectedActive,
+        const QVector<View> &current)
+    {
+        if(expectedViews.size()!=current.size())return false;
+        for(const auto &expected:expectedViews) {
+            if(!expected)return false;
+            int matches=0;
+            for(const auto &entry:current)
+                if(entry.nativeView==expected)++matches;
+            if(matches!=1)return false;
+        }
+        bool activeMatches=!expectedActive;
+        int activeCount=0;
+        for(const auto &entry:current) {
+            if(!entry.nativeView)return false;
+            if(entry.active) {
+                ++activeCount;
+                if(entry.nativeView!=expectedActive)return false;
+                activeMatches=true;
+            }
+        }
+        return activeCount<=1 && activeMatches;
+    }
+
     static bool maySave(const QVector<View> &views,
                         const QPointer<QObject> &view,
                         const QPointer<QObject> &document)
