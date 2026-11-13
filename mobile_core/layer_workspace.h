@@ -2735,7 +2735,7 @@ private:
                                     expanded?i18n("Collapse group"):i18n("Expand group"));
             folder->setCheckable(true);
             folder->setChecked(expanded);
-            connect(folder,&QToolButton::clicked,this,[this,node,folder](bool open) {
+            connect(folder,&QToolButton::clicked,this,[this,node,folder](bool open) mutable {
                 if(auto *groupItem=itemForNode(node)) {
                     groupItem->setExpanded(open);
                     node->setCollapsed(!open);
