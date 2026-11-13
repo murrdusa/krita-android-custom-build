@@ -1072,7 +1072,7 @@ private:
                 choices.prepend(automatic);
                 const int current=qMax(0,choices.indexOf(settings.value(key).toString()));
                 bool accepted=false;
-                QString name=QInputDialog::getItem(alive,i18n("Move brush"),
+                QString name=QInputDialog::getItem(parentWidget(),i18n("Move brush"),
                     i18n("Select a category or type a new name"),choices,current,true,&accepted).trimmed();
                 if(!accepted || name.isEmpty())return;
                 if(name==automatic) {
@@ -1087,6 +1087,9 @@ private:
                     }
                     settings.setValue(key,name);
                 }
+                if(!name.isEmpty())settings.setValue(
+                    QStringLiteral("MobileStudio/brushLastCategory/%1").arg(m_browserSlot),
+                    QStringLiteral("custom/")+name);
                 if(alive && alive->isVisible())refreshList(name);
                 return;
             }
