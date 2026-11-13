@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — reject live preview ABA completion after tolerance returns to same value
+
+- Source commits `38bd4b316c73c0b29283df23469cbee55e0f63dd`, `9af3ad4c29d8f7219ace0fdb79427e01b3050e63`, and `d8c839c7705cebbde3da3cd405fab609763c37dd` require both **request generation and tolerance value** to match before applying completed Fill/contiguous-selection preview masks or accepting a null result. An old background flood-fill may finish after the user drags away from a tolerance and back; matching value alone formerly accepted obsolete data. Old completions now schedule the newest preview. `88563fd8a8e3148491f2c7ed6b96d168b4457619` adds a Qt host regression of the ABA identity policy. Native tool commits and Undo remain unchanged.
+- **Verification:** previous preview cancellation `06ee97872f57787a0f2f54bf50e77085e51179e1` received exact local WSL Android SUCCESS (164.76 MiB, 172,765,222 bytes). The new preview source and added desktop regression require validation; no Fold 6 runtime pass claimed. APK publishing paused.
+
 ## November 13 follow-up — cancel obsolete preview computations on gesture end and mid-job
 
 - Commits `5b6a82e69e82e04828add6a329d3a5f52796d7cc` and `15609e1e7defa2a766df7efe2487b830b82ddb9c`: the live Fill/contiguous-selection preview invalidates its shared worker-generation when destroyed (gesture release, cancellation, tool switch). Workers check staleness after reconstructing source data, after the native flood-fill call, and while producing overlay rows; they stop outdated follow-up work. When a **live** preview changes threshold, all stale exits notify the UI to reset the running flag and request the latest mask, avoiding a stalled preview. Does not change native Fill/selection commit, original seed, or Undo semantics.
