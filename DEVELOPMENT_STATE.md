@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — reject recovery during native view activation gaps
+
+- `6b1bda5c31b215fd1fc3ed5e041c44d88982459c`: `MobileViewIdentityGuard::sameRecoveryWorkspace` requires **exactly one active native canvas** whenever any canvases are open. It still permits an empty view stack. This prevents delayed historical Open Copy from starting during no-active-view tab transitions, or when the view host ambiguously marks more than one canvas active. `dda6ebca5be3251fda4f00e94fb205971e2510a5` adds Qt view-stack regression cases for both states.
+- **Verification:** previous caller fix `1fcae40a370926060698520f45633dc5dc7372bf` has exact PC WSL Android SUCCESS. New guard and Qt regression require new exact-SHA watcher confirmation / host test execution. No phone test or APK publishing.
+
 ## November 13 follow-up — recovery safeguards backing document identity as well as view identity
 
 - Commits `8c984ac8b91da7f28a435c11262dc70ad4cb564e`, `1fcae40a370926060698520f45633dc5dc7372bf`, and `cb9cd0c9acc8ef639e81b11968a4a412f4c16c32`: delayed historical **Open copy** captures the complete Qt-native `ViewSnapshot` set. The shared `sameRecoveryWorkspace` policy now verifies both native view identity and its attached document identity, as well as matching active-view status. This prevents recovery into a reused view widget displaying a different drawing while a large KRA checkpoint is materialized. The Qt view-stack regression now also rejects reused native views with new documents and missing/detached documents; stable multi-canvas, tab reorder and empty workspace remain permitted.
