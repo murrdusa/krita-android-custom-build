@@ -731,7 +731,6 @@ private:
         bool eraser=false;
         bool blend=false;
         bool convertible=false;
-        bool blur=false;
 
         bool supports(int slot) const
         {
@@ -760,9 +759,9 @@ private:
                           engine==QStringLiteral("filter") ||
                           engine==QStringLiteral("deform");
         const bool paint=!eraser && !smudgeOnly && !samplesCanvas && !effect;
-        const bool blur=!eraser && bool(blurFilter(settings));
+        const bool blur=bool(blurFilter(settings));
         return {paint,eraser && !effect,!eraser && (smudgeOnly || samplesCanvas || blur),
-                paint && !settings->getString(QStringLiteral("brush_definition")).isEmpty(),blur};
+                paint && !settings->getString(QStringLiteral("brush_definition")).isEmpty()};
     }
 
     static int paintingFamily(const QString &name)
@@ -909,7 +908,6 @@ private:
             if(!available.supports(m_slot))return false;
             if(m_category==1)return available.eraser;
             if(m_category==2)return available.blend;
-            if(m_category==3)return available.blur;
             if(m_slot==2 && m_category>=9)return available.convertible;
             return true;
         }
@@ -1286,7 +1284,6 @@ private:
         category(i18n("Recent"),-5);
         if(slot==2)category(i18n("Blenders"),2);
         category(i18n("All"),-1);
-        if(slot==2)category(i18n("Blur"),3);
         if(slot==1)category(i18n("Erasers"),1);
         const auto family=[slot,filter,category](const QString &name,int id) {
             if(slot!=2 || filter->hasFamily(id))category(name,id);
