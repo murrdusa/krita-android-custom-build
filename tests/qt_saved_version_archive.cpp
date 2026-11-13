@@ -206,6 +206,46 @@ int main(int argc,char **argv)
     require(!versions.isEmpty() &&
             load(versions.first().path)==load(source),
             "newest saved snapshot was pruned");
+    // Retention must not evict the last recoverable older checkpoint
+    // just because the newest filenames still exist but fail SHA-256.
+    // Migrating an older donor triggers prune without publishing a new
+    // valid latest snapshot, reproducing interrupted/corrupt history.
+    const QString safeRoot=temp.filePath(QStringLiteral("fallback-history"));
+    const QString safeProject=temp.filePath(QStringLiteral("fallback.kra"));
+    const QString donorProject=temp.filePath(QStringLiteral("fallback-donor.kra"));
+    const QByteArray lastGood=QByteArray::fromHex("504b0304")+"last-good";
+    save(donorProject,lastGood);
+    require(MobileSavedVersionArchive::snapshot(donorProject,safeRoot),
+            "create older healthy checkpoint");
+    for(int i=0;i<MobileSavedVersionArchive::maxVersions();++i) {
+        QThread::msleep(2);
+        save(safeProject,QByteArray::fromHex("504b0304")+
+            QByteArray::number(i)+QByteArray("history"));
+        require(MobileSavedVersionArchive::snapshot(safeProject,safeRoot),
+                "create bounded fallback archive");
+    }
+    const auto damagedVersions=MobileSavedVersionArchive::list(
+        safeProject,safeRoot);
+    require(damagedVersions.size()==MobileSavedVersionArchive::maxVersions(),
+            "fill retention quota");
+    for(const auto &candidate:damagedVersions)
+        save(candidate.path,QByteArray("corrupt"));
+    const QString corruptNewest=damagedVersions.first().path;
+    MobileSavedVersionArchive::adoptHistory(
+        donorProject,safeProject,safeRoot);
+    const auto retained=MobileSavedVersionArchive::list(safeProject,safeRoot);
+    require(retained.size()<=MobileSavedVersionArchive::maxVersions() &&
+            QFile::exists(corruptNewest),
+            "retain damaged newest for inspection within quota");
+    bool recoveredGood=false;
+    for(const auto &candidate:retained) {
+        const QString restored=MobileSavedVersionArchive::materializeRecovery(
+            candidate,recover);
+        if(!restored.isEmpty() && load(restored)==lastGood)
+            recoveredGood=true;
+    }
+    require(recoveredGood,
+            "retention must preserve one verified older KRA after newest corruption");
     const QString unsupported=QDir(temp.path()).filePath(
         QStringLiteral("not-a-KRA.kra"));
     save(unsupported,"not-a-valid-zip");
