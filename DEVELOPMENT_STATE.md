@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — protect open recovery drafts from Save As collisions
+
+- Commits `eb614cbde9c792563e298ba67a57ce24c4bb5486`, `3355ad7f778172a34994af81283314d553d2a492`, `e8ee106fe21fc514835c4e2e1c12a277a5bc18eb`, and `e62fb204eab0a81e6f0c601611143ed1ace85f8c`: Save As and Export Copy now compare their destination against both a second canvas's visible project path and its private `_mobileDraftPath` recovery backing file. A recovered/untitled canvas may have `resetPath()` and no visible project filename, but its private copy must remain protected from overwrites. Export Copy also refuses to overwrite the current canvas's own backing draft. Added Qt archive regression for a blank visible path with a live recovered backing path and a noncolliding destination. Fixed its test symbol naming before verification.
+- **Verification:** watcher confirmed the previous Save As active-canvas revision `6d34f4746eb1fe9dc1eead6e7335d909cf7ffc59` SUCCESS, 164.75 MiB (172,752,078 bytes). The new recovery-backing collision revision still needs its exact watcher build; Qt archive test has not been executed here because Qt5 dev libraries are unavailable. On-device Save As, Export Copy, recovered KRA reopen and SAF permissions remain unverified. APK publishing paused.
+
 ## November 13 follow-up — Save As dialog active-canvas binding
 
 - Commit `53b4bc4af7c7f70e1722780b841d18be101a07c5` strengthens `MobileKritaStandaloneDocuments::writeDocument`: Save, Save As and Export Copy require the target document to be the currently active native canvas at invocation, after the image-idle dialog, after the file picker, and just before invoking Krita's writer. Ownership alone was insufficient: another tab could become active during a dialog while the original document remained open, permitting unintended writes to the previously selected project. Canvas switches now cancel that pending save attempt instead of writing to an inactive document.
