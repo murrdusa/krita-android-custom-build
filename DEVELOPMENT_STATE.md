@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — validate drag reorder after source activation
+
+- Commit `6e8ca14ae140af70a1e8f170508b43d73a98b54c`: the native, undoable drag-reorder path for paint layers and ordinary masks rechecks the active image and node manager, source/target membership, actual source parent, destination parent, eligibility, below-sibling identity and parent-cycle safety **after** activating the source layer. Previously these checks ran before activation; a synchronous native selection callback could invalidate the command's destination between validation and Krita's stroke. The selection-mask direct-move path and async clipping wrapper path retain their existing separate handling.
+- **Verification:** version-history changes through `4b4847e7861cc3e9c602cd05e55c07ea3f431b50` have exact watcher Android SUCCESS (164.75 MiB, 172,757,754 bytes). New drag-reorder commit requires its own watcher confirmation. Qt archive regression and Fold 6 mask movement/KRA+Undo runtime remain untested; APK publishing paused.
+
 ## November 13 follow-up — prioritize all verified recovery checkpoints during pruning
 
 - Commits `36ee661bc108496177a73f881a049ed3a6ae669e` and `c8d6d26cb514483a33b8f9a94f2ddbcaa65d3c57`: under a full version-history retention quota with a corrupt newest checkpoint, pruning now protects the newest entry for inspection, reserves the latest verified fallback, **then prioritizes other SHA-256-verified older KRAs before using any remaining slots for damaged or legacy entries**. This prevents corrupt intermediate copies from displacing multiple good checkpoints. Quota-free snapshots still skip expensive hashing. Updated Qt archive regression migrates two distinct intact donor histories into a full corrupted archive and asserts both can be recovered after pruning; recovered temporary copies are cleaned up.
