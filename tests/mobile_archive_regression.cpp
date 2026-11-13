@@ -94,6 +94,13 @@ int main(int argc,char **argv)
                     otherDestination,QString(),recoveredBacking),
                 "Save As must protect both visible and recovered backing paths"))
         return 1;
+    // The active recovered canvas must also reject its own draft
+    // backing file as the new Save As target, even without a named path.
+    if(!require(MobileOpenDocumentDestinationPolicy::sameFile(
+                    recoveredBacking,recoveredBacking) &&
+                !MobileOpenDocumentDestinationPolicy::sameFile(
+                    otherDestination,recoveredBacking),
+                "private recovery source identity for own Save As"))return 1;
     // Save As paths through a linked parent folder must refer to the
     // same not-yet-created file as their canonical destination.
     const QString realFolder=temp.filePath(QStringLiteral("real-folder"));
