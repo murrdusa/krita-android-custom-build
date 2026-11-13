@@ -59,11 +59,18 @@ inline QString closest(const QSettings &settings,const QSize &size)
 
 inline void remember(QSettings &settings,const QString &id,const QSize &size)
 {
+    if(id.isEmpty() || !size.isValid())return;
     auto ids=saved(settings);
-    if(ids.contains(id))return;
-    ids.append(id);
-    settings.setValue(QStringLiteral("MobileStudio/workspaceIds"),ids);
-    settings.setValue(group(id)+QStringLiteral("size"),size);
+    if(!ids.contains(id)) {
+        ids.append(id);
+        settings.setValue(QStringLiteral("MobileStudio/workspaceIds"),ids);
+    }
+    // Existing profiles also need their latest usable viewport size.
+    // Fold-state insets and split-screen dividers can move gradually;
+    // retaining the original dimensions creates redundant profiles
+    // and leaves the customized layout behind.
+    const QString key=group(id)+QStringLiteral("size");
+    if(settings.value(key).toSize()!=size)settings.setValue(key,size);
 }
 
 inline void replace(QSettings &settings,const QString &target,const QSize &size,const QString &source={})
