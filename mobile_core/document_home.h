@@ -555,17 +555,45 @@ private:
     {
         m_restoringVersion=true;
         const auto views=m_engine.openDocuments();
-        const QPointer<QObject> expected=views.isEmpty()?QPointer<QObject>():views.first().nativeView;
-        const bool hadCanvas=bool(expected);
+        QVector<QPointer<QObject>> expectedViews;
+        QPointer<QObject> expectedActive;
+        expectedViews.reserve(views.size());
+        for(const auto &entry:views) {
+            if(!entry.nativeView) {
+                m_restoringVersion=false;
+                return;
+            }
+            expectedViews.append(entry.nativeView);
+            if(entry.active)expectedActive=entry.nativeView;
+        }
         QPointer<MobileDocumentHome> home(this);
-        QThreadPool::globalInstance()->start([home,version,expected,hadCanvas]() {
+        QThreadPool::globalInstance()->start(
+            [home,version,expectedViews,expectedActive]() {
             const QString copy=MobileSavedVersionArchive::materializeRecovery(version);
-            QMetaObject::invokeMethod(qApp,[home,copy,expected,hadCanvas]() {
+            QMetaObject::invokeMethod(qApp,[home,copy,expectedViews,expectedActive]() {
                 const auto current=home?home->m_engine.openDocuments():
                     QVector<MobileEngineBridge::OpenDocument>{};
-                const bool sameCanvas=hadCanvas?
-                    expected && current.size()==1 && current.first().nativeView==expected:
-                    current.isEmpty();
+                // A recovery copy can be opened beside several canvases.
+                // Require the same complete set of live native views and
+                // the same active canvas; do not depend on MDI ordering.
+                bool sameCanvas=home && current.size()==expectedViews.size() &&
+                    (expectedViews.isEmpty() || expectedActive);
+                if(sameCanvas) {
+                    for(const auto &expected:expectedViews) {
+                        if(!expected) {sameCanvas=false;break;}
+                        int matches=0;
+                        for(const auto &entry:current)
+                            if(entry.nativeView==expected)++matches;
+                        if(matches!=1) {sameCanvas=false;break;}
+                    }
+                }
+                if(sameCanvas && expectedActive) {
+                    bool activeMatches=false;
+                    for(const auto &entry:current)
+                        if(entry.active && entry.nativeView==expectedActive)
+                            activeMatches=true;
+                    if(!activeMatches)sameCanvas=false;
+                }
                 const bool opened=home && sameCanvas && !copy.isEmpty() && home->m_files &&
                     home->m_files->openFile(copy);
                 if(!copy.isEmpty())QFile::remove(copy);
