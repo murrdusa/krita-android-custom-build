@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — live multi-layer rail selection
+
+- Commits `463c26ea25227a736f48f8b47484f79797d3aa3b` and `5a04b77a821bb0d5a7ab03820ecb9ee6c7a70bde`: layer rail target selection in an already-active Transform/Move session now runs the same group/child de-duplication as tool entry; the displayed selected rows are synchronized with the actual native target list. This prevents newly tapped nested layers from submitting duplicate transform targets without changing Krita rendering or undo commands. Extended the identity regression for a live-selection update.
+- **Verification:** baseline `dab9b1650f9dd6476f6d0fb54b57e6bce877255c` has confirmed PC Android SUCCESS with 164.74 MiB APK (172,743,814 bytes). The new source commit needs an exact SHA watcher build; Qt-only tests have not been executed in this environment. Fold 6 transform commit/cancel/Undo, mask attachment/ordering, clip groups and KRA roundtrip still need device verification. Publishing paused.
+
 ## November 13 follow-up — nested multi-layer transform targets
 
 - Commits `420341d579763221ef0df56084e6cf14607a88cc` and `0f2575aff11daec5ee7f41d33839d2037762e2f8`: native Transform/Move target normalization now drops selected descendants whenever their containing group/ancestor is also selected. This avoids submitting the same subtree twice to Krita. Independent selected sibling layers remain separate targets. Pure identity regression covers both parent/child orders, nested hidden mask, and siblings.
