@@ -16,6 +16,7 @@
 #include <QCheckBox>
 #include <QCursor>
 #include <QKeyEvent>
+#include <QKeySequenceEdit>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -113,6 +114,7 @@ public:
         m_showSize=settings.value(QStringLiteral("MobileStudio/showSizeSlider"),oldSliders).toBool();
         m_showOpacity=settings.value(QStringLiteral("MobileStudio/showOpacitySlider"),oldSliders).toBool();
         m_fadePanels=settings.value(QStringLiteral("MobileStudio/fadePanels"),true).toBool();
+        m_preventCanvasBack=settings.value(QStringLiteral("MobileStudio/protectCanvasBack"),false).toBool();
         m_idleOpacity=qBound(15,settings.value(QStringLiteral("MobileStudio/idlePanelOpacity"),30).toInt(),90);
         m_fadeDelay=qBound(1,settings.value(QStringLiteral("MobileStudio/panelFadeDelay"),3).toInt(),30);
         m_fadeClock.start();
@@ -140,6 +142,12 @@ public:
             }
         });
         qApp->installEventFilter(this);
+        connect(qApp,&QApplication::focusChanged,this,
+                [this]() {updateCanvasBackProtection();});
+        connect(qGuiApp,&QGuiApplication::focusWindowChanged,this,
+                [this]() {updateCanvasBackProtection();});
+        connect(qGuiApp->inputMethod(),&QInputMethod::visibleChanged,this,
+                [this]() {updateCanvasBackProtection();});
         auto *contextRefresh=new QTimer(this);
         contextRefresh->setSingleShot(true);
         connect(contextRefresh,&QTimer::timeout,this,
@@ -806,6 +814,15 @@ public:
             volume->setChecked(settings.value(
                 QStringLiteral("TabletUi/volumeKeys"),true).toBool());
             form->addRow(volume);
+            auto *protectBack=new QCheckBox(tr("Keep Android Back from leaving the canvas"),body);
+            protectBack->setChecked(settings.value(
+                QStringLiteral("MobileStudio/protectCanvasBack"),false).toBool());
+            form->addRow(protectBack);
+            connect(protectBack,&QCheckBox::toggled,&dialog,[this](bool enabled) {
+                QSettings().setValue(QStringLiteral("MobileStudio/protectCanvasBack"),enabled);
+                m_preventCanvasBack=enabled;
+                updateCanvasBackProtection();
+            });
             QObject::connect(volume,&QCheckBox::toggled,&dialog,[](bool enabled) {
                 QSettings().setValue(QStringLiteral("TabletUi/volumeKeys"),enabled);
             });
@@ -905,7 +922,7 @@ public:
                 [this,canvas,id=entry.first,layers](const QRect &rect,bool rotate) {
                     m_layoutPanelsDirty=true;
                     m_panelPlacements.insert(id,MobileCanvasLayoutEditor::relative(
-                        rect,canvas->rect().adjusted(2,2,-2,-2)));
+                        rect,MobileNativeCommandLayout::controlBounds(canvas)));
                     if(layers && rotate) {
                         m_layersHorizontal=!m_layersHorizontal;
 
@@ -1193,9 +1210,117 @@ public:
         });
     }
 
+    void bindKeyboardCommands(const QMap<QString,QPointer<QAction>> &commands)
+    {
+        QSettings settings;
+        settings.beginGroup(QStringLiteral("MobileStudio/keyboardShortcuts"));
+        for(auto it=commands.cbegin();it!=commands.cend();++it) {
+            QAction *action=it.value();
+            if(!action || m_keyboardCommands.values().contains(action))continue;
+            m_keyboardCommands.insert(it.key(),action);
+            m_defaultKeys.insert(it.key(),action->shortcuts());
+            if(settings.contains(it.key()))
+                action->setShortcuts(QKeySequence::listFromString(settings.value(it.key()).toString()));
+        }
+    }
+
+    void openKeyboardSettings()
+    {
+        if(!m_host)return;
+        QDialog dialog(m_host);
+        dialog.setWindowTitle(tr("Keyboard shortcuts"));
+        MobileTouchScroll::styleMenuDialog(dialog,QSize(460,560));
+        auto *layout=new QVBoxLayout(&dialog);
+        auto *search=new QLineEdit(&dialog);
+        search->setPlaceholderText(tr("Search commands"));
+        layout->addWidget(search);
+        auto *list=new QListWidget(&dialog);
+        MobileTouchScroll::configureList(list);
+        list->setStyleSheet(QStringLiteral("QListWidget::item{min-height:42px;}"));
+        layout->addWidget(list,1);
+        const auto caption=[](QAction *action) {
+            QString name=action->text();
+            name.remove(QLatin1Char('&'));
+            return name.trimmed();
+        };
+        const auto label=[&](QAction *action) {
+            const QString keys=QKeySequence::listToString(action->shortcuts(),QKeySequence::NativeText);
+            return keys.isEmpty()?caption(action):tr("%1 · %2").arg(caption(action),keys);
+        };
+        for(auto it=m_keyboardCommands.cbegin();it!=m_keyboardCommands.cend();++it) {
+            if(!it.value() || caption(it.value()).isEmpty())continue;
+            auto *row=new QListWidgetItem(label(it.value()),list);
+            row->setData(Qt::UserRole,it.key());
+        }
+        list->sortItems();
+        connect(search,&QLineEdit::textChanged,&dialog,[list](const QString &query) {
+            for(int i=0;i<list->count();++i)
+                list->item(i)->setHidden(!list->item(i)->text().contains(query,Qt::CaseInsensitive));
+        });
+        connect(list,&QListWidget::itemClicked,&dialog,[&](QListWidgetItem *item) {
+            const QString id=item->data(Qt::UserRole).toString();
+            const auto action=m_keyboardCommands.value(id);
+            if(!action)return;
+            QDialog editor(&dialog);
+            editor.setWindowTitle(caption(action));
+            MobileTouchScroll::styleMenuDialog(editor,QSize(390,260));
+            auto *body=new QVBoxLayout(&editor);
+            body->addWidget(new QLabel(tr("Press a shortcut on your keyboard."),&editor));
+            auto *keys=new QKeySequenceEdit(action->shortcut(),&editor);
+            body->addWidget(keys);
+            auto *error=new QLabel(&editor);
+            error->setWordWrap(true);
+            body->addWidget(error);
+            auto *buttons=new QDialogButtonBox(QDialogButtonBox::Save|QDialogButtonBox::Cancel,&editor);
+            auto *clear=buttons->addButton(tr("Clear"),QDialogButtonBox::ResetRole);
+            auto *reset=buttons->addButton(tr("Default"),QDialogButtonBox::ResetRole);
+            body->addWidget(buttons);
+            connect(buttons,&QDialogButtonBox::rejected,&editor,&QDialog::reject);
+            const auto save=[&](const QList<QKeySequence> &shortcuts,bool defaults) {
+                if(!action)return;
+                for(auto other:m_keyboardCommands) {
+                    if(!other || other==action)continue;
+                    for(const auto &key:shortcuts) {
+                        for(const auto &existing:other->shortcuts()) {
+                            if(key.matches(existing)==QKeySequence::NoMatch &&
+                               existing.matches(key)==QKeySequence::NoMatch)continue;
+                            error->setText(tr("Already assigned to %1.").arg(caption(other)));
+                            return;
+                        }
+                    }
+                }
+                QSettings settings;
+                const QString key=QStringLiteral("MobileStudio/keyboardShortcuts/")+id;
+                if(defaults)settings.remove(key);
+                else settings.setValue(key,QKeySequence::listToString(shortcuts));
+                action->setShortcuts(shortcuts);
+                editor.accept();
+            };
+            connect(clear,&QPushButton::clicked,&editor,[&]() {save({},false);});
+            connect(reset,&QPushButton::clicked,&editor,[&]() {save(m_defaultKeys.value(id),true);});
+            connect(buttons,&QDialogButtonBox::accepted,&editor,[&]() {
+                auto shortcuts=action?action->shortcuts():QList<QKeySequence>();
+                if(!shortcuts.isEmpty())shortcuts.removeFirst();
+                if(!keys->keySequence().isEmpty()) {
+                    shortcuts.removeAll(keys->keySequence());
+                    shortcuts.prepend(keys->keySequence());
+                }
+                save(shortcuts,false);
+            });
+            keys->setFocus();
+            if(editor.exec()==QDialog::Accepted && action)item->setText(label(action));
+        });
+        auto *done=new QPushButton(tr("Done"),&dialog);
+        connect(done,&QPushButton::clicked,&dialog,&QDialog::accept);
+        layout->addWidget(done);
+        done->setFocus();
+        dialog.exec();
+    }
+
     void refresh()
     {
         if(!m_host)return;
+        updateCanvasBackProtection();
         syncPanelActions();
         syncBrushModes();
         syncReferenceShortcut();
@@ -1262,6 +1387,14 @@ protected:
             scheduleOverlayPlacement();
         }
         const auto type=event->type();
+        if(m_canvasBackProtected && (type==QEvent::KeyPress || type==QEvent::KeyRelease) &&
+           static_cast<QKeyEvent*>(event)->key()==Qt::Key_Back)
+            return true;
+        if(type==QEvent::Show || type==QEvent::Hide) {
+            const auto *widget=qobject_cast<QWidget*>(watched);
+            if(widget && (widget->isWindow() || widget==m_host))
+                QTimer::singleShot(0,this,[this]() {updateCanvasBackProtection();});
+        }
         if(handleEyedropperInput(watched,event))return true;
         if(!m_canvasLayoutEditing && m_host && (type==QEvent::MouseButtonPress || type==QEvent::MouseButtonDblClick ||
                       type==QEvent::TabletPress || type==QEvent::TouchBegin)) {
@@ -1300,6 +1433,19 @@ protected:
     }
 
 private:
+    void updateCanvasBackProtection()
+    {
+        const bool enabled=m_preventCanvasBack && m_host && m_host->nativeViewPort() &&
+            m_host->nativeViewPort()->currentDocument() &&
+            m_host->isVisible() && QGuiApplication::applicationState()==Qt::ApplicationActive &&
+            !QApplication::activeModalWidget() && !QApplication::activePopupWidget() &&
+            !QGuiApplication::inputMethod()->isVisible();
+        if(enabled==m_canvasBackProtected)return;
+        m_canvasBackProtected=enabled;
+        QAndroidJniObject::callStaticMethod<void>("org/krita/android/MainActivity",
+            "setCanvasBackProtection","(Z)V",jboolean(enabled));
+    }
+
     QList<QPair<QString,QWidget*>> editablePanels() const
     {
         return {{QStringLiteral("layers"),m_layers.data()},
@@ -2034,7 +2180,7 @@ private:
         const QScopedValueRollback<bool> placing(m_overlayPlacementInProgress,true);
         QWidget *canvas=m_host?m_host->nativeCanvas():nullptr;
         if(!canvas || m_canvasLayoutEditing)return;
-        const QRect canvasBounds=canvas->rect().adjusted(2,2,-2,-2);
+        const QRect canvasBounds=MobileNativeCommandLayout::controlBounds(canvas);
         if(!canvasBounds.isValid())return;
         QList<QRect> obstacles;
         for(auto *toolbar:canvas->findChildren<QFrame*>(QString(),Qt::FindDirectChildrenOnly))
@@ -2209,6 +2355,10 @@ private:
         settings.sync();
     }
     QPointer<MobileLightweightCanvasHost> m_host;
+    QMap<QString,QPointer<QAction>> m_keyboardCommands;
+    QMap<QString,QList<QKeySequence>> m_defaultKeys;
+    bool m_preventCanvasBack=false;
+    bool m_canvasBackProtected=false;
     MobileEngineBridge m_engine;
     QPointer<KoToolDocker> m_toolOptions;
     QPointer<QDockWidget> m_textFormatting;

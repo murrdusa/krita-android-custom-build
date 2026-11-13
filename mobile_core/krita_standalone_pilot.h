@@ -124,6 +124,7 @@ public:
         commandsAction->setObjectName(QStringLiteral("mobileBrowseCommands"));
         auto *settingsAction=makeAction("Workspace Settings");
         auto *inputAction=makeAction("Touch, Pressure & Buttons");
+        auto *keyboardAction=makeAction("Keyboard shortcuts");
         const auto studioIcon=[](const char *name) {
             return QIcon(QStringLiteral(":/light_%1.svg").arg(QString::fromLatin1(name)));
         };
@@ -198,6 +199,9 @@ public:
                          [workspace]() {workspace->openSettings();});
         QObject::connect(inputAction,&QAction::triggered,window,
                          [workspace]() {workspace->openInputSettings();});
+        QObject::connect(keyboardAction,&QAction::triggered,window,[workspace]() {
+            QTimer::singleShot(0,workspace,[workspace]() {workspace->openKeyboardSettings();});
+        });
         workspace->bindVolumeHistory(undoAction,redoAction);
         // Krita's selection manager already provides these native,
         // undoable actions. Expose them directly rather than inventing
@@ -426,7 +430,7 @@ public:
             moreActions.append(filtersMenu->menuAction());
         moreActions.append(commandsAction);
         auto *preferences=new QMenu(QObject::tr("Settings"),window);
-        preferences->addActions({settingsAction,colorOptionsAction,inputAction});
+        preferences->addActions({settingsAction,colorOptionsAction,inputAction,keyboardAction});
         moreActions.append(preferences->menuAction());
         moreActions.append(exitAction);
         MobileNativeCommandLayout::Commands toolbarCommands;
@@ -447,10 +451,13 @@ public:
             {"close",closeAction},{"canvas-only",canvasOnlyAction},
             {"clone-source",cloneSourceAction},{"input-settings",inputAction},
             {"workspace-settings",settingsAction},{"color-options",colorOptionsAction},
-            {"commands",commandsAction}
+            {"commands",commandsAction},{"keyboard-shortcuts",keyboardAction}
         };
         for(const auto &entry:studioCommands)
             toolbarCommands.insert(QString::fromLatin1(entry.first),entry.second);
+        for(const auto &entry:studioCommands)
+            if(!window->actions().contains(entry.second))window->addAction(entry.second);
+        workspace->bindKeyboardCommands(toolbarCommands);
         setStudioIcon(optionsAction,"paintop_settings_02");
         auto *commandLayout=MobileNativeCommandLayout::install(window,homeAction,studioIcon("configure-thicker"),
             toolbarCommands,{"paint","erase","blend","tool-settings","color",
@@ -495,6 +502,9 @@ public:
         }
 
         auto *home=new MobileDocumentHome(nativeBridge,services.documents,window);
+        home->setDisplayMargins([](const QWidget *widget) {
+            return MobileNativeCommandLayout::cameraMargins(widget);
+        });
         QObject::connect(newAction,&QAction::triggered,window,
                          [alive,nativeBridge]() {
             // New canvas now uses the same configurable native document

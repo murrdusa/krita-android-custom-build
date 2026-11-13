@@ -1259,8 +1259,11 @@ install(FILES org.kde.krita.desktop''',
     gradle=one(gradle,
         '    exclude "mlt-7/**"\n',
         '    exclude "mlt-7/**", "libkrita_${abi}.so", '
-        '"libgettextlib*.so", "libgettextsrc*.so"\n',
-        "Skip the obsolete launcher and gettext command-line libraries")
+        '"libgettextlib*.so", "libgettextsrc*.so"\n'
+        '    // The versioned OpenEXR libraries provide the runtime SONAMEs.\n'
+        '    exclude "libOpenEXR.so", "libOpenEXRCore.so", "libOpenEXRUtil.so",\n'
+        '            "libIex.so", "libIlmThread.so", "libImath.so"\n',
+        "Skip obsolete or redundant native libraries")
     gradle=one(gradle,
         '''    from "$installPrefix/share/"
     into 'assets/'
@@ -1577,6 +1580,74 @@ install(FILES org.kde.krita.desktop''',
     # URI extraction to include Android's single-file Share operation.
     activityfile=root/"packaging/android/apk/src/org/krita/android/MainActivity.java"
     activity=activityfile.read_text(encoding="utf-8")
+    activity=one(activity,
+        '''        super.onCreate(savedInstanceState);
+        tabletPermissionActivity = this;''',
+        '''        android.view.WindowManager.LayoutParams windowParams = getWindow().getAttributes();
+        if (Build.VERSION.SDK_INT >= 28) {
+            windowParams.layoutInDisplayCutoutMode = Build.VERSION.SDK_INT >= 30
+                ? android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                : android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            getWindow().setAttributes(windowParams);
+        }
+        super.onCreate(savedInstanceState);
+        tabletPermissionActivity = this;''',
+        "Allow the Android drawing surface to extend around the camera cutout")
+    activity=one(activity,
+        '''        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (!JNIWrappers.hasMainWindowLoaded()) {''',
+        '''        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (protectCanvasBack) return true;
+            if (!JNIWrappers.hasMainWindowLoaded()) {''',
+        "Consume legacy Android Back while canvas protection is active")
+    activity=one(activity,
+        "    public boolean isInFullScreen() {",
+        '''    public static long studioCutoutInsets() {
+        MainActivity activity = tabletPermissionActivity;
+        if (activity == null || Build.VERSION.SDK_INT < 28) return 0;
+        android.view.WindowInsets insets = activity.getWindow().getDecorView().getRootWindowInsets();
+        android.view.DisplayCutout cutout = insets == null ? null : insets.getDisplayCutout();
+        if (cutout == null) return 0;
+        return ((long) cutout.getSafeInsetLeft() << 48)
+            | ((long) cutout.getSafeInsetTop() << 32)
+            | ((long) cutout.getSafeInsetRight() << 16)
+            | cutout.getSafeInsetBottom();
+    }
+
+    private boolean protectCanvasBack = false;
+    private Object canvasBackCallback;
+
+    public static void setCanvasBackProtection(boolean enabled) {
+        MainActivity activity = tabletPermissionActivity;
+        if (activity == null) return;
+        activity.runOnUiThread(() -> {
+            if (activity.protectCanvasBack == enabled) return;
+            activity.protectCanvasBack = enabled;
+            if (Build.VERSION.SDK_INT >= 33) activity.updateCanvasBackCallback(enabled);
+        });
+    }
+
+    @RequiresApi(api = 33)
+    private void updateCanvasBackCallback(boolean enabled) {
+        if (enabled) {
+            android.window.OnBackInvokedCallback callback = () -> {};
+            canvasBackCallback = callback;
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback);
+        } else if (canvasBackCallback != null) {
+            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(
+                (android.window.OnBackInvokedCallback) canvasBackCallback);
+            canvasBackCallback = null;
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (!protectCanvasBack) super.onBackPressed();
+    }
+
+    public boolean isInFullScreen() {''',
+        "Optionally keep Android Back from exiting the drawing canvas")
     activity=one(activity,
         '''            Uri fileUri = intent.getData();
             if (fileUri != null) {''',

@@ -19,6 +19,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMainWindow>
+#include <QMargins>
 #include <QMap>
 #include <QMenu>
 #include <QPointer>
@@ -33,6 +34,7 @@
 #include <QVector>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QtMath>
 #include "touch_scroll.h"
 #include "touch_action_picker.h"
 #include "workspace_profiles.h"
@@ -40,6 +42,9 @@
 #include "canvas_layout_editor.h"
 #include "overlay_placement.h"
 #include "toolbar_drag_gesture.h"
+#ifdef Q_OS_ANDROID
+#include <QAndroidJniObject>
+#endif
 
 class MobileNativeCommandLayout final : public QObject
 {
@@ -209,7 +214,29 @@ public:
     {
         if(!canvas)return {};
         const QVariant saved=canvas->property(overlayBoundsProperty());
-        return saved.isValid()?saved.toRect():canvas->rect().adjusted(2,2,-2,-2);
+        return saved.isValid()?saved.toRect():controlBounds(canvas);
+    }
+
+    static QMargins cameraMargins(const QWidget *widget)
+    {
+#ifdef Q_OS_ANDROID
+        const quint64 insets=QAndroidJniObject::callStaticMethod<jlong>(
+            "org/krita/android/MainActivity","studioCutoutInsets","()J");
+        const qreal scale=widget->devicePixelRatioF();
+        return QMargins(qCeil(((insets>>48)&0xffff)/scale),
+                        qCeil(((insets>>32)&0xffff)/scale),
+                        qCeil(((insets>>16)&0xffff)/scale),
+                        qCeil((insets&0xffff)/scale));
+#else
+        Q_UNUSED(widget);
+        return {};
+#endif
+    }
+
+    static QRect controlBounds(const QWidget *canvas)
+    {
+        const QRect inset=canvas->rect().marginsRemoved(cameraMargins(canvas));
+        return (inset.isValid()?inset:canvas->rect()).adjusted(2,2,-2,-2);
     }
 
     static int panelTopInset(QWidget *canvas)
@@ -544,7 +571,7 @@ private:
             targets.append({frame,vertical?QSize(minimumBreadth,minimumLength):
                                            QSize(minimumLength,minimumBreadth),true,
                 [this,canvas,index,strip,vertical](const QRect &rect,bool rotate) {
-                    const QRect bounds=canvas->rect().adjusted(2,2,-2,-2);
+                    const QRect bounds=controlBounds(canvas);
                     auto &bar=m_bars[index];
                     const bool finalVertical=vertical!=rotate;
                     const int target=qBound(30,(finalVertical?rect.width():rect.height())-4-strip,72);
@@ -576,7 +603,7 @@ private:
     {
         if(m_editor)return;
         auto *canvas=static_cast<QWidget*>(parent());
-        const QRect bounds=canvas->rect().adjusted(2,2,-2,-2);
+        const QRect bounds=controlBounds(canvas);
         if(!bounds.isValid())return;
         QRect usable=bounds;
         if(m_builtin && adaptiveTarget(bounds)!=m_bars.first().target) {
@@ -780,7 +807,7 @@ private:
         m_toolbar->setStyleSheet(toolbarStyle(m_bars.first()));
         auto &main=m_bars.first();
         if(m_builtin) {
-            main.target=adaptiveTarget(static_cast<QWidget*>(parent())->rect().adjusted(2,2,-2,-2));
+            main.target=adaptiveTarget(controlBounds(static_cast<QWidget*>(parent())));
             main.icon=qBound(16,main.target-11,26);
             main.spacing=0;
         }

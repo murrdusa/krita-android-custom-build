@@ -7,6 +7,8 @@
 #pragma once
 #ifdef Q_OS_ANDROID
 
+#include <functional>
+#include <utility>
 #include <QAbstractItemView>
 #include <QAndroidJniObject>
 #include <QAndroidJniEnvironment>
@@ -16,6 +18,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QMenu>
+#include <QMargins>
 #include <QDir>
 #include <QDirIterator>
 #include <QElapsedTimer>
@@ -350,6 +353,7 @@ public:
     {
         showList(m_mode==AllProjects?AllProjects:Recent);
         setGeometry(parentWidget()->rect());
+        if(m_displayMargins)setContentsMargins(m_displayMargins(this));
         show();
         raise();
         scheduleThumbnails();
@@ -361,6 +365,11 @@ public:
                 if(isVisible() && !hasAllFilesAccess())requestSearchAccess();
             });
         }
+    }
+
+    void setDisplayMargins(std::function<QMargins(const QWidget*)> margins)
+    {
+        m_displayMargins=std::move(margins);
     }
 
     void showSavedVersions(const QString &path)
@@ -428,12 +437,14 @@ protected:
     {
         if(watched==parentWidget() && event->type()==QEvent::Resize) {
             setGeometry(parentWidget()->rect());
+            if(m_displayMargins)setContentsMargins(m_displayMargins(this));
             scheduleThumbnails();
         }
         return QFrame::eventFilter(watched,event);
     }
 
 private:
+    std::function<QMargins(const QWidget*)> m_displayMargins;
     enum Mode {Recent,AllProjects,RecoveryDrafts};
     enum SortOrder {Newest,Name,Starred};
     struct Project {
