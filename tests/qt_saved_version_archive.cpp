@@ -310,6 +310,9 @@ int main(int argc,char **argv)
     save(privateMetadata,savedAssociation);
     require(MobileDraftRecovery::projectFor(draft)==source,
             "restore private project association after symlink test");
+    require(MobileDraftRecovery::hasProjectDraft(source) &&
+            !MobileDraftRecovery::hasProjectDraft(external),
+            "associated recovery must block deleting its original project");
     const qint64 draftTime=QFileInfo(draft).lastModified().toMSecsSinceEpoch();
     require(MobileDraftRecovery::projectFor(draft)==source &&
             MobileDraftRecovery::checkpointsFor(source,draftTime-1).value(0).absoluteFilePath()==draft &&
@@ -328,6 +331,8 @@ int main(int argc,char **argv)
     QFile::remove(damagedDraft);
     QFile::remove(damagedDraft+QStringLiteral(".project"));
     MobileDraftRecovery::setProject(draft,QString());
+    require(!MobileDraftRecovery::hasProjectDraft(source),
+            "removing recovery association permits original project deletion");
     require(MobileDraftRecovery::projectFor(draft).isEmpty(),
             "an untitled draft must have no project association");
     // Android SAF folder grant (tree URI) vs direct Browse Files (document URI)
