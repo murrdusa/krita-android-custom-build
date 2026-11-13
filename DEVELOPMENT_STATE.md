@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — retain verified recovery history under corruption
+
+- Commits `9d34f0a6f3d31881eb28dc69c0cefe75b5fd3723`, `f33bf291bb5ffcfe432c27bf41b75a0afcd9bbde`, and `2db2c72ae091ec3867723423cc63ff1ac3a2a67a`: history pruning now preserves the newest archive for diagnosis **and** reserves a retention slot for the latest SHA-256-verified older checkpoint if the newest archive is corrupt. A corrupted newest checkpoint can no longer consume the mandatory retention slot while the quota removes the last intact historical version. Checksum sidecars are deleted only when their matching KRA file was removed. Expensive integrity checks are skipped entirely when the archive is within count and byte quotas. Added Qt archive regression that fills the quota with corrupted versions, merges an older valid donor, triggers prune, and verifies the donor remains recoverable while the bad newest entry remains inspectable.
+- **Verification:** new Qt test is committed but has not been executed in this environment; exact Android WSL watcher build for new source remains pending. Previous reorder code has not been assumed validated unless watcher reports its SHA. No phone recovery test or APK upload; publishing paused.
+
 ## November 13 follow-up — one-step reorder sibling anchor identity
 
 - Commit `46b67e816e140394aaf551f8fb625505373b506e`: native Up/Down now records its original sibling count and moving layer index before exiting Transform. Immediately before queuing Krita's undoable layer-move stroke, the code confirms that the child count and moving index are unchanged and the originally computed sibling anchor is **still at its exact expected index**. This closes a race where a native node notification could reorder/insert another sibling during the tool transition while leaving the old anchor attached to the same parent, causing the wrong move. Group/clip reordering keeps its separate native path.
