@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 13, 2026 — checkpoint integrity hardening
+
+- Source commits `c04f51d7fad607649825b4bfd511ea4a66aba134` and `75b9dd642f5527ef869cd42eabe9fc05631cbac8` on `main`: rate-limited history checkpoint requests now verify the *actual archived SHA-256*, not only the syntax of the sidecar digest. A corrupted newest archive (including same-size byte changes) cannot suppress a replacement checkpoint. Added a desktop Qt archive regression specifically for same-size archive corruption during the minimum snapshot interval.
+- **Verification:** last confirmed PC Android watcher SUCCESS is `b24360b76ae2d757954672ae5bace1594360a8c2` at **164.74 MiB** (172,741,650 bytes). The new source/test commit `75b9dd642f5527ef869cd42eabe9fc05631cbac8` reported **pending** when checked. Do not attribute the old APK size to the new commit. `tests/run_mobile_archive_regression.sh` and `tests/run_mobile_native_view_stack_regression.sh` still require execution on a machine with Qt5 development libraries; this session cannot execute them. The local watcher compiles Android but does not establish a desktop Qt test PASS.
+- **Still requires Fold 6 verification:** background/kill recovery and explicit discard; SAF `content://` and Save As; multiple selected layer transform commit/cancel/Undo; masks/group clipping and KRA roundtrip; rapid canvas switches, layout cutouts, and native Fill/Clone previews. No APK uploaded or published.
+
 **Updated:** November 12, 2026. **Branch:** `main` of `murrdusa/krita-android-custom-build`.
 
 Read `AGENTS.md` first, then `PRODUCT-ROADMAP.md` and [local WSL build Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1). This file records *current* status, not a commit-by-commit log. The preceding complete log is preserved verbatim in [DEVELOPMENT_HISTORY_2026-11-11.md](DEVELOPMENT_HISTORY_2026-11-11.md). More focused runbooks live under `mobile_core/`.
