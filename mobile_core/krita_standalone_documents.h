@@ -283,17 +283,20 @@ private:
                 return false;
             }
         }
-        if(exporting) {
-            // Export Copy must not replace either the named project or
-            // the private recovery source of this same open canvas.
-            const QString ownDraft=guardedDocument->property(
-                "_mobileDraftPath").toString();
-            if(MobileOpenDocumentDestinationPolicy::conflictsWithBackingFile(
-                   target,currentPath,ownDraft)) {
-                QMessageBox::warning(m_runtime->window(),QObject::tr("Export a copy"),
-                    QObject::tr("Choose a different file from the open drawing."));
-                return false;
-            }
+        // A recovered canvas can have no visible path even though its
+        // private draft/checkpoint is still open. Neither Save As nor
+        // Export Copy may overwrite that source recovery file.
+        const QString ownDraft=guardedDocument->property(
+            "_mobileDraftPath").toString();
+        if((choosePath && MobileOpenDocumentDestinationPolicy::sameFile(
+                target,ownDraft)) ||
+           (exporting && MobileOpenDocumentDestinationPolicy::sameFile(
+                target,currentPath))) {
+            QMessageBox::warning(m_runtime->window(),
+                exporting?QObject::tr("Export a copy"):QObject::tr("Save drawing"),
+                QObject::tr("Choose a different file from the open drawing "
+                            "or its private recovery copy."));
+            return false;
         }
         // A modeless picker or another UI callback may have activated a
         // different tab since collision scanning; refuse to write the
