@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — one-step reorder sibling anchor identity
+
+- Commit `46b67e816e140394aaf551f8fb625505373b506e`: native Up/Down now records its original sibling count and moving layer index before exiting Transform. Immediately before queuing Krita's undoable layer-move stroke, the code confirms that the child count and moving index are unchanged and the originally computed sibling anchor is **still at its exact expected index**. This closes a race where a native node notification could reorder/insert another sibling during the tool transition while leaving the old anchor attached to the same parent, causing the wrong move. Group/clip reordering keeps its separate native path.
+- **Verification:** previous Clear/Add Mask/Duplicate source `8a2a919111ed7bdab99525191b3723a764b53233` has PC WSL Android SUCCESS at latest watcher check. The new reorder change requires a matching exact SHA build; native Android reorder/Undo and Fold 6 testing not executed. APK publishing paused.
+
 ## November 13 follow-up — Clear, Add Mask and Duplicate target binding
 
 - Commit `8a2a919111ed7bdab99525191b3723a764b53233`: in the tapped-layer actions menu, **Clear**, **Add Mask** and **Duplicate** recheck Krita's active image, node-manager identity, target's image membership, active node and exact single-node native selection after invoking `slotSetSelectedNodes({node})`, before any command runs. The guard prevents synchronous native selection notifications from redirecting destructive Clear, mask attachment or duplication onto a different layer. Krita retains native implementation and Undo.
