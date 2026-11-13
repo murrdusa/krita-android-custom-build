@@ -46,16 +46,26 @@ public:
                                     QLatin1Char('_')+safe+QStringLiteral(".kra"));
     }
 
-    static bool isDraft(const QString &path)
+    // A candidate can be validated before its first checkpoint exists.
+    // Never allow a draft publication or sidecar write to escape the
+    // private recovery directory, even if a caller supplies a bad path.
+    static bool isDraftPath(const QString &path)
     {
         const QString folder=directory();
+        if(folder.isEmpty() || path.isEmpty())return false;
         const QFileInfo file(path);
         const QString name=file.completeBaseName();
-        return !folder.isEmpty() && !file.isSymLink() && file.isFile() &&
-            file.size()>0 && file.absolutePath()==folder &&
-            !path.endsWith(QStringLiteral(".pending.kra")) &&
+        return QDir::cleanPath(file.absolutePath())==QDir::cleanPath(folder) &&
+            !file.isSymLink() &&
             file.suffix()==QStringLiteral("kra") && name.size()>37 &&
-            name.at(36)==QLatin1Char('_') && !QUuid(name.left(36)).isNull();
+            name.at(36)==QLatin1Char('_') && !QUuid(name.left(36)).isNull() &&
+            !path.endsWith(QStringLiteral(".pending.kra"));
+    }
+
+    static bool isDraft(const QString &path)
+    {
+        const QFileInfo file(path);
+        return isDraftPath(path) && file.isFile() && file.size()>0;
     }
 
     // A cheap startup guard, not full ZIP validation. Manual recovery
@@ -92,7 +102,7 @@ public:
 
     static bool setProject(const QString &draft,const QString &project)
     {
-        if(draft.isEmpty())return false;
+        if(!isDraftPath(draft))return false;
         const QString metadata=draft+QStringLiteral(".project");
         if(MobileSavedVersionArchive::canonicalIdentity(project).isEmpty()) {
             return !QFile::exists(metadata) || QFile::remove(metadata);
@@ -106,8 +116,9 @@ public:
 
     static bool publish(const QString &draft,bool exportSucceeded)
     {
-        if(draft.isEmpty())return false;
+        if(!isDraftPath(draft))return false;
         const QString staging=draft+QStringLiteral(".pending.kra");
+        if(QFileInfo(staging).isSymLink())return false;
         if(exportSucceeded && hasReadableProject(staging) &&
            std::rename(QFile::encodeName(staging).constData(),
                        QFile::encodeName(draft).constData())==0)return true;
