@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — save actual in-profile canvas size after toolbar edits
+
+- Commits `d99aa01c85f79e7277a8baff88501e6be0459510` and `a75ac7a19d302b0ed395ceedd492a0344ecb33b1`: the toolbar save path no longer always passes the stale viewport cached at the most recent workspace switch. When the canvas has resized *within* the same profile/orientation, `saveBars` persists the current viewport dimensions; for an incompatible folded/landscape/split-screen size awaiting a delayed profile switch, it preserves the old profile's dimensions instead of overwriting them. This completes the preceding existing-profile `remember()` update without mixing independent layouts. Commit `19a2edc4acfb40941f473942805775ec7ca8f302` tests small resize acceptance and cross-profile rejection.
+- **Verification:** preceding profile persistence source `ecc5d2970d5a631261a431a309194a4b6917ecfd` received exact WSL Android SUCCESS (164.76 MiB, 172,766,266 bytes). New toolbar save source requires exact WSL build and host Qt regression execution. Fold 6 runtime checking remains pending; APK publishing paused.
+
 ## November 13 follow-up — persist updated dimensions for customized workspace profiles
 
 - Commit `1565d4cdcea92e8ce03288db9600f06f612b5b82`: `MobileWorkspaceProfiles::remember` no longer ignores the current viewport size for an existing workspace ID. Saving the layout after modest foldable/split-screen/inset changes now refreshes the profile's size while keeping its ID and toolbar/panel settings, so future layout matching does not strand customizations at old dimensions or generate unnecessary new profiles. Invalid sizes and blank IDs do not change persistent settings. Commit `d1bcbde5abc52fc2403064a2e886308547db47c2` extends the Qt workspace regression to cover existing profile size updates, preservation of per-profile settings and rejected invalid size.
