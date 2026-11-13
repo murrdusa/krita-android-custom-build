@@ -1823,8 +1823,15 @@ private:
             for(KisNodeSP child=container->firstChild();child;
                 child=child->nextSibling()) {
                 if(isCompactClipWrapper(child)) {
+                    // Source and destination parents may overlap (for
+                    // example, dragging from a group into its ancestor).
+                    // A wrapper reached through both walks must still be
+                    // ungrouped exactly once. Keep child-before-parent
+                    // order for the native asynchronous stroke sequence.
+                    if(m_clipPendingWrappers.contains(child))continue;
                     ungroup(child);
-                    m_clipPendingWrappers.append(child);
+                    if(!m_clipPendingWrappers.contains(child))
+                        m_clipPendingWrappers.append(child);
                 }
             }
         };
