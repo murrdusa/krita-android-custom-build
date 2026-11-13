@@ -491,7 +491,11 @@ public:
         if(QFileInfo(digest.fileName()).isSymLink())return {};
         if(digest.exists()) {
             if(!digest.open(QIODevice::ReadOnly))return {};
-            expectedHash=digest.readAll().trimmed().toLower();
+            // A checksum is 64 ASCII hex bytes, optionally followed by
+            // whitespace. Never read an arbitrarily large sidecar into
+            // memory; reject it before allocating or copying the KRA.
+            if(digest.size()>128)return {};
+            expectedHash=digest.read(129).trimmed().toLower();
             if(expectedHash.size()!=64 ||
                !QRegularExpression(QStringLiteral("^[0-9a-f]{64}$"))
                     .match(QString::fromLatin1(expectedHash)).hasMatch())
