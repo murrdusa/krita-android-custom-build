@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — apply bounded checksum policy to background checkpoint verification
+
+- Commit `7288ba54c6bb81c7dcce7759368975340b27f551`: `hasPublishedCheckpoint` now rejects an oversized SHA-256 sidecar before reading it, using the same bounded policy as historical KRA recovery. This verifier is used by autosave rate-limiting and retention; corrupt or replaced metadata no longer entails an unbounded read or an opportunity to treat a damaged checkpoint as safely published. Commit `b861d0c75f406cb8399301e8257b30b6f6eb2f88` extends the host Qt archive regression: a 129-byte sidecar must not suppress a subsequent fresh routine checkpoint within the normal spacing interval.
+- **Verification:** the previous live preview ABA corrections up through `6e400f781eb57a5286b90fb0f0f22531b663aad6` need exact watcher check; checkpoint verifier source requires separate matching WSL Android build. Host Qt regression added but not executed. APK publishing paused.
+
 ## November 13 follow-up — reject live preview ABA completion after tolerance returns to same value
 
 - Source commits `38bd4b316c73c0b29283df23469cbee55e0f63dd`, `9af3ad4c29d8f7219ace0fdb79427e01b3050e63`, and `d8c839c7705cebbde3da3cd405fab609763c37dd` require both **request generation and tolerance value** to match before applying completed Fill/contiguous-selection preview masks or accepting a null result. An old background flood-fill may finish after the user drags away from a tolerance and back; matching value alone formerly accepted obsolete data. Old completions now schedule the newest preview. `88563fd8a8e3148491f2c7ed6b96d168b4457619` adds a Qt host regression of the ABA identity policy. Native tool commits and Undo remain unchanged.
