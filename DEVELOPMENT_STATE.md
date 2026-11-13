@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — prevent stale clipping rebuild timers from affecting later edits
+
+- Commit `7595099b76606fa7b75ca6630df38b6786907c95`: the compact-clip async state machine now advances a transaction generation at the start and end of every rebuild. Timers for sequential ungroup, move settlement, native group completion, and continuation each capture the generation and do nothing if the rebuild was cancelled/finished and another has begun. This closes a race where queued callbacks from a prior failed operation could inspect or mutate a new rebuild on the **same document**, despite image-identity checks passing. Existing Krita Undo and layer commands are unchanged.
+- **Verification:** previous exact-group validation `92853fec51560176027bd20fc5db5293baaff6a4` has local WSL Android SUCCESS (164.76 MiB, 172,762,166 bytes). New generation-guard source requires its own matching watcher build. Native Fold 6 nested clipping, Undo and KRA reopen remain untested. APK publication paused.
+
 ## November 13 follow-up — verify exact children after asynchronous compact clip grouping
 
 - Commit `71f8668cb02a7d7f80f1d6b3e26405070eedda23`: after Krita's native `createQuickGroup()` finishes, `waitCompactClipGroup` now requires the new group's actual direct children to equal the intended **entire ordered** clipping run, with no extra or missing layer/mask, before it renames the group `[Compact Clip]`. This prevents an intervening tree edit from silently converting the wrong group into a Studio-managed clipping wrapper. Existing timeout/abort handling remains in place; no UI redesign.
