@@ -197,7 +197,9 @@ private:
     bool writeDocument(KisDocument *document,bool saveAs,bool exporting) const
     {
         if(!available() || m_saving || !document ||
-           !m_runtime->ownsDocument(document))return false;
+           !m_runtime->ownsDocument(document) ||
+           m_runtime->documentRoot()->currentDocument().data()!=document)
+            return false;
         const QScopedValueRollback<bool> transaction(m_saving,true);
         QPointer<KisDocument> guardedDocument(document);
 
@@ -208,8 +210,10 @@ private:
             m_runtime->window());
         idle.blockIfImageIsBusy();
         if(idle.result()!=KisDelayedSaveDialog::Accepted ||
-           !guardedDocument ||
-           !m_runtime->ownsDocument(guardedDocument))return false;
+           !guardedDocument || !m_runtime ||
+           !m_runtime->ownsDocument(guardedDocument) ||
+           m_runtime->documentRoot()->currentDocument().data()!=guardedDocument.data())
+            return false;
 
         const QString currentPath=guardedDocument->path();
         const QByteArray currentMime=guardedDocument->mimeType();
@@ -243,8 +247,9 @@ private:
             dialog.setMimeTypeFilters(formats,preferred);
             target=dialog.filename();
             if(target.isEmpty() || !guardedDocument ||
-               !m_runtime || !m_runtime->ownsDocument(guardedDocument))
-                return false; // Cancel or different document.
+               !m_runtime || !m_runtime->ownsDocument(guardedDocument) ||
+               m_runtime->documentRoot()->currentDocument().data()!=guardedDocument.data())
+                return false; // Cancel, closed canvas, or different active document.
             QString selected=KisMimeDatabase::mimeTypeForFile(target,false);
             if(!formats.contains(selected))
                 selected=dialog.selectedMimeType();
@@ -255,6 +260,7 @@ private:
 
         if(!guardedDocument || !m_runtime ||
            !m_runtime->ownsDocument(guardedDocument) ||
+           m_runtime->documentRoot()->currentDocument().data()!=guardedDocument.data() ||
            target.isEmpty() || targetMime.isEmpty())return false;
         // With multiple native canvases, a Save As or Export Copy could
         // otherwise overwrite the on-disk project of a different open
@@ -284,6 +290,12 @@ private:
                 return false;
             }
         }
+        // A modeless picker or another UI callback may have activated a
+        // different tab since collision scanning; refuse to write the
+        // old canvas's data when it is no longer the active native view.
+        if(!m_runtime->documentRoot() ||
+           m_runtime->documentRoot()->currentDocument().data()!=guardedDocument.data())
+            return false;
         // Krita's return value only says whether background saving started.
         // A Close → Save must keep the canvas open if the write later fails.
         bool completed=false;
