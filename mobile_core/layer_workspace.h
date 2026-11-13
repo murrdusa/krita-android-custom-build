@@ -1725,11 +1725,17 @@ private:
         for(KisNodeSP p=destination;p;p=p->parent())
             if(p==source)return;
 
+        const KisNodeSP originalParent=source->parent();
         if(!prepareLayerReorder(image) || !inImage(source,image) ||
            !inImage(target,image) || !inImage(destination,image) ||
+           !m_engine.manager() ||
+           m_engine.manager()->image().toStrongRef()!=image ||
+           manager()!=m || source->parent()!=originalParent ||
            logicalParent(source)!=oldParent ||
            destination!=(intoGroup?target:logicalParent(target)) ||
-           !destination->allowAsChild(source))return;
+           !destination->isEditable(false) ||
+           !destination->allowAsChild(source) ||
+           !m->canMoveLayer(source,false))return;
         for(KisNodeSP p=destination;p;p=p->parent())
             if(p==source)return;
         // Plain layer moves do not need the asynchronous clip wrapper
@@ -1740,9 +1746,17 @@ private:
            !hasCompactClipStructure(destination) && !inheritsAlpha(source))) {
             KisNodeSP below=intoGroup?destination->lastChild():
                 (insertAbove?target:target->prevSibling());
-            if(below && below->parent()!=destination)return;
+            if(!m_engine.manager() ||
+               m_engine.manager()->image().toStrongRef()!=image ||
+               !inImage(source,image) || !inImage(destination,image) ||
+               source->parent()!=originalParent ||
+               !destination->isEditable(false) ||
+               !destination->allowAsChild(source) ||
+               !m->canMoveLayer(source,false) ||
+               (below && (below==source || below->parent()!=destination)))
+                return;
             if(source->parent()==destination &&
-               (below==source || below==source->prevSibling()))return;
+               below==source->prevSibling())return;
             if(mask && source->inherits("KisSelectionMask") && source->parent()!=destination) {
                 m->moveNodesDirect(KisNodeList{source},destination,below);
                 return;
@@ -1768,9 +1782,11 @@ private:
                 (insertAbove?target:target->prevSibling());
             for(KisNodeSP parent=destination;parent;parent=parent->parent())
                 if(parent==source)return;
-            if((below && below->parent()!=destination) ||
+            if(!destination->isEditable(false) ||
+               !nodes->canMoveLayer(source,false) ||
+               (below && (below==source || below->parent()!=destination)) ||
                (source->parent()==destination &&
-                (below==source || below==source->prevSibling())))return;
+                below==source->prevSibling()))return;
             m_clipMoveSource=source;
             m_clipExpectedParent=destination;
             m_clipExpectedBelow=below;
