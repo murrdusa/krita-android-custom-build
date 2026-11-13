@@ -26,6 +26,16 @@ inline bool matches(const QSize &a,const QSize &b)
         qAbs(a.height()-b.height())<=qMax(56,b.height()/10);
 }
 
+// Save the actual viewport after an in-profile resize, but do not
+// overwrite an old profile with a different fold/orientation before
+// the delayed workspace switch can complete.
+inline QSize sizeForSave(const QSize &current,const QSize &profile,bool portrait)
+{
+    return current.width()>0 && current.height()>0 &&
+           matches(current,profile) &&
+           portraitDefault(current,portrait)==portrait?current:profile;
+}
+
 inline int toolbarTarget(int available,int commands)
 {
     return qBound(30,(available-2)/qMax(1,commands),44);
