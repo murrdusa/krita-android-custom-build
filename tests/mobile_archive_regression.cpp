@@ -98,6 +98,46 @@ int main(int argc,char **argv)
                         QStringLiteral("new-subfolder/other.kra"))),
                 "distinct Save As destinations must stay independent"))return 1;
 
+    // A destination failure must leave both the user's original and
+    // the last completed archive intact. A regular file blocking the
+    // history directory models inaccessible/full storage without trying
+    // to exhaust real disk space during this regression.
+    const QString blockedRoot=temp.filePath(QStringLiteral("blocked-history"));
+    if(!require(writeBytes(blockedRoot,QByteArray("not a directory")),
+                "create blocked history destination"))return 1;
+    const QByteArray beforeFailedCheckpoint=QByteArray::fromHex("504b0304")+
+        QByteArray("failed archive attempt");
+    if(!require(writeBytes(source,beforeFailedCheckpoint),
+                "prepare changed project for failed checkpoint"))return 1;
+    const auto lastGood=Archive::list(source,root);
+    if(!require(!lastGood.isEmpty(),"retain prior recoverable version"))return 1;
+    const QString goodPath=Archive::materializeRecovery(
+        lastGood.first(),temp.filePath(QStringLiteral("recovery")));
+    QFile goodFile(goodPath);
+    if(!require(!goodPath.isEmpty() && goodFile.open(QIODevice::ReadOnly),
+                "read last good archive before failed publication"))return 1;
+    const QByteArray goodBytes=goodFile.readAll();
+    goodFile.close();
+    if(!require(!Archive::snapshot(source,blockedRoot) &&
+                QFileInfo(source).isFile(),
+                "blocked history destination must reject checkpoint"))return 1;
+    QFile originalAfterFailure(source);
+    if(!require(originalAfterFailure.open(QIODevice::ReadOnly) &&
+                originalAfterFailure.readAll()==beforeFailedCheckpoint,
+                "failed archive write must not modify original KRA"))return 1;
+    const QString afterFailedCheckpoint=Archive::materializeRecovery(
+        Archive::list(source,root).first(),
+        temp.filePath(QStringLiteral("recovery")));
+    QFile lastGoodAfterFailure(afterFailedCheckpoint);
+    if(!require(!afterFailedCheckpoint.isEmpty() &&
+                lastGoodAfterFailure.open(QIODevice::ReadOnly) &&
+                lastGoodAfterFailure.readAll()==goodBytes &&
+                Archive::list(source,root).size()==lastGood.size(),
+                "failed archive write must preserve previous checkpoint"))return 1;
+    if(!require(writeBytes(source,changed) &&
+                Archive::snapshot(source,root),
+                "valid history destination recovers after failed publication"))return 1;
+
     // Periodic autosaves must be rate-limited without overwriting an
     // earlier completed historical version.
     const QString spaced=temp.filePath(QStringLiteral("spaced.kra"));
