@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — reject oversized checkpoint SHA-256 metadata
+
+- Commit `8799cfca779171c6d5aca7f53b8815df72c04dc0`: historical KRA recovery now rejects an oversized SHA-256 checksum sidecar before reading its contents. The reader requires a bounded (at most 128 bytes) hex digest with optional whitespace instead of unbounded `readAll()` from a potentially corrupt or replaced metadata file. A damaged sidecar cannot cause large memory use during restoration; no archive or original project is modified. Commit `ba00d918bf950c6c9643f7cb0a0277a7d429b930` adds a desktop Qt regression for 129-byte checksum rejection and restores the valid metadata for subsequent tests.
+- **Verification:** source committed, exact WSL Android build pending. The Qt test is committed but not run in this session. APK publishing paused.
+
 ## November 13 follow-up — bound historical KRA recovery streaming against file growth
 
 - Commit `8f729eb1d6bf41dd0c81a61eecae3aceaaa470b3`: `materializeRecovery` now enforces both the **initial opened KRA size** and the 8 GiB archive ceiling during each read/write iteration, not only before opening and after the copy completes. If another process grows an archive during recovery, Studio aborts the `QSaveFile` transaction before writing excess data; the existing end-of-copy exact byte count and SHA-256 checks remain in place. The original archive and prior versions are untouched.
