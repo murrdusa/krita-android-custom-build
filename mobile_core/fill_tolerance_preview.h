@@ -194,8 +194,8 @@ private:
                     // The pen may move away from a value and back while
                     // this result is queued. Equal tolerance alone does
                     // not mean this worker still owns the latest request.
-                    if(generation->load(std::memory_order_relaxed)!=request ||
-                       threshold!=preview->m_threshold)
+                    if(!mobileFillPreviewResultCurrent(threshold,preview->m_threshold,
+                                                      request,generation->load(std::memory_order_relaxed)))
                         preview->m_delay.start();
                 },Qt::QueuedConnection);
                 return;
@@ -220,8 +220,8 @@ private:
             QMetaObject::invokeMethod(qApp,[preview,overlay,threshold,generation,request]() {
                 if(!preview)return;
                 preview->m_running=false;
-                if(generation->load(std::memory_order_relaxed)==request &&
-                   threshold==preview->m_threshold) {
+                if(mobileFillPreviewResultCurrent(threshold,preview->m_threshold,
+                                                 request,generation->load(std::memory_order_relaxed))) {
                     preview->m_mask=overlay;
                     preview->update();
                 } else {
