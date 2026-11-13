@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — failed history destination regression
+
+- Commit `9f04ac90dde4b2038aee229f47fcb6800d8f07ee` adds a Qt-only archive regression using a blocked history-directory path. It asserts that checkpoint failure never modifies the original KRA or the last good historical copy, and verifies snapshotting resumes using an accessible destination. This models destination failure, not real disk exhaustion.
+- **PC build:** prior native-view-close/source batch `9e3636729c09ab5874d37329604dd944b36c65d4` reported SUCCESS in Issue #1 (November 13 at 10:44:19 UTC). The new test revision has not yet received confirmed desktop Qt regression execution or an exact matching Android watcher SUCCESS. Check Issue #1 before claiming a new APK size.
+- **Outstanding on-device gates:** true low-disk / provider failures, background recovery and explicit discard, SAF Save As, multi-layer transform commit/cancel/Undo, mask/group KRA round trip, rapid switching during save, UI geometry. Keep APK publishing paused.
+
 ## November 13 follow-up — stale native Close after document switches
 
 - Commits `fd219322ab090efe997d270aca07d1f8cd658f07` and `07427846911bd3c278998782ad2a59b98ced4b1e`: the native view stack now rejects a Close on a view that is no longer the active painting canvas. Added standalone Qt regression coverage verifying that a stale background view Close cannot invoke its save/discard callback or remove the document; a freshly selected view can still close normally.
