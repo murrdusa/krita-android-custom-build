@@ -52,6 +52,10 @@
 #include <KoCompositeOpRegistry.h>
 #include "kis_node.h"
 #include <brushengine/kis_paintop_settings.h>
+#include <filter/kis_filter.h>
+#include <filter/kis_filter_category_ids.h>
+#include <filter/kis_filter_configuration.h>
+#include <filter/kis_filter_registry.h>
 #include <QScrollArea>
 #include <QStyledItemDelegate>
 #include <QRegularExpression>
@@ -122,9 +126,9 @@ public:
         auto *details=new QVBoxLayout(m_controls);
         details->setContentsMargins(0,0,0,0);
         details->setSpacing(4);
-        auto *controlRow=new QHBoxLayout;
-        controlRow->setContentsMargins(0,0,0,0);
-        controlRow->setSpacing(6);
+        auto *sizeAndOpacity=new QBoxLayout(toolSettings?QBoxLayout::TopToBottom:QBoxLayout::LeftToRight);
+        sizeAndOpacity->setContentsMargins(0,0,0,0);
+        sizeAndOpacity->setSpacing(4);
         if(!slidersOnly || toolSettings) {
             m_presetName=new PresetLabel(m_controls);
             details->addWidget(m_presetName);
@@ -136,14 +140,14 @@ public:
         m_size->setSuffix(i18n(" px"));
         m_size->setSingleStep(1);
         m_size->setMinimumHeight(43);
-        controlRow->addWidget(m_size,2);
+        sizeAndOpacity->addWidget(m_size,2);
         m_opacity=new KisDoubleSliderSpinBox(this);
         m_opacity->setRange(0,100,0);
         m_opacity->setPrefix(i18n("Opacity: "));
         m_opacity->setSuffix(QStringLiteral("%"));
         m_opacity->setSingleStep(5);
         m_opacity->setMinimumHeight(43);
-        controlRow->addWidget(m_opacity,2);
+        sizeAndOpacity->addWidget(m_opacity,2);
         if(slidersOnly) {
             for(QWidget *slider:{m_size,m_opacity}) {
                 QPalette colors=slider->palette();
@@ -171,7 +175,7 @@ public:
                     "QAbstractSpinBox{background:transparent;border:0;padding:0 5px;}"));
             }
         }
-        details->addLayout(controlRow);
+        details->addLayout(sizeAndOpacity);
         if(toolSettings) {
             m_flow=new KisDoubleSliderSpinBox(m_controls);
             m_flow->setRange(0,100,0);
@@ -203,10 +207,17 @@ public:
             m_angle=slider(i18n("Tip angle:"),-180,180,QStringLiteral("°"));
             m_smudgeStrength=slider(i18n("Smudge strength:"),0,100,QStringLiteral("%"));
             m_smudgeRadius=slider(i18n("Smudge radius:"),0,300,QStringLiteral("%"));
+            m_blurAmount=slider(i18n("Blur radius:"),0,100,i18n(" px"));
+            m_blurAmount->setExponentRatio(2.0);
+            m_blurAngle=slider(i18n("Blur direction:"),0,360,QStringLiteral("°"));
             m_sampleLayers=new QCheckBox(i18n("Sample merged layers"),m_controls);
             m_sampleLayers->setMinimumHeight(44);
             m_sampleLayers->setStyleSheet(QStringLiteral("color:#f4f4f5;"));
             details->addWidget(m_sampleLayers);
+            m_accumulateBlur=new QCheckBox(i18n("Accumulate blur along stroke"),m_controls);
+            m_accumulateBlur->setMinimumHeight(44);
+            m_accumulateBlur->setStyleSheet(QStringLiteral("color:#f4f4f5;"));
+            details->addWidget(m_accumulateBlur);
             const auto settings=[this]() -> KisPaintOpSettingsSP {
                 auto *provider=resources();
                 const auto preset=provider?provider->currentPreset():KisPaintOpPresetSP{};
@@ -230,6 +241,36 @@ public:
             });
             connect(m_sampleLayers,&QCheckBox::toggled,this,[settings](bool enabled) {
                 if(auto active=settings())active->setProperty(QStringLiteral("MergedPaint"),enabled);
+            });
+            connect(m_blurAmount,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),this,[settings](qreal value) {
+                const auto active=settings();
+                if(!active)return;
+                const auto filter=blurFilter(active);
+                const auto config=blurConfiguration(active,filter);
+                if(!config)return;
+                const auto id=filter->id();
+                if(id==QStringLiteral("gaussian blur")) {
+                    config->setProperty(QStringLiteral("horizRadius"),value);
+                    config->setProperty(QStringLiteral("vertRadius"),value);
+                } else if(id==QStringLiteral("blur")) {
+                    config->setProperty(QStringLiteral("halfWidth"),qRound(value));
+                    config->setProperty(QStringLiteral("halfHeight"),qRound(value));
+                } else if(id==QStringLiteral("motion blur")) {
+                    config->setProperty(QStringLiteral("blurLength"),qRound(value));
+                } else return;
+                active->setProperty(QStringLiteral("Filter/configuration"),config->toXML());
+            });
+            connect(m_blurAngle,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),this,[settings](qreal value) {
+                const auto active=settings();
+                if(!active)return;
+                const auto filter=blurFilter(active);
+                if(!filter || filter->id()!=QStringLiteral("motion blur"))return;
+                const auto config=blurConfiguration(active,filter);
+                config->setProperty(QStringLiteral("blurAngle"),qRound(value));
+                active->setProperty(QStringLiteral("Filter/configuration"),config->toXML());
+            });
+            connect(m_accumulateBlur,&QCheckBox::toggled,this,[settings](bool enabled) {
+                if(auto active=settings())active->setProperty(QStringLiteral("Filter/smudgeMode"),enabled);
             });
         }
         if(toolSettings) {
@@ -380,6 +421,31 @@ public:
                 const double scale=settings->getInt(QStringLiteral("SmudgeRadiusVersion"),1)<2?1:100;
                 m_smudgeRadius->setValue(settings->getBool(QStringLiteral("PressureSmudgeRadius"))?
                     settings->getDouble(QStringLiteral("SmudgeRadiusValue"))*scale:0);
+            }
+        }
+        if(m_blurAmount) {
+            const auto preset=provider->currentPreset();
+            const auto settings=preset?preset->settings():KisPaintOpSettingsSP{};
+            const auto filter=blurFilter(settings);
+            const QString id=filter?filter->id():QString();
+            const bool gaussian=id==QStringLiteral("gaussian blur");
+            const bool basic=id==QStringLiteral("blur");
+            const bool motion=id==QStringLiteral("motion blur");
+            m_blurAmount->setVisible(gaussian || basic || motion);
+            m_blurAngle->setVisible(motion);
+            m_accumulateBlur->setVisible(bool(filter));
+            if(filter)m_accumulateBlur->setChecked(settings->getBool(QStringLiteral("Filter/smudgeMode")));
+            if(gaussian || basic || motion) {
+                const auto config=blurConfiguration(settings,filter);
+                if(config) {
+                    const auto key=gaussian?QStringLiteral("horizRadius"):
+                                   basic?QStringLiteral("halfWidth"):QStringLiteral("blurLength");
+                    const auto amount=config->getDouble(key,5);
+                    m_blurAmount->setPrefix(motion?i18n("Blur length: "):i18n("Blur radius: "));
+                    m_blurAmount->setRange(0,qMax(100.0,amount),gaussian?1:0);
+                    m_blurAmount->setValue(amount);
+                    if(motion)m_blurAngle->setValue(config->getDouble(QStringLiteral("blurAngle")));
+                }
             }
         }
         if(m_composite) {
@@ -643,11 +709,29 @@ private:
         QSettings().setValue(
             QStringLiteral("MobileStudio/brushDetailsExpanded"),expanded);
     }
+    static KisFilterSP blurFilter(const KisPaintOpSettingsSP &settings)
+    {
+        if(!settings || settings->getString(QStringLiteral("paintop"))!=QStringLiteral("filter"))return {};
+        const auto filter=KisFilterRegistry::instance()->get(settings->getString(QStringLiteral("Filter/id")));
+        return filter && filter->supportsPainting() && filter->menuCategory()==FiltersCategoryBlurId?
+            filter:KisFilterSP{};
+    }
+
+    static KisFilterConfigurationSP blurConfiguration(const KisPaintOpSettingsSP &settings,
+                                                      const KisFilterSP &filter)
+    {
+        if(!filter)return {};
+        const auto config=filter->defaultConfiguration(settings->resourcesInterface());
+        config->fromXML(settings->getString(QStringLiteral("Filter/configuration")),false);
+        return config;
+    }
+
     struct PresetCapabilities {
         bool paint=false;
         bool eraser=false;
         bool blend=false;
         bool convertible=false;
+        bool blur=false;
 
         bool supports(int slot) const
         {
@@ -676,8 +760,9 @@ private:
                           engine==QStringLiteral("filter") ||
                           engine==QStringLiteral("deform");
         const bool paint=!eraser && !smudgeOnly && !samplesCanvas && !effect;
-        return {paint,eraser && !effect,!eraser && (smudgeOnly || samplesCanvas),
-                paint && !settings->getString(QStringLiteral("brush_definition")).isEmpty()};
+        const bool blur=!eraser && bool(blurFilter(settings));
+        return {paint,eraser && !effect,!eraser && (smudgeOnly || samplesCanvas || blur),
+                paint && !settings->getString(QStringLiteral("brush_definition")).isEmpty(),blur};
     }
 
     static int paintingFamily(const QString &name)
@@ -824,6 +909,7 @@ private:
             if(!available.supports(m_slot))return false;
             if(m_category==1)return available.eraser;
             if(m_category==2)return available.blend;
+            if(m_category==3)return available.blur;
             if(m_slot==2 && m_category>=9)return available.convertible;
             return true;
         }
@@ -1200,6 +1286,7 @@ private:
         category(i18n("Recent"),-5);
         if(slot==2)category(i18n("Blenders"),2);
         category(i18n("All"),-1);
+        if(slot==2)category(i18n("Blur"),3);
         if(slot==1)category(i18n("Erasers"),1);
         const auto family=[slot,filter,category](const QString &name,int id) {
             if(slot!=2 || filter->hasFamily(id))category(name,id);
@@ -1401,7 +1488,8 @@ private:
     bool m_detailsExpanded=true;
     KisDoubleSliderSpinBox *m_size=nullptr,*m_opacity=nullptr,*m_flow=nullptr;
     KisDoubleSliderSpinBox *m_angle=nullptr,*m_smudgeStrength=nullptr,*m_smudgeRadius=nullptr;
-    QCheckBox *m_sampleLayers=nullptr;
+    KisDoubleSliderSpinBox *m_blurAmount=nullptr,*m_blurAngle=nullptr;
+    QCheckBox *m_sampleLayers=nullptr,*m_accumulateBlur=nullptr;
     QPushButton *m_composite=nullptr;
     const KoColorSpace *m_compositeSpace=nullptr;
     QString m_compositeMode;
