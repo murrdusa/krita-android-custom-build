@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — asynchronous clip-group hierarchy validation
+
+- Commit `0e50408648f2f1c4f60edf444b3f91decd9adae6` adds document/tree revalidation to the asynchronous compact clipping regroup operation. Before native grouping, it checks that the parent and all selected child nodes still belong to the current image, that node-manager identity and Krita move eligibility still hold after activation, and that the children retain their expected parent. Its delayed group rename also refuses a detached parent, child, or group. This is a preventative fix for stale hierarchy mutations during rapid editing or canvas changes.
+- **Verification:** local Qt-free `mobile_layer_identity_regression` repeated: PASS, 14/14 tests using the C++17 compiler (pure transform-selection policy, not Krita's native clipping engine). PC watcher confirmed SUCCESS for previous baseline `1b0a9640e2eedf1a2b24efb5d23e0290aa0b7354` (164.75 MiB, 172,748,498 bytes). The new clipping commit has not yet been confirmed by the PC Android watcher or tested on Fold 6. Native mask/clip KRA round trips, transform Undo and live interactions are still unverified. APK publishing stays paused.
+
 ## November 13 follow-up — executable Qt-free transform hierarchy regression
 
 - Commits `086af028f5ed65a31f54f211762d37c501f3e667` and `466bbd78c17d986f37c05acedb807dbe25639986` add a standalone C++17 test and `tests/run_mobile_layer_identity_regression.sh`. The test exercises 14 selected group/child/mask cases against `MobileLayerIdentity::transformTargets`, including overlapping group selection, three-level nesting, independent sibling layers, duplicate selected nodes, stale nodes outside the image and Edit Selection behavior. **Executed locally:** PASS, 14 cases, using `c++ -std=c++17 -O2 -Wall -Wextra -Werror`, no Qt or Android build needed.
