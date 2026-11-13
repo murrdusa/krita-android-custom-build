@@ -573,31 +573,11 @@ private:
             QMetaObject::invokeMethod(qApp,[home,copy,expectedViews,expectedActive]() {
                 const auto current=home?home->m_engine.openDocuments():
                     QVector<MobileEngineBridge::OpenDocument>{};
-                // A recovery copy can be opened beside several canvases.
-                // Require the same complete set of live native views and
-                // the same active canvas; do not depend on MDI ordering.
-                bool sameCanvas=home && current.size()==expectedViews.size();
-                if(sameCanvas) {
-                    for(const auto &expected:expectedViews) {
-                        if(!expected) {sameCanvas=false;break;}
-                        int matches=0;
-                        for(const auto &entry:current)
-                            if(entry.nativeView==expected)++matches;
-                        if(matches!=1) {sameCanvas=false;break;}
-                    }
-                }
-                if(sameCanvas) {
-                    bool activeMatches=!expectedActive;
-                    for(const auto &entry:current) {
-                        if(!entry.active)continue;
-                        if(entry.nativeView!=expectedActive) {
-                            sameCanvas=false;
-                            break;
-                        }
-                        activeMatches=true;
-                    }
-                    if(!activeMatches)sameCanvas=false;
-                }
+                // A recovery may open beside multiple existing canvases,
+                // but never after a view was replaced or switched.
+                const bool sameCanvas=home &&
+                    MobileViewIdentityGuard::sameRecoveryWorkspace(
+                        expectedViews,expectedActive,current);
                 const bool opened=home && sameCanvas && !copy.isEmpty() && home->m_files &&
                     home->m_files->openFile(copy);
                 if(!copy.isEmpty())QFile::remove(copy);
