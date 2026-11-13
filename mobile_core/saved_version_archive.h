@@ -505,6 +505,10 @@ public:
             if(copied==0 &&
                (count<4 || QByteArray(block.constData(),4)!=
                    QByteArray::fromHex("504b0304")))return {};
+            // The source may grow after the initial size check. Stop
+            // immediately rather than filling storage with an unbounded
+            // recovery copy that would only fail the final size check.
+            if(count>size-copied || count>copyLimit-copied)return {};
             copied+=count;
             if(destination.write(block.constData(),count)!=count)return {};
             hash.addData(block.constData(),count);
