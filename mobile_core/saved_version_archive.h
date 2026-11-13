@@ -509,7 +509,10 @@ public:
             if(destination.write(block.constData(),count)!=count)return {};
             hash.addData(block.constData(),count);
         }
-        if(count!=0 || copied<=0 ||
+        // Always compare the streamed bytes against the opened source
+        // size, even when a legacy entry lacks size metadata and a hash.
+        // A concurrent truncate must never publish a partial KRA.
+        if(count!=0 || copied!=size ||
            (version.bytes>0 && copied!=version.bytes) ||
            (!expectedHash.isEmpty() && hash.result().toHex()!=expectedHash))
             return {};
