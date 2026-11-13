@@ -14,6 +14,15 @@ inline int mobileFillTolerance(int initial,int delta)
 inline QRect mobileFillPreviewWindow(const QRect &bounds,const QPoint &seed)
 {
     constexpr int side=384;
-    return bounds.contains(seed)?
-        bounds.intersected(QRect(seed-QPoint(side/2,side/2),QSize(side,side))):QRect();
+    if(bounds.isEmpty() || !bounds.contains(seed))return {};
+    // Maintain a full bounded preview when filling near a canvas edge.
+    // Intersecting a centered square would unnecessarily shrink the
+    // sampled region to a quarter-size preview at a corner.
+    const int width=qMin(side,bounds.width());
+    const int height=qMin(side,bounds.height());
+    const int x=qBound(bounds.left(),seed.x()-width/2,
+                       bounds.right()-width+1);
+    const int y=qBound(bounds.top(),seed.y()-height/2,
+                       bounds.bottom()-height+1);
+    return QRect(x,y,width,height);
 }
