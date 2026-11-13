@@ -13,6 +13,16 @@
 class MobileOpenDocumentDestinationPolicy final
 {
 public:
+    // A recovered/untitled document may have no visible path but still
+    // use a private draft as its backing file. Protect both identities.
+    static bool conflictsWithBackingFile(const QString &destination,
+                                         const QString &projectPath,
+                                         const QString &draftPath)
+    {
+        return sameFile(destination,projectPath) ||
+               sameFile(destination,draftPath);
+    }
+
     static bool sameFile(const QString &first,const QString &second)
     {
         if(first.isEmpty() || second.isEmpty())return false;
