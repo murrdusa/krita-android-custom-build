@@ -12,6 +12,9 @@
 #include <QMouseEvent>
 #include <QPersistentModelIndex>
 #include <QScrollBar>
+#include <QSlider>
+#include <QStyleOptionSlider>
+#include <QStylePainter>
 #include <QAbstractButton>
 #include <QPointer>
 #include <QPushButton>
@@ -132,7 +135,8 @@ private:
             auto *widget=QApplication::widgetAt(global);
             if(!widget)widget=qobject_cast<QWidget*>(object);
             for(auto *parent=widget;parent;parent=parent->parentWidget()) {
-                if(qobject_cast<QAbstractButton*>(parent) || qobject_cast<QAbstractSlider*>(parent))return false;
+                if(qobject_cast<QAbstractButton*>(parent) || qobject_cast<QAbstractSlider*>(parent) ||
+                   qobject_cast<QLineEdit*>(parent) || qobject_cast<QComboBox*>(parent))return false;
                 auto *area=qobject_cast<QAbstractScrollArea*>(parent);
                 if(!area)continue;
                 if(!area->property("_mobileScrollGaps").toBool())return false;
@@ -416,8 +420,9 @@ inline void styleMenuDialog(QDialog &dialog,const QSize &preferred)
         "QDialog{background:#25262b;color:#f1f2f5;}"
         "QScrollArea,QListWidget,QListView{background:#25262b;color:#f1f2f5;border:0;}"
         "QLabel,QCheckBox{color:#f1f2f5;}"
-        "QComboBox,QSpinBox,QLineEdit,QPushButton{background:#30323b;color:#f1f2f5;"
+        "QComboBox,QSpinBox,QDoubleSpinBox,QLineEdit,QPushButton{background:#30323b;color:#f1f2f5;"
         "border:1px solid #44464f;border-radius:7px;padding:4px 8px;min-height:36px;}"
+        "QSpinBox QLineEdit,QDoubleSpinBox QLineEdit{border:0;padding:0;min-height:0;}"
         "QPushButton:pressed,QListView::item:selected{background:#394459;}"
         "QPushButton:disabled{color:#989da9;}"
         "QTabBar::tab{background:#30323b;color:#bfc3ce;padding:0 10px;min-height:40px;}"
@@ -513,6 +518,23 @@ public:
     }
 
 protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        if(isEditable()) {
+            QComboBox::paintEvent(event);
+            return;
+        }
+        QStylePainter painter(this);
+        QStyleOptionComboBox option;
+        initStyleOption(&option);
+        painter.drawComplexControl(QStyle::CC_ComboBox,option);
+        const QRect field=style()->subControlRect(QStyle::CC_ComboBox,&option,
+                                                   QStyle::SC_ComboBoxEditField,this);
+        option.currentText=fontMetrics().elidedText(currentText(),Qt::ElideRight,
+                                                     qMax(0,field.width()-4));
+        painter.drawControl(QStyle::CE_ComboBoxLabel,option);
+    }
+
     void mousePressEvent(QMouseEvent *event) override
     {
         if(event->button()==Qt::LeftButton && !isEditable()) {
@@ -537,4 +559,84 @@ protected:
 
 private:
     bool m_tapPending=false,m_anchored=false;
+};
+
+class MobileTouchSlider final : public QSlider
+{
+public:
+    explicit MobileTouchSlider(QWidget *parent=nullptr) : QSlider(Qt::Horizontal,parent)
+    {
+        setAttribute(Qt::WA_AcceptTouchEvents);
+        setMinimumHeight(44);
+        setStyleSheet(QStringLiteral(
+            "QSlider::groove:horizontal{height:6px;background:#555965;border-radius:3px;}"
+            "QSlider::sub-page:horizontal{background:#6ca9c9;border-radius:3px;}"
+            "QSlider::handle:horizontal{width:28px;margin:-11px 0;"
+            "background:#f1f2f5;border:1px solid #343740;border-radius:14px;}"
+            "QSlider::handle:horizontal:disabled{background:#82848d;}"));
+    }
+
+protected:
+    bool event(QEvent *event) override
+    {
+        const auto type=event->type();
+        if(type!=QEvent::TouchBegin && type!=QEvent::TouchUpdate &&
+           type!=QEvent::TouchEnd && type!=QEvent::TouchCancel)
+            return QSlider::event(event);
+        const auto *touch=static_cast<QTouchEvent*>(event);
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+        const auto &points=touch->points();
+        if(!points.isEmpty())m_touchPosition=points.first().position().toPoint();
+#else
+        const auto &points=touch->touchPoints();
+        if(!points.isEmpty())m_touchPosition=points.first().pos().toPoint();
+#endif
+        if(type==QEvent::TouchBegin && points.size()==1) {
+            QMouseEvent press(QEvent::MouseButtonPress,m_touchPosition,mapToGlobal(m_touchPosition),
+                              Qt::LeftButton,Qt::LeftButton,touch->modifiers());
+            mousePressEvent(&press);
+        } else if(isSliderDown()) {
+            if(points.size()<=1 && type!=QEvent::TouchCancel) {
+                QMouseEvent move(QEvent::MouseMove,m_touchPosition,mapToGlobal(m_touchPosition),
+                                 Qt::NoButton,Qt::LeftButton,touch->modifiers());
+                QSlider::mouseMoveEvent(&move);
+            }
+            if(type!=QEvent::TouchUpdate || points.size()>1) {
+                QMouseEvent release(QEvent::MouseButtonRelease,m_touchPosition,mapToGlobal(m_touchPosition),
+                                    Qt::LeftButton,Qt::NoButton,touch->modifiers());
+                QSlider::mouseReleaseEvent(&release);
+            }
+        }
+        event->accept();
+        return true;
+    }
+
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        QStyleOptionSlider option;
+        initStyleOption(&option);
+        const auto handleRect=[&]() {
+            return style()->subControlRect(QStyle::CC_Slider,&option,
+                                          QStyle::SC_SliderHandle,this);
+        };
+        QRect handle=handleRect();
+        if(event->button()!=Qt::LeftButton || handle.contains(event->pos())) {
+            QSlider::mousePressEvent(event);
+            return;
+        }
+        const QRect groove=style()->subControlRect(QStyle::CC_Slider,&option,
+                                                  QStyle::SC_SliderGroove,this);
+        setSliderPosition(QStyle::sliderValueFromPosition(minimum(),maximum(),
+            event->pos().x()-groove.left()-handle.width()/2,
+            qMax(1,groove.width()-handle.width()),option.upsideDown));
+        initStyleOption(&option);
+        const QPoint center=handleRect().center();
+        QMouseEvent press(QEvent::MouseButtonPress,center,mapToGlobal(center),
+                          event->button(),event->buttons(),event->modifiers());
+        QSlider::mousePressEvent(&press);
+        event->accept();
+    }
+
+private:
+    QPoint m_touchPosition;
 };

@@ -10,6 +10,7 @@
 #pragma once
 #ifdef Q_OS_ANDROID
 
+#include <QColor>
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QPointer>
@@ -84,7 +85,7 @@ public:
     // The mobile shell supplies the dialogs and initiates transactions,
     // but must not implement its own native file serializer.
     bool createCanvas(const QString &name,int width,int height,
-                      int resolutionDpi,bool whiteBackground) const
+                      int resolutionDpi,const QColor &backgroundColor) const
     {
         if(!m_host || !m_host->available() ||
            width<1 || height<1 || resolutionDpi<1 ||
@@ -93,13 +94,13 @@ public:
         if(!space)return false;
         KisDocument *document=KisPart::instance()->createDocument();
         if(!document)return false;
-        const KoColor background(
-            whiteBackground?QColor(Qt::white):QColor(Qt::transparent),space);
+        const bool backgroundLayer=backgroundColor.isValid() && backgroundColor.alpha()>0;
+        const KoColor background(backgroundLayer?backgroundColor:QColor(Qt::transparent),space);
         const bool created=document->newImage(
             name.trimmed().isEmpty()?QStringLiteral("Unnamed"):name.trimmed(),
             width,height,space,background,
-            whiteBackground?KisConfig::RASTER_LAYER:KisConfig::CANVAS_COLOR,
-            whiteBackground?2:1,QString(),qreal(resolutionDpi)/72.0);
+            backgroundLayer?KisConfig::RASTER_LAYER:KisConfig::CANVAS_COLOR,
+            backgroundLayer?2:1,QString(),qreal(resolutionDpi)/72.0);
         if(!created) {
             delete document;
             return false;

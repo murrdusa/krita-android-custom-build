@@ -265,10 +265,6 @@ public:
             "QPushButton,QDoubleSpinBox,QCheckBox{min-height:44px;}"
             "QDoubleSpinBox{padding-left:8px;padding-right:40px;}"
             "QDoubleSpinBox::up-button,QDoubleSpinBox::down-button{width:38px;}"
-            "QSlider{min-height:44px;}"
-            "QSlider::groove:horizontal{height:6px;background:#647180;border-radius:3px;}"
-            "QSlider::handle:horizontal{width:26px;margin:-10px 0;"
-            "background:#58a8d1;border-radius:13px;}"
             "QCheckBox{spacing:9px;}"
             "QCheckBox::indicator{width:22px;height:22px;}"));
         auto *outer=new QVBoxLayout(this);
@@ -319,7 +315,7 @@ public:
 
         auto *curveRow=new QHBoxLayout;
         curveRow->addWidget(new QLabel(tr("Response curve"),this));
-        m_curve=new QSlider(Qt::Horizontal,this);
+        m_curve=new MobileTouchSlider(this);
         m_curve->setObjectName(QStringLiteral("fingerPressureCurveGamma"));
         m_curve->setRange(30,300);
         m_curve->setValue(qRound(response.gamma*100.0));
@@ -332,7 +328,7 @@ public:
         layout->addWidget(m_preview);
         auto *stabilityRow=new QHBoxLayout;
         stabilityRow->addWidget(new QLabel(tr("Stability"),this));
-        m_stability=new QSlider(Qt::Horizontal,this);
+        m_stability=new MobileTouchSlider(this);
         m_stability->setObjectName(QStringLiteral("fingerPressureStability"));
         m_stability->setRange(0,100);
         m_stability->setValue(qRound(response.stability*100.0));

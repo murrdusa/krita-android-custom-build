@@ -80,9 +80,9 @@ public:
     // Document lifecycle, native view selection, file format imports and
     // safe save semantics have one owner: MobileDocumentService.
     bool createCanvas(const QString &name,int width,int height,
-                      int resolutionDpi,bool whiteBackground) const {
+                      int resolutionDpi,const QColor &backgroundColor) const {
         return m_documentsService.createCanvas(name,width,height,
-                                               resolutionDpi,whiteBackground);
+                                               resolutionDpi,backgroundColor);
     }
     int openFiles(QWidget *parent) const {
         return m_documentsService.openFiles(parent);

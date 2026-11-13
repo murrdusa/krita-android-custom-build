@@ -7,11 +7,13 @@
  */
 #include "krita_android_runtime.h"
 #ifdef Q_OS_ANDROID
-#include <QAbstractSpinBox>
 #include <QApplication>
 #include <QInputMethod>
 #include <QLineEdit>
 #include <QMouseEvent>
+#include <QPlainTextEdit>
+#include <QTextEdit>
+#include <QTouchEvent>
 #include <QTabletEvent>
 #include <QTimer>
 #include <QCoreApplication>
@@ -42,35 +44,88 @@ public:
 protected:
     bool eventFilter(QObject *object,QEvent *event) override
     {
-        auto *edit=qobject_cast<QLineEdit*>(object);
-        if(edit && edit->isEnabled() && !edit->isReadOnly()) {
-            bool tapped=false;
-            if(event->type()==QEvent::MouseButtonRelease) {
-                auto *mouse=static_cast<QMouseEvent*>(event);
-                tapped=mouse->button()==Qt::LeftButton && edit->rect().contains(mouse->pos());
-            } else if(event->type()==QEvent::TabletRelease) {
-                tapped=edit->rect().contains(static_cast<QTabletEvent*>(event)->pos());
-            }
-            if(tapped) {
-                edit->setFocus(Qt::MouseFocusReason);
-                QTimer::singleShot(0,edit,[edit]() {
-                    if(edit->isVisible() && edit->hasFocus())
-                        QGuiApplication::inputMethod()->show();
-                });
-            }
+        QPoint global;
+        bool start=false,end=false;
+        switch(event->type()) {
+        case QEvent::MouseButtonPress:
+        case QEvent::MouseButtonRelease: {
+            const auto *mouse=static_cast<QMouseEvent*>(event);
+            if(mouse->button()!=Qt::LeftButton)return false;
+            if(m_touch && mouse->source()!=Qt::MouseEventNotSynthesized)return false;
+            start=event->type()==QEvent::MouseButtonPress;
+            end=!start;
+            global=mouse->globalPos();
+            break;
         }
-        if(event->type()!=QEvent::FocusIn)return false;
-        auto *spin=qobject_cast<QAbstractSpinBox*>(object);
-        if(!spin)spin=qobject_cast<QAbstractSpinBox*>(object->parent());
-        if(spin) {
-            QTimer::singleShot(0,spin,[spin]() {
-                auto *focus=QApplication::focusWidget();
-                if(focus && (focus==spin || spin->isAncestorOf(focus)))
-                    spin->selectAll();
-            });
+        case QEvent::TabletPress:
+        case QEvent::TabletRelease:
+            start=event->type()==QEvent::TabletPress;
+            end=!start;
+            global=static_cast<QTabletEvent*>(event)->globalPos();
+            break;
+        case QEvent::TouchBegin:
+        case QEvent::TouchUpdate:
+        case QEvent::TouchEnd: {
+            const auto &points=static_cast<QTouchEvent*>(event)->touchPoints();
+            if(points.size()!=1) {m_target.clear();m_touch=false;return false;}
+            global=points.first().screenPos().toPoint();
+            start=event->type()==QEvent::TouchBegin;
+            end=event->type()==QEvent::TouchEnd;
+            if(start)m_touch=true;
+            break;
+        }
+        case QEvent::TouchCancel:
+            m_touch=false;
+            m_target.clear();
+            return false;
+        default:
+            return false;
+        }
+        if(start) {
+            m_target=textEditor(qobject_cast<QWidget*>(object));
+            if(!m_target && event->type()!=QEvent::MouseButtonPress)
+                m_target=textEditor(QApplication::widgetAt(global));
+            m_start=global;
+        } else {
+            if((global-m_start).manhattanLength()>=QApplication::startDragDistance())
+                m_target.clear();
+            if(end) {
+                if(m_target && m_target->rect().contains(m_target->mapFromGlobal(global))) {
+                    auto *editor=m_target.data();
+                    QTimer::singleShot(0,editor,[editor]() {
+                        if(!editor->isVisible() || !editor->isEnabled() ||
+                           !editor->window()->isActiveWindow() || !textEditor(editor))return;
+                        editor->setFocus(Qt::MouseFocusReason);
+                        auto *input=QGuiApplication::inputMethod();
+                        input->update(Qt::ImQueryAll);
+                        input->show();
+                    });
+                }
+                m_touch=false;
+                m_target.clear();
+            }
         }
         return false;
     }
+
+private:
+    static QWidget *textEditor(QWidget *widget)
+    {
+        for(;widget && widget->isEnabled();widget=widget->parentWidget()) {
+            if(auto *line=qobject_cast<QLineEdit*>(widget))
+                return line->isReadOnly()?nullptr:line;
+            if(auto *plain=qobject_cast<QPlainTextEdit*>(widget))
+                return plain->isReadOnly()?nullptr:plain;
+            if(auto *rich=qobject_cast<QTextEdit*>(widget))
+                return rich->isReadOnly()?nullptr:rich;
+            if(widget->isWindow())break;
+        }
+        return nullptr;
+    }
+
+    QPointer<QWidget> m_target;
+    QPoint m_start;
+    bool m_touch=false;
 };
 
 void applyStudioWidgetColors(QApplication &app)

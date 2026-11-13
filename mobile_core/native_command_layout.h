@@ -16,6 +16,7 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QInputMethod>
+#include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMainWindow>
@@ -987,13 +988,19 @@ private:
         auto *barSpacing=new QSpinBox(properties);
         barSpacing->setRange(0,12);
         barSpacing->setMinimumHeight(44);
-        auto *barOpacity=new QSpinBox(properties);
+        auto *barOpacity=new MobileTouchSlider(properties);
         barOpacity->setRange(0,100);
-        barOpacity->setSuffix(QStringLiteral("%"));
-        barOpacity->setMinimumHeight(44);
+        barOpacity->setAccessibleName(QObject::tr("Toolbar opacity"));
+        auto *opacityValue=new QLabel(properties);
+        auto *opacityRow=new QHBoxLayout;
+        opacityRow->addWidget(barOpacity,1);
+        opacityRow->addWidget(opacityValue);
+        const auto showOpacity=[opacityValue](int value) {
+            opacityValue->setText(QObject::tr("%1%").arg(value));
+        };
         propertyForm->addRow(QObject::tr("Toolbar name"),barName);
         propertyForm->addRow(QObject::tr("Button spacing"),barSpacing);
-        propertyForm->addRow(QObject::tr("Toolbar opacity"),barOpacity);
+        propertyForm->addRow(QObject::tr("Toolbar opacity"),opacityRow);
         layout->insertWidget(2,properties);
         properties->hide();
         const auto updateProperties=[&]() {
@@ -1005,6 +1012,7 @@ private:
             barName->setEnabled(current>0);
             barSpacing->setValue(bars.at(current).spacing);
             barOpacity->setValue(bars.at(current).opacity);
+            showOpacity(barOpacity->value());
         };
         QObject::connect(barName,&QLineEdit::textEdited,&dialog,
             [&](const QString &text) {
@@ -1022,9 +1030,10 @@ private:
             &dialog,[&](int value) {
                 if(current>=0 && current<bars.size())bars[current].spacing=value;
             });
-        QObject::connect(barOpacity,QOverload<int>::of(&QSpinBox::valueChanged),
+        QObject::connect(barOpacity,&QSlider::valueChanged,
             &dialog,[&](int value) {
                 if(current>=0 && current<bars.size())bars[current].opacity=value;
+                showOpacity(value);
             });
         auto *commandRow=new QHBoxLayout;
         layout->addLayout(commandRow);

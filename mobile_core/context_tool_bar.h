@@ -926,8 +926,7 @@ private:
                 "QLabel{color:#f4f4f5;}"));
             auto *layout=new QVBoxLayout(panel);
             auto *value=new QLabel(panel);
-            auto *slider=new QSlider(Qt::Horizontal,panel);
-            slider->setMinimumHeight(38);
+            auto *slider=new MobileTouchSlider(panel);
             slider->setAccessibleName(label);
             const double low=native->minimum(),high=native->maximum();
             constexpr bool decimal=std::is_same<SpinBox,QDoubleSpinBox>::value;

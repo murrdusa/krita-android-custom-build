@@ -141,27 +141,15 @@ public:
         m_size->setPrefix(i18n("Size: "));
         m_size->setSuffix(i18n(" px"));
         m_size->setSingleStep(1);
-        m_size->setMinimumHeight(43);
+        styleBrushSlider(m_size);
         sizeAndOpacity->addWidget(m_size,2);
         m_opacity=new KisDoubleSliderSpinBox(this);
         m_opacity->setRange(0,100,0);
         m_opacity->setPrefix(i18n("Opacity: "));
         m_opacity->setSuffix(QStringLiteral("%"));
         m_opacity->setSingleStep(5);
-        m_opacity->setMinimumHeight(43);
+        styleBrushSlider(m_opacity);
         sizeAndOpacity->addWidget(m_opacity,2);
-        if(slidersOnly) {
-            for(QWidget *slider:{m_size,m_opacity}) {
-                QPalette colors=slider->palette();
-                colors.setColor(QPalette::Base,QColor(QStringLiteral("#34343a")));
-                colors.setColor(QPalette::Button,QColor(QStringLiteral("#34343a")));
-                colors.setColor(QPalette::Text,Qt::white);
-                colors.setColor(QPalette::ButtonText,Qt::white);
-                colors.setColor(QPalette::Highlight,QColor(QStringLiteral("#32616b")));
-                colors.setColor(QPalette::HighlightedText,Qt::white);
-                slider->setPalette(colors);
-            }
-        }
         if(slidersOnly && !toolSettings) {
             setStyleSheet(QStringLiteral(
                 "QFrame#mobileBrushWorkspace{background:rgba(28,31,37,150);"
@@ -183,7 +171,7 @@ public:
             m_flow->setRange(0,100,0);
             m_flow->setPrefix(i18n("Flow: "));
             m_flow->setSuffix(QStringLiteral("%"));
-            m_flow->setMinimumHeight(44);
+            styleBrushSlider(m_flow);
             details->addWidget(m_flow);
             connect(m_flow,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),
                     this,[this](qreal percent) {
@@ -202,7 +190,7 @@ public:
                 control->setRange(minimum,maximum,0);
                 control->setPrefix(label+QStringLiteral(" "));
                 control->setSuffix(suffix);
-                control->setMinimumHeight(44);
+                styleBrushSlider(control);
                 details->addWidget(control);
                 return control;
             };
@@ -489,6 +477,18 @@ protected:
     }
 
 private:
+    static void styleBrushSlider(KisDoubleSliderSpinBox *slider)
+    {
+        slider->setButtonSymbols(QAbstractSpinBox::NoButtons);
+        slider->setMinimumHeight(44);
+        QPalette colors=slider->palette();
+        colors.setColor(QPalette::Base,QColor("#30323b"));
+        colors.setColor(QPalette::Highlight,QColor("#32617a"));
+        colors.setColor(QPalette::Text,QColor("#f1f2f5"));
+        colors.setColor(QPalette::HighlightedText,Qt::white);
+        slider->setPalette(colors);
+    }
+
     // Match Layers' Favorites-first, categorized native composite picker.
     // Only apply an operation if this is still the same active canvas.
     void openBrushBlendModes()

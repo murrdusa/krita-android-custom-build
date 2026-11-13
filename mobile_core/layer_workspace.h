@@ -991,17 +991,11 @@ private:
             sheetLayout->addWidget(blendButton);
         }
         auto *opacityLabel=new QLabel(&sheet);
-        auto *opacitySlider=new QSlider(Qt::Horizontal,&sheet);
+        auto *opacitySlider=new MobileTouchSlider(&sheet);
         opacitySlider->setRange(0,100);
         const int initialOpacity=(int(node->opacity())*100+127)/255;
         opacitySlider->setValue(initialOpacity);
         opacityLabel->setText(i18n("Opacity: %1%").arg(initialOpacity));
-        opacitySlider->setMinimumHeight(48);
-        opacitySlider->setStyleSheet(QStringLiteral(
-            "QSlider::groove:horizontal{height:8px;background:#575762;border-radius:4px;}"
-            "QSlider::sub-page:horizontal{background:#6ca9c9;border-radius:4px;}"
-            "QSlider::handle:horizontal{width:28px;margin:-10px 0;"
-            "background:#f3f6fa;border:1px solid #263341;border-radius:14px;}"));
         connect(opacitySlider,&QSlider::valueChanged,&sheet,[opacityLabel](int value) {
             opacityLabel->setText(i18n("Opacity: %1%").arg(value));
         });

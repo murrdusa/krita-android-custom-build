@@ -6,7 +6,7 @@
 #pragma once
 #ifdef Q_OS_ANDROID
 
-#include <QCheckBox>
+#include <QColor>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -37,17 +37,7 @@ public:
         if(!owner)return false;
         QDialog dialog(owner);
         dialog.setWindowTitle(i18n("New canvas"));
-        dialog.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
-        dialog.setStyleSheet(
-            "QDialog{background:#263746;color:#f4f8fd;}"
-            "QLabel{color:#e9f3fa;font-size:14px;}"
-            "QLineEdit,QComboBox,QSpinBox{background:#364c5f;color:#fff;"
-            "border:1px solid #769bb8;border-radius:7px;padding:6px;"
-            "min-height:41px;font-size:14px;}"
-            "QPushButton{background:#456883;color:white;"
-            "border:1px solid #8aafc9;border-radius:7px;"
-            "min-height:46px;padding:5px;}"
-            "QCheckBox{color:#e9f3fa;font-size:14px;min-height:42px;}");
+        MobileTouchScroll::styleMenuDialog(dialog,QSize(460,570));
         // Keep actions visible even on short portrait phones and with
         // Android display scaling. Only the form itself scrolls.
         auto *layout=new QVBoxLayout(&dialog);
@@ -57,9 +47,6 @@ public:
         heading->setStyleSheet(
             QStringLiteral("font-size:19px;font-weight:600;"));
         layout->addWidget(heading);
-        auto *description=new QLabel(
-            i18n("Native Krita document · RGB 8-bit"),&dialog);
-        layout->addWidget(description);
         auto *scroll=new QScrollArea(&dialog);
         scroll->setWidgetResizable(true);
         scroll->setFrameShape(QFrame::NoFrame);
@@ -72,12 +59,13 @@ public:
         formLayout->setSpacing(8);
         auto *form=new QFormLayout;
         form->setSpacing(8);
-        form->setRowWrapPolicy(QFormLayout::WrapLongRows);
-        form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+        form->setRowWrapPolicy(QFormLayout::WrapAllRows);
+        form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
         auto *name=new QLineEdit(&dialog);
         name->setText(i18n("Untitled"));
         form->addRow(i18n("Name"),name);
         auto *preset=new MobileTouchComboBox(&dialog);
+        preset->setAnchoredPopup(true);
         preset->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         const auto addPreset=[preset](const QString &label,const QSize &size,int dpi=0) {
             preset->addItem(size.isValid()?i18n("%1 — %2 × %3",label,size.width(),size.height()):label,size);
@@ -122,17 +110,22 @@ public:
             QStringLiteral("MobileStudio/newDPI"),300).toInt());
         dpi->setSuffix(i18n(" DPI"));
         form->addRow(i18n("Resolution"),dpi);
-        auto *white=new QCheckBox(i18n("White background layer"),&dialog);
-        white->setChecked(settings.value(
-            QStringLiteral("MobileStudio/newWhite"),true).toBool());
-        form->addRow(i18n("Background"),white);
+        auto *background=new MobileTouchComboBox(&dialog);
+        background->setAnchoredPopup(true);
+        background->addItem(i18n("Transparent"),QColor(Qt::transparent));
+        background->addItem(i18n("White"),QColor(Qt::white));
+        background->addItem(i18n("Light gray"),QColor("#cccccc"));
+        background->addItem(i18n("Mid gray"),QColor("#808080"));
+        background->addItem(i18n("Dark gray"),QColor("#333333"));
+        background->addItem(i18n("Black"),QColor(Qt::black));
+        background->addItem(i18n("Cream"),QColor("#f5eedc"));
+        const QColor previous=settings.value(QStringLiteral("MobileStudio/newBackground"),
+            QColor(settings.value(QStringLiteral("MobileStudio/newWhite"),true).toBool()?
+                   Qt::white:Qt::transparent)).value<QColor>();
+        const int index=background->findData(previous);
+        background->setCurrentIndex(index<0?1:index);
+        form->addRow(i18n("Background"),background);
         formLayout->addLayout(form);
-        auto *note=new QLabel(
-            i18n("White creates a locked background and an empty paint layer. "
-                 "Turning it off creates one transparent paint layer."),
-            formContents);
-        note->setWordWrap(true);
-        formLayout->addWidget(note);
         formLayout->addStretch(1);
         scroll->setWidget(formContents);
         layout->addWidget(scroll,1);
@@ -149,6 +142,7 @@ public:
         auto *actions=new QDialogButtonBox(
             QDialogButtonBox::Cancel|QDialogButtonBox::Ok,&dialog);
         actions->button(QDialogButtonBox::Ok)->setText(i18n("Create"));
+        actions->button(QDialogButtonBox::Ok)->setFocus();
         layout->addWidget(actions);
         QObject::connect(actions,&QDialogButtonBox::rejected,
                          &dialog,&QDialog::reject);
@@ -179,10 +173,10 @@ public:
                           height->value());
         settings.setValue(QStringLiteral("MobileStudio/newDPI"),
                           dpi->value());
-        settings.setValue(QStringLiteral("MobileStudio/newWhite"),
-                          white->isChecked());
+        const QColor color=background->currentData().value<QColor>();
+        settings.setValue(QStringLiteral("MobileStudio/newBackground"),color);
         if(!engine.createCanvas(name->text(),width->value(),height->value(),
-                                dpi->value(),white->isChecked())) {
+                                dpi->value(),color)) {
             QMessageBox::warning(owner,i18n("Canvas not created"),
                 i18n("Krita could not allocate this document. "
                      "Try smaller canvas dimensions."));

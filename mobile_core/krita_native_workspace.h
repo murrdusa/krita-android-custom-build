@@ -1097,10 +1097,9 @@ public:
             fadeForm->setContentsMargins(0,0,0,0);
             const auto fadeSlider=[fadeForm,fadeDetails](const QString &label,int low,int high,
                                                          int value,const QString &suffix) {
-                auto *slider=new QSlider(Qt::Horizontal,fadeDetails);
+                auto *slider=new MobileTouchSlider(fadeDetails);
                 slider->setRange(low,high);
                 slider->setValue(value);
-                slider->setMinimumHeight(42);
                 slider->setAccessibleName(label);
                 auto *caption=new QLabel(fadeDetails);
                 const auto update=[caption,label,suffix](int current) {

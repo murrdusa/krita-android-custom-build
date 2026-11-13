@@ -1,5 +1,9 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — New Canvas and touch controls
+
+New Canvas uses the shared compact dialog and anchored preset and background menus. Transparent creates one paint layer. Solid colors create a locked native background under an empty paint layer. The background preference migrates from the previous white/transparent toggle. Toolbar opacity and Studio's standard menu sliders use a common touch control. Brush sliders keep Krita's native precision and sizing curves. The Android keyboard is requested after a deliberate tap on an editable field.
+
 ## November 13 follow-up — save actual in-profile canvas size after toolbar edits
 
 - Commits `d99aa01c85f79e7277a8baff88501e6be0459510` and `a75ac7a19d302b0ed395ceedd492a0344ecb33b1`: the toolbar save path no longer always passes the stale viewport cached at the most recent workspace switch. When the canvas has resized *within* the same profile/orientation, `saveBars` persists the current viewport dimensions; for an incompatible folded/landscape/split-screen size awaiting a delayed profile switch, it preserves the old profile's dimensions instead of overwriting them. This completes the preceding existing-profile `remember()` update without mixing independent layouts. Commit `19a2edc4acfb40941f473942805775ec7ca8f302` tests small resize acceptance and cross-profile rejection.
