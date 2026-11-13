@@ -9,6 +9,8 @@
 #include <QHash>
 #include <QLabel>
 #include <QFile>
+#include <QCheckBox>
+#include <QInputMethod>
 #include <QInputDialog>
 #include <QMessageBox>
 #include <QLineEdit>
@@ -58,6 +60,7 @@
 #include <QMouseEvent>
 #include <functional>
 #include <memory>
+#include <cmath>
 #include <klocalizedstring.h>
 
 class KritaMobileBrushWorkspace final : public QFrame {
@@ -188,6 +191,48 @@ public:
 
         }
         if(toolSettings) {
+            const auto slider=[this,details](const QString &label,int minimum,int maximum,const QString &suffix) {
+                auto *control=new KisDoubleSliderSpinBox(m_controls);
+                control->setRange(minimum,maximum,0);
+                control->setPrefix(label+QStringLiteral(" "));
+                control->setSuffix(suffix);
+                control->setMinimumHeight(44);
+                details->addWidget(control);
+                return control;
+            };
+            m_angle=slider(i18n("Tip angle:"),-180,180,QStringLiteral("°"));
+            m_smudgeStrength=slider(i18n("Smudge strength:"),0,100,QStringLiteral("%"));
+            m_smudgeRadius=slider(i18n("Smudge radius:"),0,300,QStringLiteral("%"));
+            m_sampleLayers=new QCheckBox(i18n("Sample merged layers"),m_controls);
+            m_sampleLayers->setMinimumHeight(44);
+            m_sampleLayers->setStyleSheet(QStringLiteral("color:#f4f4f5;"));
+            details->addWidget(m_sampleLayers);
+            const auto settings=[this]() -> KisPaintOpSettingsSP {
+                auto *provider=resources();
+                const auto preset=provider?provider->currentPreset():KisPaintOpPresetSP{};
+                return !m_syncing && preset?preset->settings():KisPaintOpSettingsSP{};
+            };
+            connect(m_angle,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),this,[settings](qreal degrees) {
+                if(auto active=settings())active->setPaintOpAngle(degrees);
+            });
+            connect(m_smudgeStrength,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),this,[settings](qreal value) {
+                if(auto active=settings()) {
+                    active->setProperty(QStringLiteral("PressureSmudgeRate"),true);
+                    active->setProperty(QStringLiteral("SmudgeRateValue"),value/100);
+                }
+            });
+            connect(m_smudgeRadius,QOverload<qreal>::of(&KisDoubleSliderSpinBox::valueChanged),this,[settings](qreal value) {
+                if(auto active=settings()) {
+                    active->setProperty(QStringLiteral("PressureSmudgeRadius"),true);
+                    active->setProperty(QStringLiteral("SmudgeRadiusVersion"),2);
+                    active->setProperty(QStringLiteral("SmudgeRadiusValue"),value/100);
+                }
+            });
+            connect(m_sampleLayers,&QCheckBox::toggled,this,[settings](bool enabled) {
+                if(auto active=settings())active->setProperty(QStringLiteral("MergedPaint"),enabled);
+            });
+        }
+        if(toolSettings) {
             m_composite=new QPushButton(i18n("Brush blending mode…"),m_controls);
             m_composite->setAccessibleName(i18n("Brush blending mode"));
             m_composite->setToolTip(i18n("Brush blending mode"));
@@ -313,6 +358,29 @@ public:
         if(m_flow) {
             m_flow->setVisible(supportsFlow(provider->currentPreset()));
             m_flow->setValue(provider->flow()*100.0);
+        }
+        if(m_angle) {
+            const auto preset=provider->currentPreset();
+            const auto settings=preset?preset->settings():KisPaintOpSettingsSP{};
+            const bool tip=settings && !settings->getString(QStringLiteral("brush_definition")).isEmpty();
+            const bool smudge=isSmudge(preset) && !provider->eraserMode();
+            m_angle->setVisible(tip);
+            if(tip)m_angle->setValue(std::remainder(settings->paintOpAngle(),360.0));
+            m_smudgeStrength->setVisible(smudge);
+            m_sampleLayers->setVisible(smudge);
+            const bool dulling=smudge && settings->getInt(QStringLiteral("SmudgeRateMode"))==1;
+            m_smudgeRadius->setVisible(dulling);
+            if(smudge) {
+                m_smudgeStrength->setValue(settings->getBool(QStringLiteral("PressureSmudgeRate"))?
+                    settings->getDouble(QStringLiteral("SmudgeRateValue"),1)*100:100);
+                m_sampleLayers->setChecked(settings->getBool(QStringLiteral("MergedPaint")));
+            }
+            if(dulling) {
+                m_smudgeRadius->setRange(0,settings->getBool(QStringLiteral("SmudgeRateUseNewEngine"))?100:300,0);
+                const double scale=settings->getInt(QStringLiteral("SmudgeRadiusVersion"),1)<2?1:100;
+                m_smudgeRadius->setValue(settings->getBool(QStringLiteral("PressureSmudgeRadius"))?
+                    settings->getDouble(QStringLiteral("SmudgeRadiusValue"))*scale:0);
+            }
         }
         if(m_composite) {
             auto *view=m_engine.manager();
@@ -628,6 +696,16 @@ private:
         return 13;
     }
 
+    static QString presetCategoryKey(int id)
+    {
+        return QStringLiteral("MobileStudio/brushCategory/%1").arg(id);
+    }
+
+    static QStringList customCategories()
+    {
+        return QSettings().value(QStringLiteral("MobileStudio/brushCategories")).toStringList();
+    }
+
     class PresetFilter final : public QSortFilterProxyModel
     {
     public:
@@ -654,10 +732,11 @@ private:
             return false;
         }
 
-        void setCategory(int category)
+        void setCategory(int category,const QString &custom={})
         {
-            if(m_category==category)return;
+            if(m_category==category && m_custom==custom)return;
             m_category=category;
+            m_custom=custom;
             invalidate();
             sort(KisAbstractResourceModel::Name);
         }
@@ -665,6 +744,7 @@ private:
         void reloadPersonalLists()
         {
             const QSettings settings;
+            m_assignments.clear();
             m_favorites=settings.value(
                 QStringLiteral("MobileStudio/brushFavorites")).toStringList();
             m_recent=settings.value(
@@ -731,7 +811,15 @@ private:
             if(!name.contains(m_search,Qt::CaseInsensitive))return false;
             if(m_category==-4 && !m_favorites.contains(name))return false;
             if(m_category==-5 && !m_recent.contains(name))return false;
-            if(m_category>=9 && paintingFamily(name)!=m_category)return false;
+            if(m_category>=9 || !m_custom.isEmpty()) {
+                const int id=m_source->index(row,KisAbstractResourceModel::Id,parent).data().toInt();
+                auto it=m_assignments.constFind(id);
+                const QString custom=it!=m_assignments.cend()?it.value():
+                    m_assignments.insert(id,QSettings().value(presetCategoryKey(id)).toString()).value();
+                if(!m_custom.isEmpty()) {
+                    if(m_custom!=custom)return false;
+                } else if(!custom.isEmpty() || paintingFamily(name)!=m_category)return false;
+            }
             const auto available=rowCapabilities(row);
             if(!available.supports(m_slot))return false;
             if(m_category==1)return available.eraser;
@@ -755,7 +843,8 @@ private:
         mutable QHash<int,PresetCapabilities> m_capabilities;
         KisResourceModel *m_source;
         int m_category;
-        QString m_search;
+        QString m_search,m_custom;
+        mutable QHash<int,QString> m_assignments;
         QStringList m_favorites,m_recent;
         int m_slot;
     };
@@ -922,10 +1011,10 @@ private:
     }
 
     void showPresetActions(MobileTransientPanel *drawer,const KisPaintOpPresetSP &preset,
-                           std::function<void()> refreshList)
+                           std::function<void(const QString &)> refreshList)
     {
         if(!preset || preset->resourceId()<0)return;
-        enum Operation { Duplicate, Revert, Rename, Remove };
+        enum Operation { Duplicate, Revert, Rename, Remove, Move };
         const int id=preset->resourceId();
         const QString factory=MobileFactoryBrushPreset::sourcePath(preset);
         const QString title=displayPresetName(preset->name());
@@ -934,6 +1023,7 @@ private:
         menu.addAction(factory.isEmpty()?i18n("Revert to saved preset"):
                                         i18n("Restore factory preset"))->setData(Revert);
         if(factory.isEmpty()) {
+            menu.addAction(i18n("Move to category…"))->setData(Move);
             menu.addAction(i18n("Rename brush…"))->setData(Rename);
             menu.addAction(i18n("Delete brush…"))->setData(Remove);
         }
@@ -972,6 +1062,34 @@ private:
                 if(success)renamePersonalEntries(oldName,name);
                 break;
             }
+            case Move: {
+                if(!factory.isEmpty())return;
+                QSettings settings;
+                const QString key=presetCategoryKey(id);
+                const QString automatic=i18n("Automatic category");
+                auto names=customCategories();
+                QStringList choices=names;
+                choices.prepend(automatic);
+                const int current=qMax(0,choices.indexOf(settings.value(key).toString()));
+                bool accepted=false;
+                QString name=QInputDialog::getItem(alive,i18n("Move brush"),
+                    i18n("Select a category or type a new name"),choices,current,true,&accepted).trimmed();
+                if(!accepted || name.isEmpty())return;
+                if(name==automatic) {
+                    settings.remove(key);
+                    name.clear();
+                } else {
+                    for(const auto &existing:names)
+                        if(existing.compare(name,Qt::CaseInsensitive)==0) {name=existing;break;}
+                    if(!names.contains(name)) {
+                        names.append(name);
+                        settings.setValue(QStringLiteral("MobileStudio/brushCategories"),names);
+                    }
+                    settings.setValue(key,name);
+                }
+                if(alive && alive->isVisible())refreshList(name);
+                return;
+            }
             case Remove: {
                 if(!factory.isEmpty() || QMessageBox::question(parentWidget(),i18n("Delete brush"),
                     i18n("Remove “%1” from your presets?",title))!=QMessageBox::Yes)return;
@@ -980,6 +1098,7 @@ private:
                 success=source->setResourceActive(index,false);
                 if(success) {
                     renamePersonalEntries(oldName,{});
+                    QSettings().remove(presetCategoryKey(id));
                     if(resources() && resources()->currentPreset() &&
                        resources()->currentPreset()->resourceId()==id) {
                         if(auto fallback=firstPresetFor(m_slot))usePreset(m_slot,fallback);
@@ -989,7 +1108,7 @@ private:
             }
             }
             if(!success)QMessageBox::warning(parentWidget(),i18n("Brush presets"),i18n("Could not update “%1”.",title));
-            if(alive && alive->isVisible())refreshList();
+            if(alive && alive->isVisible())refreshList({});
             refresh();
         });
     }
@@ -1047,6 +1166,7 @@ private:
         m_presetBrowser=panel;
         m_browserSlot=slot;
         panel->setOpener(opener,action);
+        panel->setFocusPolicy(Qt::StrongFocus);
         panel->setObjectName(QStringLiteral("mobilePresetBrowser"));
         panel->setAccessibleName(slot==1?i18n("Eraser presets"):slot==2?i18n("Blend presets"):i18n("Brush presets"));
         panel->setStyleSheet(QStringLiteral(
@@ -1088,8 +1208,23 @@ private:
         family(i18n("Watercolor"),14);
         family(i18n("Airbrush"),15);
         family(i18n("Texture"),12);
-        const int defaultCategory=2;
-        categories->setCurrentRow(defaultCategory);
+        const auto addCustom=[categories](const QString &name) {
+            auto *item=new QListWidgetItem(name,categories);
+            item->setData(Qt::UserRole,-6);
+            item->setData(Qt::UserRole+1,name);
+            return item;
+        };
+        for(const auto &name:customCategories())addCustom(name);
+        const auto categoryKey=[](QListWidgetItem *item) {
+            const auto custom=item->data(Qt::UserRole+1).toString();
+            return custom.isEmpty()?item->data(Qt::UserRole).toString():QStringLiteral("custom/")+custom;
+        };
+        const QString lastCategoryKey=QStringLiteral("MobileStudio/brushLastCategory/%1").arg(slot);
+        const QString saved=QSettings().value(lastCategoryKey).toString();
+        int initialCategory=2;
+        for(int row=0;row<categories->count();++row)
+            if(categoryKey(categories->item(row))==saved) {initialCategory=row;break;}
+        categories->setCurrentRow(initialCategory);
 
         auto *body=new QVBoxLayout;
         body->setSpacing(4);
@@ -1119,7 +1254,8 @@ private:
         auto candidate=std::make_shared<KisPaintOpPresetSP>();
         list->setModel(filter);
         list->setModelColumn(KisAbstractResourceModel::Name);
-        filter->setCategory(categories->currentItem()->data(Qt::UserRole).toInt());
+        filter->setCategory(categories->currentItem()->data(Qt::UserRole).toInt(),
+                            categories->currentItem()->data(Qt::UserRole+1).toString());
         const auto valid=[this,view]() {
             return view && view==MobileViewIdentityGuard::uniqueActive(m_engine.openDocuments()) && resources();
         };
@@ -1154,9 +1290,10 @@ private:
         connect(filter,&QAbstractItemModel::rowsInserted,panel,updateList);
         connect(filter,&QAbstractItemModel::rowsRemoved,panel,updateList);
         connect(filter,&QAbstractItemModel::modelReset,panel,updateList);
-        const auto chooseCategory=[filter,list,clearExtras,updateSelected](QListWidgetItem *item) {
+        const auto chooseCategory=[filter,list,clearExtras,updateSelected,lastCategoryKey,categoryKey](QListWidgetItem *item) {
             clearExtras();
-            filter->setCategory(item->data(Qt::UserRole).toInt());
+            QSettings().setValue(lastCategoryKey,categoryKey(item));
+            filter->setCategory(item->data(Qt::UserRole).toInt(),item->data(Qt::UserRole+1).toString());
             list->scrollToTop();
             updateSelected();
         };
@@ -1168,16 +1305,34 @@ private:
             list->scrollToTop();
             updateSelected();
         });
-        MobileTouchScroll::configureList(list,[this,valid,panel,source,filter,updateSelected](const QModelIndex &index) {
+        MobileTouchScroll::configureList(list,[=](const QModelIndex &index) {
             if(!valid())return;
             const auto selected=filter->mapToSource(index);
             const auto preset=source->resourceForIndex(selected).dynamicCast<KisPaintOpPreset>();
-            showPresetActions(panel,preset,[filter,updateSelected]() {
+            showPresetActions(panel,preset,[=](const QString &name) {
                 filter->reloadPersonalLists();
-                updateSelected();
+                if(name.isEmpty()) {
+                    updateSelected();
+                    return;
+                }
+                QListWidgetItem *item=nullptr;
+                for(int row=0;row<categories->count();++row) {
+                    auto *entry=categories->item(row);
+                    if(entry->data(Qt::UserRole+1).toString()==name) {item=entry;break;}
+                }
+                if(!item)item=addCustom(name);
+                categories->setCurrentItem(item);
+                chooseCategory(item);
             });
         });
+        const auto hideSearchHandle=[search,panel]() {
+            search->deselect();
+            panel->setFocus(Qt::OtherFocusReason);
+            if(QGuiApplication::inputMethod()->isVisible())QGuiApplication::inputMethod()->hide();
+        };
+        connect(categories,&QListWidget::itemClicked,panel,hideSearchHandle);
         connect(list,&QListView::clicked,this,[=](const QModelIndex &index) {
+            hideSearchHandle();
             if(!valid() || list->property("_mobileFavoriteTap").toBool())return;
             const auto selected=filter->mapToSource(index);
             const auto preset=source->resourceForIndex(selected.sibling(selected.row(),0))
@@ -1185,17 +1340,21 @@ private:
             if(!preset || !preset->valid())return;
             const auto available=capabilities(preset);
             if(!available.supports(slot))return;
+            const auto samePreset=[preset](const KisPaintOpPresetSP &other) {
+                return other && (other==preset || (preset->resourceId()>=0 &&
+                                                    preset->resourceId()==other->resourceId()));
+            };
             if(slot==2 && !available.blend) {
+                if(samePreset(*candidate)) {
+                    panel->close();
+                    return;
+                }
                 *candidate=preset;
                 conversion->setText(i18n("Create blender from %1",displayPresetName(preset->name())));
                 conversion->show();
                 return;
             }
-            const auto current=resources()->currentPreset();
-            const bool already=isActiveMode(slot) && current &&
-                (current==preset || (preset->resourceId()>=0 &&
-                                     current->resourceId()==preset->resourceId()));
-            if(already) {
+            if(samePreset(resources()->currentPreset())) {
                 panel->close();
                 return;
             }
@@ -1214,9 +1373,7 @@ private:
             clearExtras();
             usePreset(2,result);
             filter->reloadPersonalLists();
-            search->clear();
-            categories->setCurrentRow(defaultCategory);
-            chooseCategory(categories->currentItem());
+            updateSelected();
         });
         const auto fit=[panel,categories]() {
             categories->setFixedWidth(qBound(82,panel->width()*28/100,134));
@@ -1224,7 +1381,8 @@ private:
         panel->onRefresh=fit;
         panel->anchorTo(nullptr,QSize(510,650));
         panel->present();
-        categories->scrollToTop();
+        panel->setFocus(Qt::OtherFocusReason);
+        categories->scrollToItem(categories->currentItem(),QAbstractItemView::EnsureVisible);
         fit();
         updateSelected();
         updateList();
@@ -1239,6 +1397,8 @@ private:
     QToolButton *m_detailToggle=nullptr;
     bool m_detailsExpanded=true;
     KisDoubleSliderSpinBox *m_size=nullptr,*m_opacity=nullptr,*m_flow=nullptr;
+    KisDoubleSliderSpinBox *m_angle=nullptr,*m_smudgeStrength=nullptr,*m_smudgeRadius=nullptr;
+    QCheckBox *m_sampleLayers=nullptr;
     QPushButton *m_composite=nullptr;
     const KoColorSpace *m_compositeSpace=nullptr;
     QString m_compositeMode;
