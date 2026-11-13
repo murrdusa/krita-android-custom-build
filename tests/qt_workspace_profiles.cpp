@@ -25,6 +25,19 @@ int main(int argc,char **argv)
        closest(settings,QSize(350,780))!=QStringLiteral("folded"))return 4;
     replace(settings,QStringLiteral("wide"),QSize(850,610));
     if(saved(settings).size()!=1 || !closest(settings,QSize(850,610)).isEmpty())return 5;
+    // Layout edits after slightly resizing an existing Fold/split-screen
+    // workspace should track the new viewport without duplicating an ID
+    // or erasing that profile's command and panel settings.
+    remember(settings,QStringLiteral("folded"),QSize(375,790));
+    if(saved(settings).size()!=1 ||
+       settings.value(group(QStringLiteral("folded"))+
+           QStringLiteral("size")).toSize()!=QSize(375,790) ||
+       !settings.value(group(QStringLiteral("folded"))+
+           QStringLiteral("layersCollapsed")).toBool() ||
+       closest(settings,QSize(375,790))!=QStringLiteral("folded"))return 12;
+    remember(settings,QStringLiteral("folded"),QSize());
+    if(settings.value(group(QStringLiteral("folded"))+
+        QStringLiteral("size")).toSize()!=QSize(375,790))return 13;
 
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,files.path());
