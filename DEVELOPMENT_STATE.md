@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — native selection reread in Transform/Move
+
+- Commits `a2cf7998e50d4e81a1bb228b98c403fa786c739f` and `2aae57ac6c15b49b59e30fce6baf1f5942033311`: the layer rail `reload()` now normalizes incoming native Transform/Move selection using the existing outermost-node policy, preventing an engine notification or rail refresh from reintroducing both a selected group and its descendants into Krita's transform target list. If the active node is a covered child, the rail activates one of the retained outermost nodes. Explicit global Edit Selection is not altered. Added three Qt-free hierarchy regression cases modeling reread order, masked nodes, and nested groups.
+- **Verification:** source and regression committed; host C++ regression has not been rerun in this session and native transform commit/cancel/Undo remains a device test. Confirm the precise WSL build SHA in Issue #1. APK publishing stays paused.
+
 ## November 13 follow-up — prevent deleting projects with recovery drafts
 
 - Commits `8b35245503d870d9c9c57bdef16a5f09cac17279`, `4e17492d041945d41dea61125683f2d89213bd5c`, and `0c85324c3328d0cdad898677b473ddba96fff837`: project gallery deletion now rejects an open canvas whose private draft is associated with the selected project, and blocks deleting any named KRA that still has an associated private recovery draft (including a draft not currently open). The gallery informs the user to recover or discard draft edits first. A new `MobileDraftRecovery::hasProjectDraft` helper compares canonical KRA/SAF project identities; Qt regression verifies association detection and clearance after removing the association.
