@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — skip stale queued live Fill/selection preview requests
+
+- Commit `bfc0c9a49aa0921c59b7b324f328d3406dce02b7`: the shared non-destructive `MobileFillTolerancePreview` increments an atomic request generation whenever the finger/pen changes the tolerance. A background worker still queued in the global thread pool checks that generation **before** creating paint devices and running a costly flood fill; if its tolerance is obsolete, it returns to the UI thread, clears the running flag and schedules the latest preview. This avoids computing stale live masks when the pool is busy and the user drags rapidly. The native Fill and contiguous-selection transactions, including release/Undo, are unchanged.
+- **Verification:** pending exact WSL Android build confirmation for the new source. No desktop Qt regression for the worker was executable in this session; Fold 6 gesture/performance validation remains pending. APK publishing paused.
+
 ## November 13 follow-up — keep live Fill/contiguous selection preview aligned during viewport resize
 
 - Commit `5b7fdb8f7cfa305ec26ea6948ccac6ecc19b33a2`: the existing shared `MobileFillTolerancePreview` widget now watches its canvas-widget resize events and updates its transparent overlay geometry and painting. Fold/unfold, split-screen resizing, or canvas panel layout changes during an active tolerance drag no longer leave the affected-region preview badge or mask clipped to the canvas's former viewport size. Native Fill and contiguous selection activation, native Undo, and the bounded 384×384 snapshot remain unchanged.
