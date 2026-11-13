@@ -18,6 +18,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QMenu>
+#include "touch_action_picker.h"
 #include <QMargins>
 #include <QDir>
 #include <QDirIterator>
@@ -483,15 +484,13 @@ private:
     void projectActions(const QString &path,const QString &title,bool draft)
     {
         if(m_restoringVersion)return;
-        QDialog dialog(window());
-        dialog.setWindowTitle(title);
-        auto *layout=new QVBoxLayout(&dialog);
+        if(m_projectMenu)m_projectMenu->close();
+        QMenu menu(title,this);
         enum Action {Open=1,Duplicate,History,Star,Delete,Rename};
+        auto *heading=menu.addAction(fontMetrics().elidedText(title,Qt::ElideRight,216));
+        heading->setProperty("mobileSectionHeading",true);
         const auto add=[&](const QString &label,Action action) {
-            auto *button=new QPushButton(label,&dialog);
-            button->setMinimumHeight(44);
-            layout->addWidget(button);
-            connect(button,&QPushButton::clicked,&dialog,[&dialog,action]() {dialog.done(action);});
+            menu.addAction(label)->setData(int(action));
         };
         const QString key=projectKey(path);
         const QString draftProject=draft?MobileDraftRecovery::projectFor(path):QString();
@@ -501,54 +500,53 @@ private:
         add(i18n("Version history"),History);
         if(!draft)add(m_starred.contains(key)?i18n("Remove star"):i18n("Star project"),Star);
         add(draft?i18n("Discard draft…"):i18n("Delete…"),Delete);
-        auto *cancel=new QPushButton(i18n("Cancel"),&dialog);
-        cancel->setMinimumHeight(44);
-        layout->addWidget(cancel);
-        connect(cancel,&QPushButton::clicked,&dialog,&QDialog::reject);
-        const int chosen=dialog.exec();
-        if(!isVisible())return;
-        switch(chosen) {
-        case Rename: {
-            bool accepted=false;
-            const QString name=QInputDialog::getText(this,i18n("Rename draft"),
-                i18n("Name"),QLineEdit::Normal,title,&accepted).trimmed();
-            if(accepted && !name.isEmpty()) {
-                if(MobileDraftRecovery::rename(path,name))showList(m_mode);
-                else QMessageBox::warning(this,i18n("Could not rename draft"),
-                    i18n("The recovery file could not be updated."));
-            }
-            break;
-        }
-        case Open:
-            if(!draftProject.isEmpty()) {
-                MobileSavedVersionArchive::Version source;
-                source.path=path;
-                openCopy(source);
-                break;
-            }
-            if(m_files && m_files->openFile(path))hide();
-            else QMessageBox::warning(this,i18n("Drawing not opened"),
-                i18n("Could not open this drawing. Browse Files can renew Android file access."));
-            break;
-        case Duplicate: {
-            MobileSavedVersionArchive::Version source;
-            const auto *item=m_projectItems.value(key);
-            source.path=item?item->data(Qt::UserRole+4).toString():path;
-            openCopy(source);
-            break;
-        }
-        case History:showSavedVersions(draftProject.isEmpty()?path:draftProject);break;
-        case Star:
-            if(!m_starred.remove(key))m_starred.insert(key);
-            saveStars();
-            if(auto *item=m_projectItems.value(key))updateProjectLabel(item);
-            if(m_mode==AllProjects && m_sortOrder==Starred)sortProjects();
-            break;
-        case Delete:
-            if(draft)discardDraft(path);
-            else deleteProject(path,title);
-            break;
-        }
+        const Mode mode=m_mode;
+        m_projectMenu=mobileShowActionList(this,nullptr,menu,this,
+            [this,path,title,draft,key,draftProject,mode](const QVariant &chosen) {
+                if(!isVisible() || m_mode!=mode || m_restoringVersion)return;
+                switch(chosen.toInt()) {
+                case Rename: {
+                    bool accepted=false;
+                    const QString name=QInputDialog::getText(this,i18n("Rename draft"),
+                        i18n("Name"),QLineEdit::Normal,title,&accepted).trimmed();
+                    if(accepted && !name.isEmpty()) {
+                        if(MobileDraftRecovery::rename(path,name))showList(m_mode);
+                        else QMessageBox::warning(this,i18n("Could not rename draft"),
+                            i18n("The recovery file could not be updated."));
+                    }
+                    break;
+                }
+                case Open:
+                    if(!draftProject.isEmpty()) {
+                        MobileSavedVersionArchive::Version source;
+                        source.path=path;
+                        openCopy(source);
+                        break;
+                    }
+                    if(m_files && m_files->openFile(path))hide();
+                    else QMessageBox::warning(this,i18n("Drawing not opened"),
+                        i18n("Could not open this drawing. Browse Files can renew Android file access."));
+                    break;
+                case Duplicate: {
+                    MobileSavedVersionArchive::Version source;
+                    const auto *item=m_projectItems.value(key);
+                    source.path=item?item->data(Qt::UserRole+4).toString():path;
+                    openCopy(source);
+                    break;
+                }
+                case History:showSavedVersions(draftProject.isEmpty()?path:draftProject);break;
+                case Star:
+                    if(!m_starred.remove(key))m_starred.insert(key);
+                    saveStars();
+                    if(auto *item=m_projectItems.value(key))updateProjectLabel(item);
+                    if(m_mode==AllProjects && m_sortOrder==Starred)sortProjects();
+                    break;
+                case Delete:
+                    if(draft)discardDraft(path);
+                    else deleteProject(path,title);
+                    break;
+                }
+            });
     }
 
     void openCopy(const MobileSavedVersionArchive::Version &version)
@@ -795,6 +793,7 @@ private:
 
     void showList(Mode mode,bool forceScan=false)
     {
+        if(m_projectMenu)m_projectMenu->close();
         if(m_mode==AllProjects && m_list->count()>0)persistIndex();
         m_mode=mode;
         m_savedPreviewRevisions=MobileSavedVersionArchive::previewRevisions();
@@ -1287,6 +1286,7 @@ private:
     bool m_lastAccess=false;
     SortOrder m_sortOrder=Newest;
     QSet<QString> m_starred;
+    QPointer<MobileTransientPanel> m_projectMenu;
     bool m_restoringVersion=false;
     bool m_thumbnailScheduled=false;
     bool m_forceThumbnailRefresh=false;

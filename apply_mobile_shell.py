@@ -450,6 +450,166 @@ def main(root:Path):
     # KisInputManager already knows the active KisCanvas2 directly.
     # Reuse the *same* hit-tested touch gestures and undo transactions,
     # replacing only desktop-specific canvas/document lookup.
+    # Screen-pinned references retain the document-to-screen transform at
+    # pin time. Their native shapes remain in the reference layer and KRA.
+    path=root/"libs/ui/KisReferenceImage.h"
+    source=path.read_text()
+    source=one(source,"    QColor getPixel(QPointF position);","""    QColor getPixel(QPointF position);
+#ifdef Q_OS_ANDROID
+    QTransform mobileScreenTransform() const;
+    void setMobileScreenTransform(const QTransform &transform, bool pinned = true);
+    bool mobileScreenPinned() const;
+    static KUndo2Command *mobileToggleScreenPin(KisReferenceImage *reference,
+                                                const QTransform &documentToWidget);
+#endif""","reference screen position API")
+    path.write_text(source)
+    path=root/"libs/ui/KisReferenceImage.cpp"
+    source="#include <optional>\n"+path.read_text()
+    source=one(source,"    bool embed{true};","""    bool embed{true};
+#ifdef Q_OS_ANDROID
+    std::optional<QTransform> mobileScreenTransform;
+#endif""","reference screen position state")
+    source=one(source,"void KisReferenceImage::saveXml(","""#ifdef Q_OS_ANDROID
+QTransform KisReferenceImage::mobileScreenTransform() const { return d->mobileScreenTransform.value_or(QTransform()); }
+
+bool KisReferenceImage::mobileScreenPinned() const { return d->mobileScreenTransform.has_value(); }
+
+void KisReferenceImage::setMobileScreenTransform(const QTransform &transform, bool pinned)
+{
+    if (pinned) d->mobileScreenTransform = transform;
+    else d->mobileScreenTransform.reset();
+}
+
+KUndo2Command *KisReferenceImage::mobileToggleScreenPin(KisReferenceImage *reference,
+                                                        const QTransform &documentToWidget)
+{
+    class PinCommand final : public KUndo2Command
+    {
+    public:
+        PinCommand(KisReferenceImage *image, const QTransform &screen, const QTransform &shape)
+            : KUndo2Command(kundo2_i18n("Change reference attachment"))
+            , image(image), oldScreen(image->mobileScreenTransform()), screen(screen)
+            , oldShape(image->transformation()), shape(shape), wasPinned(image->mobileScreenPinned()) {}
+        void undo() override { apply(oldScreen, oldShape, wasPinned); }
+        void redo() override { apply(screen, shape, !wasPinned); }
+    private:
+        void apply(const QTransform &screenTransform, const QTransform &shapeTransform, bool pinned)
+        {
+            image->update();
+            image->setMobileScreenTransform(screenTransform, pinned);
+            image->setTransformation(shapeTransform);
+            image->update();
+        }
+        KisReferenceImage *image;
+        QTransform oldScreen, screen, oldShape, shape;
+        bool wasPinned;
+    };
+    if (!reference->mobileScreenPinned()) {
+        return new PinCommand(reference, documentToWidget, reference->transformation());
+    }
+    bool invertible = false;
+    const QTransform inverse = documentToWidget.inverted(&invertible);
+    if (!invertible) return nullptr;
+    const QTransform local = reference->transformation();
+    const QTransform absolute = reference->absoluteTransformation();
+    const QTransform parent = local.inverted() * absolute;
+    const QTransform attached = absolute * reference->mobileScreenTransform() * inverse * parent.inverted();
+    return new PinCommand(reference, QTransform(), attached);
+}
+#endif
+
+void KisReferenceImage::saveXml(""","undoable reference screen attachment")
+    source=one(source,'    parentElement.appendChild(element);','''#ifdef Q_OS_ANDROID
+    if (mobileScreenPinned())
+        element.setAttribute("mobileScreenTransform", SvgUtil::transformToString(mobileScreenTransform()));
+#endif
+    parentElement.appendChild(element);''',"write reference screen attachment")
+    source=one(source,'    reference->setTransparency(1.0 - opacity);','''    reference->setTransparency(1.0 - opacity);
+#ifdef Q_OS_ANDROID
+    if (elem.hasAttribute("mobileScreenTransform")) {
+        const auto screen = SvgTransformParser(elem.attribute("mobileScreenTransform")).transform();
+        if (screen.isInvertible()) reference->setMobileScreenTransform(screen);
+    }
+#endif''',"read reference screen attachment")
+    path.write_text(source)
+
+    path=root/"libs/ui/flake/KisReferenceImagesLayer.h"
+    source=one(path.read_text(),"    void paintReferences(QPainter &painter);","""    void paintReferences(QPainter &painter);
+#ifdef Q_OS_ANDROID
+    void paintMobileScreenReferences(QPainter &painter);
+    KisReferenceImage *mobileReferenceAt(const QPointF &widgetPoint,
+                                         const QTransform &documentToWidget) const;
+    QColor mobileReferencePixel(const QPointF &widgetPoint,
+                                const QTransform &documentToWidget) const;
+#endif""","reference screen rendering API")
+    path.write_text(source)
+    path=root/"libs/ui/flake/KisReferenceImagesLayer.cpp"
+    source=one(path.read_text(),"#include <KoShapeCreateCommand.h>","#include <algorithm>\n#include <QPainter>\n#include <KoShapeCreateCommand.h>","reference rendering dependencies")
+    source=one(source,"    shapeManager()->paint(painter);","""#ifdef Q_OS_ANDROID
+    auto references = referenceImages();
+    if (std::none_of(references.cbegin(), references.cend(),
+                     [](auto *image) { return image->mobileScreenPinned(); })) {
+        shapeManager()->paint(painter);
+        return;
+    }
+    std::stable_sort(references.begin(), references.end(), KoShape::compareShapeZIndex);
+    for (auto *image : references) {
+        if (!image->mobileScreenPinned()) KoShapeManager::renderSingleShape(image, painter);
+    }
+#else
+    shapeManager()->paint(painter);
+#endif""","keep screen references out of the canvas buffer")
+    source=one(source,"bool KisReferenceImagesLayer::allowAsChild","""#ifdef Q_OS_ANDROID
+void KisReferenceImagesLayer::paintMobileScreenReferences(QPainter &painter)
+{
+    auto references = referenceImages();
+    std::stable_sort(references.begin(), references.end(), KoShape::compareShapeZIndex);
+    for (auto *image : references) {
+        if (!image->mobileScreenPinned()) continue;
+        painter.save();
+        painter.setTransform(image->mobileScreenTransform(), true);
+        KoShapeManager::renderSingleShape(image, painter);
+        painter.restore();
+    }
+}
+
+KisReferenceImage *KisReferenceImagesLayer::mobileReferenceAt(const QPointF &point,
+                                                              const QTransform &documentToWidget) const
+{
+    auto references = referenceImages();
+    std::stable_sort(references.begin(), references.end(), KoShape::compareShapeZIndex);
+    for (bool screen : {true, false}) {
+        for (auto it = references.crbegin(); it != references.crend(); ++it) {
+            auto *image = *it;
+            if (image->mobileScreenPinned() != screen || !image->isVisible()) continue;
+            const QTransform transform = screen ? image->mobileScreenTransform() : documentToWidget;
+            if (image->hitTest(transform.inverted().map(point))) return image;
+        }
+    }
+    return nullptr;
+}
+
+QColor KisReferenceImagesLayer::mobileReferencePixel(const QPointF &point,
+                                                      const QTransform &documentToWidget) const
+{
+    auto *image = mobileReferenceAt(point, documentToWidget);
+    if (!image) return {};
+    const QTransform transform = image->mobileScreenPinned()
+        ? image->mobileScreenTransform() : documentToWidget;
+    return image->getPixel(transform.inverted().map(point));
+}
+#endif
+
+bool KisReferenceImagesLayer::allowAsChild""","render and hit-test screen-pinned references")
+    path.write_text(source)
+    path=root/"libs/ui/KisReferenceImagesDecoration.cpp"
+    source=one(path.read_text(),"            gc.drawImage(d->buffer.position, d->buffer.image);\n        }","""            gc.drawImage(d->buffer.position, d->buffer.image);
+        }
+#ifdef Q_OS_ANDROID
+        layer->paintMobileScreenReferences(gc);
+#endif""","draw screen references over the canvas")
+    path.write_text(source)
+
     reference_input=root/"libs/ui/input/kis_input_manager.cpp"
     reference_source=reference_input.read_text(encoding="utf-8")
     reference_source=one(reference_source,
@@ -478,6 +638,128 @@ def main(root:Path):
                 KisReferenceImagesLayerSP refs =
                     activeView->document()->referenceImagesLayer();""",
         "route reference-image drag/resize/double-tap through active independent canvas")
+    reference_source=one(reference_source,
+        "#include <KisReferenceImage.h>","#include <KisReferenceImage.h>\n#include <KoSelection.h>",
+        "use the reference layer's native selection")
+    reference_source=one(reference_source,
+        "    KoShape *shape = nullptr;\n    KisCanvas2 *canvas = nullptr;\n    QPointF startingDocPoint;",
+        """    KisReferenceImage *shape = nullptr;
+    KisReferenceImagesLayerSP layer;
+    KisCanvas2 *canvas = nullptr;
+    QPointF startingDocPoint;""","track reference lifetime during touch gestures")
+    reference_source=one(reference_source,
+        '        if ((QSettings().value(\n                 QStringLiteral("TabletUi/referenceFingerDrag"),true).toBool() ||',
+        '''        const bool selectingReference = KoToolManager::instance()->activeToolId()
+            .section(QLatin1Char('/'), -1) == QStringLiteral("ToolReferenceImages");
+        if ((selectingReference || QSettings().value(
+                 QStringLiteral("TabletUi/referenceFingerDrag"),true).toBool() ||''',
+        "enable reference selection taps even with reference gestures off")
+    reference_source=one(reference_source,
+        """                    QPointF docPoint = canvas->coordinatesConverter()->widgetToDocument(widgetPoint);
+                    KoShape *shape = refs->shapeManager()->shapeAt(docPoint);
+                    if (dynamic_cast<KisReferenceImage*>(shape)) {""",
+        """                    const auto documentToWidget = canvas->coordinatesConverter()->documentToWidgetTransform();
+                    auto *shape = refs->mobileReferenceAt(widgetPoint, documentToWidget);
+                    if (shape) {
+                        const auto transform = shape->mobileScreenPinned()
+                            ? shape->mobileScreenTransform() : documentToWidget;
+                        const QPointF docPoint = transform.inverted().map(widgetPoint);""",
+        "hit-test canvas and screen reference images in displayed order")
+    reference_source=one(reference_source,
+        "                        drag.shape = shape;\n                        drag.canvas = canvas;",
+        "                        drag.shape = shape;\n                        drag.layer = refs;\n                        drag.canvas = canvas;",
+        "guard the reference layer for the full gesture")
+    reference_source=one(reference_source,
+        """            if (drag.canvas && drag.shape && !touchEvent->touchPoints().isEmpty()) {
+                auto toDoc = [&drag](const QPointF &point) {
+                    return drag.canvas->coordinatesConverter()->widgetToDocument(point);
+                };""",
+        """            if (drag.canvas && drag.layer && drag.layer->shapes().contains(drag.shape) &&
+                !touchEvent->touchPoints().isEmpty()) {
+                const auto transform = drag.shape->mobileScreenPinned()
+                    ? drag.shape->mobileScreenTransform()
+                    : drag.canvas->coordinatesConverter()->documentToWidgetTransform();
+                const auto inverse = transform.inverted();
+                auto toDoc = [&inverse](const QPointF &point) { return inverse.map(point); };""",
+        "move, pinch and rotate references in their attachment coordinates")
+    reference_source=one(reference_source,
+        "            if (drag.shape && drag.canvas) {",
+        "            if (drag.canvas && drag.layer && drag.layer->shapes().contains(drag.shape)) {",
+        "guard reference gesture completion")
+    reference_source=one(reference_source,
+        "                if (shortStationaryTap &&",
+        """                if (shortStationaryTap && KoToolManager::instance()->activeToolId()
+                    .section(QLatin1Char('/'), -1) == QStringLiteral("ToolReferenceImages")) {
+                    auto *selection = drag.layer->shapeManager()->selection();
+                    if (selection->count() != 1 || !selection->isSelected(drag.shape)) {
+                        selection->deselectAll();
+                        selection->select(drag.shape);
+                    }
+                }
+                if (shortStationaryTap &&""",
+        "select the tapped reference in the Reference Images tool")
+    reference_source=one(reference_source,
+        "            if (drag.shape) {\n                drag.shape->update();",
+        "            if (drag.layer && drag.layer->shapes().contains(drag.shape)) {\n                drag.shape->update();",
+        "guard reference gesture cancellation")
+    reference_source=one(reference_source,
+        """            QSettings().value(QStringLiteral("TabletUi/referencePenSample"), true).toBool() &&
+            KisPart::exists()) {
+            KisMainWindow *window = KisPart::instance()->currentMainwindow();
+            KisCanvas2 *canvas = window && window->viewManager()
+                ? window->viewManager()->canvasBase() : nullptr;
+            if (canvas && window->activeView() &&""",
+        """            QSettings().value(QStringLiteral("TabletUi/referencePenSample"), true).toBool() &&
+            KoToolManager::instance()->activeToolId().section(QLatin1Char('/'), -1) !=
+                QStringLiteral("ToolReferenceImages")) {
+            KisCanvas2 *canvas = this->canvas();
+            const auto view = canvas ? canvas->imageView() : QPointer<KisView>();
+            if (view && view->document() &&""",
+        "route reference pen sampling through the independent canvas")
+    reference_source=one(reference_source,
+        """                    window->activeView()->document()->referenceImagesLayer();
+                if (layer) {
+                    QColor sampled = layer->getPixel(
+                        canvas->coordinatesConverter()->widgetToImage(tabletEvent->posF()));""",
+        """                    view->document()->referenceImagesLayer();
+                if (layer) {
+                    QColor sampled = layer->mobileReferencePixel(tabletEvent->posF(),
+                        canvas->coordinatesConverter()->documentToWidgetTransform());""",
+        "sample the visible position of screen-pinned references")
+
+    path=root/"plugins/tools/defaulttool/referenceimagestool/ToolReferenceImages.h"
+    source=one(path.read_text(),"    bool hasSelection() override;","""#ifdef Q_OS_ANDROID
+    void paint(QPainter &, const KoViewConverter &) override {}
+    void mousePressEvent(KoPointerEvent *event) override;
+    void mouseMoveEvent(KoPointerEvent *event) override;
+    void mouseReleaseEvent(KoPointerEvent *event) override;
+#endif
+    bool hasSelection() override;""","replace desktop reference handles on Android")
+    path.write_text(source)
+    path=root/"plugins/tools/defaulttool/referenceimagestool/ToolReferenceImages.cpp"
+    source=one(path.read_text(),"#include <kis_canvas2.h>","#include <kis_canvas2.h>\n#include <KoPointerEvent.h>",
+        "use the native pointer event for reference selection")
+    source=one(source,"bool ToolReferenceImages::hasSelection()","""#ifdef Q_OS_ANDROID
+void ToolReferenceImages::mousePressEvent(KoPointerEvent *event)
+{
+    auto *kisCanvas = dynamic_cast<KisCanvas2*>(canvas());
+    const auto layer = m_layer.toStrongRef();
+    if (!kisCanvas || !layer) return;
+    const auto transform = kisCanvas->coordinatesConverter()->documentToWidgetTransform();
+    auto *reference = layer->mobileReferenceAt(transform.map(event->point), transform);
+    auto *selection = layer->shapeManager()->selection();
+    selection->deselectAll();
+    if (reference) selection->select(reference);
+    event->accept();
+}
+
+void ToolReferenceImages::mouseMoveEvent(KoPointerEvent *event) { event->accept(); }
+void ToolReferenceImages::mouseReleaseEvent(KoPointerEvent *event) { event->accept(); }
+#endif
+
+bool ToolReferenceImages::hasSelection()""","tap references without desktop resize handles")
+    path.write_text(source)
+
     reference_input.write_text(reference_source,encoding="utf-8")
 
     # Studio widgets use the host-neutral engine and document ports.

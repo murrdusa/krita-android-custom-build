@@ -1669,7 +1669,8 @@ private:
             const auto *document=manager->document();
             const auto refs=document?document->referenceImagesLayer():nullptr;
             if(refs) {
-                const auto color=refs->getPixel(point);
+                const auto color=refs->mobileReferencePixel(widgetPoint,
+                    canvas->coordinatesConverter()->documentToWidgetTransform());
                 if(color.isValid())return KoColor(color,image->colorSpace());
             }
         }

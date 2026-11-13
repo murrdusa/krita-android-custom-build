@@ -1,5 +1,9 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — project menus and reference images
+
+Project actions on Home use the shared nonmodal menu and close when another control is pressed. The Reference Images toolbar switches between references and can pin the selected image to the viewport or reattach it to the canvas. Pinning is undoable and stored with the native reference in KRA. Android uses taps, finger drag and pinch/rotation in place of desktop transform handles. The compact toolbar omits Reference Set and Lock Ratio.
+
 ## November 13 follow-up — New Canvas and touch controls
 
 New Canvas uses the shared compact dialog and anchored preset and background menus. Transparent creates one paint layer. Solid colors create a locked native background under an empty paint layer. The background preference migrates from the previous white/transparent toggle. Toolbar opacity and Studio's standard menu sliders use a common touch control. Brush sliders keep Krita's native precision and sizing curves. The Android keyboard is requested after a deliberate tap on an editable field.

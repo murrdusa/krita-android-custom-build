@@ -59,10 +59,10 @@ inline QAction *mobilePickAction(QWidget *parent,const QMenu &menu)
 // supplies action metadata and can be destroyed as soon as this returns.
 #include "transient_panel.h"
 
-inline void mobileShowActionList(QWidget *host,QWidget *anchor,const QMenu &menu,
+inline MobileTransientPanel *mobileShowActionList(QWidget *host,QWidget *anchor,const QMenu &menu,
                                  QObject *receiver,std::function<void(const QVariant &)> picked)
 {
-    if(MobileTransientPanel::closeForAnchor(host,anchor))return;
+    if(MobileTransientPanel::closeForAnchor(host,anchor))return nullptr;
     auto *panel=new MobileTransientPanel(host);
     panel->setObjectName(QStringLiteral("mobileContextOptionList"));
     panel->setAccessibleName(menu.title());
@@ -92,7 +92,7 @@ inline void mobileShowActionList(QWidget *host,QWidget *anchor,const QMenu &menu
         item->setData(Qt::UserRole,action->data());
         if(!action->isEnabled())item->setFlags(Qt::NoItemFlags);
     }
-    if(!list->count()) {panel->deleteLater();return;}
+    if(!list->count()) {panel->deleteLater();return nullptr;}
     MobileTouchScroll::configureList(list);
     layout->addWidget(list);
     const QPointer<QObject> alive=receiver;
@@ -104,4 +104,5 @@ inline void mobileShowActionList(QWidget *host,QWidget *anchor,const QMenu &menu
     });
     panel->anchorTo(anchor,QSize(245,qMin(330,10+41*list->count())));
     panel->present();
+    return panel;
 }

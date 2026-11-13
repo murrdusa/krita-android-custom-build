@@ -16,6 +16,7 @@
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
+#include <QFileInfo>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -45,6 +46,15 @@
 #include <KisOptionButtonStrip.h>
 #include <KoGroupButton.h>
 #include <kis_slider_spin_box.h>
+#include <KisDocument.h>
+#include <KisView.h>
+#include <KisReferenceImage.h>
+#include <KisReferenceImagesLayer.h>
+#include <KisReferenceImagesDecoration.h>
+#include <KoSelection.h>
+#include <KoShapeManager.h>
+#include <kis_canvas2.h>
+#include <kis_coordinates_converter.h>
 
 #include "engine_bridge.h"
 
@@ -289,6 +299,7 @@ public:
             addSectionChoices("sectionReference",QObject::tr("Reference"),
                 {QObject::tr("Current layer"),QObject::tr("All layers"),QObject::tr("Color labels")});
         } else if(shortId==QStringLiteral("ToolReferenceImages")) {
+            addReferenceControls();
             addNamedChoices(QObject::tr("Add reference"),{
                 {"bnAddReferenceImage",QObject::tr("From file")},
                 {"bnPasteReferenceImage",QObject::tr("From clipboard")},
@@ -296,12 +307,7 @@ public:
                 {"bnAddReferenceImageFromVisible",QObject::tr("From visible layers")}
             });
             named("opacitySlider",QObject::tr("Opacity"));
-            named("chkKeepAspectRatio",QObject::tr("Lock ratio"));
             named("bnDeleteSelectedImages",QObject::tr("Remove"));
-            addNamedChoices(QObject::tr("Reference set"),{
-                {"bnLoad",QObject::tr("Load set")},
-                {"bnSave",QObject::tr("Save set")}
-            });
             nativeMenu(QObject::tr("Arrange"),{
                 {"object_order_front",QObject::tr("Bring to front")},
                 {"object_order_back",QObject::tr("Send to back")},
@@ -540,6 +546,76 @@ private:
     void refreshControls()
     {
         for(const auto &refresh:m_refresh)refresh();
+    }
+
+    void addReferenceControls()
+    {
+        auto *choose=button(tr("References"));
+        auto *pin=button(tr("Pin to screen"));
+        const auto canvas=[this]() {
+            const auto *tool=qobject_cast<KoToolBase*>(m_nativeTool.data());
+            return tool?qobject_cast<KisCanvas2*>(tool->canvas()):nullptr;
+        };
+        const auto layer=[canvas]() -> KisReferenceImagesLayerSP {
+            auto *current=canvas();
+            auto *view=current?current->imageView().data():nullptr;
+            return view && view->document()?view->document()->referenceImagesLayer():KisReferenceImagesLayerSP();
+        };
+        connect(choose,&QToolButton::clicked,this,[this,choose,layer]() {
+            const auto refs=layer();
+            if(!refs)return;
+            const auto images=refs->referenceImages();
+            auto *selection=refs->shapeManager()->selection();
+            QMenu menu(tr("References"),this);
+            for(int i=0;i<images.size();++i) {
+                auto *image=images.at(i);
+                const auto file=QFileInfo(image->filename()).fileName();
+                auto *entry=menu.addAction(file.isEmpty()?tr("Reference %1").arg(i+1):
+                    tr("%1 · %2").arg(i+1).arg(file));
+                entry->setCheckable(true);
+                entry->setChecked(selection->isSelected(image));
+                entry->setData(i);
+            }
+            const auto generation=m_generation;
+            mobileShowActionList(parentWidget(),choose,menu,this,
+                [this,layer,refs,images,generation](const QVariant &value) {
+                    if(generation!=m_generation || layer()!=refs ||
+                       refs->referenceImages()!=images)return;
+                    const int index=value.toInt();
+                    if(index<0 || index>=images.size())return;
+                    auto *selection=refs->shapeManager()->selection();
+                    selection->deselectAll();
+                    selection->select(images.at(index));
+                    refreshControls();
+                });
+        });
+        const auto selected=[layer]() -> KisReferenceImage* {
+            const auto refs=layer();
+            if(!refs)return nullptr;
+            const auto shapes=refs->shapeManager()->selection()->selectedShapes();
+            return shapes.size()==1?dynamic_cast<KisReferenceImage*>(shapes.first()):nullptr;
+        };
+        connect(pin,&QToolButton::clicked,this,[this,canvas,selected]() {
+            auto *image=selected();
+            auto *current=canvas();
+            if(!image || !current)return;
+            if(auto *command=KisReferenceImage::mobileToggleScreenPin(
+                    image,current->coordinatesConverter()->documentToWidgetTransform())) {
+                current->addCommand(command);
+                if(auto decoration=current->referenceImagesDecoration())
+                    decoration->invalidateInteractiveReferenceCache();
+            }
+            refreshControls();
+        });
+        m_refresh.append([this,choose,pin,layer,selected]() {
+            const auto refs=layer();
+            auto *image=selected();
+            const int index=refs && image?refs->referenceImages().indexOf(image):-1;
+            choose->setEnabled(refs && refs->shapeCount()>0);
+            setChipText(choose,index<0?tr("References"):tr("Reference %1").arg(index+1));
+            pin->setEnabled(image);
+            setChipText(pin,image && image->mobileScreenPinned()?tr("Attach to canvas"):tr("Pin to screen"));
+        });
     }
 
     bool optionAvailable(QWidget *source) const
