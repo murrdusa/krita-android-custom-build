@@ -59,6 +59,13 @@ public:
         show();
     }
 
+    ~MobileFillTolerancePreview() override
+    {
+        // The worker owns this generation separately from the widget.
+        // Stop queued work when Fill/Select ends or switches tools.
+        m_requestGeneration->fetch_add(1,std::memory_order_relaxed);
+    }
+
     void setThreshold(int value)
     {
         if(m_threshold==value)return;
@@ -151,6 +158,7 @@ private:
                 selected=new KisPixelSelection();
                 selected->writeBytes(reinterpret_cast<const quint8*>(selectionPixels.constData()),rect);
             }
+            if(generation->load(std::memory_order_relaxed)!=request)return;
             KisFillPainter fill(source);
             fill.setWidth(size.width());
             fill.setHeight(size.height());
@@ -169,6 +177,7 @@ private:
                 fill.setRegionFillingBoundaryColor(options.boundaryColor);
             }
             const auto mask=fill.createFloodSelection(seed.x(),seed.y(),source,selected);
+            if(generation->load(std::memory_order_relaxed)!=request)return;
             if(!mask) {
                 QMetaObject::invokeMethod(qApp,[preview,threshold]() {
                     if(!preview)return;
@@ -181,6 +190,7 @@ private:
             mask->readBytes(reinterpret_cast<quint8*>(coverage.data()),rect);
             QImage overlay(size,QImage::Format_ARGB32_Premultiplied);
             for(int y=0;y<size.height();++y) {
+                if(generation->load(std::memory_order_relaxed)!=request)break;
                 auto *line=reinterpret_cast<QRgb*>(overlay.scanLine(y));
                 for(int x=0;x<size.width();++x) {
                     const int index=y*size.width()+x;
