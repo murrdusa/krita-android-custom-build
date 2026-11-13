@@ -39,33 +39,32 @@ public:
         return chosen;
     }
 
-    // Opening a recovered version after asynchronous KRA validation is
-    // safe if the complete set of native canvases and the active canvas
-    // are unchanged. Native tab order may change without replacing views.
-    static bool sameRecoveryWorkspace(
-        const QVector<QPointer<QObject>> &expectedViews,
-        const QPointer<QObject> &expectedActive,
-        const QVector<View> &current)
+    // Delayed recovery must not open into a workspace whose native views
+    // or backing documents changed during archive verification. View
+    // identity alone is insufficient if a host reuses a view widget.
+    static bool sameRecoveryWorkspace(const QVector<View> &expected,
+                                      const QVector<View> &current)
     {
-        if(expectedViews.size()!=current.size())return false;
-        for(const auto &expected:expectedViews) {
-            if(!expected)return false;
+        if(expected.size()!=current.size())return false;
+        int expectedActive=0;
+        int currentActive=0;
+        for(const View &old:expected) {
+            if(!old.nativeView || !old.document)return false;
+            if(old.active)++expectedActive;
             int matches=0;
-            for(const auto &entry:current)
-                if(entry.nativeView==expected)++matches;
+            for(const View &now:current) {
+                if(now.nativeView!=old.nativeView)continue;
+                ++matches;
+                if(!now.document || now.document!=old.document ||
+                   now.active!=old.active)return false;
+            }
             if(matches!=1)return false;
         }
-        bool activeMatches=!expectedActive;
-        int activeCount=0;
-        for(const auto &entry:current) {
-            if(!entry.nativeView)return false;
-            if(entry.active) {
-                ++activeCount;
-                if(entry.nativeView!=expectedActive)return false;
-                activeMatches=true;
-            }
+        for(const View &now:current) {
+            if(!now.nativeView || !now.document)return false;
+            if(now.active)++currentActive;
         }
-        return activeCount<=1 && activeMatches;
+        return expectedActive<=1 && currentActive==expectedActive;
     }
 
     static bool maySave(const QVector<View> &views,
