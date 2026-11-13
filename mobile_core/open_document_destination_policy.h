@@ -23,6 +23,14 @@ public:
                sameFile(destination,draftPath);
     }
 
+    static bool conflictsWithOwnBackingFile(
+        const QString &destination,const QString &projectPath,
+        const QString &draftPath,bool choosingPath,bool exporting)
+    {
+        return (choosingPath && sameFile(destination,draftPath)) ||
+               (exporting && sameFile(destination,projectPath));
+    }
+
     static bool sameFile(const QString &first,const QString &second)
     {
         if(first.isEmpty() || second.isEmpty())return false;
