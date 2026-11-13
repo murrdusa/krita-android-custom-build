@@ -216,6 +216,21 @@ int main(int argc,char **argv)
     require(MobileSavedVersionArchive::isRecoveryCopy(restored) &&
             !MobileSavedVersionArchive::isRecoveryCopy(source),
             "only private restored copies should require Save As");
+    // A mistaken Save As target must never become a private draft
+    // publication destination. In particular, a successful staging
+    // export cannot overwrite a real project outside app-private drafts.
+    const QString external=QDir(temp.path()).filePath(
+        QStringLiteral("external-art.kra"));
+    const QByteArray externalOriginal=QByteArray::fromHex("504b0304")+"original-art";
+    save(external,externalOriginal);
+    save(external+QStringLiteral(".pending.kra"),
+         QByteArray::fromHex("504b0304")+"replacement-art");
+    require(!MobileDraftRecovery::isDraftPath(external) &&
+            !MobileDraftRecovery::publish(external,true) &&
+            !MobileDraftRecovery::setProject(external,source) &&
+            load(external)==externalOriginal,
+            "draft publication must refuse external project paths");
+    QFile::remove(external+QStringLiteral(".pending.kra"));
     const QString draft=MobileDraftRecovery::allocate(QStringLiteral("a/b"));
     require(!draft.isEmpty() && draft!=MobileDraftRecovery::allocate(QStringLiteral("a/b")),
             "draft paths must be private and unique");
