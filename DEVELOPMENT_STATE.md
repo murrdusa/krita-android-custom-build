@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — cancel obsolete preview computations on gesture end and mid-job
+
+- Commits `5b6a82e69e82e04828add6a329d3a5f52796d7cc` and `15609e1e7defa2a766df7efe2487b830b82ddb9c`: the live Fill/contiguous-selection preview invalidates its shared worker-generation when destroyed (gesture release, cancellation, tool switch). Workers check staleness after reconstructing source data, after the native flood-fill call, and while producing overlay rows; they stop outdated follow-up work. When a **live** preview changes threshold, all stale exits notify the UI to reset the running flag and request the latest mask, avoiding a stalled preview. Does not change native Fill/selection commit, original seed, or Undo semantics.
+- **Verification:** previous preview optimization `d3c750b5fb1d34c7a6a72807e22a090d604467c9` received exact local WSL Android SUCCESS (164.76 MiB, 172,764,894 bytes). New cancellation changes need exact watcher SHA build confirmation. Fold 6 runtime performance/cancellation test outstanding. APK publishing remains paused.
+
 ## November 13 follow-up — skip stale queued live Fill/selection preview requests
 
 - Commit `bfc0c9a49aa0921c59b7b324f328d3406dce02b7`: the shared non-destructive `MobileFillTolerancePreview` increments an atomic request generation whenever the finger/pen changes the tolerance. A background worker still queued in the global thread pool checks that generation **before** creating paint devices and running a costly flood fill; if its tolerance is obsolete, it returns to the UI thread, clears the running flag and schedules the latest preview. This avoids computing stale live masks when the pool is busy and the user drags rapidly. The native Fill and contiguous-selection transactions, including release/Undo, are unchanged.
