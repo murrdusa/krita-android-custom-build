@@ -662,8 +662,11 @@ private:
         const QString digestPath=version.path+QStringLiteral(".sha256");
         if(QFileInfo(digestPath).isSymLink())return false;
         QFile digest(digestPath);
-        if(!digest.open(QIODevice::ReadOnly))return false;
-        const QByteArray sha=digest.readAll().trimmed().toLower();
+        if(!digest.open(QIODevice::ReadOnly) || digest.size()>128)return false;
+        // Apply the same bounded sidecar policy as historical recovery.
+        // A corrupt oversized digest must not consume memory while
+        // checking whether a new autosave may be rate-limited.
+        const QByteArray sha=digest.read(129).trimmed().toLower();
         if(sha.size()!=64 ||
            !QRegularExpression(QStringLiteral("^[0-9a-f]{64}$"))
                 .match(QString::fromLatin1(sha)).hasMatch())return false;
