@@ -12,6 +12,14 @@ int main()
        mobileFillTolerance(15,-1000)!=1)return 3;
     const QRect canvas(0,0,2000,1600);
     if(mobileFillPreviewWindow(canvas,QPoint(500,500))!=QRect(308,308,384,384) ||
-       mobileFillPreviewWindow(canvas,QPoint(0,0))!=QRect(0,0,192,192) ||
+       mobileFillPreviewWindow(canvas,QPoint(0,0))!=QRect(0,0,384,384) ||
+       mobileFillPreviewWindow(canvas,QPoint(1999,1599))!=QRect(1616,1216,384,384) ||
        !mobileFillPreviewWindow(canvas,QPoint(-1,0)).isEmpty())return 4;
+    // Small canvases must remain within their real image bounds.
+    const QRect small(12,34,120,180);
+    if(mobileFillPreviewWindow(small,QPoint(12,34))!=small ||
+       mobileFillPreviewWindow(small,QPoint(131,213))!=small)return 5;
+    const QRect narrow(40,60,250,1000);
+    if(mobileFillPreviewWindow(narrow,QPoint(40,1059))!=
+       QRect(40,676,250,384))return 6;
 }
