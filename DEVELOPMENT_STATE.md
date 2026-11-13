@@ -14,9 +14,9 @@ The horizontal Layers rail uses narrow rotated cards with rotated previews, badg
 
 The toolbar Add picker defaults to Common Tools, including Studio commands, with a searchable All Tools tab. The Add dialog focuses search and requests the Android keyboard.
 
-Brush capability checks are shared across picker instances and warmed in short idle batches. The picker paints its shell before attaching the native list, and queued opens are tied to the latest mode request and active document. Advanced Brush Settings is a fixed action below the scrollable quick controls. Workspace Settings separates panels from toolbar gestures. Studio settings and command lists share dark menu styling and screen-bounded sizing.
+Brush capability checks are cached across picker instances and run on demand. Automatic preset warmup on canvas entry was removed after a reported delayed crash. An Android crash log was unavailable to confirm the cause. The picker paints its shell before attaching the native list, and queued opens are tied to the latest mode request and active document. Advanced Brush Settings is a fixed action below the scrollable quick controls. Workspace Settings separates panels from toolbar gestures. Studio settings and command lists share dark menu styling and screen-bounded sizing.
 
-New Canvas includes a current-display pixel preset and more phone, tablet, square, and print sizes. The toolbar selector opens beside its field. The armed eyedropper previews pen hover, Reference Images indicates visibility, and the Tools picker accepts pen swipes starting between buttons. Clone Brush is discoverable as Clone Brush · Set source in Tools.
+New Canvas includes a current-display pixel preset and more phone, tablet, square, and print sizes. The toolbar selector opens beside its field. The armed eyedropper previews pen hover, Reference Images indicates visibility, and the Tools picker accepts pen swipes starting between buttons. Clone Brush is discoverable as Clone Brush · Set source in Tools. A small Set Clone Source button appears on canvas while the clone preset is active.
 
 ## Compact Tools picker
 

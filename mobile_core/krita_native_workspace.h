@@ -192,6 +192,7 @@ public:
             if(m_layers && m_layers->isVisible())
                 m_layers->refreshFromEngine();
             syncSelectionDismissButton();
+            syncCloneSourceButton();
             syncReferenceShortcut();
         });
         poll->start();
@@ -257,6 +258,7 @@ public:
                    Qt::DirectConnection,Q_RETURN_ARG(bool,armed)) && armed)
                 view->showFloatingMessage(tr("Tap the canvas to set the Clone Brush source."),QIcon());
             syncBrushModes();
+            syncCloneSourceButton();
         });
     }
 
@@ -1201,8 +1203,8 @@ public:
             hidePanels();
             return;
         }
-        if(ensureBrushControls())m_brush->schedulePresetWarmup();
         syncSelectionDismissButton();
+        syncCloneSourceButton();
         syncLayersVisibility();
         updateBrushSliders();
         syncContextToolBar();
@@ -1235,6 +1237,7 @@ public:
         if(m_color)m_color->hide();
         if(m_contextToolBar)m_contextToolBar->hide();
         if(m_selectionDismiss)m_selectionDismiss->hide();
+        if(m_cloneSourceButton)m_cloneSourceButton->hide();
     }
 
     void setCanvasOnly(bool enabled)
@@ -1778,10 +1781,38 @@ private:
         }
     }
 
+    void syncCloneSourceButton()
+    {
+        auto *canvas=m_host?m_host->nativeCanvas():nullptr;
+        const auto *provider=m_engine.hasDocument()?m_engine.brushResources():nullptr;
+        const auto preset=provider?provider->currentPreset():KisPaintOpPresetSP{};
+        const bool visible=canvas && !m_canvasOnly && preset && preset->valid() &&
+            preset->paintOp().id()==QStringLiteral("duplicate") &&
+            m_engine.activeTool().section(QLatin1Char('/'),-1)==QStringLiteral("KisToolBrush");
+        if(visible && !m_cloneSourceButton) {
+            m_cloneSourceButton=new QToolButton(canvas);
+            m_cloneSourceButton->setObjectName(QStringLiteral("mobileCloneSourceShortcut"));
+            m_cloneSourceButton->setText(tr("Set Clone Source"));
+            m_cloneSourceButton->setToolTip(tr("Tap the canvas to choose a new clone source"));
+            m_cloneSourceButton->setFixedSize(qMax(116,m_cloneSourceButton->sizeHint().width()+12),36);
+            m_cloneSourceButton->setStyleSheet(QStringLiteral(
+                "QToolButton#mobileCloneSourceShortcut{background:rgba(35,38,44,215);"
+                "color:#f1f2f5;border:1px solid #818894;border-radius:9px;"
+                "font-size:12px;padding:1px 4px;}"));
+            connect(m_cloneSourceButton,&QToolButton::clicked,this,
+                    &MobileKritaNativeWorkspace::pickCloneSource);
+        }
+        if(m_cloneSourceButton && visible==m_cloneSourceButton->isHidden()) {
+            m_cloneSourceButton->setVisible(visible);
+            scheduleOverlayPlacement();
+        }
+    }
+
     void syncContextToolBar()
     {
         if(m_canvasLayoutEditing)return;
         syncBrushModes();
+        syncCloneSourceButton();
         if(m_layers)m_layers->syncSelectionContext();
         QWidget *canvas=m_host ? m_host->nativeCanvas() : nullptr;
         auto *tools=KoToolManager::instance();
@@ -2121,11 +2152,13 @@ private:
                     layerAnchor.center().y()<canvasBounds.center().y():
                     layerAnchor.center().x()<canvasBounds.center().x());
         }
-        if(m_selectionDismiss && m_selectionDismiss->isVisible()) {
-            if(m_layers && m_layers->isVisible())obstacles.append(m_layers->geometry());
-            if(m_color && m_color->isVisible())obstacles.append(m_color->geometry());
-            const QRect preferred(canvasBounds.right()-88,canvasBounds.top()+5,85,36);
-            placePanel(m_selectionDismiss,preferred,canvasBounds,obstacles,QSize(85,36));
+        if(m_layers && m_layers->isVisible())obstacles.append(m_layers->geometry());
+        if(m_color && m_color->isVisible())obstacles.append(m_color->geometry());
+        for(auto *button:{m_selectionDismiss.data(),m_cloneSourceButton.data()}) {
+            if(!button || !button->isVisible())continue;
+            const QSize size=button->size();
+            const QRect preferred(QPoint(canvasBounds.right()-size.width()-3,canvasBounds.top()+5),size);
+            placePanel(button,preferred,canvasBounds,obstacles,size);
         }
 
     }
@@ -2135,6 +2168,7 @@ private:
         if(m_layers && m_layers->isVisible())m_layers->raise();
         if(m_showLayers && m_showLayers->isVisible())m_showLayers->raise();
         if(m_selectionDismiss && m_selectionDismiss->isVisible())m_selectionDismiss->raise();
+        if(m_cloneSourceButton && m_cloneSourceButton->isVisible())m_cloneSourceButton->raise();
         for(QWidget *panel:{static_cast<QWidget*>(m_brush.data()),
                             static_cast<QWidget*>(m_opacityStrip.data()),
                             static_cast<QWidget*>(m_color.data()),
@@ -2200,7 +2234,7 @@ private:
     QPointer<KritaMobileLayersPanel> m_layers;
     QPointer<MobileColorWorkspace> m_color;
     QPointer<MobileContextToolBar> m_contextToolBar;
-    QPointer<QToolButton> m_selectionDismiss;
+    QPointer<QToolButton> m_selectionDismiss,m_cloneSourceButton;
     QPointer<QAction> m_volumeUndo;
     QPointer<QAction> m_volumeRedo;
     QPointer<MobileToolbarDragPreview> m_toolbarPreview;

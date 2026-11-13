@@ -31,7 +31,6 @@
 #include <QPushButton>
 #include "touch_scroll.h"
 #include <QSettings>
-#include <QElapsedTimer>
 #include <QScopedValueRollback>
 #include <QSignalBlocker>
 #include <QToolButton>
@@ -334,13 +333,6 @@ public:
         // Hidden brushes/sliders should not poll the engine. The show
         // event starts a single timer and refreshes immediately.
         refresh();
-    }
-
-    void schedulePresetWarmup()
-    {
-        if(m_warmScheduled || (m_model && m_warmRow>=m_model->rowCount()))return;
-        m_warmScheduled=true;
-        QTimer::singleShot(500,this,[this]() {warmPresetIndex();});
     }
 
     bool isActiveMode(int slot) const
@@ -982,7 +974,6 @@ private:
             m_model=new KisResourceModel(ResourceType::PaintOpPresets,this);
             const auto clear=[this]() {
                 m_presetCapabilities.clear();
-                m_warmRow=0;
             };
             connect(m_model,&QAbstractItemModel::dataChanged,this,clear);
             connect(m_model,&QAbstractItemModel::modelReset,this,clear);
@@ -1003,18 +994,6 @@ private:
         return result;
     }
 
-    void warmPresetIndex()
-    {
-        if(!resources() || !m_engine.hasDocument()) {m_warmScheduled=false;return;}
-        auto *source=model();
-        QElapsedTimer budget;
-        budget.start();
-        while(m_warmRow<source->rowCount() && budget.elapsed()<5)
-            cachedCapabilities(m_warmRow++);
-        if(m_warmRow<source->rowCount())
-            QTimer::singleShot(32,this,[this]() {warmPresetIndex();});
-        else m_warmScheduled=false;
-    }
     static void rememberPreset(int slot,const KisPaintOpPresetSP &preset)
     {
         QSettings settings;
@@ -1631,8 +1610,6 @@ private:
     bool m_compositeEraser=false;
     KisResourceModel *m_model=nullptr;
     QHash<int,PresetCapabilities> m_presetCapabilities;
-    int m_warmRow=0;
-    bool m_warmScheduled=false;
     QTimer *m_refresh=nullptr;
     bool m_syncing=false,m_internalChange=false,m_hasSelectedMode=true;
     int m_slot=0;
