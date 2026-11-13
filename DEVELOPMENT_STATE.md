@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — Save As collision identity
+
+- Commits `d48c80a6c74fd9c860ae4f7fe64a30a9e374b34d` and `a036770850aba43d92fe398abd8800b3001ff2bf` on `main`: Save As/open-document collision comparisons canonicalize the nearest existing filesystem ancestor for missing target files. This prevents a symlinked parent directory from disguising a collision with a second open destination even when intermediate directories/files have not been created. Added a Qt archive regression using a linked folder and a still-missing target, plus a distinct-target negative control.
+- **Verification:** change committed and code reviewed; desktop Qt executable not run in this environment. Await exact PC watcher result for `a036770850aba43d92fe398abd8800b3001ff2bf` and newer commits; do not infer a build from a previous result. Device checks remain: SAF Save As/provider permissions, interrupted saves/recovery, multi-layer transforms and masks/KRA, rapid switches and geometry/keyboard. APK publishing paused.
+
 ## November 13 follow-up — draft-path publication protection
 
 - Commits `4bfea1f04fb2f36f43401c62ff960527fa905fab` and `99e1c97784292dbb85e9a7ebe8dd6a90aefd8e22`: private draft publication and its project sidecar now reject paths outside the UUID-named app-private draft directory. The staging file must not be a symlink. A new Qt archive regression verifies a synthetic external project cannot be replaced by accidental draft publication.
