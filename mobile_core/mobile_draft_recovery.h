@@ -128,7 +128,12 @@ public:
 
     static QString projectFor(const QString &draft)
     {
-        QFile file(draft+QStringLiteral(".project"));
+        // Recovery associations must come only from private draft
+        // metadata, not a substituted link to another project's file.
+        if(!isDraftPath(draft))return {};
+        const QString metadata=draft+QStringLiteral(".project");
+        if(QFileInfo(metadata).isSymLink())return {};
+        QFile file(metadata);
         if(!file.open(QIODevice::ReadOnly) || file.size()>16384)return {};
         return QString::fromUtf8(file.readAll());
     }
