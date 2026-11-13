@@ -11,6 +11,14 @@ inline int mobileFillTolerance(int initial,int delta)
 
 #include <QRect>
 
+// An older worker can finish after a drag returns to its earlier value.
+// Preview acceptance requires both tolerance and request identity.
+inline bool mobileFillPreviewResultCurrent(int value,int currentValue,
+                                           int request,int currentRequest)
+{
+    return value==currentValue && request==currentRequest;
+}
+
 inline QRect mobileFillPreviewWindow(const QRect &bounds,const QPoint &seed)
 {
     constexpr int side=384;
