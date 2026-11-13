@@ -115,6 +115,13 @@ int main(int argc,char **argv)
             !MobileSavedVersionArchive::materializeRecovery(
                 versions.last(),recover).isEmpty(),
             "legacy checkpoint without checksum should still restore");
+    auto legacyNoSize=versions.last();
+    legacyNoSize.bytes=0; // Older callers did not retain file-size metadata.
+    const QString legacyCopy=MobileSavedVersionArchive::materializeRecovery(
+        legacyNoSize,recover);
+    require(!legacyCopy.isEmpty() && load(legacyCopy)==initial,
+            "legacy recovery without size metadata must preserve full KRA");
+    QFile::remove(legacyCopy);
     const QString newestSnapshot=versions.first().path;
     const QByteArray newestOriginal=load(newestSnapshot);
     QByteArray checksumMismatch=newestOriginal;
