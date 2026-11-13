@@ -111,6 +111,29 @@ int main(int argc,char **argv)
                 Archive::snapshotFrom(damaged,damaged,root,120000) &&
                 Archive::list(damaged,root).size()==2,
                 "invalid checksum does not suppress new checkpoint"))return 1;
+    // A checksum that looks valid is not proof the archive is intact.
+    // Same-length byte corruption must bypass the gap and retain the
+    // last good version rather than acknowledging an unusable checkpoint.
+    const QString corruptBytes=temp.filePath(QStringLiteral("corrupt-bytes-gap.kra"));
+    if(!require(writeBytes(corruptBytes,initial) &&
+                Archive::snapshotFrom(corruptBytes,corruptBytes,root,120000),
+                "create archive for same-size corruption"))return 1;
+    const auto earlier=Archive::list(corruptBytes,root);
+    QByteArray tampered=initial;
+    tampered[tampered.size()-1]='X';
+    if(!require(tampered.size()==initial.size() &&
+                writeBytes(earlier.first().path,tampered) &&
+                writeBytes(corruptBytes,changed) &&
+                Archive::snapshotFrom(corruptBytes,corruptBytes,root,120000),
+                "same-size corrupt archive must not suppress new save"))return 1;
+    const auto repaired=Archive::list(corruptBytes,root);
+    if(!require(repaired.size()==2 &&
+                !Archive::materializeRecovery(
+                    repaired.first(),temp.filePath(QStringLiteral("recovery"))).isEmpty() &&
+                Archive::materializeRecovery(
+                    repaired.last(),temp.filePath(QStringLiteral("recovery"))).isEmpty(),
+                "new good checkpoint recovers, damaged predecessor rejected"))return 1;
+
     // The new valid version should now correctly reinstate spacing.
     if(!require(Archive::snapshotFrom(damaged,damaged,root,120000) &&
                 Archive::list(damaged,root).size()==2,
