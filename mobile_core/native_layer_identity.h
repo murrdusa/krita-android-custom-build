@@ -21,9 +21,12 @@ List transformTargets(const Node &root,const List &selected,const Node &active,
     List targets;
     bool hasExplicitTarget=false;
     for(const auto &node:selected) {
-        if(!node || isInternal(node))continue;
+        // Krita may report the image root as the selection sentinel.
+        // It cannot be transformed and must not suppress fallback to
+        // a valid active paint layer when no actual layer is selected.
+        if(!node || node==root || isInternal(node))continue;
         hasExplicitTarget=true;
-        if(node!=root && inTree(node,root) && !targets.contains(node))
+        if(inTree(node,root) && !targets.contains(node))
             targets.append(node);
     }
     if(targets.isEmpty() && !hasExplicitTarget && active && active!=root &&
