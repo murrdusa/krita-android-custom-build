@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — native multi-layer Delete target integrity
+
+- Commit `8d7ac695a53ab939aed53d3126da2d0994ad07ce`: multi-layer Delete now verifies Krita's **actual selected-node set** after `slotSetSelectedNodes(targets)`, before invoking the native `removeNode()` operation. It also rechecks active image, node manager, membership, parent attachment, and Krita's native edit eligibility. If synchronous native selection callbacks changed the target list, Delete aborts instead of deleting a different selection. Single-layer deletion continues to use Krita's `removeSingleNode` path. Native Undo remains Krita-owned.
+- **Verification:** the WSL watcher result must match the new source SHA; a prior SUCCESS is not sufficient. No device multi-layer delete/Undo/KRA round-trip test in this session. APK publishing stays paused.
+
 ## November 13 follow-up — pinch-to-group range revalidation
 
 - Commit `b20a6e210d7f8bc9c748022591edc3e434736c94`: two-finger layer-rail pinch grouping validates the **entire contiguous chosen range**, not only gesture endpoints, after leaving Transform and again after activating and selecting the native nodes. It checks every member's image membership, unchanged parent, layer type and immediate sibling order, alongside Krita's move eligibility. It also compares the actual native selection against the gesture's chosen nodes before `createQuickGroup()`, aborting a stale/incomplete grouping request. Native Krita owns the resulting grouping and Undo.
