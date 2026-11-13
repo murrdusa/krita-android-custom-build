@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — deduplicate overlapping compact clip wrapper traversals
+
+- Commit `e136f30e1160c93e4f2f28d1a7baad6997148d5e`: compact clipping rebuild's recursive wrapper collection now deduplicates wrappers when the source and destination parent trees overlap (nested group or ancestor moves). The serial native ungroup queue continues child-before-parent but will not try to ungroup the same wrapper twice after the first command already detached it. No changes to actual Krita Undo commands.
+- **Verification:** native Android WSL builder for the serial ungroup source `ab2ead134da7de2fe9553462592be79ac062fc3d` needs exact watcher result; the deduplication commit also requires its own build confirmation. Qt layer runtime/KRA reopen tests remain pending and APK publication stays paused.
+
 ## November 13 follow-up — serialize native clipping wrapper ungroup strokes
 
 - Commit `ab2ead134da7de2fe9553462592be79ac062fc3d`: compact clip flatten/rebuild now executes native `quickUngroup()` **one wrapper at a time, innermost first**, checking the actual active image for detachment of each wrapper before dispatching the next asynchronous Krita stroke. Previously, all nested ungroup commands were enqueued back-to-back even though the native layer hierarchy had not settled, risking stale selection and incorrect regrouping. Each command still checks exact wrapper selection, image ownership and node manager. The same existing timeout aborts if one wrapper fails to detach. Native Undo ownership remains Krita's.
