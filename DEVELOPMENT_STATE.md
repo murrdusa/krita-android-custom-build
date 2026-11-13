@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — persist updated dimensions for customized workspace profiles
+
+- Commit `1565d4cdcea92e8ce03288db9600f06f612b5b82`: `MobileWorkspaceProfiles::remember` no longer ignores the current viewport size for an existing workspace ID. Saving the layout after modest foldable/split-screen/inset changes now refreshes the profile's size while keeping its ID and toolbar/panel settings, so future layout matching does not strand customizations at old dimensions or generate unnecessary new profiles. Invalid sizes and blank IDs do not change persistent settings. Commit `d1bcbde5abc52fc2403064a2e886308547db47c2` extends the Qt workspace regression to cover existing profile size updates, preservation of per-profile settings and rejected invalid size.
+- **Verification:** prior checksum checkpoint source `8f3dee120ecba9c9ebd21ac60788d22d9b471057` received exact WSL Android SUCCESS (164.76 MiB, 172,765,842 bytes). New profile source requires matching WSL build; desktop Qt regression committed but not run. Fold 6/split-screen runtime behavior remains unverified; APK publishing paused.
+
 ## November 13 follow-up — apply bounded checksum policy to background checkpoint verification
 
 - Commit `7288ba54c6bb81c7dcce7759368975340b27f551`: `hasPublishedCheckpoint` now rejects an oversized SHA-256 sidecar before reading it, using the same bounded policy as historical KRA recovery. This verifier is used by autosave rate-limiting and retention; corrupt or replaced metadata no longer entails an unbounded read or an opportunity to treat a damaged checkpoint as safely published. Commit `b861d0c75f406cb8399301e8257b30b6f6eb2f88` extends the host Qt archive regression: a 129-byte sidecar must not suppress a subsequent fresh routine checkpoint within the normal spacing interval.
