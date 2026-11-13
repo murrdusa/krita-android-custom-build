@@ -2043,11 +2043,23 @@ private:
             if(!node->inherits("KisLayer"))return;
             chosen.append(node);
         }
-        if(!m->canMoveLayers(chosen,false))return;
+        if(!m->canMoveLayers(chosen,false) ||
+           !prepareLayerReorder(image))return;
+        // prepareLayerReorder may switch away from a pending transform.
+        // The selected nodes, parent and canvas must still be identical
+        // before starting Krita's native grouping/undo operation.
+        auto *current=m_engine.manager();
+        if(!current || current->image().toStrongRef()!=image ||
+           manager()!=m || a->parent()!=parent || b->parent()!=parent ||
+           !inImage(a,image) || !inImage(b,image) ||
+           !m->canMoveLayers(chosen,false))return;
         m->slotUiActivatedNode(a);
         m->slotSetSelectedNodes(chosen);
         m->createQuickGroup();
-        QTimer::singleShot(250,this,[this,a,b,parent]() mutable {
+        QTimer::singleShot(250,this,[this,a,b,parent,image]() {
+            auto *view=m_engine.manager();
+            if(!view || view->image().toStrongRef()!=image)return;
+            if(!inImage(a,image) || !inImage(b,image))return;
             KisNodeSP group=a?a->parent():KisNodeSP();
             if(group && group!=parent &&
                group==b->parent() &&
