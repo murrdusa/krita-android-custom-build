@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — historical KRA recovery alongside multiple canvases
+
+- Commits `a5b5677a93edbf397675d482277ab5ad5373b64c`, `1ec541f2523ab38dfcf6edfe7428e01d56a7c8c1`, `bb37fb9833a7512016c35d3b8729768a817e6bd1`, `04a92632de124d4c4ce5de5455988e1155d65067` and `ccb6d19de143edf9cfb93eb01b7d75677a01eb53`: fixed the version-history **Open copy** workflow that previously refused every recovery whenever two or more native canvases were open. Async recovery now captures all native view identities plus the active view. On the UI callback it allows opening a recovered KRA only when the complete set of views remains unchanged (regardless of tab order) and the active view is unchanged; closing/replacing a canvas or switching documents aborts the delayed open. Consolidated validation in `MobileViewIdentityGuard::sameRecoveryWorkspace`. Added desktop Qt view-stack regression for stable two-canvas recovery, tab reorder, active-view switch, closed/replaced view, and empty workspace. Native recovered documents still reset their path and require Save As; private materialized copy is deleted after the synchronous native open finishes.
+- **Verification:** Qt view-stack regression has been committed but not executed here; Android exact-SHA build remains pending for new changes. Previous clip-ungroup fix `b06e500695c8dc368591d4b0ac6ca6074fcff438` was last confirmed by local WSL watcher. APK publishing paused.
+
 ## November 13 follow-up — compact clip ungroup completion checks live tree membership
 
 - Commit `fe84b39c1951535743e8fc366da6242bfa57d543`: async `waitCompactClipUngroup` now regards a wrapper as pending **only while its node is still attached to the active image tree**, instead of checking whether the retained shared pointer has a non-null parent. Krita can detach a group while its parent pointer still references an orphaned subtree; the previous check could spin for the full timeout and abandon clipping regrouping even though the wrapper is no longer in the document. The new check avoids that false timeout while leaving native ungroup/Undo ownership unchanged.
