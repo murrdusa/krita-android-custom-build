@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — pinch-to-group range revalidation
+
+- Commit `b20a6e210d7f8bc9c748022591edc3e434736c94`: two-finger layer-rail pinch grouping validates the **entire contiguous chosen range**, not only gesture endpoints, after leaving Transform and again after activating and selecting the native nodes. It checks every member's image membership, unchanged parent, layer type and immediate sibling order, alongside Krita's move eligibility. It also compares the actual native selection against the gesture's chosen nodes before `createQuickGroup()`, aborting a stale/incomplete grouping request. Native Krita owns the resulting grouping and Undo.
+- **Verification:** the prior manual Group Layers validation at code commit `fb4735d8b22c992f70b05226731e8b4e74df3465` received PC WSL Android SUCCESS (164.75 MiB, 172,755,162 bytes). The new pinch-group commit requires its own exact-SHA watcher confirmation. No device pinch grouping, native Undo or KRA reopen run in this session. APK publication remains paused.
+
 ## November 13 follow-up — manual Group Layers validation after Transform
 
 - Commits `fb4735d8b22c992f70b05226731e8b4e74df3465` and `fe85e12a4e4e6066522198064d88a6abe455c689`: the manual **Group layers** dialog revalidates all selected native layers immediately after leaving an active Transform tool and again after applying the native multi-layer selection, before `createQuickGroup()`. It ensures the image/node manager still match, the parent remains in the image, all chosen nodes remain editable siblings in that parent, Krita still permits moving the chosen layers, and Krita's actual selected-node set matches the dialog's intended set. Reentrant selection/canvas changes now abort grouping rather than grouping different nodes. Root-level grouping remains supported.
