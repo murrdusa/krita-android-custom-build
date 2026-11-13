@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — executable Qt-free transform hierarchy regression
+
+- Commits `086af028f5ed65a31f54f211762d37c501f3e667` and `466bbd78c17d986f37c05acedb807dbe25639986` add a standalone C++17 test and `tests/run_mobile_layer_identity_regression.sh`. The test exercises 14 selected group/child/mask cases against `MobileLayerIdentity::transformTargets`, including overlapping group selection, three-level nesting, independent sibling layers, duplicate selected nodes, stale nodes outside the image and Edit Selection behavior. **Executed locally:** PASS, 14 cases, using `c++ -std=c++17 -O2 -Wall -Wextra -Werror`, no Qt or Android build needed.
+- **Verification scope:** this exercises the pure target policy only, *not* native Krita transform commit, cancel, Undo, KRA serialization, mask attachment or on-device responsiveness. Read Issue #1 for the latest exact compiled SHA and APK size. No APK publishing or hardware tests.
+
 ## November 13 follow-up — mask drag validation after Transform
 
 - Commit `1a059796c1b0170f3a5d0a298015e3fe8815cbad`: mask/layer rail drag moves recheck the active image, node manager, source's original parent, target editability/membership, Krita's move eligibility, and sibling anchor after leaving Transform. Revalidates the plain undoable move path, including cross-layer selection masks, and the asynchronous compact clipping move callback. Invalid/stale targets are refused rather than being queued as a native stroke.
