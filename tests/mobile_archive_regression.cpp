@@ -88,9 +88,9 @@ int main(int argc,char **argv)
         QStringLiteral("Different.kra"));
     if(!require(MobileOpenDocumentDestinationPolicy::conflictsWithBackingFile(
                     recoveredBacking,QString(),recoveredBacking) &&
-                Destination::conflictsWithBackingFile(
+                MobileOpenDocumentDestinationPolicy::conflictsWithBackingFile(
                     recoveredBacking,recoveredBacking,QString()) &&
-                !Destination::conflictsWithBackingFile(
+                !MobileOpenDocumentDestinationPolicy::conflictsWithBackingFile(
                     otherDestination,QString(),recoveredBacking),
                 "Save As must protect both visible and recovered backing paths"))
         return 1;
