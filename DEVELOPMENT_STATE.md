@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — mask drag validation after Transform
+
+- Commit `1a059796c1b0170f3a5d0a298015e3fe8815cbad`: mask/layer rail drag moves recheck the active image, node manager, source's original parent, target editability/membership, Krita's move eligibility, and sibling anchor after leaving Transform. Revalidates the plain undoable move path, including cross-layer selection masks, and the asynchronous compact clipping move callback. Invalid/stale targets are refused rather than being queued as a native stroke.
+- **Verification:** code committed; exact PC watcher result still pending at time of entry. Last known SUCCESS was `de94172384f19fe8ccb1a8c0ba0f9680f80e6298` at 164.74 MiB (172,747,442 bytes) unless Issue #1 shows a newer SHA. This session did not execute standalone Qt or Fold 6 mask/KRA/Undo tests; do not claim runtime success. Publishing remains paused.
+
 ## November 13 follow-up — native layer/mask reorder target revalidation
 
 - Commit `e05a38ee83ac8d368376692fffe22c67a13c0bed`: the one-step native reorder path rechecks active image, source membership and original parent, parent editability, and sibling-anchor identity **after** leaving Transform and selecting the row, just before constructing the native undoable move. This prevents a reentrant selection/node change from queuing a move against detached/stale nodes. Applies to native layer/mask sibling reorders without replacing Krita's stroke or KRA storage.
