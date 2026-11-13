@@ -77,6 +77,15 @@ inline void mobileShowActionList(QWidget *host,QWidget *anchor,const QMenu &menu
     auto *list=new QListWidget(panel);
     for(auto *action:menu.actions()) {
         if(!action->isVisible() || action->isSeparator())continue;
+        if(action->property("mobileSectionHeading").toBool()) {
+            auto *heading=new QListWidgetItem(action->text(),list);
+            QFont font=heading->font();
+            font.setBold(true);
+            heading->setFont(font);
+            heading->setForeground(QColor("#bfc9dc"));
+            heading->setFlags(Qt::NoItemFlags);
+            continue;
+        }
         auto *item=new QListWidgetItem(action->icon(),
             (action->isCheckable() && action->isChecked()?QStringLiteral("✓  "):QString())+
             action->text(),list);

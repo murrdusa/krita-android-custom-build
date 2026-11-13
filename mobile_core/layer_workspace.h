@@ -355,7 +355,7 @@ public:
         // Krita's built-in dialogs and undo/redo for each node type.
         auto *addType=new QPushButton(QStringLiteral("+"),this);
         addType->setAccessibleName(i18n("Add layer"));
-        addType->setToolTip(i18n("Tap: new paint layer. Hold: all layer and mask types"));
+        addType->setToolTip(i18n("Add a layer or mask"));
         m_railHeader=new QWidget(this);
         m_railHeaderLayout=new QBoxLayout(QBoxLayout::LeftToRight,m_railHeader);
         m_railHeaderLayout->setContentsMargins(0,0,0,0);
@@ -383,78 +383,50 @@ public:
         // for a vertical rail, stacked for a horizontal rail.
         updateRailHeader(82,false,true);
         m_railLayout->insertWidget(0,m_railHeader);
-        auto *addHold=new QTimer(addType);
-        addHold->setSingleShot(true);
-        addHold->setInterval(480);
-        auto *held=new bool(false);
-        connect(addType,&QObject::destroyed,this,[held]() {delete held;});
-        connect(addType,&QPushButton::pressed,addType,
-                [addHold,held]() {*held=false;addHold->start();});
-        connect(addType,&QPushButton::released,addType,
-                [addHold]() {addHold->stop();});
-        const auto openAddTypes=[this]() {
+        connect(addType,&QPushButton::clicked,this,[this,addType]() {
             auto *view=m_engine.manager();
             auto *nodes=manager();
             if(!nodes || !view)return;
             const KisImageSP original=view->image().toStrongRef();
             if(!original)return;
-            QMenu menu(this);
+            QMenu menu;
             menu.setTitle(i18n("Add layer or mask"));
-            QMenu *layers=menu.addMenu(i18n("Layer types"));
-            QMenu *masks=menu.addMenu(i18n("Masks"));
-            struct NewType { QAction *action; const char *type; };
-            QVector<NewType> choices;
-            auto add=[&](QMenu *submenu,const QString &label,
-                         const char *type,const char *nativeId) {
-                auto *entry=submenu->addAction(label);
+            const auto heading=[&menu](const QString &title) {
+                menu.addAction(title)->setProperty("mobileSectionHeading",true);
+            };
+            const auto add=[this,&menu](const QString &label,const char *type,const char *nativeId) {
+                auto *entry=menu.addAction(label);
+                entry->setData(QString::fromLatin1(type));
                 if(auto *native=m_engine.action(nativeId)) {
                     entry->setIcon(native->icon());
                     entry->setEnabled(native->isEnabled());
                 }
-                choices.append({entry,type});
             };
-            add(layers,i18n("Paint layer"),"KisPaintLayer","add_new_paint_layer");
-            add(layers,i18n("New empty group"),"KisGroupLayer","add_new_group_layer");
-            add(layers,i18n("Vector layer"),"KisShapeLayer","add_new_shape_layer");
-            add(layers,i18n("Filter layer"),"KisAdjustmentLayer","add_new_adjustment_layer");
-            add(layers,i18n("Fill layer"),"KisGeneratorLayer","add_new_fill_layer");
-            add(layers,i18n("Clone layer"),"KisCloneLayer","add_new_clone_layer");
-            add(layers,i18n("File layer"),"KisFileLayer","add_new_file_layer");
-            addMaskTypes(masks,true);
-            QAction *chosen=mobilePickAction(window(),menu);
-            if(!chosen || !m_engine.manager() ||
-               m_engine.manager()->image().toStrongRef()!=original)
-                return;
-            const bool isMask=masks->actions().contains(chosen);
-            if(!prepareNodeCreation(original,isMask))return;
-            if(isMask) {
-                if(nodes->createNode(chosen->data().toString()))reload();
-                return;
+            heading(i18n("Layers"));
+            add(i18n("Paint layer"),"KisPaintLayer","add_new_paint_layer");
+            add(i18n("Group"),"KisGroupLayer","add_new_group_layer");
+            add(i18n("Vector layer"),"KisShapeLayer","add_new_shape_layer");
+            add(i18n("Filter layer"),"KisAdjustmentLayer","add_new_adjustment_layer");
+            add(i18n("Fill layer"),"KisGeneratorLayer","add_new_fill_layer");
+            add(i18n("Clone layer"),"KisCloneLayer","add_new_clone_layer");
+            add(i18n("File layer"),"KisFileLayer","add_new_file_layer");
+            heading(i18n("Masks"));
+            addMaskTypes(&menu,true);
+            const KisNodeSP target=creationTarget(original);
+            if(!target || !target->isEditable()) {
+                for(auto *entry:menu.actions())
+                    if(entry->data().toString().endsWith(QStringLiteral("Mask")))entry->setEnabled(false);
             }
-            for(const NewType &candidate:choices) {
-                if(chosen!=candidate.action)continue;
-                if(nodes->createNode(QString::fromLatin1(candidate.type)))
-                    reload();
-                break;
-            }
-        };
-        connect(addHold,&QTimer::timeout,addType,
-                [held,openAddTypes]() {
-            *held=true;
-            openAddTypes();
-        });
-        connect(addType,&QPushButton::clicked,this,[this,held]() {
-            if(*held) {
-                *held=false; // Consume the click after a long hold.
-                return;
-            }
-            auto *view=m_engine.manager();
-            const KisImageSP image=view?view->image().toStrongRef():KisImageSP();
-            if(!prepareNodeCreation(image,false))return;
-            if(auto *m=manager()) {
-                m->createNode(QStringLiteral("KisPaintLayer"));
-                QTimer::singleShot(120,this,[this]() {reload();});
-            }
+            auto *host=parentWidget();
+            if(!host)return;
+            mobileShowActionList(host,addType,menu,this,[this,original,target](const QVariant &choice) {
+                const auto type=choice.toString();
+                const bool mask=type.endsWith(QStringLiteral("Mask"));
+                if(type.isEmpty() || (mask && creationTarget(original)!=target) ||
+                   !prepareNodeCreation(original,mask))return;
+                if(auto *nodes=manager())
+                    if(nodes->createNode(type))reload();
+            });
         });
 
         auto *operations=new QHBoxLayout;
@@ -949,15 +921,10 @@ private:
                    m_engine.manager()->image().toStrongRef()==originalImage &&
                    inImage(node,originalImage);
         };
+        const bool isMask=node->inherits("KisMask");
         QDialog sheet(this);
-        sheet.setWindowTitle(i18n("Layer options"));
-        sheet.setStyleSheet(QStringLiteral(
-            "QDialog{background:#252529;}"
-            "QLabel{color:#f4f4f5;font-size:15px;}"
-            "QPushButton{background:#34343a;color:#f4f4f5;border:1px solid #55555c;"
-            "border-radius:8px;padding:4px;min-height:44px;}"
-            "QPushButton:pressed{background:#51515a;}"
-            "QPushButton:disabled{color:#95959e;}"));
+        sheet.setWindowTitle(isMask?i18n("Mask options"):i18n("Layer options"));
+        MobileTouchScroll::styleMenuDialog(sheet,QSize(440,620));
         auto *outer=new QVBoxLayout(&sheet);
         auto *scrollArea=new QScrollArea(&sheet);
         scrollArea->setFrameShape(QFrame::NoFrame);
@@ -981,11 +948,18 @@ private:
             return button;
         };
         sheetLayout->addWidget(makeButton(rename,node->name()));
+        if(isMask && node->parent()) {
+            auto *ownerLabel=new QLabel(i18n("Attached to %1",node->parent()->name()),body);
+            ownerLabel->setWordWrap(true);
+            sheetLayout->addWidget(ownerLabel);
+        }
         const QString blendName=KoCompositeOpRegistry::instance()
             .getCompositeOpDisplayName(node->compositeOpId());
-        auto *blendButton=makeButton(blendAction,blendName.isEmpty()?blendAction->text():blendName);
-        blendButton->setAccessibleDescription(i18n("Change layer blending mode"));
-        sheetLayout->addWidget(blendButton);
+        if(!isMask) {
+            auto *blendButton=makeButton(blendAction,blendName.isEmpty()?blendAction->text():blendName);
+            blendButton->setAccessibleDescription(i18n("Change layer blending mode"));
+            sheetLayout->addWidget(blendButton);
+        }
         auto *opacityLabel=new QLabel(&sheet);
         auto *opacitySlider=new QSlider(Qt::Horizontal,&sheet);
         opacitySlider->setRange(0,100);
@@ -1001,10 +975,19 @@ private:
         connect(opacitySlider,&QSlider::valueChanged,&sheet,[opacityLabel](int value) {
             opacityLabel->setText(i18n("Opacity: %1%").arg(value));
         });
-        sheetLayout->addWidget(opacityLabel);
-        sheetLayout->addWidget(opacitySlider);
+        if(isMask) {
+            opacityLabel->hide();
+            opacitySlider->hide();
+        } else {
+            sheetLayout->addWidget(opacityLabel);
+            sheetLayout->addWidget(opacitySlider);
+        }
         auto *grid=new QGridLayout;
-        const QList<QPair<QAction*,QString>> buttons{
+        const QList<QPair<QAction*,QString>> buttons=isMask?
+            QList<QPair<QAction*,QString>>{
+                {properties,i18n("Mask settings")},{visibility,visibility->text()},{lock,lock->text()},
+                {moveUp,i18n("Move up")},{moveDown,i18n("Move down")},{remove,i18n("Delete")}
+            }:QList<QPair<QAction*,QString>>{
             {visibility,visibility->text()},{duplicate,i18n("Duplicate")},{clear,i18n("Clear")},
             {alphaLock,alphaLock->isChecked()?i18n("Alpha lock: On"):i18n("Alpha lock: Off")},
             {lock,lock->text()},{merge,i18n("Merge")},{remove,i18n("Delete")},
@@ -1026,7 +1009,7 @@ private:
             clip->setAccessibleName(full);
             sheetLayout->addWidget(clip);
         }
-        sheetLayout->addWidget(makeButton(group,group->text()));
+        if(!isMask)sheetLayout->addWidget(makeButton(group,group->text()));
         auto *footer=new QHBoxLayout;
         auto *more=new QPushButton(i18n("More…"),&sheet);
         connect(more,&QPushButton::clicked,&sheet,[&sheet]() {sheet.done(2);});
@@ -1036,7 +1019,7 @@ private:
         footer->addWidget(done);
         outer->addLayout(footer);
         const int sheetHeight=body->sizeHint().height()+footer->sizeHint().height()+36;
-        sheet.resize(qMin(360,qMax(1,window()->width()-24)),
+        sheet.resize(qMin(440,qMax(1,window()->width()-24)),
                      qMin(sheetHeight,qMax(1,window()->height()-24)));
         sheet.setMaximumSize(qMax(1,window()->width()-12),
                              qMax(1,window()->height()-12));
@@ -1166,7 +1149,7 @@ private:
             if(const KoCompositeOp *mode=colorSpace->compositeOp(selected))
                 m->setNodeCompositeOp(node,mode);
         } else if(chosen==properties) {
-            m->nodeProperties(node);
+            m->nodePropertiesIgnoreSelection(node);
         } else if(chosen==alphaLock || chosen==inheritAlpha) {
             // Do NOT switch active layers then toggle: KisNodeManager's
             // activeNode()/selectedNodes() can still refer to the previous
@@ -1299,6 +1282,17 @@ private:
     // Creation uses Krita's native node manager and the current document.
     // A live multi-layer transform must not silently gain a new target or
     // inherit the old selection when a layer/mask is inserted.
+    KisNodeSP creationTarget(const KisImageSP &image) const
+    {
+        auto *nodes=manager();
+        if(!image || !nodes)return {};
+        KisNodeSP target=m_active;
+        if(!inImage(target,image) || KisNodeManager::isNodeHidden(target,true))
+            target=nodes->activeNode();
+        if(target && target->inherits("KisMask"))target=target->parent();
+        return inImage(target,image) && !KisNodeManager::isNodeHidden(target,true)?target:KisNodeSP{};
+    }
+
     bool prepareNodeCreation(const KisImageSP &image,bool mask)
     {
         auto *view=m_engine.manager();
@@ -1306,12 +1300,8 @@ private:
         if(!image || !view || !nodes ||
            view->image().toStrongRef()!=image)return false;
         if(m_reorderPending || m_clipBusy || m_clipPropertyPending)return false;
-        KisNodeSP target=m_active;
-        if(!inImage(target,image) ||
-           KisNodeManager::isNodeHidden(target,true))
-            target=nodes->activeNode();
-        const bool validTarget=inImage(target,image) &&
-            !KisNodeManager::isNodeHidden(target,true);
+        const KisNodeSP target=creationTarget(image);
+        const bool validTarget=bool(target);
         // Newly created or emptied canvases can have no selectable layer
         // yet. Native Krita still allows creating their first paint layer.
         if(mask && (!validTarget || !target->inherits("KisLayer") ||
@@ -1731,7 +1721,11 @@ private:
             if(below && below->parent()!=destination)return;
             if(source->parent()==destination &&
                (below==source || below==source->prevSibling()))return;
-            if(!m_engine.selectLayer(source))return;
+            if(mask && source->inherits("KisSelectionMask") && source->parent()!=destination) {
+                m->moveNodesDirect(KisNodeList{source},destination,below);
+                return;
+            }
+            if(!mask && !m_engine.selectLayer(source))return;
             runNativeLayerStroke(image,
                 new KisImageLayerMoveCommand(
                     image,source,destination,below,true),
@@ -1851,10 +1845,9 @@ private:
     bool childDropZone(const KisNodeSP &source,const KisNodeSP &target,
                        const QRect &rect,const QPoint &point) const
     {
+        if(source->inherits("KisMask"))return target->inherits("KisLayer");
         const bool center=qAbs(along(point)-along(rect.center()))<
             (m_horizontalRail?rect.width():rect.height())/4;
-        if(source->inherits("KisMask"))
-            return center && target->inherits("KisLayer") && target->allowAsChild(source);
         return target->inherits("KisGroupLayer") &&
             ((m_horizontalRail?point.y()>rect.bottom()-20:point.x()>rect.right()-20) ||
              (!target->firstChild() && center));
@@ -1911,8 +1904,9 @@ private:
         m_mouseMoved=false;
         m_mousePreviouslySelected=(m_active==node);
         if(qApp)qApp->installEventFilter(this);
-        QTimer::singleShot(450,this,[this,node]() {
-            if(!m_mouseDown || m_mouseNode!=node ||
+        const auto press=++m_mouseHoldGeneration;
+        QTimer::singleShot(node->inherits("KisMask")?260:450,this,[this,node,press]() {
+            if(press!=m_mouseHoldGeneration || !m_mouseDown || m_mouseNode!=node ||
                !m_touches.isEmpty())return;
             m_mouseHeld=true;
             m_edgeScrollTimer->start();
@@ -2103,7 +2097,8 @@ private:
                     m_touchScrolling=false;
                     m_touchPinching=false;
                     m_touchPinchReady=false;
-                    if(!m_touchControl)m_touchHoldTimer->start();
+                    if(!m_touchControl)
+                        m_touchHoldTimer->start(item.node && item.node->inherits("KisMask")?260:450);
                 }
                 m_touches.insert(id,item);
             }
@@ -2647,7 +2642,7 @@ private:
             const auto ancestor=m_nodes.value(parent->data(0,Qt::UserRole).toInt());
             if(ancestor && ancestor->inherits("KisGroupLayer"))++groupDepth;
         }
-        const int gutter=2+qMin(5,groupDepth)*3;
+        const int gutter=2+qMin(5,groupDepth)*3+(mask?6:0);
         const int thickness=cross+4;
         item->setSizeHint(0,QSize(0,rowLength));
         auto *frame=new QFrame(m_horizontalRail?m_horizontalBody:static_cast<QWidget*>(m_tree));
@@ -2663,7 +2658,10 @@ private:
         auto *tile=new MobileLayerTileButton(frame,m_horizontalRail);
         tile->setGeometry(orient(card));
         tile->setToolButtonStyle(mask?Qt::ToolButtonTextOnly:Qt::ToolButtonIconOnly);
-        if(mask)tile->setText(maskKind(node));
+        if(mask) {
+            tile->setText(maskKind(node));
+            if(node->parent())tile->setAccessibleName(i18n("%1 mask on %2",node->name(),node->parent()->name()));
+        }
         const auto base=clipped?clipBaseFor(node):KisNodeSP();
         tile->setToolTip((base?
             i18n("%1 — clipped to %2",node->name(),base->name()):
@@ -2763,17 +2761,15 @@ private:
         else if(node->inherits("KisAdjustmentLayer"))kind=i18n("FILTER");
         else if(node->inherits("KisFileLayer"))kind=i18n("FILE");
         else if(node->inherits("KisCloneLayer"))kind=i18n("CLONE");
-        if(mask || (!clipped && !kind.isEmpty())) {
+        if(!mask && !clipped && !kind.isEmpty()) {
             auto *marker=new MobileLayerNameLabel(frame);
             marker->setRotated(m_horizontalRail);
-            marker->setRotatedBackground(mask?QColor("#b87939"):QColor("#275b73"));
+            marker->setRotatedBackground(QColor("#275b73"));
             marker->setGeometry(orient(QRect(card.left()+2,card.bottom()-18,
                                               qMin(47,card.width()-4),19)));
-            marker->setText(mask?i18n("MASK"):kind);
+            marker->setText(kind);
             marker->setAlignment(Qt::AlignCenter);
-            marker->setStyleSheet(mask?
-                "QLabel{background:#b87939;color:#ffffff;"
-                "border-radius:4px;font-weight:bold;font-size:10px;}":
+            marker->setStyleSheet(
                 "QLabel{background:#275b73;color:#f0faff;"
                 "border-radius:4px;font-weight:bold;font-size:10px;}");
             marker->setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -3124,6 +3120,7 @@ private:
     KisNodeSP m_mouseNode;
     QPointer<QToolButton> m_mouseTile;
     QPoint m_mouseStart,m_mouseLast;
+    quint64 m_mouseHoldGeneration=0;
     bool m_mouseDown=false,m_mouseHeld=false,m_mouseMoved=false;
     bool m_mousePreviouslySelected=false,m_penTracking=false;
     KisNodeSP m_suppressedClickNode;

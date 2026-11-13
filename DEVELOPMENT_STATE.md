@@ -10,7 +10,7 @@ Contextual tool options use compact lists or sliders anchored to their toolbar b
 
 The brush picker links directly to Advanced Brush Settings. Move to Category lists built-in families and custom categories in a scrollable dialog. The optional One-shot eyedropper toolbar command samples the next canvas press or a drag release and switches between visible colors and the active layer on hold. Holding Reference images toggles the native reference decoration.
 
-The horizontal Layers rail uses narrow rotated cards with rotated previews, badges, and inline controls. Group cards have separate eye and open/closed folder buttons. The folder uses Krita’s native collapsed state.
+The horizontal Layers rail uses narrow rotated cards with rotated previews, badges, and inline controls. Group cards have separate eye and open/closed folder buttons. The folder uses Krita’s native collapsed state. The Filters menu applies to the active layer. Use a filter mask on a group or a filter layer above the layers it should affect for non-destructive multi-layer filtering.
 
 The toolbar Add picker defaults to Common Tools, including Studio commands, with a searchable All Tools tab. The Add dialog focuses search and requests the Android keyboard.
 
@@ -207,7 +207,7 @@ Round 2 implementation consolidates scroll/tap handling for configured Qt menus 
 - Tools and noneditable drop-downs distinguish a tap from a drag. Numeric spin boxes select the editable value on first focus. The preset picker has a denser grid, elided names and live Size, Opacity and compatible Flow controls. Layer options provide direct rename and visible Alpha Lock state, a larger opacity slider and native color-space-filtered blend categories. The compact rail has folder headers, nested group guides and an outlined target for dropping into groups. Clipped layers identify their closest base in layer options and accessibility text.
 - The app currently keeps one active drawing open. The native view host can manage several views, but changing the single-canvas workflow needs a deliberate document-switching and recovery design.
 
-- On canvas activation Studio refreshes brush mode, floating size/opacity and open Brush Settings. Hold **+** for native layer and mask types. The selected layer sheet exposes grouping and names the clipping base next to its clip action. The Fold feedback record includes [native layer and mask checks](DEVICE_FEEDBACK_2026-11-11.md#native-layer-and-mask-checks).
+- On canvas activation Studio refreshes brush mode, floating size/opacity and open Brush Settings. Tap **+** for the anchored Layers and Masks list. Mask tiles identify the mask type, and their options expose the owner, native properties, and Move Up/Down. Hold briefly and drag onto a compatible layer to attach the mask or onto another mask to reorder it. The selected layer sheet exposes grouping and names the clipping base next to its clip action. The Fold feedback record includes [native layer and mask checks](DEVICE_FEEDBACK_2026-11-11.md#native-layer-and-mask-checks).
 - The default Krita input profile maps a one-finger tap to the native popup palette while finger painting is off. The binding is also available under **Touch gestures → One-finger tap → More actions → Show popup palette**. Symmetry actions use Krita's native axes; the reported halo still needs a controlled preset comparison on the same painted layer and on a separate layer, including stock Krita.
 
 ## Latest changes (November 11)
