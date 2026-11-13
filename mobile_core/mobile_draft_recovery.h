@@ -153,6 +153,21 @@ public:
         return result;
     }
 
+    // A named project with newer, still-recoverable private edits must
+    // not be deleted from the gallery before the draft is explicitly
+    // discarded or recovered. Compare normalized local/SAF identities.
+    static bool hasProjectDraft(const QString &project)
+    {
+        const QString identity=MobileSavedVersionArchive::canonicalIdentity(project);
+        if(identity.isEmpty())return false;
+        for(const QFileInfo &draft:list()) {
+            if(MobileSavedVersionArchive::canonicalIdentity(
+                   projectFor(draft.absoluteFilePath()))==identity)
+                return true;
+        }
+        return false;
+    }
+
     static bool rename(const QString &path,const QString &name)
     {
         const QByteArray data=name.trimmed().left(96).toUtf8();
