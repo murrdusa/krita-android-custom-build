@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — clipping rebuild does not select detached layers
+
+- Commit `f68e6058312161bc18f4e5d8c635b79c05ad20b1`: on completion or abort of a compact clip regroup, the layer workspace now restores the previously active layer only when it is **still attached to the original image tree**, not merely when its retained node pointer has some parent. It also checks that Krita actually activated the layer before restoring its native selection. The asynchronous move-completion check likewise refuses to treat a move as settled when the moving layer or expected parent has detached from the image, even if parent/sibling pointers still match. This prevents stale native UI selections after cancel/failure of a clipping-group move. No user-facing UI redesign.
+- **Verification:** previous Save As change `40453b1ea63c3932efc221be7ad41a4ec92aeefa` received exact local WSL Android SUCCESS (164.76 MiB, 172,760,094 bytes). The new source commit needs matching watcher confirmation. Native Fold 6 clipping/Undo/KRA round-trip remains untested. APK publishing paused.
+
 ## November 13 follow-up — fail closed on incomplete native view stack during Save As
 
 - Commit `db3f43e6e88cc1a64960a84bd3715a90139a23c4`: the native Save / Save As / Export Copy transaction now requires **exactly one active native view, belonging to the document being saved**, plus exactly one matching owner view in the host's open view list. It aborts on a missing view identity or an uninspectable backing document rather than skipping that entry during cross-canvas collision checks. This prevents a synchronous tab transition or temporarily incomplete view stack from authorizing a write into another canvas's project; it retains canonical SAF and local destination collision checks and Krita's save-completion handling.
