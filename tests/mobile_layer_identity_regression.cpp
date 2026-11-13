@@ -43,6 +43,14 @@ int main() {
         {{&hiddenMask},{&hiddenMask},&hiddenMask,true,"explicit edit selection"},
         {{&hiddenMask},{},&hiddenMask,false,"hidden mask not transformed"},
         {{&group,&hiddenMask},{&group},nullptr,false,"nested internal mask"},
+        // A native selection reread after rail refresh must stay
+        // normalized even if Krita returns child before its group.
+        {{&hiddenMask,&child,&group,&sibling},{&group,&sibling},nullptr,false,
+            "refresh removes hidden mask and covered child"},
+        {{&sibling,&child,&group,&otherChild},{&sibling,&group},nullptr,false,
+            "refresh keeps sibling but drops both covered children"},
+        {{&child,&grandchild,&otherChild},{&child,&otherChild},nullptr,false,
+            "refresh drops grandchild when direct parent selected"},
         {{&root},{},&root,false,"root not paint target"},
         {{&child},{&child},&child,true,"ordinary edit selection"}
     };
