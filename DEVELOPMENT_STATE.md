@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — keep live Fill/contiguous selection preview aligned during viewport resize
+
+- Commit `5b7fdb8f7cfa305ec26ea6948ccac6ecc19b33a2`: the existing shared `MobileFillTolerancePreview` widget now watches its canvas-widget resize events and updates its transparent overlay geometry and painting. Fold/unfold, split-screen resizing, or canvas panel layout changes during an active tolerance drag no longer leave the affected-region preview badge or mask clipped to the canvas's former viewport size. Native Fill and contiguous selection activation, native Undo, and the bounded 384×384 snapshot remain unchanged.
+- **Verification:** preceding Fill preview geometry code `25656d320aabdac3d27cde0823c03661546d08b0` received exact local WSL Android SUCCESS (164.76 MiB, 172,762,266 bytes). This widget resize fix needs exact watcher confirmation; no device runtime testing performed. APK publishing paused.
+
 ## November 13 follow-up — retain full live Fill preview near image edges
 
 - Commit `a636e7e7e403183940fd387ba3106aa74735698b`: the existing throttled 384×384 non-destructive live Fill tolerance preview now **shifts its sample window inside the image** when the seed lies near a border, instead of cropping the region to 192×192 at a corner. It still caps sampled pixels, preserves image-space offsets, supports smaller canvases and does not change actual Krita Fill or Undo behavior. Commit `4b7a5a10bf3e058e193d2d6fddbef9f90fb3a86c` updates host Qt geometry regressions for center, both opposite corners, out-of-bounds seed, small offset canvas and narrow canvas.
