@@ -263,6 +263,25 @@ int main(int argc,char **argv)
             MobileDraftRecovery::displayTitle(drafts.first(),QStringLiteral("Later"))==
                 QStringLiteral("Recovered"),
             "a draft keeps its generated name across checkpoints");
+    // A replaced title sidecar must never source the displayed draft
+    // label from an external file. The generated name is safe fallback.
+    const QString titleSidecar=draft+QStringLiteral(".title");
+    const QString externalTitle=QDir(temp.path()).filePath(
+        QStringLiteral("external-title.txt"));
+    save(externalTitle,QByteArray("untrusted-external-title"));
+    require(QFile::remove(titleSidecar),"clear draft title before linked metadata");
+    if(QFile::link(externalTitle,titleSidecar)) {
+        require(MobileDraftRecovery::displayTitle(
+                    QFileInfo(draft),QStringLiteral("Recovered"))==
+                    QStringLiteral("Recovered"),
+                "linked title metadata cannot override draft label");
+        require(QFile::remove(titleSidecar),
+                "remove linked title sidecar");
+    }
+    require(MobileDraftRecovery::displayTitle(
+                QFileInfo(draft),QStringLiteral("Sketch"))==
+                QStringLiteral("Sketch"),
+            "regenerate title after rejecting linked metadata");
     require(!MobileDraftRecovery::rename(source,QStringLiteral("External")) &&
             !MobileDraftRecovery::rename(draft,QStringLiteral("  ")) &&
             MobileDraftRecovery::rename(draft,QStringLiteral("  Sketch  ")) &&
