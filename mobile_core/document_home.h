@@ -576,8 +576,7 @@ private:
                 // A recovery copy can be opened beside several canvases.
                 // Require the same complete set of live native views and
                 // the same active canvas; do not depend on MDI ordering.
-                bool sameCanvas=home && current.size()==expectedViews.size() &&
-                    (expectedViews.isEmpty() || expectedActive);
+                bool sameCanvas=home && current.size()==expectedViews.size();
                 if(sameCanvas) {
                     for(const auto &expected:expectedViews) {
                         if(!expected) {sameCanvas=false;break;}
@@ -587,11 +586,16 @@ private:
                         if(matches!=1) {sameCanvas=false;break;}
                     }
                 }
-                if(sameCanvas && expectedActive) {
-                    bool activeMatches=false;
-                    for(const auto &entry:current)
-                        if(entry.active && entry.nativeView==expectedActive)
-                            activeMatches=true;
+                if(sameCanvas) {
+                    bool activeMatches=!expectedActive;
+                    for(const auto &entry:current) {
+                        if(!entry.active)continue;
+                        if(entry.nativeView!=expectedActive) {
+                            sameCanvas=false;
+                            break;
+                        }
+                        activeMatches=true;
+                    }
                     if(!activeMatches)sameCanvas=false;
                 }
                 const bool opened=home && sameCanvas && !copy.isEmpty() && home->m_files &&
