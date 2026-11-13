@@ -24,6 +24,7 @@
 #include <QStandardPaths>
 #include <QStorageInfo>
 #include <QString>
+#include <QStringList>
 #include <QThreadPool>
 #include <QUuid>
 #include <QVector>
