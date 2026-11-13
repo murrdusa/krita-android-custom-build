@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — compact clip rebuild target integrity
+
+- Commit `72baabbe424d6e8301441b1482cccbe16b6fafab`: rebuilding hidden compact clipping groups now revalidates the **entire adjacent clip run** after native `slotSetSelectedNodes(cluster)`, before `createQuickGroup()`. The guard checks the active image/node manager, each cluster member's parent and image membership, contiguous sibling order, native move eligibility and exact selected node set. If synchronous native callbacks changed the cluster, rebuilding aborts rather than grouping unintended layers. Krita retains native grouping, clipping behavior and Undo.
+- **Verification:** previous drag reorder source `6e8ca14ae140af70a1e8f170508b43d73a98b54c` passed the PC WSL Android build (164.76 MiB, 172,758,282 bytes). This new clip-rebuild code requires an exact-SHA watcher confirmation. No Fold 6 clipped group/Undo/KRA reopen test; APK publishing paused.
+
 ## November 13 follow-up — validate drag reorder after source activation
 
 - Commit `6e8ca14ae140af70a1e8f170508b43d73a98b54c`: the native, undoable drag-reorder path for paint layers and ordinary masks rechecks the active image and node manager, source/target membership, actual source parent, destination parent, eligibility, below-sibling identity and parent-cycle safety **after** activating the source layer. Previously these checks ran before activation; a synchronous native selection callback could invalidate the command's destination between validation and Krita's stroke. The selection-mask direct-move path and async clipping wrapper path retain their existing separate handling.
