@@ -1719,8 +1719,15 @@ private:
             finishCompactClipRebuild();return;
         }
         bool pending=false;
-        for(const KisNodeSP &node:m_clipPendingWrappers)
-            if(node && node->parent())pending=true;
+        for(const KisNodeSP &node:m_clipPendingWrappers) {
+            // Native ungroup may detach the wrapper while the retained
+            // shared pointer still holds a parent in an orphaned subtree.
+            // Only a wrapper attached to this image remains to be ungrouped.
+            if(inImage(node,m_clipImage)) {
+                pending=true;
+                break;
+            }
+        }
         if(pending && attempt<35) {
             QTimer::singleShot(100,this,[this,attempt]() {
                 waitCompactClipUngroup(attempt+1);
