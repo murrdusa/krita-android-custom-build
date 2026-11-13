@@ -3072,12 +3072,21 @@ private:
                !m_selected.contains(node))
                 m_selected.append(node);
         }
-        // Do not leave Krita with a native selection containing
-        // hidden/old nodes after an ordinary single-layer tap. Transform
-        // reads nodeManager()->selectedNodes() directly; filtering just
-        // the visible cards would not protect its image stroke.
-        if(!allowsMultiple() && m_active)
+        // Native node signals can rebuild the rail while Transform or
+        // Move is already active. Normalize that incoming selection too:
+        // a group and its child must not become two transform targets.
+        // Keep explicit Edit Selection handling on the global mask.
+        if(allowsMultiple() && !editingSelection) {
+            const auto hidden=[](const KisNodeSP &node) {
+                return KisNodeManager::isNodeHidden(node,true);
+            };
+            m_selected=MobileLayerIdentity::transformTargets(
+                image->root(),m_selected,KisNodeSP(),hidden,false);
+            if(!m_selected.isEmpty() && !m_selected.contains(m_active))
+                m_active=m_selected.last();
+        } else if(!allowsMultiple() && m_active) {
             m_selected=KisNodeList{m_active};
+        }
         if(m_active && m_active!=engineActive)
             m->slotUiActivatedNode(m_active);
         if(!editingSelection && native!=m_selected)
