@@ -1807,8 +1807,30 @@ private:
         for(const KisNodeSP &container:m_clipParents)
             ungroup(container);
         for(const KisNodeSP &wrapper:m_clipPendingWrappers) {
+            if(!inImage(wrapper,m_clipImage) ||
+               !isCompactClipWrapper(wrapper) ||
+               !m_engine.manager() ||
+               m_engine.manager()->image().toStrongRef()!=m_clipImage ||
+               manager()!=m) {
+                qWarning() << "Mobile Studio: compact clip wrapper changed before ungroup";
+                finishCompactClipRebuild();
+                return;
+            }
             m->slotUiActivatedNode(wrapper);
             m->slotSetSelectedNodes(KisNodeList{wrapper});
+            // Both native calls may dispatch selection notifications.
+            // quickUngroup operates on the *live* selected node, so
+            // never let a callback ungroup an unrelated user group.
+            if(!m_engine.manager() ||
+               m_engine.manager()->image().toStrongRef()!=m_clipImage ||
+               manager()!=m || !inImage(wrapper,m_clipImage) ||
+               !isCompactClipWrapper(wrapper) ||
+               m->activeNode()!=wrapper ||
+               m->selectedNodes()!=KisNodeList{wrapper}) {
+                qWarning() << "Mobile Studio: compact clip ungroup selection changed";
+                finishCompactClipRebuild();
+                return;
+            }
             m->quickUngroup();
         }
         QTimer::singleShot(100,this,[this]() {waitCompactClipUngroup(0);});
