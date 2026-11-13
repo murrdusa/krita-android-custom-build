@@ -55,6 +55,10 @@ int main() {
         {{&child,&grandchild,&otherChild},{&child,&otherChild},nullptr,false,
             "refresh drops grandchild when direct parent selected"},
         {{&root},{},&root,false,"root not paint target"},
+        {{&root},{&sibling},&sibling,false,"root sentinel falls back to active layer"},
+        {{&root,&child},{&child},&sibling,false,"root sentinel does not replace selected child"},
+        {{&root,&hiddenMask},{&sibling},&sibling,false,
+            "root plus hidden mask falls back to visible active"},
         {{&child},{&child},&child,true,"ordinary edit selection"}
     };
     for(const auto &test:cases) {
