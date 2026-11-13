@@ -142,12 +142,15 @@ private:
             // this request before it even begins. Avoid spending a flood
             // fill on an obsolete tolerance; the GUI callback schedules
             // the latest value.
-            if(generation->load(std::memory_order_relaxed)!=request) {
+            const auto notifyStale=[preview]() {
                 QMetaObject::invokeMethod(qApp,[preview]() {
                     if(!preview)return;
                     preview->m_running=false;
                     preview->m_delay.start();
                 },Qt::QueuedConnection);
+            };
+            if(generation->load(std::memory_order_relaxed)!=request) {
+                notifyStale();
                 return;
             }
             const QRect rect(QPoint(),size);
@@ -158,7 +161,10 @@ private:
                 selected=new KisPixelSelection();
                 selected->writeBytes(reinterpret_cast<const quint8*>(selectionPixels.constData()),rect);
             }
-            if(generation->load(std::memory_order_relaxed)!=request)return;
+            if(generation->load(std::memory_order_relaxed)!=request) {
+                notifyStale();
+                return;
+            }
             KisFillPainter fill(source);
             fill.setWidth(size.width());
             fill.setHeight(size.height());
@@ -177,7 +183,10 @@ private:
                 fill.setRegionFillingBoundaryColor(options.boundaryColor);
             }
             const auto mask=fill.createFloodSelection(seed.x(),seed.y(),source,selected);
-            if(generation->load(std::memory_order_relaxed)!=request)return;
+            if(generation->load(std::memory_order_relaxed)!=request) {
+                notifyStale();
+                return;
+            }
             if(!mask) {
                 QMetaObject::invokeMethod(qApp,[preview,threshold]() {
                     if(!preview)return;
@@ -190,7 +199,10 @@ private:
             mask->readBytes(reinterpret_cast<quint8*>(coverage.data()),rect);
             QImage overlay(size,QImage::Format_ARGB32_Premultiplied);
             for(int y=0;y<size.height();++y) {
-                if(generation->load(std::memory_order_relaxed)!=request)break;
+                if(generation->load(std::memory_order_relaxed)!=request) {
+                    notifyStale();
+                    return;
+                }
                 auto *line=reinterpret_cast<QRgb*>(overlay.scanLine(y));
                 for(int x=0;x<size.width();++x) {
                     const int index=y*size.width()+x;
