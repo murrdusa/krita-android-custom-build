@@ -638,6 +638,8 @@ private:
                   "Delete %1 selected items and their contents?",targets.size());
         if(QMessageBox::question(this,i18n("Delete layers"),prompt,
             QMessageBox::Yes|QMessageBox::No,QMessageBox::No)!=QMessageBox::Yes)return;
+        view=m_engine.manager();
+        if(!view || view->image().toStrongRef()!=image)return;
         if(auto *transform=activeTransform()) {
             if(!canRetarget(transform))return;
             m_engine.freehandBrush();
@@ -2562,7 +2564,9 @@ private:
     // are only decoded for visible rows, not all 500 layers on every stroke.
     void updateVisibleLayerThumbnails()
     {
-        if(!m_tree || !isVisible())return;
+        // Clearing or laying out the horizontal rows can emit scrollbar
+        // signals while their items and thumbnail state are being replaced.
+        if(m_reloading || !m_tree || !isVisible())return;
         const QRect viewport=railViewport()->rect().adjusted(-60,-60,60,60);
         const qint64 now=m_thumbnailClock.elapsed();
         for(int i=0;i<m_nodes.size();++i) {
@@ -3004,8 +3008,9 @@ private:
         m_thumbnailRetryAfter.clear();
         std::function<void(KisNodeSP,QTreeWidgetItem*,int)> visit;
         visit=[&](KisNodeSP parent,QTreeWidgetItem *parentItem,int depth) {
-            if(!parent || depth>20 || m_nodes.size()>=500)return;
-            for(KisNodeSP node=parent->lastChild();node;node=node->prevSibling()) {
+            if(!parent || depth>20)return;
+            for(KisNodeSP node=parent->lastChild();node && m_nodes.size()<500;
+                node=node->prevSibling()) {
                 // Match Krita's normal layer docker: a top-level
                 // selection mask belongs to the canvas selection.
                 // User-created selection masks *within* a layer stay

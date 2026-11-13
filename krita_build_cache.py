@@ -10,7 +10,7 @@ import subprocess
 NON_APP={"krita_build_live.py","krita_build_reporter.py",
          "krita_build_watcher.py","krita_build_cache.py",
          "apk_size_report.py",".gitignore"}
-GENERATED=("libs/ui/tablet_compact_skin.h","libs/ui/mobile_shell.h",
+GENERATED=("libs/ui/tablet_compact_skin.h",
            "libs/ui/standalone_host.h","libs/ui/canvas_session.h",
            "libs/ui/canvas_transfer.h","libs/ui/canvas_surface.h",
            "libs/ui/engine_bridge.h","libs/ui/document_service.h",

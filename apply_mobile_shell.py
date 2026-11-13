@@ -1257,6 +1257,37 @@ install(FILES org.kde.krita.desktop''',
     gradlefile=root/"packaging/android/apk/build.gradle"
     gradle=gradlefile.read_text(encoding="utf-8")
     gradle=one(gradle,
+        '    exclude "mlt-7/**"\n',
+        '    exclude "mlt-7/**", "libkrita_${abi}.so"\n',
+        "Skip the obsolete launcher left in incremental Android installs")
+    gradle=one(gradle,
+        '''    from "$installPrefix/share/"
+    into 'assets/'
+    include '**'
+''',
+        '''    from "$installPrefix/share/"
+    into 'assets/'
+    include '**'
+    // Host-side tool data and manuals are unused by the Android app.
+    exclude 'ECM/**', 'aclocal/**', 'gettext/**', 'gettext-*/**',
+            'info/**', 'man/**', 'locale/**/LC_MESSAGES/gettext-*.mo'
+    exclude 'doc/expat/**', 'doc/gettext/**', 'doc/libasprintf/**',
+            'doc/libjpeg-turbo/**', 'doc/libtextstyle/**', 'doc/ogg/**',
+            'doc/OpenEXR/**', 'doc/tiff/**', 'doc/zlib/**'
+''',
+        "Skip bundled host build tools and third-party manuals")
+    gradle=one(gradle,
+        '''    from "$installPrefix/translations"
+    into 'assets/locale/'
+    include '**'
+''',
+        '''    from "$installPrefix/translations"
+    into 'assets/locale/'
+    include '**'
+    exclude '**/LC_MESSAGES/gettext-*.mo'
+''',
+        "Skip command-line gettext catalogs in the locale copy")
+    gradle=one(gradle,
         '    defaultConfig {\n        compileSdk androidCompileSdkVersion.toInteger()',
         '    defaultConfig {\n        applicationId "org.krita.mobilestudio"\n'
         '        compileSdk androidCompileSdkVersion.toInteger()',

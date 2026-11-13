@@ -409,7 +409,6 @@ node manager call. Reuse Krita's undo transaction APIs where mutations occur.
 
 ```
 mobile_core/
-  mobile_shell.h       Small opt-in in-process canvas integration proof
   ENGINE-BOUNDARIES.md This specification and incremental migration plan
 apply_mobile_shell.py Copies the pilot into an Android Krita source checkout
                       and adds a native toolbar toggle
