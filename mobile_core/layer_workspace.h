@@ -1722,24 +1722,48 @@ private:
            m_engine.manager()->image().toStrongRef()!=m_clipImage) {
             finishCompactClipRebuild();return;
         }
-        bool pending=false;
-        for(const KisNodeSP &node:m_clipPendingWrappers) {
-            // Native ungroup may detach the wrapper while the retained
-            // shared pointer still holds a parent in an orphaned subtree.
-            // Only a wrapper attached to this image remains to be ungrouped.
-            if(inImage(node,m_clipImage)) {
-                pending=true;
-                break;
-            }
+        // Native quickUngroup schedules an asynchronous layer-tree stroke.
+        // Dispatch the next (innermost first) only after the prior wrapper
+        // has actually left this image. Back-to-back commands otherwise
+        // operate against a hierarchy that has not yet settled.
+        while(!m_clipPendingWrappers.isEmpty() &&
+              !inImage(m_clipPendingWrappers.first(),m_clipImage)) {
+            m_clipPendingWrappers.removeFirst();
+            attempt=0;
         }
-        if(pending && attempt<35) {
+        if(!m_clipPendingWrappers.isEmpty()) {
+            const KisNodeSP wrapper=m_clipPendingWrappers.first();
+            if(attempt==0) {
+                auto *nodes=manager();
+                if(!nodes || !isCompactClipWrapper(wrapper)) {
+                    qWarning() << "Mobile Studio: compact clip wrapper missing before ungroup";
+                    finishCompactClipRebuild();
+                    return;
+                }
+                nodes->slotUiActivatedNode(wrapper);
+                nodes->slotSetSelectedNodes(KisNodeList{wrapper});
+                if(!m_engine.manager() ||
+                   m_engine.manager()->image().toStrongRef()!=m_clipImage ||
+                   manager()!=nodes || !inImage(wrapper,m_clipImage) ||
+                   !isCompactClipWrapper(wrapper) ||
+                   nodes->activeNode()!=wrapper ||
+                   nodes->selectedNodes()!=KisNodeList{wrapper}) {
+                    qWarning() << "Mobile Studio: compact clip ungroup selection changed";
+                    finishCompactClipRebuild();
+                    return;
+                }
+                nodes->quickUngroup();
+            } else if(attempt>=35) {
+                qWarning() << "Mobile Studio: compact clip ungroup timed out";
+                finishCompactClipRebuild();
+                return;
+            }
             QTimer::singleShot(100,this,[this,attempt]() {
                 waitCompactClipUngroup(attempt+1);
             });
-        } else if(pending) {
-            qWarning() << "Mobile Studio: compact clip ungroup timed out";
-            finishCompactClipRebuild();
-        } else if(m_clipAfterUnwrap) {
+            return;
+        }
+        if(m_clipAfterUnwrap) {
             // Reorder against the *logical* flat layer stack, then build
             // the hidden Krita clip groups back around the new neighbors.
             auto operation=std::move(m_clipAfterUnwrap);
@@ -1806,34 +1830,10 @@ private:
         };
         for(const KisNodeSP &container:m_clipParents)
             ungroup(container);
-        for(const KisNodeSP &wrapper:m_clipPendingWrappers) {
-            if(!inImage(wrapper,m_clipImage) ||
-               !isCompactClipWrapper(wrapper) ||
-               !m_engine.manager() ||
-               m_engine.manager()->image().toStrongRef()!=m_clipImage ||
-               manager()!=m) {
-                qWarning() << "Mobile Studio: compact clip wrapper changed before ungroup";
-                finishCompactClipRebuild();
-                return;
-            }
-            m->slotUiActivatedNode(wrapper);
-            m->slotSetSelectedNodes(KisNodeList{wrapper});
-            // Both native calls may dispatch selection notifications.
-            // quickUngroup operates on the *live* selected node, so
-            // never let a callback ungroup an unrelated user group.
-            if(!m_engine.manager() ||
-               m_engine.manager()->image().toStrongRef()!=m_clipImage ||
-               manager()!=m || !inImage(wrapper,m_clipImage) ||
-               !isCompactClipWrapper(wrapper) ||
-               m->activeNode()!=wrapper ||
-               m->selectedNodes()!=KisNodeList{wrapper}) {
-                qWarning() << "Mobile Studio: compact clip ungroup selection changed";
-                finishCompactClipRebuild();
-                return;
-            }
-            m->quickUngroup();
-        }
-        QTimer::singleShot(100,this,[this]() {waitCompactClipUngroup(0);});
+        // Start with the innermost wrapper. Every subsequent native
+        // ungroup is dispatched by waitCompactClipUngroup only after its
+        // predecessor has detached from the active image.
+        QTimer::singleShot(0,this,[this]() {waitCompactClipUngroup(0);});
     }
 
     static bool hasCompactClipStructure(KisNodeSP parent)
