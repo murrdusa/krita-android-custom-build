@@ -181,7 +181,10 @@ private:
         if(m_closing)return false;
         Row *row=uniqueRow(identity);
         if(!row || !row->view || !row->document ||
-           indexOf(row->view.data())<0 || !row->closeRequest)return false;
+           indexOf(row->view.data())<0 || !row->closeRequest ||
+           row->view.data()!=currentWidget())return false;
+        // Close callbacks may prompt for Save/Discard. A queued tap
+        // targeting an old tab must not close that background painting.
         const quint64 token=row->token;
         const CloseRequest close=row->closeRequest;
         const QScopedValueRollback<bool> guarded(m_closing,true);
