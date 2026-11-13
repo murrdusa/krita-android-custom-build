@@ -690,6 +690,11 @@ private:
     {
         const QVector<Version> versions=scan(folder);
         if(versions.isEmpty())return;
+        // Routine snapshots should not rehash an entire KRA merely to
+        // discover that history is still below both retention quotas.
+        qint64 totalBytes=0;
+        for(const auto &entry:versions)totalBytes+=entry.bytes;
+        if(versions.size()<=maxVersions() && totalBytes<=maxBytes())return;
         // Preserve the newest entry for diagnosis, but do not let a
         // corrupt latest archive consume the only guaranteed retention
         // slot. Find the most recent verified older fallback before
