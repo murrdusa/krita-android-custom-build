@@ -750,8 +750,10 @@ private:
             return;
         }
 
+        const int originalIndex=parent->index(node);
+        const int originalCount=int(parent->childCount());
         const auto plan=MobileNativeLayerReorderPolicy::plan(
-            parent->index(node),int(parent->childCount()),towardTop);
+            originalIndex,originalCount,towardTop);
         if(!plan.valid)return;
 
         KisNodeSP above=plan.anchorIndex>=0 ?
@@ -771,9 +773,13 @@ private:
         if(!currentView || currentView->image().toStrongRef()!=image ||
            !inImage(node,image) || node->parent()!=parent ||
            !parent->isEditable(false) || !parent->allowAsChild(node) ||
+           // An intervening layer insertion/removal or reorder makes
+           // the originally adjacent anchor stale even if it still exists.
+           int(parent->childCount())!=originalCount ||
+           parent->index(node)!=originalIndex ||
            (above && (above==node || above->parent()!=parent)) ||
-           parent->index(node)<0 ||
-           (above && parent->index(above)<0))return;
+           (plan.anchorIndex>=0 &&
+            parent->at(plan.anchorIndex)!=above))return;
 
         runNativeLayerStroke(image,
             new KisImageLayerMoveCommand(image,node,parent,above,true),
