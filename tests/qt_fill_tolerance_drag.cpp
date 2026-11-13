@@ -10,6 +10,11 @@ int main()
        mobileFillTolerance(30,-36)!=20)return 2;
     if(mobileFillTolerance(70,1000)!=100 ||
        mobileFillTolerance(15,-1000)!=1)return 3;
+    // A tolerance may return to an earlier value while a queued worker
+    // is still calculating that older request (ABA). Never accept it.
+    if(!mobileFillPreviewResultCurrent(20,20,4,4) ||
+       mobileFillPreviewResultCurrent(20,20,4,6) ||
+       mobileFillPreviewResultCurrent(20,30,6,6))return 7;
     const QRect canvas(0,0,2000,1600);
     if(mobileFillPreviewWindow(canvas,QPoint(500,500))!=QRect(308,308,384,384) ||
        mobileFillPreviewWindow(canvas,QPoint(0,0))!=QRect(0,0,384,384) ||
