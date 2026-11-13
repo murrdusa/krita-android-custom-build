@@ -18,7 +18,12 @@ int main()
         return MobileLayerIdentity::transformTargets(&root,nodes,current,internal,editing);
     };
     if(targets({&selected},&active)!=Nodes{&selected})return 1;
-    if(targets({&group,&selected,&selected,&stale},&active)!=Nodes{&group,&selected})return 2;
+    if(targets({&group,&selected,&selected,&stale},&active)!=Nodes{&group})return 2;
+    if(targets({&selected,&group},&active)!=Nodes{&group})return 7;
+    Node sibling{&root};
+    if(targets({&selected,&sibling},&active)!=Nodes{&selected,&sibling})return 8;
+    Node nestedMask{&selected,true};
+    if(targets({&group,&selected,&nestedMask},&active)!=Nodes{&group})return 9;
     if(!targets({&stale},&active).isEmpty() || !targets({&root},&active).isEmpty())return 3;
     if(targets({},&active)!=Nodes{&active} ||
        targets({&globalMask},&active)!=Nodes{&active})return 4;
