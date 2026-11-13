@@ -272,9 +272,10 @@ private:
             const auto *other=qobject_cast<KisDocument*>(view.document.data());
             if(!other || other==guardedDocument.data())continue;
             const QString otherPath=other->path();
-            if(otherPath.isEmpty())continue;
-            if(MobileOpenDocumentDestinationPolicy::sameFile(
-                   target,otherPath)) {
+            const QString otherDraft=other->property(
+                "_mobileDraftPath").toString();
+            if(MobileOpenDocumentDestinationPolicy::conflictsWithBackingFile(
+                   target,otherPath,otherDraft)) {
                 QMessageBox::warning(m_runtime->window(),
                     exporting?QObject::tr("Export a copy"):QObject::tr("Save drawing"),
                     QObject::tr("That file is already open in another canvas. "
@@ -283,8 +284,12 @@ private:
             }
         }
         if(exporting) {
-            if(MobileOpenDocumentDestinationPolicy::sameFile(
-                   target,currentPath)) {
+            // Export Copy must not replace either the named project or
+            // the private recovery source of this same open canvas.
+            const QString ownDraft=guardedDocument->property(
+                "_mobileDraftPath").toString();
+            if(MobileOpenDocumentDestinationPolicy::conflictsWithBackingFile(
+                   target,currentPath,ownDraft)) {
                 QMessageBox::warning(m_runtime->window(),QObject::tr("Export a copy"),
                     QObject::tr("Choose a different file from the open drawing."));
                 return false;
