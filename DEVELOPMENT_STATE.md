@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — Clear, Add Mask and Duplicate target binding
+
+- Commit `8a2a919111ed7bdab99525191b3723a764b53233`: in the tapped-layer actions menu, **Clear**, **Add Mask** and **Duplicate** recheck Krita's active image, node-manager identity, target's image membership, active node and exact single-node native selection after invoking `slotSetSelectedNodes({node})`, before any command runs. The guard prevents synchronous native selection notifications from redirecting destructive Clear, mask attachment or duplication onto a different layer. Krita retains native implementation and Undo.
+- **Verification:** source committed; matching PC watcher build confirmation pending. Earlier native Merge/Flatten/Ungroup source build must not be conflated with this commit. No phone-based mask/duplicate/clear Undo or KRA round-trip tests performed. APK publishing paused.
+
 ## November 13 follow-up — native Merge/Flatten/Ungroup selection integrity
 
 - Commit `b1041e94d1ed37692552bdfc65e8bf2082cfcf9f`: the tapped-layer Merge, Flatten and Ungroup commands now recheck the active Krita image, node-manager identity, layer membership, active node and **exact native single-layer selection** immediately after `slotSetSelectedNodes({node})`. Ungroup also confirms the target still inherits `KisGroupLayer`. If reentrant callbacks retarget the selection, the destructive/hierarchy-modifying native action is aborted rather than applying to another layer. Krita continues to own operation and Undo semantics.
