@@ -395,7 +395,10 @@ private:
             values.append(value);
         }
         QSettings settings;
-        MobileWorkspaceProfiles::remember(settings,m_profile,m_profileSize);
+        const auto *canvas=static_cast<const QWidget*>(parent());
+        const QSize stored=MobileWorkspaceProfiles::sizeForSave(
+            canvas->size(),m_profileSize,m_portrait);
+        MobileWorkspaceProfiles::remember(settings,m_profile,stored);
         settings.setValue(settingsKey(),values);
     }
 
