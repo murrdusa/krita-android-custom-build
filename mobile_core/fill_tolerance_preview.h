@@ -188,10 +188,15 @@ private:
                 return;
             }
             if(!mask) {
-                QMetaObject::invokeMethod(qApp,[preview,threshold]() {
+                QMetaObject::invokeMethod(qApp,[preview,threshold,generation,request]() {
                     if(!preview)return;
                     preview->m_running=false;
-                    if(threshold!=preview->m_threshold)preview->m_delay.start();
+                    // The pen may move away from a value and back while
+                    // this result is queued. Equal tolerance alone does
+                    // not mean this worker still owns the latest request.
+                    if(generation->load(std::memory_order_relaxed)!=request ||
+                       threshold!=preview->m_threshold)
+                        preview->m_delay.start();
                 },Qt::QueuedConnection);
                 return;
             }
@@ -212,14 +217,16 @@ private:
                     line[x]=qPremultiply(qRgba(55,195,255,opacity));
                 }
             }
-            QMetaObject::invokeMethod(qApp,[preview,overlay,threshold]() {
+            QMetaObject::invokeMethod(qApp,[preview,overlay,threshold,generation,request]() {
                 if(!preview)return;
                 preview->m_running=false;
-                if(threshold==preview->m_threshold) {
+                if(generation->load(std::memory_order_relaxed)==request &&
+                   threshold==preview->m_threshold) {
                     preview->m_mask=overlay;
                     preview->update();
+                } else {
+                    preview->m_delay.start();
                 }
-                if(threshold!=preview->m_threshold)preview->m_delay.start();
             },Qt::QueuedConnection);
         });
     }
