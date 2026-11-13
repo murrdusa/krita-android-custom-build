@@ -689,17 +689,38 @@ private:
     static void prune(const QString &folder)
     {
         const QVector<Version> versions=scan(folder);
+        if(versions.isEmpty())return;
+        // Preserve the newest entry for diagnosis, but do not let a
+        // corrupt latest archive consume the only guaranteed retention
+        // slot. Find the most recent verified older fallback before
+        // enforcing the count/byte budget.
+        QString fallback;
+        if(!hasPublishedCheckpoint(versions.first())) {
+            for(int i=1;i<versions.size();++i) {
+                if(hasPublishedCheckpoint(versions.at(i))) {
+                    fallback=versions.at(i).path;
+                    break;
+                }
+            }
+        }
         qint64 keptBytes=0;
         int kept=0;
         for(const auto &entry:versions) {
-            if(kept==0 || (kept<maxVersions() &&
-               keptBytes+entry.bytes<=maxBytes())) {
+            const bool protectedFallback=!fallback.isEmpty() &&
+                entry.path==fallback;
+            // Reserve one count slot for the verified fallback, even if
+            // it is older than all other candidates. Keep it despite the
+            // size budget: otherwise pruning could destroy the last good
+            // version while retaining a damaged latest one.
+            const int limit=maxVersions()-(fallback.isEmpty()?0:1);
+            if(kept==0 || protectedFallback ||
+               (kept<limit && keptBytes+entry.bytes<=maxBytes())) {
                 keptBytes+=entry.bytes;
                 ++kept;
                 continue;
             }
-            QFile::remove(entry.path);
-            QFile::remove(entry.path+QStringLiteral(".sha256"));
+            if(QFile::remove(entry.path))
+                QFile::remove(entry.path+QStringLiteral(".sha256"));
         }
     }
 };
