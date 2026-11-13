@@ -22,6 +22,14 @@ int main()
     if(targets({&selected,&group},&active)!=Nodes{&group})return 7;
     Node sibling{&root};
     if(targets({&selected,&sibling},&active)!=Nodes{&selected,&sibling})return 8;
+    // Repeat the same normalization after an active tool's layer-rail
+    // selection changes; the visible selection must match native targets.
+    Nodes liveSelection{&selected,&group};
+    const Nodes normalized=targets(liveSelection,&selected);
+    if(normalized!=Nodes{&group})return 10;
+    liveSelection=normalized;
+    if(liveSelection.contains(&selected) || !liveSelection.contains(&group))
+        return 11;
     Node nestedMask{&selected,true};
     if(targets({&group,&selected,&nestedMask},&active)!=Nodes{&group})return 9;
     if(!targets({&stale},&active).isEmpty() || !targets({&root},&active).isEmpty())return 3;
