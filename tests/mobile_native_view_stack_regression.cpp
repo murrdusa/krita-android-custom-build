@@ -10,6 +10,7 @@
 #include <QWidget>
 #include <QObject>
 #include <QDebug>
+#include <algorithm>
 
 static bool require(bool ok,const char *message)
 {
@@ -43,6 +44,46 @@ int main(int argc,char **argv)
                 "both document identities retained"))return 1;
     const QPointer<QObject> firstIdentity(first);
     const QPointer<QObject> secondIdentity(second);
+    // Recovery is asynchronous. Multiple stable canvases are valid,
+    // but tab activation, closure and replacement invalidate the open.
+    using Identity=MobileViewIdentityGuard;
+    auto recoveryBefore=stack.openViews();
+    QVector<QPointer<QObject>> recoveryViews{firstIdentity,secondIdentity};
+    const auto originalActive=Identity::uniqueActive(recoveryBefore);
+    if(!require(Identity::sameRecoveryWorkspace(
+                    recoveryViews,originalActive,recoveryBefore),
+                "recovery accepts an unchanged two-canvas workspace"))
+        return 1;
+    auto reordered=recoveryBefore;
+    std::reverse(reordered.begin(),reordered.end());
+    if(!require(Identity::sameRecoveryWorkspace(
+                    recoveryViews,originalActive,reordered),
+                "recovery accepts reordered unchanged native tabs"))
+        return 1;
+    auto changedActive=reordered;
+    for(auto &entry:changedActive)
+        entry.active=entry.nativeView!=originalActive;
+    if(!require(!Identity::sameRecoveryWorkspace(
+                    recoveryViews,originalActive,changedActive),
+                "recovery refuses a switched active canvas"))
+        return 1;
+    auto removedView=recoveryBefore;
+    removedView.removeLast();
+    if(!require(!Identity::sameRecoveryWorkspace(
+                    recoveryViews,originalActive,removedView),
+                "recovery refuses a closed canvas"))
+        return 1;
+    auto replacedView=recoveryBefore;
+    QObject replacement;
+    replacedView.last().nativeView=&replacement;
+    if(!require(!Identity::sameRecoveryWorkspace(
+                    recoveryViews,originalActive,replacedView),
+                "recovery refuses a replaced native canvas"))
+        return 1;
+    if(!require(Identity::sameRecoveryWorkspace(
+                    {},{},{}),
+                "recovery accepts an unchanged empty workspace"))
+        return 1;
     // Qt changes the visible stack index synchronously, while Krita
     // updates its active document on the next queued event-loop turn.
     // Close/Save must never hit the previous canvas in that interval.
