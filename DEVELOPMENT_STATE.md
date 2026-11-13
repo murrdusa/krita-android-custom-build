@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — draft title sidecar confinement
+
+- Commits `f5618555610f4f59f51b19a267e778d5296602e3` and `370eefcc6c3782f902a55eef60ba40566487a331`: `MobileDraftRecovery::displayTitle` now reads stored labels only for UUID-named private drafts, rejecting symlinked `.title` sidecars. A substituted link is ignored in favor of a generated title, preventing an external file from determining the draft gallery label. Added Qt archive regression for an external title symlink and restoring a normal title afterward.
+- **Verification:** test is committed but not executed; this environment lacks Qt5 development libraries. PC watcher last verified baseline and exact current compilation status are in Issue #1; latest source changes require their own exact-SHA confirmation. Real Fold 6 draft gallery and recovery remain untested; APK publishing paused.
+
 ## November 13 follow-up — private draft metadata identity
 
 - Commits `75265d42d75e2635fd357d301d175a49b88ff8d0` and `cde03dc0f76aa319a0853af85676ad348bd28b12`: `MobileDraftRecovery::projectFor` refuses metadata lookups outside its UUID-named app-private draft directory and refuses symlinked `.project` sidecars. This prevents a substituted project-association file from causing an automatic recovery attempt under the wrong project identity. Qt archive regression checks an external path, symlinked sidecar and restored legitimate sidecar.
