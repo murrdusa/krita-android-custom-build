@@ -1609,7 +1609,26 @@ private:
             if(!node || !inImage(node,m_clipImage) ||
                node->parent()!=group)ready=false;
         if(ready) {
-            manager()->setNodeName(
+            // Native grouping completes later. Require exactly the
+            // intended ordered children before naming a compact group;
+            // an intervening edit may have added unrelated layers.
+            int index=0;
+            for(KisNodeSP node=group->firstChild();node;
+                node=node->nextSibling(),++index) {
+                if(index>=cluster.size() || node!=cluster.at(index)) {
+                    ready=false;
+                    break;
+                }
+            }
+            if(index!=cluster.size())ready=false;
+        }
+        if(ready) {
+            auto *nodes=manager();
+            if(!nodes || !inImage(group,m_clipImage)) {
+                finishCompactClipRebuild();
+                return;
+            }
+            nodes->setNodeName(
                 group,QStringLiteral("[Compact Clip] ")+base->name());
             group->setCollapsed(false);
             QTimer::singleShot(110,this,[this]() {
