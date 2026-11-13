@@ -596,7 +596,22 @@ private:
             !isVisible())return;
         for(const auto &entry:m_engine.openDocuments()) {
             const auto *document=qobject_cast<KisDocument*>(entry.document.data());
-            if(document && projectKey(document->path())==key)return;
+            if(!document)continue;
+            const QString backing=document->property(
+                "_mobileDraftPath").toString();
+            const QString associated=MobileDraftRecovery::projectFor(backing);
+            if(projectKey(document->path())==key ||
+               (!associated.isEmpty() && projectKey(associated)==key)) {
+                QMessageBox::information(this,i18n("Drawing is open"),
+                    i18n("Close the drawing before deleting its project."));
+                return;
+            }
+        }
+        if(MobileDraftRecovery::hasProjectDraft(path)) {
+            QMessageBox::information(this,i18n("Recovery edits exist"),
+                i18n("This project has a recovery draft. Recover or discard "
+                     "that draft before deleting the original drawing."));
+            return;
         }
         const bool provider=path.startsWith(QStringLiteral("content://"));
         const auto uri=QAndroidJniObject::fromString(path);
