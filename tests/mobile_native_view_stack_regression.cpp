@@ -107,6 +107,15 @@ int main(int argc,char **argv)
     if(!require(views.at(1).modified &&
                 views.at(1).title==QStringLiteral("Second edited"),
                 "modified flag and title reflect real document"))return 1;
+    // A delayed Close from another canvas must not prompt for, save,
+    // or destroy the document which is now in the background.
+    if(!require(stack.activateView(firstIdentity) &&
+                !stack.closeView(secondIdentity) &&
+                closed==0 && stack.openViews().size()==2 &&
+                stack.currentDocument()==&firstDocument,
+                "background canvas must reject stale close"))return 1;
+    if(!require(stack.activateView(secondIdentity),
+                "restore selected document for close"))return 1;
     if(!require(!stack.closeView(secondIdentity) &&
                 stack.openViews().size()==2 && closed==1,
                 "canceling close keeps document attached"))return 1;
