@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — nested multi-layer transform targets
+
+- Commits `420341d579763221ef0df56084e6cf14607a88cc` and `0f2575aff11daec5ee7f41d33839d2037762e2f8`: native Transform/Move target normalization now drops selected descendants whenever their containing group/ancestor is also selected. This avoids submitting the same subtree twice to Krita. Independent selected sibling layers remain separate targets. Pure identity regression covers both parent/child orders, nested hidden mask, and siblings.
+- **Verification:** last watcher-confirmed Android build at review start was `dab9b1650f9dd6476f6d0fb54b57e6bce877255c` (164.74 MiB); the new transform revision requires exact-SHA watcher confirmation. Desktop Qt regression not executed (Qt5 development packages unavailable here). Fold 6 hardware checks needed for multi-layer Free/Perspective transform commit/cancel/Undo, mask attachment, clipped groups and KRA reopen. No APK release/publishing.
+
 ## November 13 follow-up — failed history destination regression
 
 - Commit `9f04ac90dde4b2038aee229f47fcb6800d8f07ee` adds a Qt-only archive regression using a blocked history-directory path. It asserts that checkpoint failure never modifies the original KRA or the last good historical copy, and verifies snapshotting resumes using an accessible destination. This models destination failure, not real disk exhaustion.
