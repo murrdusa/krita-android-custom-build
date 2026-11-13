@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — verify exact children after asynchronous compact clip grouping
+
+- Commit `71f8668cb02a7d7f80f1d6b3e26405070eedda23`: after Krita's native `createQuickGroup()` finishes, `waitCompactClipGroup` now requires the new group's actual direct children to equal the intended **entire ordered** clipping run, with no extra or missing layer/mask, before it renames the group `[Compact Clip]`. This prevents an intervening tree edit from silently converting the wrong group into a Studio-managed clipping wrapper. Existing timeout/abort handling remains in place; no UI redesign.
+- **Verification:** source committed, exact WSL build pending. Nested group and mask runtime/Undo/KRA reopening have not yet been verified on Fold 6; APK publishing paused.
+
 ## November 13 follow-up — deduplicate overlapping compact clip wrapper traversals
 
 - Commit `e136f30e1160c93e4f2f28d1a7baad6997148d5e`: compact clipping rebuild's recursive wrapper collection now deduplicates wrappers when the source and destination parent trees overlap (nested group or ancestor moves). The serial native ungroup queue continues child-before-parent but will not try to ungroup the same wrapper twice after the first command already detached it. No changes to actual Krita Undo commands.
