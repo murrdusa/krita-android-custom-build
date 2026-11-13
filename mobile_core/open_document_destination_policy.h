@@ -27,11 +27,32 @@ public:
                    MobileSavedVersionArchive::canonicalIdentity(second);
         // Existing files may use symlinks, relative paths or dot segments.
         // A not-yet-existing Save As target must still normalize correctly.
-        const QFileInfo a(first),b(second);
-        const QString aResolved=a.canonicalFilePath();
-        const QString bResolved=b.canonicalFilePath();
-        return QDir::cleanPath(aResolved.isEmpty()?a.absoluteFilePath():aResolved)==
-               QDir::cleanPath(bResolved.isEmpty()?b.absoluteFilePath():bResolved);
+        return resolvedLocalPath(first)==resolvedLocalPath(second);
+    }
+
+private:
+    static QString resolvedLocalPath(const QString &path)
+    {
+        const QFileInfo file(path);
+        const QString canonical=file.canonicalFilePath();
+        if(!canonical.isEmpty())return QDir::cleanPath(canonical);
+
+        // A new Save As destination may not exist yet. Canonicalize
+        // the closest existing ancestor so aliases through a symlinked
+        // folder cannot bypass an open-document collision check.
+        const QString absolute=QDir::cleanPath(file.absoluteFilePath());
+        QFileInfo parent(absolute);
+        QStringList tail;
+        while(!parent.exists()) {
+            tail.prepend(parent.fileName());
+            const QString next=parent.absolutePath();
+            if(next==parent.absoluteFilePath())break;
+            parent.setFile(next);
+        }
+        QString base=parent.canonicalFilePath();
+        if(base.isEmpty())base=parent.absoluteFilePath();
+        for(const QString &segment:tail)base=QDir(base).filePath(segment);
+        return QDir::cleanPath(base);
     }
 };
 #endif
