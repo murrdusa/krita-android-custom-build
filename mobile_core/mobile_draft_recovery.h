@@ -165,12 +165,17 @@ public:
     static QString displayTitle(const QFileInfo &draft,const QString &generated)
     {
         const QString path=draft.absoluteFilePath();
-        QFile titleFile(path+QStringLiteral(".title"));
-        if(titleFile.open(QIODevice::ReadOnly) && titleFile.size()<=384) {
-            const QString saved=QString::fromUtf8(titleFile.readAll()).trimmed();
-            if(!saved.isEmpty())return saved;
+        // Display labels are metadata too: a replaced .title symlink
+        // must not read an unrelated file or impersonate another draft.
+        const QString titlePath=path+QStringLiteral(".title");
+        if(isDraftPath(path) && !QFileInfo(titlePath).isSymLink()) {
+            QFile titleFile(titlePath);
+            if(titleFile.open(QIODevice::ReadOnly) && titleFile.size()<=384) {
+                const QString saved=QString::fromUtf8(titleFile.readAll()).trimmed();
+                if(!saved.isEmpty())return saved;
+            }
         }
-        rename(path,generated);
+        if(isDraftPath(path))rename(path,generated);
         return generated;
     }
 
