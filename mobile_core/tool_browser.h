@@ -160,7 +160,7 @@ public:
             {"KritaShape/KisToolLazyBrush",i18n("Colorize Mask")},
             {"KritaShape/KisToolDyna",i18n("Dynamic Brush")}
         },{
-            {"mobile_set_clone_source",i18n("Set Clone source"),"krita_tool_color_sampler"}
+            {"mobile_set_clone_source",i18n("Clone Brush · Set source"),"krita_tool_color_sampler"}
         });
         addGroup(i18n("Edit"),{},{
             {"krita_filter_colorbalance",i18n("Color balance"),"preferences-desktop-color"},
@@ -244,6 +244,7 @@ public:
         auto *scroll=new QScrollArea(panel);
         scroll->setWidgetResizable(true);
         MobileTouchScroll::configure(scroll);
+        scroll->setProperty("_mobileScrollGaps",true);
         layout->addWidget(scroll);
         const auto refill=[panel,scroll,groups,current,engine,view]() {
             const QString settingsKey=QStringLiteral("MobileStudio/favoriteTools");

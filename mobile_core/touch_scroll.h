@@ -8,6 +8,7 @@
 #include <QDialog>
 #include <QElapsedTimer>
 #include <QListView>
+#include <QLineEdit>
 #include <QMouseEvent>
 #include <QPersistentModelIndex>
 #include <QScrollBar>
@@ -19,6 +20,7 @@
 #include <QScroller>
 #include <QTimer>
 #include <QTouchEvent>
+#include <QTabletEvent>
 
 namespace MobileTouchScroll
 {
@@ -43,9 +45,12 @@ protected:
     {
         if(event==m_replay)return false;
         const auto type=event->type();
+        if(type==QEvent::TabletPress || type==QEvent::TabletMove || type==QEvent::TabletRelease)
+            return tabletGap(object,static_cast<QTabletEvent*>(event));
         if(type!=QEvent::MouseButtonPress && type!=QEvent::MouseButtonDblClick &&
            type!=QEvent::MouseMove && type!=QEvent::MouseButtonRelease)return false;
         auto *mouse=static_cast<QMouseEvent*>(event);
+        if(m_tabletArea && mouse->source()!=Qt::MouseEventNotSynthesized)return true;
         if(type==QEvent::MouseButtonPress || type==QEvent::MouseButtonDblClick) {
             if(mouse->button()!=Qt::LeftButton)return false;
             m_target.clear();
@@ -67,7 +72,9 @@ protected:
                 widget->property("_mobileTapCombo").toBool();
             const bool button=qobject_cast<QAbstractButton*>(widget);
             const bool scrollControl=button || (combo && !combo->isEditable());
-            if(!mobileCombo && (!area || !scrollControl))return false;
+            const bool gap=area && area->property("_mobileScrollGaps").toBool() &&
+                !qobject_cast<QAbstractSlider*>(widget) && !qobject_cast<QLineEdit*>(widget);
+            if(!mobileCombo && (!area || (!scrollControl && !gap)))return false;
             m_target=widget;
             m_area=area;
             m_start=mouse->globalPos();
@@ -92,8 +99,10 @@ protected:
         if(type!=QEvent::MouseButtonRelease)return true;
         const auto target=m_target;
         m_target.clear();
+        const bool gap=m_area && m_area->property("_mobileScrollGaps").toBool() &&
+            !qobject_cast<QAbstractButton*>(target.data()) && !qobject_cast<QComboBox*>(target.data());
         m_area.clear();
-        if(m_dragging || !target->isVisible() || !target->isEnabled() ||
+        if(gap || m_dragging || !target->isVisible() || !target->isEnabled() ||
            !target->rect().contains(target->mapFromGlobal(mouse->globalPos())))return true;
         QMouseEvent press(m_pressType,target->mapFromGlobal(m_start),m_start,
                           Qt::LeftButton,Qt::LeftButton,mouse->modifiers());
@@ -110,6 +119,40 @@ protected:
     }
 
 private:
+    bool tabletGap(QObject *object,QTabletEvent *event)
+    {
+        const auto type=event->type();
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+        const QPoint global=event->globalPosition().toPoint();
+#else
+        const QPoint global=event->globalPos();
+#endif
+        if(type==QEvent::TabletPress) {
+            m_tabletArea.clear();
+            auto *widget=QApplication::widgetAt(global);
+            if(!widget)widget=qobject_cast<QWidget*>(object);
+            for(auto *parent=widget;parent;parent=parent->parentWidget()) {
+                if(qobject_cast<QAbstractButton*>(parent) || qobject_cast<QAbstractSlider*>(parent))return false;
+                auto *area=qobject_cast<QAbstractScrollArea*>(parent);
+                if(!area)continue;
+                if(!area->property("_mobileScrollGaps").toBool())return false;
+                m_tabletArea=area;
+                m_tabletStart=global;
+                m_tabletOffset=area->verticalScrollBar()->value();
+                break;
+            }
+        }
+        if(!m_tabletArea)return false;
+        m_tabletArea->verticalScrollBar()->setValue(m_tabletOffset+m_tabletStart.y()-global.y());
+        if(type==QEvent::TabletRelease)m_tabletArea.clear();
+        event->accept();
+        return true;
+    }
+
+    QPointer<QAbstractScrollArea> m_tabletArea;
+    QPoint m_tabletStart;
+    int m_tabletOffset=0;
+
     QPointer<QWidget> m_target;
     QPointer<QAbstractScrollArea> m_area;
     QEvent *m_replay=nullptr;
@@ -409,11 +452,14 @@ public:
         MobileTouchScroll::MenuPointerFilter::install();
     }
 
+    void setAnchoredPopup(bool anchored) {m_anchored=anchored;}
+
     void showPopup() override
     {
         if(count()==0)return;
         QDialog choices(this);
         MobileTouchScroll::styleMenuDialog(choices,QSize(qMax(width(),240),360));
+        if(m_anchored)choices.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
         auto *layout=new QVBoxLayout(&choices);
         auto *list=new QListView(&choices);
         list->setStyleSheet(QStringLiteral("QListView::item{min-height:42px;}"));
@@ -434,7 +480,8 @@ public:
         layout->addWidget(list,1);
         auto *close=new QPushButton(tr("Cancel"),&choices);
         close->setMinimumHeight(42);
-        layout->addWidget(close);
+        if(m_anchored)close->hide();
+        else layout->addWidget(close);
         connect(close,&QPushButton::clicked,&choices,&QDialog::reject);
         int selected=-1;
         connect(list,&QListView::clicked,&choices,[&](const QModelIndex &index) {
@@ -447,6 +494,15 @@ public:
         const QSize room=window()->size()-QSize(16,16);
         choices.resize(QSize(qMax(width(),240),66+qMin(count(),8)*42)
                        .boundedTo(room.expandedTo(QSize(1,1))));
+        if(m_anchored) {
+            const QRect bounds(window()->mapToGlobal(QPoint()),window()->size());
+            const QPoint top=mapToGlobal(QPoint());
+            const int below=top.y()+height();
+            const int above=top.y()-choices.height();
+            const int y=below+choices.height()<=bounds.bottom()+1?below:above;
+            choices.move(qBound(bounds.left(),top.x(),bounds.right()+1-choices.width()),
+                         qBound(bounds.top(),y,bounds.bottom()+1-choices.height()));
+        }
         if(choices.exec()==QDialog::Accepted && selected>=0 && selected<count()) {
             // A user selection on a regular QComboBox emits activated()
             // even if the choice was already current. Setting the index
@@ -480,5 +536,5 @@ protected:
     }
 
 private:
-    bool m_tapPending=false;
+    bool m_tapPending=false,m_anchored=false;
 };

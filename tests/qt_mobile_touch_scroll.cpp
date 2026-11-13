@@ -143,6 +143,12 @@ int main(int argc,char **argv)
     verify(actions==1,"stationary tap did not activate the sheet action once");
     mouseSwipe(action,start,Qt::MouseEventNotSynthesized);
     verify(actions==1 && sheet.verticalScrollBar()->value()>0,"sheet swipe regressed");
+    sheet.verticalScrollBar()->setValue(0);
+    sheet.setProperty("_mobileScrollGaps",true);
+    const auto gap=sheet.viewport()->rect().center();
+    mouseSwipe(sheet.viewport(),gap,Qt::MouseEventSynthesizedBySystem);
+    verify(actions==1 && sheet.verticalScrollBar()->value()>0,
+           "pen-generated drag on a menu gap did not scroll");
     sheet.hide();
 
     QStringList names;

@@ -108,7 +108,7 @@ public:
         auto *eyedropperAction=makeAction("One-shot eyedropper");
         workspace->bindEyedropper(eyedropperAction);
         auto *referenceAction=makeAction("Reference images");
-        referenceAction->setToolTip(QObject::tr("Reference images. Tap for the tool, hold to show or hide."));
+        workspace->bindReferenceShortcut(referenceAction);
         QObject::connect(referenceAction,&QAction::triggered,workspace,[nativeBridge]() {
             for(const auto &tool:nativeBridge.tools()) {
                 if(tool.id.section(QLatin1Char('/'),-1)==QStringLiteral("ToolReferenceImages")) {
@@ -139,7 +139,6 @@ public:
         setStudioIcon(toolsAction,"tools-wizard");
         setStudioIcon(eraserAction,"draw-eraser");
         setStudioIcon(blendBrushAction,"colorsmudge");
-        setStudioIcon(referenceAction,"krita_tool_reference_images");
         if(auto *provider=nativeBridge.brushResources()) {
             const auto updateSwatch=[colorAction](const KoColor &foreground) {
                 QPixmap swatch(46,46);
@@ -473,15 +472,12 @@ public:
             [workspace](const QPoint &global,MobileToolbarDrag::Phase phase) {
                 workspace->sampleEyedropperDrag(global,phase);
             },
-            [workspace,nativeBridge](const QString &id) -> MobileToolbarGestureButton::Hold {
+            [workspace](const QString &id) -> MobileToolbarGestureButton::Hold {
                 if(id==QStringLiteral("eyedropper"))return [workspace]() {workspace->toggleEyedropperSource();};
                 if(id==QStringLiteral("reference-images") ||
                    id==QStringLiteral("krita/view_toggle_reference_images") ||
                    id==QStringLiteral("krita/ToolReferenceImages")) {
-                    return [nativeBridge]() {
-                        if(auto *toggle=nativeBridge.action("view_toggle_reference_images"))
-                            if(toggle->isEnabled())toggle->trigger();
-                    };
+                    return [workspace]() {workspace->toggleReferenceVisibility();};
                 }
                 return {};
             });

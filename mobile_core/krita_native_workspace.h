@@ -192,6 +192,7 @@ public:
             if(m_layers && m_layers->isVisible())
                 m_layers->refreshFromEngine();
             syncSelectionDismissButton();
+            syncReferenceShortcut();
         });
         poll->start();
     }
@@ -957,6 +958,20 @@ public:
         }
     }
 
+    void bindReferenceShortcut(QAction *action)
+    {
+        m_referenceShortcut=action;
+        syncReferenceShortcut();
+    }
+
+    void toggleReferenceVisibility()
+    {
+        if(auto *toggle=m_engine.action("view_toggle_reference_images")) {
+            if(toggle->isEnabled())toggle->trigger();
+        }
+        syncReferenceShortcut();
+    }
+
     void bindEyedropper(QAction *action)
     {
         m_eyedropper=action;
@@ -1181,6 +1196,7 @@ public:
         if(!m_host)return;
         syncPanelActions();
         syncBrushModes();
+        syncReferenceShortcut();
         if(!m_engine.hasDocument()) {
             hidePanels();
             return;
@@ -1336,6 +1352,37 @@ private:
         m_dragParameter.clear();
     }
 
+    void syncReferenceShortcut()
+    {
+        if(!m_referenceShortcut)return;
+        const auto *manager=m_engine.manager();
+        const auto *canvas=manager?manager->canvasBase():nullptr;
+        const bool shown=canvas && canvas->referenceImagesDecoration() &&
+                         canvas->referenceImagesDecoration()->visible();
+        if(m_referenceState==int(shown))return;
+        m_referenceState=int(shown);
+        QPixmap icon(48,48);
+        icon.fill(Qt::transparent);
+        QPainter painter(&icon);
+        painter.setOpacity(shown?1.0:0.45);
+        QIcon(QStringLiteral(":/light_krita_tool_reference_images.svg")).paint(&painter,QRect(0,0,48,48));
+        painter.setOpacity(1);
+        painter.setRenderHint(QPainter::Antialiasing);
+        if(shown) {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor("#83d9bd"));
+            painter.drawEllipse(QPoint(40,40),6,6);
+        } else {
+            painter.setPen(QPen(QColor("#f4ab9e"),4,Qt::SolidLine,Qt::RoundCap));
+            painter.drawLine(9,39,39,9);
+        }
+        painter.end();
+        m_referenceShortcut->setIcon(QIcon(icon));
+        m_referenceShortcut->setToolTip(shown?
+            tr("Reference images shown. Hold to hide."):
+            tr("Reference images hidden. Hold to show."));
+    }
+
     void syncEyedropper()
     {
         if(!m_eyedropper)return;
@@ -1374,13 +1421,17 @@ private:
                         m_eyedropperCanvas=widget;
                         m_eyedropperCursor=widget->cursor();
                         m_eyedropperHadCursor=widget->testAttribute(Qt::WA_SetCursor);
+                        m_eyedropperMouseTracking=widget->hasMouseTracking();
+                        widget->setMouseTracking(true);
                         widget->setCursor(Qt::CrossCursor);
                     }
                 }
         }
+        if(!armed)clearToolbarPreview();
         if(!armed && m_eyedropperCanvas) {
             if(m_eyedropperHadCursor)m_eyedropperCanvas->setCursor(m_eyedropperCursor);
             else m_eyedropperCanvas->unsetCursor();
+            m_eyedropperCanvas->setMouseTracking(m_eyedropperMouseTracking);
             m_eyedropperCanvas.clear();
         }
     }
@@ -1416,6 +1467,21 @@ private:
         }
         if(!m_eyedropperArmed || !m_eyedropperCanvas ||
            QApplication::activeModalWidget() || QApplication::activePopupWidget())return false;
+        const bool tabletHover=type==QEvent::TabletMove &&
+            static_cast<QTabletEvent*>(event)->pressure()==0;
+        const bool mouseHover=type==QEvent::MouseMove &&
+            static_cast<QMouseEvent*>(event)->buttons()==Qt::NoButton;
+        if(tabletHover || mouseHover) {
+            QPoint global;
+            auto *target=pressTarget(watched,event,&global);
+            if(target && (target==m_eyedropperCanvas || m_eyedropperCanvas->isAncestorOf(target)))
+                sampleToolbarColor(global,MobileToolbarDrag::Phase::Preview,m_sampleActiveLayer);
+            else clearToolbarPreview();
+            return false;
+        }
+        if(type==QEvent::TabletLeaveProximity ||
+           (type==QEvent::Leave && watched==m_eyedropperCanvas))
+            clearToolbarPreview();
         if(type!=QEvent::TouchBegin && type!=QEvent::TabletPress &&
            type!=QEvent::MouseButtonPress && type!=QEvent::MouseButtonDblClick)return false;
         QPoint global;
@@ -1608,6 +1674,7 @@ private:
             break;
         }
         case QEvent::TabletPress:
+        case QEvent::TabletMove:
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
             global=static_cast<QTabletEvent*>(event)->globalPosition().toPoint();
 #else
@@ -2137,11 +2204,12 @@ private:
     QPointer<QAction> m_volumeUndo;
     QPointer<QAction> m_volumeRedo;
     QPointer<MobileToolbarDragPreview> m_toolbarPreview;
-    QPointer<QAction> m_eyedropper;
+    QPointer<QAction> m_eyedropper,m_referenceShortcut;
+    int m_referenceState=-1;
     QPointer<QWidget> m_eyedropperCanvas;
     QCursor m_eyedropperCursor;
     QEvent::Type m_eyedropperInput=QEvent::None;
-    bool m_eyedropperArmed=false,m_eyedropperHadCursor=false;
+    bool m_eyedropperArmed=false,m_eyedropperHadCursor=false,m_eyedropperMouseTracking=false;
     bool m_sampleActiveLayer=false,m_sampleLayerOnly=false;
     QTimer m_samplePreviewTimer;
     QPoint m_samplePoint;

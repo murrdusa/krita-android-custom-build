@@ -920,6 +920,7 @@ private:
         MobileTouchScroll::styleMenuDialog(dialog,QSize(520,660));
         auto *layout=new QVBoxLayout(&dialog);
         auto *selector=new MobileTouchComboBox(&dialog);
+        selector->setAnchoredPopup(true);
         selector->setMinimumHeight(44);
         layout->addWidget(selector);
         auto *list=new QListWidget(&dialog);

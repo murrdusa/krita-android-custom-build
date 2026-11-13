@@ -13,6 +13,7 @@
 #include <QFormLayout>
 #include <QGuiApplication>
 #include <QScreen>
+#include <QWindow>
 #include <QScrollArea>
 #include <QSizePolicy>
 #include "touch_scroll.h"
@@ -76,12 +77,31 @@ public:
         auto *name=new QLineEdit(&dialog);
         name->setText(i18n("Untitled"));
         form->addRow(i18n("Name"),name);
-        auto *preset=new QComboBox(&dialog);
-        preset->addItem(i18n("Custom size"),QSize());
-        preset->addItem(i18n("Square — 2048"),QSize(2048,2048));
-        preset->addItem(i18n("Phone portrait — 1080 × 1920"),QSize(1080,1920));
-        preset->addItem(i18n("Phone landscape — 1920 × 1080"),QSize(1920,1080));
-        preset->addItem(i18n("A4 at 300 DPI — 2480 × 3508"),QSize(2480,3508));
+        auto *preset=new MobileTouchComboBox(&dialog);
+        preset->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+        const auto addPreset=[preset](const QString &label,const QSize &size,int dpi=0) {
+            preset->addItem(size.isValid()?i18n("%1 — %2 × %3",label,size.width(),size.height()):label,size);
+            preset->setItemData(preset->count()-1,dpi,Qt::UserRole+1);
+        };
+        addPreset(i18n("Custom size"),{});
+        const auto *window=owner->window()->windowHandle();
+        const auto *screen=window?window->screen():QGuiApplication::primaryScreen();
+        if(screen) {
+            const QSize pixels=screen->geometry().size()*screen->devicePixelRatio();
+            if(pixels.isValid() && pixels.width()<=8192 && pixels.height()<=8192 &&
+               qint64(pixels.width())*pixels.height()<=40000000LL)
+                addPreset(i18n("Match current screen"),pixels);
+        }
+        addPreset(i18n("Small square"),QSize(1024,1024));
+        addPreset(i18n("Square"),QSize(2048,2048));
+        addPreset(i18n("Large square"),QSize(4096,4096));
+        addPreset(i18n("Phone portrait"),QSize(1080,1920));
+        addPreset(i18n("Phone landscape"),QSize(1920,1080));
+        addPreset(i18n("Tall phone"),QSize(1080,2400));
+        addPreset(i18n("Tablet landscape"),QSize(2560,1600));
+        addPreset(i18n("4K landscape"),QSize(3840,2160));
+        addPreset(i18n("A4 at 300 DPI"),QSize(2480,3508),300);
+        addPreset(i18n("US Letter at 300 DPI"),QSize(2550,3300),300);
         form->addRow(i18n("Preset"),preset);
         auto *width=new QSpinBox(&dialog);
         auto *height=new QSpinBox(&dialog);
@@ -117,11 +137,13 @@ public:
         scroll->setWidget(formContents);
         layout->addWidget(scroll,1);
         QObject::connect(preset,QOverload<int>::of(&QComboBox::currentIndexChanged),
-                         &dialog,[preset,width,height](int){
+                         &dialog,[preset,width,height,dpi](int){
             const QSize size=preset->currentData().toSize();
             if(size.isValid()) {
                 width->setValue(size.width());
                 height->setValue(size.height());
+                const int resolution=preset->currentData(Qt::UserRole+1).toInt();
+                if(resolution>0)dpi->setValue(resolution);
             }
         });
         auto *actions=new QDialogButtonBox(
