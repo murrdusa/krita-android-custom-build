@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 13 follow-up — bind native compact clip ungroup to intended wrappers
+
+- Commit `6878157be6c4f8a443460cef1fc19cf86fc28bd3`: during compact clipping-group flatten/rebuild, every queued native `quickUngroup()` now verifies that its target is a live compact wrapper in the original image and that Krita's active node and full native selection still contain **only that wrapper** after native activation callbacks. If reentrant selection changes the target, the rebuild stops instead of ungrouping an unrelated user group. Native Krita still owns the ungroup and Undo implementation.
+- **Verification:** source change committed; must confirm exact WSL build SHA from local watcher. The previous detached layer fix `f68e6058312161bc18f4e5d8c635b79c05ad20b1` has not yet been assumed verified. Clipping Undo and KRA save/reopen on Fold 6 remain untested; APK publishing paused.
+
 ## November 13 follow-up — clipping rebuild does not select detached layers
 
 - Commit `f68e6058312161bc18f4e5d8c635b79c05ad20b1`: on completion or abort of a compact clip regroup, the layer workspace now restores the previously active layer only when it is **still attached to the original image tree**, not merely when its retained node pointer has some parent. It also checks that Krita actually activated the layer before restoring its native selection. The asynchronous move-completion check likewise refuses to treat a move as settled when the moving layer or expected parent has detached from the image, even if parent/sibling pointers still match. This prevents stale native UI selections after cancel/failure of a clipping-group move. No user-facing UI redesign.
