@@ -204,6 +204,14 @@ int main(int argc,char **argv)
     require(MobileSavedVersionArchive::snapshotFrom(privateDraft,draftProject,store) &&
             MobileSavedVersionArchive::list(draftProject,store).size()==historicalCount+1,
             "forced background checkpoint should bypass spacing");
+    const auto newestDraftCheckpoint=MobileSavedVersionArchive::list(
+        draftProject,store).first().path;
+    save(newestDraftCheckpoint+QStringLiteral(".sha256"),QByteArray(129,'0'));
+    save(privateDraft,QByteArray::fromHex("504b0304")+"after-bad-checksum");
+    require(MobileSavedVersionArchive::snapshotFrom(
+                privateDraft,draftProject,store,2LL*60*1000) &&
+            MobileSavedVersionArchive::list(draftProject,store).size()==historicalCount+2,
+            "oversized latest checksum must not suppress a fresh checkpoint");
 
 
     // Bound the number and total size of backups, keeping the latest
