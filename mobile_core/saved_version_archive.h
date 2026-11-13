@@ -651,10 +651,23 @@ private:
         if(QFileInfo(digestPath).isSymLink())return false;
         QFile digest(digestPath);
         if(!digest.open(QIODevice::ReadOnly))return false;
-        const QByteArray sha=digest.read(65).trimmed().toLower();
-        return sha.size()==64 &&
-            QRegularExpression(QStringLiteral("^[0-9a-f]{64}$"))
-                .match(QString::fromLatin1(sha)).hasMatch();
+        const QByteArray sha=digest.readAll().trimmed().toLower();
+        if(sha.size()!=64 ||
+           !QRegularExpression(QStringLiteral("^[0-9a-f]{64}$"))
+                .match(QString::fromLatin1(sha)).hasMatch())return false;
+        // A valid-looking sidecar alone does not prove that the newest
+        // checkpoint is still recoverable. In particular, same-size
+        // corruption must not postpone replacement for the entire gap.
+        QCryptographicHash actual(QCryptographicHash::Sha256);
+        QByteArray block(256*1024,Qt::Uninitialized);
+        qint64 count=0;
+        qint64 hashed=0;
+        while((count=archive.read(block.data(),block.size()))>0) {
+            hashed+=count;
+            actual.addData(block.constData(),count);
+        }
+        return count==0 && hashed==version.bytes &&
+               actual.result().toHex()==sha;
     }
 
     static QVector<Version> scan(const QString &folder)
