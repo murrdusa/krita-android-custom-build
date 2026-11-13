@@ -3080,8 +3080,12 @@ private:
             const auto hidden=[](const KisNodeSP &node) {
                 return KisNodeManager::isNodeHidden(node,true);
             };
+            // Match tool-entry semantics: when native selection is
+            // empty, a visible active layer remains the transform target.
+            // Otherwise a rail refresh can silently leave Move/Transform
+            // without a target until the next explicit layer tap.
             m_selected=MobileLayerIdentity::transformTargets(
-                image->root(),m_selected,KisNodeSP(),hidden,false);
+                image->root(),m_selected,m_active,hidden,false);
             if(!m_selected.isEmpty() && !m_selected.contains(m_active))
                 m_active=m_selected.last();
         } else if(!allowsMultiple() && m_active) {
