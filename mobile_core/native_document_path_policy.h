@@ -32,6 +32,14 @@ public:
         return url.isValid() && url.isLocalFile()?url.toLocalFile():QString();
     }
 
+    static QUrl recentFileUrl(const QString &path)
+    {
+        if(path.isEmpty())return {};
+        if(isProviderUri(path))return QUrl(path);
+        const QString local=localFilePath(path);
+        return local.isEmpty()?QUrl():QUrl::fromLocalFile(local);
+    }
+
     static bool mayAttemptOpen(const QString &path)
     {
         return !path.trimmed().isEmpty() &&
