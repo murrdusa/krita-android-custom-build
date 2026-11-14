@@ -9,6 +9,7 @@
 #include <QVector>
 #include <algorithm>
 #include <QFileInfo>
+#include <QFile>
 #include <QImage>
 #include <QImageReader>
 #include <QMutex>
@@ -117,7 +118,14 @@ private:
             // Invalid legacy cache files must not crowd out readable
             // older previews from the newest-512 retention window.
             // The second pass deletes these invalid files as usual.
-            if(entry.size()<=0 || entry.size()>maxEncodedBytes())continue;
+            if(entry.size()<8 || entry.size()>maxEncodedBytes())continue;
+            // A small corrupt file may still occupy a newest slot and
+            // evict a real preview. Reject the cheap PNG-signature
+            // failure before it enters the bounded retention heap.
+            QFile candidate(entry.absoluteFilePath());
+            if(!candidate.open(QIODevice::ReadOnly) ||
+               candidate.peek(8)!=QByteArray::fromHex("89504e470d0a1a0a"))
+                continue;
             if(newest.size()<maxEntries) {
                 newest.append(entry);
                 std::push_heap(newest.begin(),newest.end(),newer);
