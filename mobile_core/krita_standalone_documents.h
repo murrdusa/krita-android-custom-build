@@ -250,7 +250,8 @@ private:
             const QString preferred=unsupportedMime || currentMime.isEmpty()?
                 nativeMime:QString::fromLatin1(currentMime);
             dialog.setMimeTypeFilters(formats,preferred);
-            target=dialog.filename();
+            target=MobileNativeDocumentPathPolicy::localFilePath(
+                dialog.filename());
             if(target.isEmpty() || !guardedDocument ||
                !m_runtime || !m_runtime->ownsDocument(guardedDocument) ||
                m_runtime->documentRoot()->currentDocument().data()!=guardedDocument.data())
