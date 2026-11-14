@@ -58,7 +58,10 @@ private:
         QString local=path;
         if(path.startsWith(QStringLiteral("file:"),Qt::CaseInsensitive)) {
             const QUrl uri(path);
-            if(!uri.isValid() || !uri.isLocalFile())return {};
+            if(!uri.isValid() || !uri.isLocalFile() ||
+               (!uri.host().isEmpty() &&
+                uri.host().compare(QStringLiteral("localhost"),
+                                   Qt::CaseInsensitive)!=0))return {};
             local=uri.toLocalFile();
             if(local.isEmpty())return {};
         }
