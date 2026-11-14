@@ -120,18 +120,24 @@ int main(int argc,char **argv)
     auto *second=new QWidget;
     QStringList closed;
     bool confirmFirst=false;
+    bool nestedCloseRejected=false;
     require(stack->adoptView(first,&firstDocument,QStringLiteral("First"),[&]() {
         if(!confirmFirst)return false;
         closed.append(QStringLiteral("First"));
         return true;
     }),"could not adopt first canvas");
     require(stack->adoptView(second,&secondDocument,QStringLiteral("Second"),[&]() {
+        // A native Save/Discard callback may reenter the host close
+        // handler while its first transaction is still in progress.
+        // The nested close must be denied without losing the guard.
+        nestedCloseRejected=!multi.close();
         closed.append(QStringLiteral("Second"));
         return true;
     }),"could not adopt second canvas");
     stack->setCurrentWidget(second);
     multi.show();
-    require(!multi.close() && multi.isVisible() && stack->currentWidget()==first &&
+    require(!multi.close() && nestedCloseRejected &&
+            multi.isVisible() && stack->currentWidget()==first &&
             closed==QStringList{QStringLiteral("Second")},
             "app close must begin on the active tab and respect cancellation");
     confirmFirst=true;
