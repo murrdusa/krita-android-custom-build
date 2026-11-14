@@ -986,7 +986,12 @@ private:
             const auto clear=[this]() {
                 m_presetCapabilities.clear();
             };
-            connect(m_model,&QAbstractItemModel::dataChanged,this,clear);
+            connect(m_model,&QAbstractItemModel::dataChanged,this,
+                    [this](const QModelIndex &first,const QModelIndex &last) {
+                for(int row=first.row();row<=last.row();++row)
+                    m_presetCapabilities.remove(
+                        m_model->index(row,KisAbstractResourceModel::Id).data().toInt());
+            });
             connect(m_model,&QAbstractItemModel::modelReset,this,clear);
             connect(m_model,&QAbstractItemModel::rowsRemoved,this,clear);
         }
@@ -1432,6 +1437,8 @@ private:
         list->setObjectName(QStringLiteral("brushRows"));
         list->setAccessibleName(i18n("Brush presets"));
         list->setUniformItemSizes(true);
+        list->setLayoutMode(QListView::Batched);
+        list->setBatchSize(32);
         list->setEditTriggers(QAbstractItemView::NoEditTriggers);
         body->addWidget(list,1);
         auto *empty=new QLabel(i18n("No matching brushes"),panel);
@@ -1607,7 +1614,7 @@ private:
         list->hide();
         empty->setText(i18n("Loading brushes…"));
         empty->show();
-        QTimer::singleShot(24,panel,[=]() {
+        QTimer::singleShot(0,panel,[=]() {
             if(!panel->isVisible() || !valid())return;
             filter->attach();
             list->setModelColumn(KisAbstractResourceModel::Name);

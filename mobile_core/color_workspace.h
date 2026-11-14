@@ -366,7 +366,7 @@ public:
         auto *tabs=new QTabBar(this);
         tabs->setExpanding(true);
         tabs->setStyleSheet(QStringLiteral(
-            "QTabBar::tab{background:#30323b;color:#c3c6d1;min-height:38px;padding:0 7px;}"
+            "QTabBar::tab{background:#30323b;color:#c3c6d1;min-height:30px;padding:0 7px;}"
             "QTabBar::tab:selected{background:#394459;color:#fff;}"));
         root->addWidget(tabs);
         auto *pages=new QStackedWidget(this);
@@ -389,7 +389,7 @@ public:
         m_previous=new QLabel(wheelPage);
         m_current=new QLabel(wheelPage);
         for(auto *chip:{m_previous,m_current}) {
-            chip->setFixedSize(32,32);
+            chip->setFixedSize(23,23);
             auto policy=QSizePolicy(QSizePolicy::Fixed,QSizePolicy::Fixed);
             policy.setRetainSizeWhenHidden(true);
             chip->setSizePolicy(policy);
@@ -424,13 +424,13 @@ public:
         m_hex=new QLineEdit(values);
         m_hex->setAccessibleName(tr("Hex color"));
         m_hex->setMaxLength(7);
-        m_hex->setMinimumHeight(40);
+        m_hex->setMinimumHeight(30);
         form->addRow(tr("Hex"),m_hex);
         const QStringList captions{tr("Hue"),tr("Saturation"),tr("Value")};
         for(int i=0;i<3;++i) {
             auto *row=new QHBoxLayout;
             m_values[i]=new MobileTouchSlider(values);
-            m_values[i]->setMinimumHeight(36);
+            m_values[i]->setMinimumHeight(30);
             m_values[i]->setAccessibleName(captions.at(i));
             m_values[i]->setRange(0,i==0?359:100);
             m_labels[i]=new QLabel(values);
@@ -589,7 +589,7 @@ private:
     QPushButton *swatch(QWidget *parent,const QColor &color)
     {
         auto *button=new QPushButton(parent);
-        button->setMinimumHeight(38);
+        button->setMinimumHeight(24);
         button->setMinimumWidth(0);
         button->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Preferred);
         button->setAccessibleName(color.name());

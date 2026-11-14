@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — canvas entry, picker responsiveness, and tool stability
+
+- New canvases request a repaint as Home closes, with one guarded follow-up for Android surface transitions. Tool lookup and option handling now validate the active canvas and document before applying controls.
+- Brush lists lay out in batches and keep capability cache entries for unaffected presets. Double-tap mirror allows more time and finger movement between taps. The legacy 150 ms setting migrates once to the 350 ms default.
+- Home shows recovered work through Recent and All Projects. The Color popup fits around toolbar history strips and gives the wheel more room. Device behavior remains unverified.
+
 ## November 14 — isolate archive snapshots from interactive Qt workers
 
 - Audited the background version-history tasks: both `enqueueDraftCheckpoint()` and `enqueueAfterSave()` dispatched work into `QThreadPool::globalInstance()`, but each then serialized all archive I/O under the same recursive archive mutex. Multiple document saves could occupy global-pool threads blocked on that lock, reducing the worker capacity available to fill-tolerance previews and other interactive operations.

@@ -24,6 +24,8 @@
 #include "KisViewManager.h"
 #include "command_registry_port.h"
 #include "kis_paintop_box.h"
+#include "kis_canvas2.h"
+#include <KoCanvasController.h>
 #include "kis_canvas_resource_provider.h"
 
 class MobileCommandService final
@@ -113,8 +115,11 @@ public:
     bool selectTool(const QString &id) const
     {
         if(!hasDocument() || id.isEmpty())return false;
-        KoToolManager *manager=KoToolManager::instance();
-        if(!manager)return false;
+        auto *canvas=m_manager->canvasBase();
+        auto *manager=KoToolManager::instance();
+        auto *controller=manager?manager->activeCanvasController():nullptr;
+        if(!canvas || !controller || controller->canvas()!=canvas ||
+           !manager->toolById(canvas,id))return false;
         const auto actions=manager->toolActionList();
         for(KoToolAction *action:actions) {
             if(action && action->id()==id) {

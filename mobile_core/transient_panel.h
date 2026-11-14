@@ -24,6 +24,7 @@ public:
     }
 
     std::function<void()> onRefresh;
+    std::function<QRect(const QRect &)> fitGeometry;
 
     void requestRefresh()
     {
@@ -164,6 +165,8 @@ private:
             origin.setX(qBound(0,origin.x(),qMax(0,bounds.width()-size.width())));
             origin.setY(qBound(0,origin.y(),qMax(0,bounds.height()-size.height())));
         }
-        setGeometry(QRect(origin,size));
+        const QRect preferredGeometry(origin,size);
+        const QRect fitted=fitGeometry?fitGeometry(preferredGeometry):QRect();
+        setGeometry(fitted.isValid()?fitted:preferredGeometry);
     }
 };

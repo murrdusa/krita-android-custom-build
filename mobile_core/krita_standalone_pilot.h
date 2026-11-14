@@ -49,6 +49,15 @@ public:
         if(!window || !window->isWindow() || !window->isVisible() ||
            window->nativeViewPort())return false;
 
+        QSettings gestureSettings;
+        const QString tapKey=QStringLiteral("TabletUi/doubleTapMs");
+        const QString migration=QStringLiteral("TabletUi/doubleTapDefaultV4");
+        if(!gestureSettings.value(migration,false).toBool()) {
+            if(gestureSettings.value(tapKey).toInt()==150)
+                gestureSettings.remove(tapKey);
+            gestureSettings.setValue(migration,true);
+        }
+
         // Persist the last startup phase and emit logcat checkpoints.
         auto stage=[](const char *name,bool pending=true) {
             QSettings settings;
@@ -644,18 +653,25 @@ public:
             alive->suppressNativeStatusChrome();
             stage("First native Krita canvas ready",false);
         };
-        if(auto *stack=qobject_cast<QStackedWidget*>(window->nativeCanvas())) {
+        if(auto *stack=dynamic_cast<MobileNativeViewStack*>(window->nativeCanvas())) {
+            const QPointer<MobileNativeViewStack> root(stack);
+            const QPointer<KisViewManager> manager(engineSession->viewManager());
+            const QPointer<MobileDocumentHome> gallery(home);
             QObject::connect(stack,&QStackedWidget::currentChanged,window,
-                             [alive,home,firstCanvas](int) {
-                if(!alive)return;
-                const bool wasHome=home->isVisible();
-                QTimer::singleShot(0,alive.data(),[alive,home,firstCanvas,wasHome]() {
-                    if(!alive)return;
-                    if(alive->nativeViewPort()->currentDocument()) {
-                        if(wasHome)home->hide();
+                             [alive,gallery,firstCanvas,root,manager](int) {
+                if(!alive || !gallery || !root)return;
+                const bool wasHome=gallery->isVisible();
+                const QPointer<QWidget> selected=root->currentWidget();
+                QTimer::singleShot(0,alive.data(),[=]() {
+                    if(!alive || !gallery || !root || root->currentWidget()!=selected)return;
+                    if(root->currentDocument()) {
+                        if(wasHome) {
+                            gallery->hide();
+                            MobileKritaNativeViewFactory::refreshAfterHome(manager,root);
+                        }
                         firstCanvas();
-                    } else if(alive->nativeViewPort()->openViews().isEmpty()) {
-                        home->showHome();
+                    } else if(root->openViews().isEmpty()) {
+                        gallery->showHome();
                     }
                 });
             });

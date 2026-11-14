@@ -29,6 +29,20 @@
 class MobileKritaNativeViewFactory final
 {
 public:
+    static void refreshAfterHome(QPointer<KisViewManager> manager,
+                                 QPointer<MobileNativeViewStack> root)
+    {
+        if(!manager || !root)return;
+        const QPointer<KisView> selected=qobject_cast<KisView*>(root->currentWidget());
+        if(!selected)return;
+        scheduleActivation(manager,root,selected);
+        // Android can finish the create dialog/IME surface transition
+        // after Qt has already queued the first canvas paint.
+        QTimer::singleShot(180,root.data(),[manager,root,selected]() {
+            if(selected)scheduleActivation(manager,root,selected);
+        });
+    }
+
     static KisView *attach(KisDocument *document,KisViewManager *manager,
                            MobileNativeViewStack *stack,
                            MobileKritaNativeSaveHost *saver)

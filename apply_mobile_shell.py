@@ -1859,7 +1859,11 @@ install(FILES org.kde.krita.desktop''',
 #endif
             doubleTap->action()->end(event);""","carry the matched double-tap location into gesture dispatch")
     matcher=matcher.replace('QStringLiteral("TabletUi/doubleTapMs"), 150',
-                            'QStringLiteral("TabletUi/doubleTapMs"), 250')
+                            'QStringLiteral("TabletUi/doubleTapMs"), 350')
+    matcher=one(matcher,
+        "qMax(qreal(24), qreal(QApplication::startDragDistance()) * 2)",
+        "qMax(qreal(36), qreal(QApplication::startDragDistance()) * 3)",
+        "give two intentional taps room for finger placement variation")
     a=matcher.index("void KisShortcutMatcher::fireReadyTouchShortcut")
     b=matcher.index("        goodCandidate->action()->end(event);",a)
     matcher=matcher[:b]+"""#ifdef Q_OS_ANDROID
@@ -1869,6 +1873,23 @@ install(FILES org.kde.krita.desktop''',
 #endif
 """+matcher[b:]
     matcher_file.write_text(matcher,encoding="utf-8")
+
+    tool_manager_file=root/"libs/flake/KoToolManager.cpp"
+    tool_manager=tool_manager_file.read_text(encoding="utf-8")
+    tool_manager=one(tool_manager,
+        """    Q_ASSERT(canvas);
+    Q_FOREACH (KoCanvasController *controller, d->canvasses.keys()) {
+        if (controller->canvas() == canvas)
+            return d->canvasData->allTools.value(id);
+    }""",
+        """    if (!canvas) return nullptr;
+    for (auto it = d->canvasses.cbegin(); it != d->canvasses.cend(); ++it) {
+        if (it.key()->canvas() != canvas || it.value().isEmpty()) continue;
+        const auto *data = d->canvasData && d->canvasData->canvas == it.key()
+            ? d->canvasData : it.value().first();
+        return data->allTools.value(id);
+    }""","resolve tools on the requested registered canvas")
+    tool_manager_file.write_text(tool_manager,encoding="utf-8")
 
     gesture_file=root/"libs/ui/input/KisTouchGestureAction.cpp"
     gestures=gesture_file.read_text(encoding="utf-8")

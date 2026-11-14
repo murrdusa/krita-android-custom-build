@@ -397,10 +397,12 @@ public:
             QObject::connect(tools,&KoToolManager::toolOptionWidgetsChanged,
                              dock,[this,dock](KoCanvasController *controller,
                                   const QList<QPointer<QWidget>> &widgets) {
-                if(!m_host || !m_toolOptions)return;
+                if(!m_host || !m_toolOptions || !dock->isVisible())return;
                 auto *manager=KoToolManager::instance();
-                if(!manager || controller!=manager->activeCanvasController())
-                    return;
+                const auto *view=m_engine.manager();
+                if(!manager || !view || !view->document() || !controller ||
+                   controller!=manager->activeCanvasController() ||
+                   controller->canvas()!=view->canvasBase())return;
                 dock->setOptionWidgets(widgets);
             });
             checkpoint("Krita native tool options: overlay connected");
@@ -412,11 +414,9 @@ public:
         // KoToolDocker initially reports only its collapsed title-frame
         // size until the active tool widgets have been installed. Populate
         // the native option widgets *before* determining overlay geometry.
-        if(auto *activeTool=tools->toolById(
-               tools->activeCanvasController()->canvas(),
-               tools->activeToolId()))
-            m_toolOptions->setOptionWidgets(activeTool->optionWidgets());
-        showOverlay(m_toolOptions);
+        const QPointer<MobileKritaNativeWorkspace> self(this);
+        syncActiveToolOptions();
+        if(self && m_toolOptions)showOverlay(m_toolOptions);
     }
 
     void toggleColor()
@@ -452,7 +452,16 @@ public:
             }
         }
         panel->setOpener(anchor,m_colorAction);
-        panel->anchorTo(anchor,QSize(360,430),true);
+        panel->anchorTo(anchor,QSize(448,570),true);
+        panel->fitGeometry=[canvas](const QRect &preferred) {
+            QList<QRect> occupied;
+            for(auto *bar:canvas->findChildren<QFrame*>(QString(),Qt::FindDirectChildrenOnly)) {
+                if(bar->isVisible() && bar->property("mobileCommandToolbar").toBool())
+                    occupied.append(bar->geometry());
+            }
+            return MobileOverlayPlacement::nearest(
+                preferred,MobileNativeCommandLayout::controlBounds(canvas),occupied,QSize(1,1));
+        };
         panel->present();
         syncPanelActions();
     }
@@ -844,7 +853,7 @@ public:
             doubleTap->setRange(120,600);
             doubleTap->setSuffix(QObject::tr(" ms"));
             doubleTap->setValue(qBound(120,settings.value(
-                QStringLiteral("TabletUi/doubleTapMs"),250).toInt(),600));
+                QStringLiteral("TabletUi/doubleTapMs"),350).toInt(),600));
             form->addRow(QObject::tr("One-finger double tap interval"),doubleTap);
             QObject::connect(doubleTap,QOverload<int>::of(&QSpinBox::valueChanged),
                 &dialog,[](int value) {
@@ -1394,8 +1403,7 @@ public:
         // Switching between native canvases changes the active tool's
         // KoCanvasController. Rebind the existing Tool Options dock to
         // that canvas immediately instead of leaving stale controls.
-        if(m_toolOptions && m_toolOptions->isVisible())
-            syncActiveToolOptions();
+        if(m_toolOptions && m_toolOptions->isVisible())syncActiveToolOptions();
         if(m_brush && m_brush->isVisible())m_brush->refresh();
         if(m_opacityStrip && m_opacityStrip->isVisible())m_opacityStrip->refresh();
         if(m_brushOptions && m_brushOptions->isVisible())m_brushOptions->refresh();
@@ -2056,7 +2064,7 @@ private:
             }
             return;
         }
-        auto *tool=tools->toolById(controller->canvas(),id);
+        const QPointer<KoToolBase> tool=tools->toolById(controller->canvas(),id);
         if(!tool) {
             // A document or tool change can invalidate the native tool
             // before the next UI refresh. Never leave controls wired to
@@ -2087,7 +2095,15 @@ private:
                 break;
             }
         }
-        m_contextToolBar->setTool(id,label,tool->optionWidgets(),m_engine,tool);
+        const QPointer<MobileKritaNativeWorkspace> self(this);
+        const QPointer<KisViewManager> manager(view);
+        const QPointer<KisDocument> document(view->document());
+        const auto options=tool->optionWidgets();
+        if(!self || !tool || !manager || !document || !m_contextToolBar ||
+           manager->document()!=document || tools->activeCanvasController()!=controller ||
+           tools->activeToolId()!=id)return;
+        m_contextToolBar->setTool(id,label,options,m_engine,tool);
+        if(!self || !m_contextToolBar)return;
         m_contextToolBar->show();
         placeDrawingOverlays();
         m_contextToolBar->raise();
@@ -2416,15 +2432,20 @@ private:
 
     void syncActiveToolOptions()
     {
-        if(!m_toolOptions || !m_toolOptions->isVisible())return;
+        const QPointer<KoToolDocker> dock=m_toolOptions;
+        const QPointer<KisViewManager> view=m_engine.manager();
         auto *tools=KoToolManager::instance();
-        if(!tools)return;
-        auto *controller=tools->activeCanvasController();
-        if(!controller)return;
-        if(KoToolBase *tool=tools->toolById(
-               controller->canvas(),tools->activeToolId())) {
-            m_toolOptions->setOptionWidgets(tool->optionWidgets());
-        }
+        auto *controller=tools?tools->activeCanvasController():nullptr;
+        if(!dock || !view || !view->document() || !controller ||
+           controller->canvas()!=view->canvasBase())return;
+        const QPointer<KisDocument> document=view->document();
+        const QString id=tools->activeToolId();
+        const QPointer<KoToolBase> tool=tools->toolById(controller->canvas(),id);
+        if(!tool)return;
+        const auto options=tool->optionWidgets();
+        if(dock && tool && view && document && view->document()==document &&
+           tools->activeCanvasController()==controller && tools->activeToolId()==id)
+            dock->setOptionWidgets(options);
     }
     static void checkpoint(const char *stage)
     {

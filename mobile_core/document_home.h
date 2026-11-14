@@ -272,9 +272,6 @@ public:
             tabs->addWidget(button);
         }
         layout->addLayout(tabs);
-        m_drafts=new QPushButton(i18n("Recover drafts"),this);
-        m_drafts->setCheckable(true);
-        layout->addWidget(m_drafts);
 
         auto *tools=new QHBoxLayout;
         m_search=new QLineEdit(this);
@@ -329,8 +326,10 @@ public:
 
         connect(create,&QPushButton::clicked,this,[this]() {
             QTimer::singleShot(0,this,[this]() {
-                if(isVisible() && MobileDocumentWorkflow::create(
-                    m_engine,window()))hide();
+                if(!isVisible())return;
+                const QPointer<MobileDocumentHome> home(this);
+                const bool created=MobileDocumentWorkflow::create(m_engine,window());
+                if(created && home)home->hide();
             });
         });
         connect(browse,&QPushButton::clicked,this,[this]() {
@@ -342,8 +341,6 @@ public:
                 [this]() {showList(Recent);});
         connect(m_library,&QPushButton::clicked,this,
                 [this]() {showList(AllProjects);});
-        connect(m_drafts,&QPushButton::clicked,this,
-                [this]() {showList(RecoveryDrafts);});
         connect(m_refresh,&QPushButton::clicked,this,[this]() {
             m_cache.clear();
             showList(m_mode,true); // explicit Refresh always scans
@@ -376,7 +373,7 @@ public:
                 if(!current || current->isHidden())return;
                 const QString path=current->data(Qt::UserRole).toString();
                 projectActions(path,current->data(Qt::UserRole+3).toString(),
-                               m_mode==RecoveryDrafts || MobileDraftRecovery::isDraft(path));
+                               MobileDraftRecovery::isDraft(path));
             });
         });
         connect(m_list->verticalScrollBar(),&QScrollBar::valueChanged,
@@ -580,7 +577,7 @@ protected:
 
 private:
     std::function<QMargins(const QWidget*)> m_displayMargins;
-    enum Mode {Recent,AllProjects,RecoveryDrafts};
+    enum Mode {Recent,AllProjects};
     enum SortOrder {Newest,Name,Starred};
     struct Project {
         QString path;
@@ -629,7 +626,7 @@ private:
         if(m_restoringVersion)return;
         if(m_projectMenu)m_projectMenu->close();
         QMenu menu(title,this);
-        enum Action {Open=1,Duplicate,History,Star,Delete,Rename};
+        enum Action {Open=1,Duplicate,History,Star,Delete,Rename,DiscardRecovery};
         auto *heading=menu.addAction(fontMetrics().elidedText(title,Qt::ElideRight,216));
         heading->setProperty("mobileSectionHeading",true);
         const auto add=[&](const QString &label,Action action) {
@@ -642,10 +639,12 @@ private:
         if(!draft && isKra(title))add(i18n("Duplicate"),Duplicate);
         add(i18n("Version history"),History);
         if(!draft)add(m_starred.contains(key)?i18n("Remove star"):i18n("Star project"),Star);
+        const QString recoveryPath=m_latestDrafts.value(key).absoluteFilePath();
+        if(!draft && !recoveryPath.isEmpty())add(i18n("Discard recovery draft…"),DiscardRecovery);
         add(draft?i18n("Discard draft…"):i18n("Delete…"),Delete);
         const auto generation=m_homeListGeneration;
         m_projectMenu=mobileShowActionList(this,nullptr,menu,this,
-            [this,path,title,draft,key,draftProject,generation](const QVariant &chosen) {
+            [this,path,title,draft,key,draftProject,recoveryPath,generation](const QVariant &chosen) {
                 if(!isVisible() || generation!=m_homeListGeneration || m_restoringVersion)return;
                 const auto *current=m_projectItems.value(key);
                 if(!current || current->data(Qt::UserRole).toString()!=path)return;
@@ -715,6 +714,10 @@ private:
                     saveStars();
                     if(auto *item=m_projectItems.value(key))updateProjectLabel(item);
                     if(m_mode==AllProjects && m_sortOrder==Starred)sortProjects();
+                    break;
+                case DiscardRecovery:
+                    if(projectKey(MobileDraftRecovery::projectFor(recoveryPath))==key)
+                        discardDraft(recoveryPath);
                     break;
                 case Delete:
                     if(draft)discardDraft(path);
@@ -1081,24 +1084,20 @@ private:
         m_latestDrafts.clear();
         QVector<Project> unnamed;
         QHash<QString,QString> draftProjects;
-        if(mode!=RecoveryDrafts) {
-            for(const auto &draft:drafts) {
-                const QString path=draft.absoluteFilePath();
-                if(!MobileDraftRecovery::hasReadableProject(path))continue;
-                const auto project=MobileDraftRecovery::projectFor(path);
-                if(project.isEmpty()) {
-                    unnamed.append({path,draftTitle(draft),
-                                    draft.lastModified().toMSecsSinceEpoch(),{}});
-                } else {
-                    const QString key=projectKey(project);
-                    if(m_latestDrafts.contains(key))continue;
-                    m_latestDrafts.insert(key,draft);
-                    draftProjects.insert(key,project);
-                }
+        for(const auto &draft:drafts) {
+            const QString path=draft.absoluteFilePath();
+            if(!MobileDraftRecovery::hasReadableProject(path))continue;
+            const auto project=MobileDraftRecovery::projectFor(path);
+            if(project.isEmpty()) {
+                unnamed.append({path,draftTitle(draft),
+                                draft.lastModified().toMSecsSinceEpoch(),{}});
+            } else {
+                const QString key=projectKey(project);
+                if(m_latestDrafts.contains(key))continue;
+                m_latestDrafts.insert(key,draft);
+                draftProjects.insert(key,project);
             }
         }
-        m_drafts->setChecked(mode==RecoveryDrafts);
-        m_drafts->setVisible(mode==RecoveryDrafts || !drafts.isEmpty());
         m_refresh->setVisible(mode==AllProjects);
         m_lastAccess=hasAllFilesAccess();
         m_access->setVisible(mode==AllProjects && !m_lastAccess);
@@ -1110,8 +1109,7 @@ private:
         resetThumbnailRequests();
         m_attempted.clear();
         if(m_scanCancel)m_scanCancel->store(true);
-        if(mode!=RecoveryDrafts)
-            for(const auto &draft:unnamed)addProject(draft);
+        for(const auto &draft:unnamed)addProject(draft);
         if(mode==Recent) {
             m_message->setText(i18n("Recently opened drawings"));
             QHash<QString,MobileProjectIndexEntry> indexed;
@@ -1131,13 +1129,6 @@ private:
                 addProject({path,name,modified,{}});
             }
             addMissingDraftProjects(draftProjects);
-        } else if(mode==RecoveryDrafts) {
-            m_message->setText(i18n("Recovered drafts open as unsaved drawings."));
-            for(const auto &draft:drafts)
-                addProject({draft.absoluteFilePath(),
-                            MobileDraftRecovery::projectFor(draft.absoluteFilePath()).isEmpty()?
-                                draftTitle(draft):MobileDraftRecovery::title(draft),
-                            draft.lastModified().toMSecsSinceEpoch(),{}});
         } else {
             m_message->setText(m_lastAccess?
                 i18n("Searching accessible storage for Krita projects…"):
@@ -1198,9 +1189,7 @@ private:
             }
         }
         if(mode!=AllProjects && m_list->count()==0) {
-            auto *empty=new QListWidgetItem(mode==RecoveryDrafts?
-                i18n("No recoverable drafts"):i18n("No recent Krita drawings"),
-                m_list);
+            auto *empty=new QListWidgetItem(i18n("No recent Krita drawings"),m_list);
             empty->setFlags(Qt::NoItemFlags);
         }
         if(mode==AllProjects)sortProjects();
@@ -1719,7 +1708,7 @@ private:
     MobileEngineBridge m_engine;
     QSharedPointer<MobileDocumentHostPort> m_files;
     QListWidget *m_list=nullptr;
-    QPushButton *m_recent=nullptr,*m_library=nullptr,*m_drafts=nullptr;
+    QPushButton *m_recent=nullptr,*m_library=nullptr;
     QPushButton *m_refresh=nullptr,*m_access=nullptr,*m_sort=nullptr;
     QLineEdit *m_search=nullptr;
     QLabel *m_message=nullptr;
