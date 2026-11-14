@@ -93,6 +93,12 @@ int main(int argc,char **argv)
     // publication sweep and verify the aggregate on-disk budget.
     const QString quotaFolder=directory.filePath(QStringLiteral("quota"));
     if(!QDir().mkpath(quotaFolder))return 14;
+    // Quota eviction must only remove PNG cache entries, never
+    // documents accidentally residing in the same directory.
+    QFile artwork(QDir(quotaFolder).filePath(QStringLiteral("keep.kra")));
+    if(!artwork.open(QIODevice::WriteOnly) || artwork.write("drawing")!=7)
+        return 17;
+    artwork.close();
     for(int i=0;i<6;++i) {
         QFile large(QDir(quotaFolder).filePath(
             QStringLiteral("legacy-%1.png").arg(i)));
@@ -113,7 +119,8 @@ int main(int argc,char **argv)
             ++oldFiles;
     }
     if(retainedBytes>MobileProjectPreviewCache::maxCacheBytes() ||
-       oldFiles>=6 || quotaCache.load(QStringLiteral("quota-project"),32).isNull())
+       oldFiles>=6 || quotaCache.load(QStringLiteral("quota-project"),32).isNull() ||
+       !QFileInfo::exists(artwork.fileName()))
         return 16;
 
     qInfo("PASS: thumbnail revisions, cancellation, retention, clock skew and invalid images");
