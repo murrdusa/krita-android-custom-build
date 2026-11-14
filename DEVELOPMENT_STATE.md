@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — native open path and recent-file URL consistency
+
+- The independent Krita native document host decodes local `file://` URLs into filesystem paths before handing them to the engine's openPath() method, while keeping Android `content://` SAF identities intact.
+- Recent Files now records the same canonical local URL whether the incoming project used a filesystem path or a local file URL. Nonlocal `file://remote-host/...` authorities are rejected by native open, version-history identity and Save As collision logic rather than accidentally targeting a different path.
+- Invalid file URLs fall back to Pictures as the initial Save As directory. Extended Qt path policy regression for all these cases.
+- **Verification:** earlier preview-cache batch awaits a reported exact SHA; this source/test batch also awaits local Android WSL build and host Qt test execution. No APK published.
+
+
 ## November 14 — preview cache writer/reader size consistency
 
 - Cached project previews now reject an encoded PNG larger than the reader's existing 32 MiB maximum before publishing the QSaveFile. This avoids creating permanent on-disk thumbnails that the gallery can never open.
