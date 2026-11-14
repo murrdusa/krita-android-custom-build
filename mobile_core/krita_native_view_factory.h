@@ -88,16 +88,19 @@ public:
                 manager->setCurrentView(guarded);
             // Activating another native canvas can synchronously close
             // this view or destroy its manager during Qt signal delivery.
-            if(!guarded || !manager || !guarded->close())return false;
-            // Close may be canceled. Once accepted, destroy the native
-            // view synchronously while its Krita view manager is alive.
-            // Deferring deletion could outlive the manager during quit.
-            if(guarded)delete guarded.data();
+            if(!guarded || !manager)return false;
+            const bool accepted=guarded->close();
+            if(!accepted)return false;
+            // Close may synchronously destroy both manager and view.
+            // The KisView destructor calls back into its manager, so
+            // only destroy a surviving view while that manager is live.
+            if(guarded && manager)delete guarded.data();
             return true;
         })) {
             // currentChanged handlers inside adoptView may already have
-            // destroyed the candidate. Never delete a dangling pointer.
-            if(guarded)delete guarded.data();
+            // destroyed the candidate or its manager. KisView teardown
+            // must not invoke callbacks on a dead view manager.
+            if(guarded && guardedManager)delete guarded.data();
             return nullptr;
         }
 
