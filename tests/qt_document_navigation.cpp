@@ -21,6 +21,8 @@ struct FakeHost final : MobileViewHostPort
     bool ambiguous=false;
     bool missing=false;
     bool duplicate=false;
+    bool duplicateDocument=false;
+    mutable bool mutateDuringRead=false;
     QVector<ViewSnapshot> openViews() const override
     {
         return {
@@ -31,10 +33,19 @@ struct FakeHost final : MobileViewHostPort
             {QStringLiteral("C"),false,active==&c,2,
              duplicate?const_cast<QObject*>(&a):
                        const_cast<QObject*>(&c),
-             missing?nullptr:const_cast<QObject*>(&dc)}
+             missing?nullptr:duplicateDocument?
+                 const_cast<QObject*>(&db):const_cast<QObject*>(&dc)}
         };
     }
-    QPointer<QObject> currentDocument() const override {return current;}
+    QPointer<QObject> currentDocument() const override
+    {
+        if(mutateDuringRead) {
+            // Simulate removal between snapshot and navigation dispatch.
+            mutateDuringRead=false;
+            const_cast<FakeHost*>(this)->missing=true;
+        }
+        return current;
+    }
     bool activateView(const QPointer<QObject> &view) const override
     {
         if(view==&a){active=const_cast<QObject*>(&a);current=const_cast<QObject*>(&da);return true;}
@@ -81,6 +92,18 @@ int main(int argc,char **argv)
     check(MobileDocumentNavigation::cycle(host,-1) &&
           host->active==&host->a,
           "invalid inactive row broke navigation of remaining views");
+    host->missing=false;
+    host->duplicateDocument=true;
+    check(!MobileDocumentNavigation::cycle(host,1),
+          "same backing document registered on two tabs was accepted");
+    host->duplicateDocument=false;
+    host->active=&host->a;
+    host->current=&host->da;
+    host->mutateDuringRead=true;
+    check(!MobileDocumentNavigation::cycle(host,1) &&
+          host->active==&host->a,
+          "view list mutation during navigation activated a stale neighbor");
+    host->missing=false;
     host->current=nullptr;
     check(!MobileDocumentNavigation::cycle(host,1),
           "null selected document was accepted");
