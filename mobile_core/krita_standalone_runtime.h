@@ -194,30 +194,36 @@ public:
             document->setProperty("_mobileDraftPath",
                                   MobileDraftRecovery::allocate(title));
         }
+        // The view factory enters Krita loading, canvas and Qt selection
+        // callbacks. They can synchronously close this runtime or the
+        // document. Revalidate both before registering more callbacks.
+        const QPointer<MobileKritaStandaloneRuntime> alive(this);
+        const QPointer<KisDocument> liveDocument(document);
         auto *view=MobileKritaNativeViewFactory::attach(
             document,m_manager,m_root,saver);
-        if(view) {
-            connect(document,&KisDocument::sigMobileDraftPublished,this,
+        if(!alive || !liveDocument || !view)return nullptr;
+        {
+            connect(liveDocument.data(),&KisDocument::sigMobileDraftPublished,this,
                 [](const QString &draft,const QString &project) {
                     MobileSavedVersionArchive::enqueueDraftCheckpoint(
                         draft,project.isEmpty()?draft:project,
                         QGuiApplication::applicationState()!=Qt::ApplicationActive);
                 });
-            connect(document,&KisDocument::sigCompleteBackgroundSaving,this,[this]() {
+            connect(liveDocument.data(),&KisDocument::sigCompleteBackgroundSaving,this,[this]() {
                 if(!m_pendingDrafts.isEmpty())
                     QTimer::singleShot(0,this,[this]() {continueDrafts();});
             });
             // A tab may be closed while its background save completes.
             // Drop its queued identity immediately rather than retaining
             // a dead entry until another document finishes saving.
-            connect(document,&QObject::destroyed,this,[this,document]() {
+            connect(liveDocument.data(),&QObject::destroyed,this,[this,document]() {
                 for(int i=m_pendingDrafts.size()-1;i>=0;--i)
                     if(!m_pendingDrafts.at(i) ||
                        m_pendingDrafts.at(i).data()==document)
                         m_pendingDrafts.removeAt(i);
             });
         }
-        return view;
+        return liveDocument && alive ? view : nullptr;
     }
 
 private:
