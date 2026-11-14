@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — aggregate gallery preview cache budget
+
+- The gallery's persistent PNG preview cache now enforces an aggregate 128 MiB disk budget in addition to the existing 512-entry count and 32 MiB per-image limit. Oldest previews are evicted first; it never deletes KRA drawings or non-PNG files.
+- Large newly published previews trigger immediate quota enforcement rather than waiting for the normal 32-write maintenance interval. Small icons keep batched maintenance to avoid scanning the directory unnecessarily.
+- Extended Qt cache regression with six sparse 28 MiB legacy PNG files, triggering retention and verifying the byte budget, recent icon usability, and preservation of unrelated KRA files.
+- **Verification:** prior revision `b2af292622038a0477b4a90b803f399b864fdfe3` passed exact-SHA local WSL Android build. This new batch's WSL compile and Qt regression results remain pending; no APK uploaded.
+
+
 ## November 14 — reduce legacy thumbnail decode memory
 
 - The gallery preview-cache loader now requests a 124 × 124 maximum decoded image instead of loading a potentially 4096 × 4096 legacy cache PNG into memory at full size. Aspect ratio is preserved and existing small icons stay unchanged.
