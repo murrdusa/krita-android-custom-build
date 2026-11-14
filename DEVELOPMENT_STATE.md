@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — failed-startup compiler repair and teardown lifetime
+
+- Fixed the exact Android WSL compile failure at `762a0b0b9f44f4f139fb3b63e83f6ceb3e416c63` (Issue #90): `MobileNativeViewStack` does not declare Qt's `Q_OBJECT` macro, so the new failed-root rollback must use the project's existing RTTI `dynamic_cast` rather than `qobject_cast`. No engine interfaces were changed.
+- The engine-session bootstrap now tracks host and runtime with `QPointer` during failure cleanup. Destroying a partially initialized runtime may recursively tear down its host; only discard an empty root if the host survived.
+- Expanded Qt lightweight-host regressions to assert that pre-document cleanup cannot remove a fully configured engine with active services, in addition to the previous tests for empty-root retry and live-canvas preservation.
+- **Verification:** corrected code is queued for exact-SHA WSL Android build and desktop Qt test execution; no APK uploaded.
+
+
 ## November 14 — failed independent engine startup resource cleanup
 
 - A failed native engine-session bootstrap now destroys its partially initialized Krita runtime (including view manager and action collection) immediately, then releases its still-empty native document root and shared view adapter. A missing runtime also rolls back the unused root. This avoids retaining native widgets/GL resources and blocking another engine startup attempt for the rest of the window lifetime.
