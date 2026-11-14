@@ -1324,6 +1324,12 @@ private:
     {
         // Keep identities loaded from the index and Recent. Clearing them
         // here would duplicate every indexed project during the scan.
+        // Refresh can be tapped repeatedly while the one-thread scanner
+        // is busy. Cancel the active scan and discard older queued scans
+        // before scheduling the newest request; otherwise each refresh
+        // accumulates a superseded runnable and delays the latest result.
+        if(m_scanCancel)m_scanCancel->store(true);
+        m_scanner.clear();
         const auto cancel=std::make_shared<std::atomic_bool>(false);
         m_scanCancel=cancel;
         const int generation=++m_scanGeneration;
