@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — bound thumbnail attempt revisions and tighten recovery-copy filename validation
+
+- Gallery preview-attempt bookkeeping now stores only the latest attempted revision for each project path instead of retaining every historic (path, timestamp) pair. On repeated edits or failed preview generation, the in-memory table is bounded by distinct projects rather than the number of revisions encountered in a session. Revision comparisons preserve retry behavior on modification, removal, or icon eviction; missing revisions are not confused with a sentinel timestamp.
+- Temporary Version History recovery-copy recognition now requires the canonical `Recovered-{UUID}.kra` filename length, matching stale-file reclamation. Expanded cleanup regression to preserve an aged, noncanonical filename even when it contains a valid UUID prefix.
+- **Verification:** latest separately reported local WSL Android build succeeded for `4aa7bac9f2d218e65452c5cd2979491894212b5c`. New source revisions await exact-SHA WSL build verification; no Android runtime profiling or APK upload.
+
 ## November 14 — reclaim stale recovery copies after hard Android process termination
 
 - Version History already cleans its temporary recovery copy when queued Qt delivery succeeds or is canceled; an abrupt OS process kill still bypasses all in-process destructors. A new `cleanupStaleRecoveryCopies()` streams only app-generated `Recovered-{UUID}.kra` entries in the private `recovered-versions` directory, removes files older than 24 hours, skips links/invalid names/recent copies, and shares the archive I/O mutex. It never targets saved version archives, active draft checkpoints or other files.
