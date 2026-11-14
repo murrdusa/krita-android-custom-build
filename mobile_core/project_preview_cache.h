@@ -15,6 +15,7 @@ class MobileProjectPreviewCache
 {
 public:
     static constexpr qint64 maxEncodedBytes() {return 32LL*1024*1024;}
+    static constexpr qint64 maxCacheBytes() {return 128LL*1024*1024;}
     explicit MobileProjectPreviewCache(const QString &directory) : m_directory(directory) {}
 
     QImage load(const QString &source,qint64 revision) const
@@ -71,7 +72,23 @@ public:
         if(writes++%32!=0)return;
         const auto entries=QDir(m_directory).entryInfoList({QStringLiteral("*.png")},
             QDir::Files|QDir::NoSymLinks,QDir::Time);
-        for(int i=512;i<entries.size();++i)QFile::remove(entries.at(i).absoluteFilePath());
+        // Count-only retention permits up to 512 * 32 MiB of PNGs.
+        // Enforce an aggregate byte budget as well as the existing
+        // count ceiling. Keep the newest valid cache file even when
+        // its own size is unusually large.
+        qint64 retainedBytes=0;
+        for(int i=0;i<entries.size();++i) {
+            const auto &entry=entries.at(i);
+            const qint64 size=entry.size();
+            const bool fits=i<512 && size>0 &&
+                size<=maxEncodedBytes() &&
+                retainedBytes<=maxCacheBytes()-size;
+            if(fits) {
+                retainedBytes+=size;
+            } else {
+                QFile::remove(entry.absoluteFilePath());
+            }
+        }
     }
 
 private:
