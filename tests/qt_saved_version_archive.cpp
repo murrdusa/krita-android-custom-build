@@ -358,15 +358,26 @@ int main(int argc,char **argv)
     const QByteArray latestEdits=QByteArray::fromHex("504b0304")+
         "recoverable-after-rename-failure";
     save(blockedStage,latestEdits);
-    require(!MobileDraftRecovery::publish(blockedDraft,true) &&
-            load(blockedStage)==latestEdits,
-            "failed atomic replace discarded a completed autosave");
-    require(QDir().rmdir(blockedDraft) &&
-            MobileDraftRecovery::publish(blockedDraft,true) &&
-            load(blockedDraft)==latestEdits &&
+    require(MobileDraftRecovery::setProject(blockedDraft,source),
+            "associate blocked autosave with its saved project");
+    require(!MobileDraftRecovery::publish(blockedDraft,true),
+            "destination directory unexpectedly allowed a file rename");
+    QString rescuedDraft;
+    for(const QFileInfo &candidate:MobileDraftRecovery::list()) {
+        if(candidate.absoluteFilePath()!=draft &&
+           load(candidate.absoluteFilePath())==latestEdits)
+            rescuedDraft=candidate.absoluteFilePath();
+    }
+    require(!rescuedDraft.isEmpty() &&
+            MobileDraftRecovery::hasReadableProject(rescuedDraft) &&
+            MobileDraftRecovery::projectFor(rescuedDraft)==source &&
             !QFile::exists(blockedStage),
-            "completed autosave could not publish after retry");
-    QFile::remove(blockedDraft);
+            "failed publication did not expose a recoverable project draft");
+    require(QDir().rmdir(blockedDraft),
+            "remove blocked destination directory");
+    QFile::remove(blockedDraft+QStringLiteral(".project"));
+    QFile::remove(rescuedDraft);
+    QFile::remove(rescuedDraft+QStringLiteral(".project"));
     require(MobileDraftRecovery::hasKraHeader(draft) &&
             !MobileDraftRecovery::hasKraHeader(
                 draft+QStringLiteral(".pending.kra")),
