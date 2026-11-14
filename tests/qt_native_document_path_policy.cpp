@@ -1,5 +1,6 @@
 #include <QCoreApplication>
 #include <QDebug>
+#include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
 #include <QUrl>
@@ -28,6 +29,17 @@ int main(int argc,char **argv)
     require(P::mayAttemptOpen(realFile),"existing local document rejected");
     require(P::mayAttemptOpen(provider),"Android provider document pre-rejected");
     require(!P::mayAttemptOpen(missing),"missing local document accepted");
+    const QString folder=tmp.filePath(QStringLiteral("project-folder.kra"));
+    require(QDir().mkpath(folder),"create directory masquerading as KRA");
+    const QString folderUrl=QUrl::fromLocalFile(folder).toString();
+    require(!P::mayAttemptOpen(folder) &&
+            !P::mayAttemptOpen(folderUrl) &&
+            P::needsSaveAs(folder,false,false,false) &&
+            P::needsSaveAs(folderUrl,false,false,false) &&
+            P::recentFileUrl(folder).isEmpty() &&
+            P::recentFileUrl(folderUrl).isEmpty(),
+            "filesystem directory was accepted as a native drawing");
+
     require(!P::mayAttemptOpen(QStringLiteral("  ")),"blank path accepted");
     require(P::isProviderUri(provider),"provider identity undetected");
     require(!P::isProviderUri(realFile),"normal file treated as provider");
