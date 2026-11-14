@@ -1134,6 +1134,11 @@ private:
             }
             roots.append(common);
             QSet<QString> seen,visited;
+            // A complete Android storage tree may contain millions of
+            // directories. Bound the in-memory traversal and project
+            // list to the same 20k entries supported by the JSON index.
+            constexpr int maxScannedProjects=20000;
+            constexpr int maxVisitedDirectories=50000;
             QVector<Project> batch;
             const auto deliverBatch=[&]() {
                 if(batch.isEmpty() || cancel->load())return;
@@ -1158,6 +1163,11 @@ private:
                     queued->fetch_sub(1,std::memory_order_acq_rel);
             };
             while(!roots.isEmpty() && !cancel->load() && application) {
+                if(seen.size()>=maxScannedProjects ||
+                   visited.size()>=maxVisitedDirectories) {
+                    truncated=true;
+                    break;
+                }
                 if(!fullScan && timer.elapsed()>automaticLimitMs) {
                     truncated=true;
                     break;
@@ -1168,6 +1178,12 @@ private:
                 QDirIterator it(root,QDir::Dirs|QDir::Files|QDir::Hidden|
                     QDir::NoDotAndDotDot|QDir::NoSymLinks);
                 while(!cancel->load() && application && it.hasNext()) {
+                    if(seen.size()>=maxScannedProjects ||
+                       visited.size()>=maxVisitedDirectories ||
+                       roots.size()>=maxVisitedDirectories) {
+                        truncated=true;
+                        break;
+                    }
                     if(!fullScan && timer.elapsed()>automaticLimitMs) {
                         truncated=true;
                         break;
@@ -1193,6 +1209,10 @@ private:
             if(cancel->load() || !application)return;
             for(const auto &project:androidList("tabletGrantedProjects")) {
                 if(cancel->load() || !application)return;
+                if(seen.size()+batch.size()>=maxScannedProjects) {
+                    truncated=true;
+                    break;
+                }
                 const auto entry=project.toObject();
                 if(seen.contains(QDir::cleanPath(entry.value(QStringLiteral("localPath")).toString())))
                     continue;
