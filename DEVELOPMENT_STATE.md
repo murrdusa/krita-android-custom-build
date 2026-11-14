@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — bounded persistent project index loading
+
+- The All Projects index cache now rejects JSON files larger than 16 MiB and arrays over 20,000 records before parsing or allocating the gallery list. Reads are byte-limited and substituted/symlinked index files are ignored, avoiding unbounded startup memory use from a malformed or damaged cache.
+- Index saves enforce the same size and entry limits, retaining the last good atomic index when a new payload would exceed them. The KRA projects themselves remain untouched.
+- **Verification:** exact-SHA Android WSL compilation pending for these source changes; no host Qt regression executed or APK published.
+
+
 ## November 14 — native Save adapter teardown safety
 
 - The standalone native Krita Save adapter no longer uses a scoped rollback that writes to its own `m_saving` flag after its document backend synchronously destroys the adapter during Save. A local shared backend reference keeps the port alive for the callback; the saving flag is reset only if the adapter survives.
