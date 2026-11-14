@@ -119,6 +119,17 @@ int main(int argc,char **argv)
             !Guard::maySave(host.openViews(),&viewB,&doc1),
             "duplicate document ownership allowed destructive action");
 
+    // Two rows advertising the same native view but different documents
+    // must never make the first row a valid Save/Close target.
+    host.snapshots[0].document=&doc2;
+    host.snapshots[1].document=&doc1;
+    host.snapshots[1].nativeView=&viewB;
+    require(!Guard::maySave(host.openViews(),&viewB,&doc2) &&
+            !Guard::safeCloseTarget(host.openViews(),&doc2),
+            "shared native view identity was treated as unique");
+    host.snapshots[0].document=&doc1;
+    host.snapshots[1].nativeView=&viewC;
+
     host.snapshots[0].active=true;
     host.snapshots[1].active=true;
     require(!Guard::uniqueActive(host.openViews()) &&
