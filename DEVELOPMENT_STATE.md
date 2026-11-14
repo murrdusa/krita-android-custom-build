@@ -3,7 +3,8 @@
 ## November 14 — guard Save As against local file URL aliases
 
 - Open-document destination checks now normalize `file://` URLs to their canonical local filesystem path before collision comparisons. This prevents Save As / Export from treating a picker-provided URL as different from an already-open local document and also handles URL-escaped not-yet-existing draft targets.
-- Extended the Qt native path-policy regression with existing-file URL aliases, percent-escaped new paths, and unrelated local/provider destinations.
+- Native document open/save policy now resolves local file URLs for file existence checks and Save As picker starting paths instead of incorrectly treating a valid URL as missing.
+- Extended the Qt native path-policy regression with existing/missing file URLs, percent-escaped new paths, and unrelated local/provider destinations.
 - **Verification:** latest exact Android WSL compile and Qt regression status pending. No APK publication or phone testing.
 
 
