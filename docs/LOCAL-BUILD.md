@@ -2,7 +2,8 @@
 
 This builds the modified Krita ARM64 Android APK on your Windows PC using **Ubuntu on WSL2 + Docker Desktop**, following KDE's official container build procedure. The downloaded Qt/Android dependencies, Docker container and compiled files are kept between runs.
 
-Script: [local-build.sh](local-build.sh).
+Script: [local-build.sh](../local-build.sh), a thin wrapper around
+[tools/build/local-build.sh](../tools/build/local-build.sh).
 
 ## One-time setup
 

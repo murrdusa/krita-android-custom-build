@@ -13,8 +13,8 @@ gh auth login
 gh auth status
 cd ~/krita-tablet-customizations
 git pull --ff-only
-python3 krita_build_reporter.py start
-python3 krita_build_reporter.py status
+python3 tools/build/krita_build_reporter.py start
+python3 tools/build/krita_build_reporter.py status
 ```
 
 Log in to GitHub.com as the account with access to `murrdusa/krita-android-custom-build`; choose HTTPS and browser authorization when prompted. The reporter needs permission to create/edit repository issues and commit statuses. It does not need an OpenAI API key.
@@ -24,7 +24,7 @@ The reporter can be running alongside the existing build watcher. The old watche
 To test the publisher against the latest completed build:
 
 ```bash
-python3 krita_build_reporter.py once
+python3 tools/build/krita_build_reporter.py once
 ```
 
 To trigger a **new** build, use the existing command:
@@ -44,8 +44,8 @@ You can inspect the latest report from GitHub Issues even when away from the ter
 ### Controls
 
 ```bash
-python3 krita_build_reporter.py status
-python3 krita_build_reporter.py stop
+python3 tools/build/krita_build_reporter.py status
+python3 tools/build/krita_build_reporter.py stop
 tail -f .build-watcher/reporter.log
 ```
 
@@ -65,7 +65,7 @@ terminal and run:
 ```bash
 cd ~/krita-tablet-customizations
 git pull --ff-only
-python3 krita_build_live.py
+python3 tools/build/krita_build_live.py
 ```
 
 Keep this viewer tab open while playing games or working elsewhere. It shows
@@ -79,7 +79,7 @@ GitHub reporting continue in the background.
 To show only the useful progress lines and errors:
 
 ```bash
-python3 krita_build_live.py --quiet
+python3 tools/build/krita_build_live.py --quiet
 ```
 
 You can also use a separate Windows Terminal tab for the viewer. No special

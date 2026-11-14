@@ -15,7 +15,7 @@ say() { printf '\n==> %s\n' "$*"; }
 # Only a new explicit request ID from chat causes an upload, once per ID.
 publish_apk() {
     [[ "${KRITA_PUBLISH_APK:-1}" == 1 ]] || return 0
-    local request_file="$REPO/APK-UPLOAD-REQUEST.md"
+    local request_file="$REPO/docs/APK-UPLOAD-REQUEST.md"
     [[ -f "$request_file" ]] || return 0
     local request_id=""
     request_id="$(sed -n 's/^UPLOAD_REQUEST_ID=//p' "$request_file" | head -n 1 | tr -d '\r\n')"

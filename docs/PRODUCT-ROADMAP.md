@@ -1,6 +1,6 @@
 # Mobile Studio product scope and agreed priorities
 
-Decision recorded: 2026-11-09. **Planning only; do not implement these additions merely because this file changed.** Read alongside [AGENTS.md](AGENTS.md) and [DEVELOPMENT_STATE.md](DEVELOPMENT_STATE.md). Preserve the working standalone Krita engine and application.
+Decision recorded: 2026-11-09. **Planning only; do not implement these additions merely because this file changed.** Read alongside [AGENTS.md](../AGENTS.md) and [DEVELOPMENT_STATE.md](DEVELOPMENT_STATE.md). Preserve the working standalone Krita engine and application.
 
 ## Current priority (November 12, 2026)
 
