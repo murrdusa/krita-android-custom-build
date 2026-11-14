@@ -317,6 +317,25 @@ int main(int argc,char **argv)
         delete view.data();
         delete document;
     }
+    // Adding the first canvas emits currentChanged synchronously.
+    // A Krita selection listener can destroy the view manager while
+    // the document and stack remain live. Factory initialization must
+    // treat that manager identity as invalid before wiring callbacks.
+    {
+        MobileNativeViewStack stack;
+        auto *manager=new QObject;
+        const QPointer<QObject> guardedManager(manager);
+        auto *document=new QObject;
+        auto *view=new QWidget;
+        QObject::connect(&stack,&QStackedWidget::currentChanged,
+                         &stack,[manager](int) {delete manager;});
+        require(stack.adoptView(view,document,QStringLiteral("activate"),
+                                [](){return true;}),
+                "could not exercise synchronous manager teardown on registration");
+        require(!guardedManager && stack.openViews().size()==1,
+                "registration did not expose a stale manager after activation");
+        delete document;
+    }
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
