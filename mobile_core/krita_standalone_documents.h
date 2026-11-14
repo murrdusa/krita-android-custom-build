@@ -206,6 +206,13 @@ public:
                 });
             return false;
         }
+        // Factory activation callbacks may close or replace the root
+        // immediately after adoption. An interrupted Open must not
+        // register a stale project location with Recent/Android SAF.
+        if(!guardedDocument || !m_runtime || !originalRoot ||
+           m_runtime->documentRoot()!=originalRoot.data() ||
+           !m_runtime->ownsDocument(guardedDocument))
+            return false;
         if(!privateDraft && !savedVersion) {
             rememberPath(path);
             if(path.startsWith(QStringLiteral("content://"))) {
@@ -412,7 +419,11 @@ private:
         if(started && guardedDocument)
             guardedDocument->waitForSavingToComplete();
         QObject::disconnect(connection);
+        // The write can complete during a nested Qt event loop while
+        // Android replaces the native canvas root. Record history and
+        // report success only for a document still owned by the same host.
         if(!completed->load() || !guardedDocument || !m_runtime ||
+           !originalRoot || m_runtime->documentRoot()!=originalRoot.data() ||
            !m_runtime->ownsDocument(guardedDocument))return false;
 
         if(!exporting) {
