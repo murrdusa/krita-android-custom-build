@@ -69,7 +69,13 @@ public:
                 // An explicit close may already have consumed this
                 // registration. Never delete a widget that another
                 // owner could have adopted in the meantime.
-                if(removed && host && orphan)orphan->deleteLater();
+                // Qt's synchronous currentChanged observers may move
+                // the widget into another host or register it again.
+                // Only retire a detached canvas still owned by us.
+                if(removed && host && orphan &&
+                   orphan->parentWidget()==host.data() &&
+                   host->indexOf(orphan.data())<0)
+                    orphan->deleteLater();
             });
         m_rows.append(std::move(row));
         // addWidget() can synchronously emit currentChanged for the
