@@ -895,6 +895,37 @@ int main(int argc,char **argv)
                 "linked checksum was followed or detached during migration");
     }
 
+    // Save As to a brand-new history folder must not bypass checksum
+    // validation via an unconditional whole-directory rename. Valid
+    // versions should move, while mismatched ones remain recoverable at
+    // the source path with their original SHA sidecars.
+    const QString freshStore=temp.filePath(QStringLiteral("fresh-destination-history"));
+    const QString freshDraft=temp.filePath(QStringLiteral("fresh-draft.kra"));
+    const QString freshSaved=temp.filePath(QStringLiteral("fresh-saved.kra"));
+    const QString freshFrom=MobileSavedVersionArchive::folderFor(freshDraft,freshStore);
+    const QString freshTo=MobileSavedVersionArchive::folderFor(freshSaved,freshStore);
+    require(QDir().mkpath(freshFrom) && !QDir(freshTo).exists(),
+            "create new-destination history migration fixture");
+    const QString goodArchive=QDir(freshFrom).filePath(
+        QStringLiteral("20261114T000000000-valid.kra"));
+    const QString badArchive=QDir(freshFrom).filePath(
+        QStringLiteral("20261114T000000001-invalid.kra"));
+    save(goodArchive,initial);
+    save(goodArchive+QStringLiteral(".sha256"),
+         QCryptographicHash::hash(initial,QCryptographicHash::Sha256).toHex());
+    save(badArchive,initial);
+    const QByteArray badDigest=QCryptographicHash::hash(
+        QByteArray("unrelated bytes"),QCryptographicHash::Sha256).toHex();
+    save(badArchive+QStringLiteral(".sha256"),badDigest);
+    MobileSavedVersionArchive::adoptHistory(freshDraft,freshSaved,freshStore);
+    const auto freshVersions=MobileSavedVersionArchive::list(freshSaved,freshStore);
+    require(freshVersions.size()==1 &&
+            load(freshVersions.first().path)==initial &&
+            !QFile::exists(goodArchive) &&
+            QFile::exists(badArchive) &&
+            load(badArchive+QStringLiteral(".sha256"))==badDigest,
+            "new destination bypassed checksum checks or lost damaged history");
+
     // A corrupt sparse checkpoint can claim to be a multi-gigabyte KRA.
     // The recent-checkpoint validator must refuse it before hashing the
     // entire file or considering it sufficient to suppress a new save.
