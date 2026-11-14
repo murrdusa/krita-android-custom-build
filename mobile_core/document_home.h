@@ -97,7 +97,8 @@ public:
         QFile f(indexPath());
         constexpr qint64 maxIndexBytes=16LL*1024*1024;
         constexpr int maxIndexEntries=20000;
-        if(!f.open(QIODevice::ReadOnly) || f.size()<0 ||
+        if(!f.open(QIODevice::ReadOnly) || !QFileInfo(f).isFile() ||
+           QFileInfo(f).isSymLink() || f.size()<0 ||
            f.size()>maxIndexBytes)return entries;
         // The index is a cache, not artwork. An unexpectedly large or
         // changing JSON file must never exhaust memory at gallery startup.
@@ -123,8 +124,12 @@ public:
     }
 
     static void save(const QVector<MobileProjectIndexEntry> &entries) {
+        constexpr qint64 maxIndexBytes=16LL*1024*1024;
+        constexpr int maxIndexEntries=20000;
+        if(entries.size()>maxIndexEntries)return;
         const QString path=indexPath();
-        QDir().mkpath(QFileInfo(path).absolutePath());
+        if(path.isEmpty() || !QDir().mkpath(QFileInfo(path).absolutePath()))
+            return;
         QJsonArray arr;
         for(const auto &e:entries) {
             QJsonObject o;
@@ -142,6 +147,10 @@ public:
         QSaveFile file(path);
         if(!file.open(QIODevice::WriteOnly))return;
         const QByteArray bytes=QJsonDocument(root).toJson(QJsonDocument::Compact);
+        if(bytes.size()>maxIndexBytes) {
+            file.cancelWriting();
+            return;
+        }
         if(file.write(bytes)!=bytes.size()) {
             file.cancelWriting();
             return;
