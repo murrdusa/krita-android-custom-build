@@ -13,6 +13,7 @@
 #include <QAndroidJniObject>
 #include <QFile>
 #include <QFileInfo>
+#include <QEnableSharedFromThis>
 #include <QMessageBox>
 #include <QPointer>
 #include <QScopedValueRollback>
@@ -37,7 +38,8 @@
 #include "saved_version_archive.h"
 #include "open_document_destination_policy.h"
 
-class MobileKritaStandaloneDocuments final : public MobileDocumentHostPort
+class MobileKritaStandaloneDocuments final : public MobileDocumentHostPort,
+                                            public QEnableSharedFromThis<MobileKritaStandaloneDocuments>
 {
 public:
     explicit MobileKritaStandaloneDocuments(
@@ -61,11 +63,17 @@ public:
     // that service can roll back the document registration.
     bool attachNewDocument(KisDocument *document) const override
     {
-        return !m_opening && attachCanvas(document);
+        // Krita callbacks can tear down the containing window while
+        // this method is on the stack. Hold the shared backend until
+        // its reentrancy flag and nested operations have unwound.
+        const auto keepAlive=sharedFromThis();
+        return keepAlive && !m_opening && attachCanvas(document);
     }
 
     bool openFile(const QString &requestedPath) const override
     {
+        const auto keepAlive=sharedFromThis();
+        if(!keepAlive)return false;
         // Native Krita openPath expects a filesystem path, not the
         // file:// spelling returned by some Android/Qt file pickers.
         // Keep content:// URIs intact for the SAF bridge.
@@ -176,12 +184,14 @@ public:
 
     bool save(KisDocument *document,bool saveAs) const override
     {
-        return writeDocument(document,saveAs,false);
+        const auto keepAlive=sharedFromThis();
+        return keepAlive && writeDocument(document,saveAs,false);
     }
 
     bool exportCopy(KisDocument *document) const override
     {
-        return writeDocument(document,true,true);
+        const auto keepAlive=sharedFromThis();
+        return keepAlive && writeDocument(document,true,true);
     }
 
 private:
