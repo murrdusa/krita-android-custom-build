@@ -493,6 +493,51 @@ int main(int argc,char **argv)
     QFile::remove(abandonedRescue+QStringLiteral(".project"));
     require(MobileDraftRecovery::setProject(draft,QString()),
             "clear abandoned staging fixture project association");
+    // Many leftover exports must not cause an unbounded number of KRA
+    // parses in a single gallery refresh. Each scan rescues at most two
+    // staged files and leaves the rest recoverable on later refreshes.
+    QStringList pendingBatch;
+    for(int i=0;i<5;++i) {
+        const QString candidate=MobileDraftRecovery::allocate(
+            QStringLiteral("queued-recovery"));
+        require(!candidate.isEmpty(),"allocate bulk orphan fixture");
+        const QString orphan=candidate+QStringLiteral(".pending.kra");
+        save(orphan,QByteArray::fromHex("504b0304")+
+                    QByteArray("queued-")+QByteArray::number(i));
+        require(MobileDraftRecovery::setProject(candidate,source),
+                "associate bulk orphan with project");
+        QFile file(orphan);
+        require(file.open(QIODevice::ReadWrite) &&
+                file.setFileTime(QDateTime::currentDateTimeUtc().addSecs(-3600),
+                    QFileDevice::FileModificationTime),
+                "age queued orphan fixture");
+        pendingBatch.append(candidate);
+    }
+    const auto firstBatch=MobileDraftRecovery::list();
+    require(firstBatch.size()==3,
+            "gallery scan must rescue at most two abandoned KRAs");
+    const auto secondBatch=MobileDraftRecovery::list();
+    require(secondBatch.size()==5,
+            "second gallery scan must rescue the next two KRAs");
+    const auto thirdBatch=MobileDraftRecovery::list();
+    require(thirdBatch.size()==6,
+            "subsequent gallery scan must eventually rescue all KRAs");
+    int batchRecovered=0;
+    for(const QFileInfo &item:thirdBatch) {
+        if(item.absoluteFilePath()==draft)continue;
+        ++batchRecovered;
+        require(MobileDraftRecovery::projectFor(item.absoluteFilePath())==source,
+                "batched orphan lost original project association");
+        QFile::remove(item.absoluteFilePath());
+        QFile::remove(item.absoluteFilePath()+QStringLiteral(".project"));
+        QFile::remove(item.absoluteFilePath()+QStringLiteral(".title"));
+    }
+    require(batchRecovered==5,"not all queued autosaves were recovered");
+    for(const QString &candidate:pendingBatch) {
+        require(!QFile::exists(candidate+QStringLiteral(".pending.kra")),
+                "orphan staging survived after successful rescue");
+        QFile::remove(candidate+QStringLiteral(".project"));
+    }
     const auto drafts=MobileDraftRecovery::list();
     require(drafts.size()==1 && drafts.first().absoluteFilePath()==draft &&
             MobileDraftRecovery::title(drafts.first())==QStringLiteral("a_b") &&
