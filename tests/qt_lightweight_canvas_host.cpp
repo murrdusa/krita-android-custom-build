@@ -191,33 +191,7 @@ int main(int argc,char **argv)
                 "touch action picker survived destroyed Android host");
     }
 
-    // Version History materializes a temporary KRA in a worker and
-    // posts its opening callback to Qt. If the receiver dies before
-    // delivery, the undelivered event still owns deletion of that KRA.
-    {
-        QTemporaryDir recovery;
-        require(recovery.isValid(),"temporary recovery folder unavailable");
-        const QString path=recovery.filePath(QStringLiteral("queued-copy.kra"));
-        QFile file(path);
-        require(file.open(QIODevice::WriteOnly) && file.write("kra",3)==3,
-                "could not stage recovery copy for cleanup test");
-        file.close();
-        const auto ownedCopy=std::shared_ptr<QString>(
-            new QString(path),[](QString *p) {
-                if(!p->isEmpty())QFile::remove(*p);
-                delete p;
-            });
-        auto *receiver=new QObject;
-        QMetaObject::invokeMethod(receiver,[ownedCopy]() {},
-                                  Qt::QueuedConnection);
-        // The posting thread releases its reference; the queued event
-        // is now the sole owner, and Qt must destroy it on receiver exit.
-        // The test keeps a separate reference only until this scope's
-        // event cancellation assertion.
-        delete receiver;
-        require(QFile::exists(path),"temporary copy deleted before ownership release");
-    }
-    // Explicitly verify event cancellation destroys its captured owner.
+    // Version History temporary copies must be removed if Qt destroys\n    // the queued UI receiver before its opening callback runs.
     {
         QTemporaryDir recovery;
         require(recovery.isValid(),"temporary recovery folder unavailable");
