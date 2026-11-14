@@ -800,7 +800,10 @@ private:
         // rather than sorting by mutable filesystem modification time.
         std::sort(result.begin(),result.end(),
                   [](const Version &a,const Version &b) {
-            return QFileInfo(a.path).fileName()>QFileInfo(b.path).fileName();
+            // All entries share the same folder, so full-path lexical
+            // comparison has the same order without allocating QFileInfo
+            // for every comparison during sorting.
+            return a.path>b.path;
         });
         return result;
     }
