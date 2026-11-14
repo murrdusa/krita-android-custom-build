@@ -405,6 +405,7 @@ public:
 
     ~MobileDocumentHome() override
     {
+        m_recoveryCopyCancelled->store(true);
         if(m_scanCancel)m_scanCancel->store(true);
         m_previewCancelled->store(true);
         m_thumbnails.clear();
@@ -541,6 +542,7 @@ public:
 protected:
     void hideEvent(QHideEvent *event) override
     {
+        m_recoveryCopyCancelled->store(true);
         ++m_recoveryGeneration;
         ++m_homeListGeneration;
         if(m_scanCancel && !m_scanCancel->exchange(true) && m_mode==AllProjects)
@@ -709,6 +711,8 @@ private:
     {
         if(m_restoringVersion || !isVisible())return;
         m_restoringVersion=true;
+        const auto cancellation=m_recoveryCopyCancelled;
+        cancellation->store(false);
         const auto generation=m_recoveryGeneration;
         const auto expected=m_engine.openDocuments();
         for(const auto &entry:expected) {
@@ -719,9 +723,10 @@ private:
         }
         QPointer<MobileDocumentHome> home(this);
         const QPointer<QCoreApplication> application(qApp);
-        QThreadPool::globalInstance()->start([home,application,version,expected,generation]() {
-            if(!home || !application)return;
-            const QString copy=MobileSavedVersionArchive::materializeRecovery(version);
+        QThreadPool::globalInstance()->start([home,application,version,expected,generation,cancellation]() {
+            if(!home || !application || cancellation->load())return;
+            const QString copy=MobileSavedVersionArchive::materializeRecovery(
+                version,QString(),cancellation.get());
             // The recovery result may be discarded with Qt's queued
             // events during shutdown. Own the temporary file with the
             // event's closure so that even an undelivered callback removes
@@ -731,15 +736,16 @@ private:
                     if(!path->isEmpty())QFile::remove(*path);
                     delete path;
                 });
-            if(!home || !application)return;
+            if(!home || !application || cancellation->load())return;
             QMetaObject::invokeMethod(application.data(),
-                [home,ownedCopy,expected,generation]() {
+                [home,ownedCopy,expected,generation,cancellation]() {
                 const QString &copy=*ownedCopy;
                 const auto current=home?home->m_engine.openDocuments():
                     QVector<MobileEngineBridge::OpenDocument>{};
                 // A recovery may open beside multiple existing canvases,
                 // but never after a view was replaced or switched.
-                const bool sameCanvas=home && home->isVisible() &&
+                const bool sameCanvas=home && !cancellation->load() &&
+                    home->isVisible() &&
                     generation==home->m_recoveryGeneration &&
                     MobileViewIdentityGuard::sameRecoveryWorkspace(
                         expected,current);
@@ -1668,6 +1674,8 @@ private:
     QSet<QString> m_starred;
     QPointer<MobileTransientPanel> m_projectMenu;
     bool m_restoringVersion=false;
+    std::shared_ptr<std::atomic_bool> m_recoveryCopyCancelled=
+        std::make_shared<std::atomic_bool>(false);
     quint64 m_recoveryGeneration=0;
     quint64 m_homeListGeneration=0;
     bool m_thumbnailScheduled=false;
