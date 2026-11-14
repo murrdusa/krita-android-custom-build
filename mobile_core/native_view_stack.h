@@ -217,7 +217,12 @@ private:
                 const QPointer<MobileNativeViewStack> host(this);
                 removeWidget(view.data());
                 if(!host)return true;
-                if(view)view->hide();
+                // currentChanged may synchronously transfer this widget
+                // to another host or re-register it here. Do not hide
+                // a canvas that the receiving owner has already shown.
+                if(view && view->parentWidget()==host.data() &&
+                   host->indexOf(view.data())<0)
+                    view->hide();
             }
             return true;
         }
