@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — protect destructive gallery prompts during Android window teardown
+
+- Gallery Delete Drawing and Discard Draft confirmation prompts now use heap-owned, QPointer-guarded QMessageBox instances instead of parented stack helpers. The owning gallery is revalidated after the nested dialog returns before touching files, preventing callbacks from continuing against a destroyed host.
+- Rename Draft likewise uses a guarded heap-owned QInputDialog and verifies that the gallery remains visible and the original project-list generation is current. This avoids stale rename actions following an asynchronous project-list rebuild or window teardown.
+- **Verification:** source committed to `main`; the latest reported PC result remains a successful exact-SHA Android compile for `bf86717a787b9d5a5da2926ce1bf04844299de71`. These newest fixes await an exact-SHA WSL build result. No APK uploaded or phone testing requested.
+
 ## November 14 — bound thumbnail attempt revisions and tighten recovery-copy filename validation
 
 - Gallery preview-attempt bookkeeping now stores only the latest attempted revision for each project path instead of retaining every historic (path, timestamp) pair. On repeated edits or failed preview generation, the in-memory table is bounded by distinct projects rather than the number of revisions encountered in a session. Revision comparisons preserve retry behavior on modification, removal, or icon eviction; missing revisions are not confused with a sentinel timestamp.
