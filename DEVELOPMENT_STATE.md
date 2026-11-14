@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — revalidate canvas ownership when deferred retirement executes
+
+- Follow-up audit of native canvas teardown found a gap in the ownership checks: document destruction and accepted-close callbacks checked whether a detached QWidget still belonged to the old stack before calling `deleteLater()`. A different host could reparent the widget **after** that check but **before** Qt delivered the already-posted `DeferredDelete` event, causing the old owner to destroy a now-transferred painting canvas.
+- Consolidated both retirement paths into `MobileNativeViewStack::retireDetachedView()`. It defers the **ownership decision** to a zero-delay Qt callback bound to the original stack, revalidates that the widget still exists, is still parented to that stack, and is not re-registered, and only then calls `deleteLater()`. Teardown of the original stack automatically cancels its pending callback. The previous close/reentrancy guard behavior is preserved.
+- Extended offscreen Qt lifecycle regressions to transfer a canvas **after** document deregistration but before deferred cleanup; verified that it survives under its new owner. Updated existing deferred-deletion fixtures to pump the zero-delay ownership-check callback before asserting cleanup.
+- **Verification:** last reported exact-SHA local WSL Android build SUCCESS at `c38816694302edd488b862fb4efd7ab3bcc335e4`. These changes await exact-SHA WSL compilation and execution of the standalone Qt regressions. No APK uploaded.
+
 ## November 14 — preserve transferred canvas visibility during native tab removal
 
 - Inspected the recently added reparenting safety guards after exact-SHA Android compilation. `MobileNativeViewStack::forgetToken()` removed a widget and then unconditionally called `view->hide()`. `removeWidget()` emits `currentChanged` synchronously; a listener can reparent and show the detached widget before the old stack resumes. The unconditional hide then incorrectly hides the newly owned canvas, potentially presenting a blank drawing even though no document was closed.
