@@ -434,6 +434,12 @@ public:
     }
 
 protected:
+    void hideEvent(QHideEvent *event) override
+    {
+        ++m_recoveryGeneration;
+        QFrame::hideEvent(event);
+    }
+
     bool eventFilter(QObject *watched,QEvent *event) override
     {
         if(watched==parentWidget() && event->type()==QEvent::Resize) {
@@ -551,7 +557,9 @@ private:
 
     void openCopy(const MobileSavedVersionArchive::Version &version)
     {
+        if(m_restoringVersion || !isVisible())return;
         m_restoringVersion=true;
+        const auto generation=m_recoveryGeneration;
         const auto expected=m_engine.openDocuments();
         for(const auto &entry:expected) {
             if(!entry.nativeView || !entry.document) {
@@ -560,14 +568,15 @@ private:
             }
         }
         QPointer<MobileDocumentHome> home(this);
-        QThreadPool::globalInstance()->start([home,version,expected]() {
+        QThreadPool::globalInstance()->start([home,version,expected,generation]() {
             const QString copy=MobileSavedVersionArchive::materializeRecovery(version);
-            QMetaObject::invokeMethod(qApp,[home,copy,expected]() {
+            QMetaObject::invokeMethod(qApp,[home,copy,expected,generation]() {
                 const auto current=home?home->m_engine.openDocuments():
                     QVector<MobileEngineBridge::OpenDocument>{};
                 // A recovery may open beside multiple existing canvases,
                 // but never after a view was replaced or switched.
-                const bool sameCanvas=home &&
+                const bool sameCanvas=home && home->isVisible() &&
+                    generation==home->m_recoveryGeneration &&
                     MobileViewIdentityGuard::sameRecoveryWorkspace(
                         expected,current);
                 const bool opened=home && sameCanvas && !copy.isEmpty() && home->m_files &&
@@ -793,6 +802,7 @@ private:
 
     void showList(Mode mode,bool forceScan=false)
     {
+        if(mode!=m_mode)++m_recoveryGeneration;
         if(m_projectMenu)m_projectMenu->close();
         if(m_mode==AllProjects && m_list->count()>0)persistIndex();
         m_mode=mode;
@@ -1237,8 +1247,10 @@ private:
             const QString path=item->data(Qt::UserRole+4).toString();
             const qint64 modified=item->data(Qt::UserRole+5).toLongLong();
             const auto request=qMakePair(path,modified);
+            const auto cached=m_cache.constFind(path);
             if(path.isEmpty() || m_pending.contains(request) ||
-               m_attempted.contains(request) || m_cache.contains(path))continue;
+               m_attempted.contains(request) ||
+               (cached!=m_cache.cend() && cached->modified==modified))continue;
             m_pending.insert(request);
             --budget;
             const QPointer<MobileDocumentHome> home(this);
@@ -1288,6 +1300,7 @@ private:
     QSet<QString> m_starred;
     QPointer<MobileTransientPanel> m_projectMenu;
     bool m_restoringVersion=false;
+    quint64 m_recoveryGeneration=0;
     bool m_thumbnailScheduled=false;
     bool m_forceThumbnailRefresh=false;
     int m_scanGeneration=0;

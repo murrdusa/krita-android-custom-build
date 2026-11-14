@@ -1,5 +1,7 @@
 # Krita Mobile Studio — current development state
 
+Leaving Home or switching its tabs cancels pending version or duplicate opens. Home thumbnail requests check cached revisions, so older previews cannot block a newer save from appearing. Toolbar gestures cancel when a canvas or tool changes or Android backgrounds the app.
+
 Rapid brush picks supersede queued selections and update the Recent list without rebuilding unrelated categories. Lighting settings persist across restarts. HSV adjustments retain the selected hue on neutral colors. Transient panels close when their canvas or Home surface hides.
 
 Brush preset changes from the picker run after the item-view event, with active-view and panel checks. Android's native preset switch rejects incomplete presets and reentrant changes, and brush UI observers refresh after native preset activation. This addresses crash risks found in source. No device crash trace was available. Brush-size drag defaults to **Tool Settings** and migrates the former Tools and Paint defaults once.

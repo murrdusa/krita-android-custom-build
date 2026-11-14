@@ -169,11 +169,16 @@ public:
         canvas->installEventFilter(layout);
         if(auto *stack=qobject_cast<QStackedWidget*>(canvas)) {
             QObject::connect(stack,&QStackedWidget::currentChanged,layout,[layout,menu](int) {
+                layout->cancelToolbarGestures();
                 if(menu->isVisible())menu->hide();
                 if(layout->m_editor)layout->m_editor->closeEditor(false);
                 layout->requestPosition();
             });
         }
+        QObject::connect(qApp,&QGuiApplication::applicationStateChanged,layout,
+                         [layout](Qt::ApplicationState state) {
+            if(state!=Qt::ApplicationActive)layout->cancelToolbarGestures();
+        });
         layout->m_canvasOnly=canvasOnly && canvasOnly->isChecked();
         layout->m_toolbar->setVisible(!layout->m_canvasOnly);
         layout->m_workspaceTimer.setSingleShot(true);
@@ -211,6 +216,13 @@ public:
             if(auto *gesture=dynamic_cast<MobileToolbarGestureButton*>(button))
                 gesture->syncGesturePolicy();
         }
+    }
+
+    void cancelToolbarGestures()
+    {
+        for(auto *button:static_cast<QWidget*>(parent())->findChildren<QToolButton*>())
+            if(auto *gesture=dynamic_cast<MobileToolbarGestureButton*>(button))
+                gesture->cancelGesture();
     }
 
     void setLayoutPanels(std::function<QVector<MobileCanvasLayoutEditor::Target>()> panels,

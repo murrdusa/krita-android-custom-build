@@ -156,6 +156,8 @@ public:
             connect(tools,&KoToolManager::aboutToChangeTool,this,
                     [this,tools](KoCanvasController *controller) {
                 if(controller!=tools->activeCanvasController())return;
+                if(m_toolbarLayout)m_toolbarLayout->cancelToolbarGestures();
+                clearToolbarPreview();
                 if(m_toolOptions)m_toolOptions->hide();
                 if(m_brushOptions)m_brushOptions->hide();
             });
@@ -1018,6 +1020,7 @@ public:
         }
         const bool opacity=parameter==QStringLiteral("opacity");
         if(m_dragParameter!=parameter) {
+            if(phase==Phase::Commit)return;
             m_dragParameter=parameter;
             m_dragBaseline=opacity?provider->opacity():provider->size();
             m_dragMaximum=opacity?1.0:KisImageConfig(true).maxBrushSize();

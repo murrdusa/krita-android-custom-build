@@ -75,6 +75,7 @@ public:
     using Hold=std::function<void()>;
 
     void setVertical(bool vertical) {m_vertical=vertical;}
+    void cancelGesture() {finish(m_last,true);}
     void syncGesturePolicy()
     {
         const bool enabled=handlesGesture();
@@ -102,7 +103,12 @@ protected:
     {
         switch(event->type()) {
         case QEvent::Hide:
-            finish(m_last,true);
+        case QEvent::UngrabMouse:
+        case QEvent::WindowDeactivate:
+            cancelGesture();
+            break;
+        case QEvent::EnabledChange:
+            if(!isEnabled())cancelGesture();
             break;
         case QEvent::TouchBegin:
         case QEvent::TouchUpdate:

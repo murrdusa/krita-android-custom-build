@@ -150,4 +150,10 @@ int main(int argc,char **argv)
             lastSample==eyedropper.mapToGlobal(QPoint(105,20)),
             "eyedropper drag must cancel the hold and sample in any direction");
 
+    mouse(&eyedropper,QEvent::MouseButtonPress,center);
+    mouse(&eyedropper,QEvent::MouseMove,QPoint(85,20));
+    eyedropper.cancelGesture();
+    mouse(&eyedropper,QEvent::MouseButtonRelease,QPoint(105,20));
+    require(arms==1 && sampled==beforeDrag+1,
+            "release after cancellation must not sample or trigger the button");
 }
