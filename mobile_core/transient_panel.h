@@ -35,10 +35,11 @@ public:
         });
     }
 
-    void anchorTo(QWidget *anchor,const QSize &preferred)
+    void anchorTo(QWidget *anchor,const QSize &preferred,bool allowSide=false)
     {
         m_anchor=anchor;
         m_preferred=preferred;
+        m_allowSide=allowSide;
     }
 
     void setOpener(QWidget *widget,QAction *action=nullptr)
@@ -132,6 +133,7 @@ protected:
 
 private:
     bool m_refreshPending=false;
+    bool m_allowSide=false;
     QPointer<QWidget> m_anchor,m_opener;
     QPointer<QAction> m_action;
     QSize m_preferred;
@@ -151,6 +153,14 @@ private:
             const bool useAbove=below+size.height()>bounds.height()-8 &&
                                 anchor.y()>bounds.height()-below;
             origin=QPoint(anchor.x()+(m_anchor->width()-size.width())/2,useAbove?above:below);
+            if(m_allowSide) {
+                const int right=anchor.x()+m_anchor->width()+4;
+                const int left=anchor.x()-size.width()-4;
+                if(anchor.x()<56 && right+size.width()<=bounds.width())
+                    origin=QPoint(right,anchor.y()+(m_anchor->height()-size.height())/2);
+                else if(anchor.x()+m_anchor->width()>bounds.width()-56 && left>=0)
+                    origin=QPoint(left,anchor.y()+(m_anchor->height()-size.height())/2);
+            }
             origin.setX(qBound(0,origin.x(),qMax(0,bounds.width()-size.width())));
             origin.setY(qBound(0,origin.y(),qMax(0,bounds.height()-size.height())));
         }

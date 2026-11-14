@@ -433,13 +433,24 @@ public:
             "QFrame#mobileColorPicker{background:#25262b;border:1px solid #55555c;border-radius:10px;}"
             "QLabel{color:#f1f2f5;}"
             "QPushButton,QComboBox,QLineEdit{background:#30323b;color:#f1f2f5;"
-            "border:1px solid #44464f;border-radius:6px;padding:2px 6px;}"));
+            "border:1px solid #44464f;border-radius:6px;padding:2px 6px;}"
+            "QPushButton:checked{background:#394459;border-color:#8195b8;}"));
         auto *layout=new QVBoxLayout(panel);
         layout->setContentsMargins(2,2,2,2);
         m_colorPicker=new MobileColorPicker(panel,provider,m_lighting,m_sphere);
         layout->addWidget(m_colorPicker);
-        panel->setOpener(nullptr,m_colorAction);
-        panel->anchorTo(nullptr,QSize(360,342));
+        QWidget *anchor=nullptr;
+        for(auto *button:canvas->findChildren<QToolButton*>()) {
+            if(button->defaultAction()!=m_colorAction || !button->isVisible() ||
+               button->visibleRegion().isEmpty())continue;
+            if(!anchor)anchor=button;
+            if(button==m_colorOpener) {
+                anchor=button;
+                break;
+            }
+        }
+        panel->setOpener(anchor,m_colorAction);
+        panel->anchorTo(anchor,QSize(360,430),true);
         panel->present();
         syncPanelActions();
     }
@@ -1445,6 +1456,14 @@ protected:
         if(!m_canvasLayoutEditing && m_host && (type==QEvent::MouseButtonPress || type==QEvent::MouseButtonDblClick ||
                       type==QEvent::TabletPress || type==QEvent::TouchBegin)) {
             auto *target=pressTarget(watched,event);
+            m_colorOpener.clear();
+            for(auto *widget=target;widget;widget=widget->parentWidget()) {
+                auto *button=qobject_cast<QToolButton*>(widget);
+                if(button && m_colorAction && button->defaultAction()==m_colorAction) {
+                    m_colorOpener=button;
+                    break;
+                }
+            }
             dismissTemporaryPanels(target);
             if(m_fadePanels) {
                 const int channel=type==QEvent::TouchBegin?0:type==QEvent::TabletPress?1:2;
@@ -2441,6 +2460,7 @@ private:
     QPointer<MobileColorWorkspace> m_color;
     QPointer<MobileTransientPanel> m_colorPopup;
     QPointer<MobileColorPicker> m_colorPicker;
+    QPointer<QToolButton> m_colorOpener;
     QPointer<MobileLightingSphere> m_sphere;
     MobileColorPicker::Lighting m_lighting;
     QPointer<MobileContextToolBar> m_contextToolBar;

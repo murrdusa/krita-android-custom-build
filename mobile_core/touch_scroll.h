@@ -568,12 +568,17 @@ public:
     {
         setAttribute(Qt::WA_AcceptTouchEvents);
         setMinimumHeight(44);
+        setTrackColors(QStringLiteral("#555965"),QStringLiteral("#6ca9c9"));
+    }
+
+    void setTrackColors(const QString &track,const QString &fill)
+    {
         setStyleSheet(QStringLiteral(
-            "QSlider::groove:horizontal{height:6px;background:#555965;border-radius:3px;}"
-            "QSlider::sub-page:horizontal{background:#6ca9c9;border-radius:3px;}"
+            "QSlider::groove:horizontal{height:8px;background:%1;border-radius:4px;}"
+            "QSlider::sub-page:horizontal{background:%2;border-radius:4px;}"
             "QSlider::handle:horizontal{width:28px;margin:-11px 0;"
             "background:#f1f2f5;border:1px solid #343740;border-radius:14px;}"
-            "QSlider::handle:horizontal:disabled{background:#82848d;}"));
+            "QSlider::handle:horizontal:disabled{background:#82848d;}").arg(track,fill));
     }
 
 protected:

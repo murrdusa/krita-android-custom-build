@@ -40,6 +40,8 @@
 #include <QVector>
 #include <QtMath>
 #include <algorithm>
+#include <array>
+#include <QButtonGroup>
 #include <functional>
 
 #include "engine_bridge.h"
@@ -75,6 +77,17 @@ public:
     }
 
 protected:
+    bool event(QEvent *event) override
+    {
+        if((event->type()==QEvent::Hide || event->type()==QEvent::UngrabMouse) &&
+           m_dragMode!=None) {
+            m_dragMode=None;
+            unsetCursor();
+            if(onChosen)onChosen(QColor::fromHsv(m_hue,m_sat,m_val),true);
+        }
+        return QWidget::event(event);
+    }
+
     void paintEvent(QPaintEvent*) override
     {
         QPainter p(this);
@@ -277,14 +290,11 @@ private:
     {
         const qreal z=qSqrt(qMax(0.0,1.0-QPointF::dotProduct(normal,normal)));
         const qreal light=-0.47*normal.x()-0.61*normal.y()+0.637*z;
-        const auto mix=[this](qreal base,qreal highlight,qreal shadow) {
-            return qBound(0.0,base*(1-m_contrast)+m_contrast*(highlight+shadow),1.0);
-        };
-        const qreal diffuse=qMax(0.0,light);
+        const qreal diffuse=qPow(qMax(0.0,light),0.55+2.1*m_contrast);
         const qreal specular=qPow(diffuse,18.0)*0.16;
         const qreal ambient=0.32+0.12*qMax(0.0,normal.y());
         const auto channel=[&](qreal base,qreal highlight,qreal shadow) {
-            return mix(base,highlight*(0.68*base*diffuse+specular),base*shadow*ambient);
+            return qBound(0.0,highlight*(0.68*base*diffuse+specular)+base*shadow*ambient,1.0);
         };
         return QColor::fromRgbF(channel(m_base.redF(),m_light.redF(),m_shadow.redF()),
                                 channel(m_base.greenF(),m_light.greenF(),m_shadow.greenF()),
@@ -341,12 +351,47 @@ public:
         };
         connect(tabs,&QTabBar::currentChanged,pages,&QStackedWidget::setCurrentIndex);
 
-        m_wheel=new MobileHueWheel(pages);
+        auto *wheelPage=new QWidget(pages);
+        auto *wheelLayout=new QVBoxLayout(wheelPage);
+        wheelLayout->setContentsMargins(0,0,0,0);
+        wheelLayout->setSpacing(2);
+        m_wheel=new MobileHueWheel(wheelPage);
         m_wheel->setMinimumSize(0,0);
-        m_wheel->onChosen=[this](const QColor &color,bool) {select(color);};
-        addPage(m_wheel,tr("Wheel"));
+        auto *wheelArea=new QHBoxLayout;
+        wheelArea->addWidget(m_wheel,1);
+        auto *comparison=new QVBoxLayout;
+        m_previous=new QLabel(wheelPage);
+        m_current=new QLabel(wheelPage);
+        for(auto *chip:{m_previous,m_current}) {
+            chip->setFixedSize(32,32);
+            auto policy=QSizePolicy(QSizePolicy::Fixed,QSizePolicy::Fixed);
+            policy.setRetainSizeWhenHidden(true);
+            chip->setSizePolicy(policy);
+            comparison->addWidget(chip);
+            chip->hide();
+        }
+        m_previous->setAccessibleName(tr("Previous color"));
+        m_current->setAccessibleName(tr("Current color"));
+        comparison->addStretch(1);
+        wheelArea->addLayout(comparison);
+        wheelLayout->addLayout(wheelArea,1);
+        m_wheel->onChosen=[this](const QColor &color,bool final) {
+            if(!final && !m_previous->isVisible() && m_provider) {
+                paintChip(m_previous,m_provider->fgColor().toQColor());
+                m_previous->show();
+                m_current->show();
+            }
+            select(color);
+            if(final) {
+                m_previous->hide();
+                m_current->hide();
+            } else {
+                paintChip(m_current,m_provider?m_provider->fgColor().toQColor():color);
+            }
+        };
+        addPage(wheelPage,tr("Wheel"));
 
-        auto *values=new QWidget(pages);
+        auto *values=new QWidget(wheelPage);
         auto *form=new QFormLayout(values);
         form->setContentsMargins(4,0,4,0);
         form->setSpacing(0);
@@ -359,6 +404,7 @@ public:
         for(int i=0;i<3;++i) {
             auto *row=new QHBoxLayout;
             m_values[i]=new MobileTouchSlider(values);
+            m_values[i]->setMinimumHeight(36);
             m_values[i]->setAccessibleName(captions.at(i));
             m_values[i]->setRange(0,i==0?359:100);
             m_labels[i]=new QLabel(values);
@@ -378,20 +424,7 @@ public:
             if(text.size()>=6 && color.isValid())select(color);
             if(m_provider)m_hex->setText(m_provider->fgColor().toQColor().name());
         });
-        addPage(values,tr("Values"));
-
-        auto *swatches=new QWidget(pages);
-        auto *colors=new QGridLayout(swatches);
-        colors->setContentsMargins(4,4,4,4);
-        colors->setSpacing(4);
-        const QStringList palette{
-            "#ffffff","#c0c0c0","#808080","#404040","#17171a","#000000",
-            "#e74758","#f2793e","#ecbc48","#84b552","#42a49a","#408ad6",
-            "#575bd5","#9a55bb","#d76b9a","#edb194","#b07351","#72493d"};
-        for(int i=0;i<palette.size();++i)
-            colors->addWidget(swatch(swatches,QColor(palette.at(i))),i/6,i%6);
-        colors->setRowStretch(3,1);
-        addPage(swatches,tr("Swatches"));
+        wheelLayout->addWidget(values);
 
         auto *lightingPage=new QWidget(pages);
         auto *lightingLayout=new QVBoxLayout(lightingPage);
@@ -401,34 +434,68 @@ public:
         m_sphere->onColor=[this](const QColor &color) {select(color);};
         lightingLayout->addWidget(m_sphere,1);
         auto *lightingControls=new QHBoxLayout;
-        auto *base=new QPushButton(tr("Use current color"),lightingPage);
-        base->setMinimumHeight(40);
-        lightingControls->addWidget(base,1);
-        connect(base,&QPushButton::clicked,this,[this]() {
-            if(!m_provider)return;
-            m_lighting.base=m_provider->fgColor().toQColor();
-            refreshLighting();
-        });
-        auto *temperature=new QPushButton(lightingPage);
-        temperature->setMinimumHeight(40);
-        const QStringList lightingModes{tr("Warm light"),tr("Cool light"),tr("Neutral light")};
-        const auto mode=[this]() {
-            return m_lighting.light==QColor("#dceaff")?1:m_lighting.light==QColor(Qt::white)?2:0;
-        };
-        temperature->setText(lightingModes.at(mode()));
-        connect(temperature,&QPushButton::clicked,this,[this,temperature,lightingModes,mode]() {
-            const int index=(mode()+1)%lightingModes.size();
-            m_lighting.light=index==0?QColor("#fff4dc"):index==1?QColor("#dceaff"):QColor(Qt::white);
-            m_lighting.shadow=index==0?QColor("#8da9df"):index==1?QColor("#d39b82"):QColor("#a3a3a3");
-            temperature->setText(lightingModes.at(index));
-            refreshLighting();
-        });
-        lightingControls->addWidget(temperature,1);
+        auto *group=new QButtonGroup(lightingPage);
+        const QStringList roles{tr("Object"),tr("Highlight"),tr("Shadow")};
+        const std::array<QColor*,3> roleColors{{&m_lighting.base,&m_lighting.light,&m_lighting.shadow}};
+        std::array<QPushButton*,3> roleButtons{};
+        for(int i=0;i<3;++i) {
+            auto *button=new QPushButton(roles.at(i),lightingPage);
+            button->setCheckable(true);
+            button->setMinimumHeight(40);
+            group->addButton(button,i);
+            lightingControls->addWidget(button,1);
+            roleButtons[i]=button;
+        }
+        roleButtons[0]->setChecked(true);
         lightingLayout->addLayout(lightingControls);
+        auto *lightingForm=new QFormLayout;
+        std::array<MobileTouchSlider*,3> lightingSliders{};
+        for(int i=0;i<3;++i) {
+            auto *slider=new MobileTouchSlider(lightingPage);
+            slider->setMinimumHeight(36);
+            slider->setRange(0,i==0?359:100);
+            slider->setAccessibleName(captions.at(i));
+            lightingForm->addRow(captions.at(i),slider);
+            lightingSliders[i]=slider;
+        }
+        lightingLayout->addLayout(lightingForm);
+        m_lightingHues={{qMax(0,m_lighting.base.hsvHue()),
+                         qMax(0,m_lighting.light.hsvHue()),
+                         qMax(0,m_lighting.shadow.hsvHue())}};
+        const auto refreshRole=[group,roleColors,lightingSliders,lightingForm](int hue) {
+            const int role=group->checkedId();
+            const auto color=*roleColors[role];
+            const int current[]{hue,qRound(color.hsvSaturationF()*100),qRound(color.valueF()*100)};
+            for(int i=0;i<3;++i) {
+                const QSignalBlocker block(lightingSliders[i]);
+                lightingSliders[i]->setValue(current[i]);
+            }
+            auto *value=lightingSliders[2];
+            value->setVisible(role==0);
+            lightingForm->labelForField(value)->setVisible(role==0);
+            paintTracks(lightingSliders.data(),hue,color);
+        };
+        for(int i=0;i<3;++i) {
+            connect(roleButtons[i],&QPushButton::clicked,this,[this,i,refreshRole]() {
+                refreshRole(m_lightingHues[i]);
+            });
+            connect(lightingSliders[i],&QSlider::valueChanged,this,
+                    [this,group,roleColors,lightingSliders,refreshRole](int) {
+                const int role=group->checkedId();
+                const auto hue=lightingSliders[0]->value();
+                m_lightingHues[role]=hue;
+                const auto old=*roleColors[role];
+                *roleColors[role]=QColor::fromHsvF(hue/360.0,lightingSliders[1]->value()/100.0,
+                    role==0?lightingSliders[2]->value()/100.0:old.valueF());
+                refreshRole(hue);
+                refreshLighting();
+            });
+        }
+        refreshRole(m_lightingHues[0]);
         auto *contrastRow=new QHBoxLayout;
-        contrastRow->addWidget(new QLabel(tr("Contrast"),lightingPage));
+        contrastRow->addWidget(new QLabel(tr("Shadow hardness"),lightingPage));
         auto *contrast=new MobileTouchSlider(lightingPage);
-        contrast->setAccessibleName(tr("Lighting contrast"));
+        contrast->setAccessibleName(tr("Shadow hardness"));
         contrast->setRange(0,100);
         contrast->setValue(m_lighting.contrast);
         contrastRow->addWidget(contrast,1);
@@ -466,6 +533,33 @@ public:
     }
 
 private:
+    static void paintChip(QLabel *chip,const QColor &color)
+    {
+        chip->setStyleSheet(QStringLiteral("background:%1;border:1px solid #767681;border-radius:6px;")
+                            .arg(color.name()));
+    }
+
+    static void paintTracks(MobileTouchSlider *const *sliders,int hue,const QColor &color)
+    {
+        const auto gradient=[](const QString &first,const QString &last) {
+            return QStringLiteral("qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 %1,stop:1 %2)")
+                .arg(first,last);
+        };
+        const QString rainbow=QStringLiteral("qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            "stop:0 red,stop:0.167 yellow,stop:0.333 lime,stop:0.5 cyan,"
+            "stop:0.667 blue,stop:0.833 magenta,stop:1 red)");
+        const auto saturation=gradient(QColor::fromHsv(hue,0,color.value()).name(),
+                                      QColor::fromHsv(hue,255,color.value()).name());
+        const auto value=gradient(QStringLiteral("#000000"),
+                                 QColor::fromHsv(hue,color.hsvSaturation(),255).name());
+        const QString tracks[]{rainbow,saturation,value};
+        for(int i=0;i<3;++i) {
+            if(sliders[i]->property("mobileColorTrack").toString()==tracks[i])continue;
+            sliders[i]->setProperty("mobileColorTrack",tracks[i]);
+            sliders[i]->setTrackColors(tracks[i],QStringLiteral("transparent"));
+        }
+    }
+
     QPushButton *swatch(QWidget *parent,const QColor &color)
     {
         auto *button=new QPushButton(parent);
@@ -492,6 +586,7 @@ private:
         if(color.hsvHue()>=0)m_hue=color.hsvHue();
         if(!m_hex->hasFocus())m_hex->setText(color.name());
         const int values[]{m_hue,qRound(color.hsvSaturationF()*100),qRound(color.valueF()*100)};
+        paintTracks(m_values,m_hue,color);
         for(int i=0;i<3;++i) {
             const QSignalBlocker block(m_values[i]);
             m_values[i]->setValue(values[i]);
@@ -512,6 +607,8 @@ private:
     MobileLightingSphere *m_sphere=nullptr;
     MobileHueWheel *m_wheel=nullptr;
     QLineEdit *m_hex=nullptr;
+    QLabel *m_previous=nullptr,*m_current=nullptr;
+    std::array<int,3> m_lightingHues{};
     MobileTouchSlider *m_values[3]{};
     QLabel *m_labels[3]{};
     int m_hue=0;

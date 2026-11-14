@@ -4,7 +4,7 @@ Brush preset changes from the picker run after the item-view event, with active-
 
 ## November 13 follow-up — Color picker and lighting sphere
 
-Color opens a dismissible picker with Wheel, Values, Swatches and Lighting tabs plus recent stroke colors. Floating Color Wheel and Lighting Sphere are separate optional toolbar commands and can be positioned through Edit UI Layout. All three select Krita's native foreground color. The sphere shares its base color, light preset and contrast between the tab and floating widget.
+Color opens an anchored picker with Wheel and Lighting tabs plus recent stroke colors. The Wheel tab has gradient HSV sliders, hex input and a temporary before/after swatch during wheel drags. Lighting has individual object, highlight and shadow controls, plus shadow hardness. Floating Color Wheel and Lighting Sphere are separate optional toolbar commands and can be positioned through Edit UI Layout. All three select Krita's native foreground color. Both sphere views share the same lighting settings.
 
 ## November 13 follow-up — toolbar gestures and Advanced Brush Settings
 
