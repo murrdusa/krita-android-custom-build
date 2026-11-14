@@ -1012,12 +1012,7 @@ private:
             reader.setScaledSize(size.scaled(124,124,Qt::KeepAspectRatio));
             return reader.read();
         }
-        constexpr qint64 maxKraBytes=8LL*1024*1024*1024;
-        if(entry.size()<4 || entry.size()>maxKraBytes)return {};
-        QFile header(path);
-        if(!header.open(QIODevice::ReadOnly) ||
-           header.peek(4)!=QByteArray::fromHex("504b0304"))return {};
-        header.close();
+        if(!MobileProjectPreviewCache::safeLocalKraSource(path))return {};
         QScopedPointer<KoStore> store(KoStore::createStore(path,KoStore::Read));
         if(!store || store->bad())return {};
         for(const QString &part:{QStringLiteral("preview.png"),
