@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — cancel long Version History recovery copies on gallery teardown
+
+- `MobileSavedVersionArchive::materializeRecovery()` could copy up to 8 GiB of archived data into a private recovered KRA while Android destroyed the gallery. Even though the eventual temporary file was cleaned up, the worker continued disk I/O, hash calculation, and disk-space consumption until completion.
+- Added an optional cancellation token checked before the copy, during each 256 KiB read/write chunk and again before `QSaveFile::commit()`. On cancellation, the staged recovery copy is discarded and the historical archive remains untouched.
+- `MobileDocumentHome::openCopy()` passes a **per-request** cancellation token; gallery hide/destruction invalidates it. Per-request allocation prevents a later recovery from accidentally reactivating an older canceled worker. Closing the gallery also clears its restoration-in-progress flag, so reopening it does not remain blocked. Existing same-workspace validation still prevents a canceled copy opening in a replaced canvas.
+- Added Qt archive regression for cancellation before copying and successful retry with a fresh/uncancelled request.
+- **Verification:** await exact-SHA WSL Android compilation and standalone Qt archive regression execution; no APK uploaded.
+
 ## November 14 — repair thumbnail-cache retention regression fixture
 
 - The new early PNG-signature filter correctly rejects three-byte fake files. The existing 620-entry newest-first cache retention regression, however, populated its fixture with precisely these fake `"png"` bytes, so that test no longer exercised the bounded 512-entry heap after the signature change.
