@@ -363,6 +363,10 @@ int main(int argc,char **argv)
     qputenv("XDG_DATA_HOME",temp.path().toUtf8());
     const QString restored=MobileSavedVersionArchive::materializeRecovery(versions.first());
     require(MobileSavedVersionArchive::isRecoveryCopy(restored) &&
+            MobileSavedVersionArchive::isRecoveryCopy(
+                QUrl::fromLocalFile(restored).toString()) &&
+            !MobileSavedVersionArchive::isRecoveryCopy(
+                QUrl::fromLocalFile(source).toString()) &&
             !MobileSavedVersionArchive::isRecoveryCopy(source),
             "only private restored copies should require Save As");
     // A mistaken Save As target must never become a private draft
