@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — prevent recursive native canvas closes during tab removal
+
+- `MobileNativeViewStack::closeImpl()` previously reset `m_closing` immediately after an accepted native close callback, **before** calling `forgetToken()`. Removing the selected widget can emit `QStackedWidget::currentChanged`, which reaches Krita view activation and other Qt observers synchronously. A reentrant close could therefore target the newly selected, still-open canvas while the first transaction was being torn down.
+- The close transaction now leaves `m_closing` set until deregistration and surviving-widget retirement have finished, while still resetting it on rejected callbacks. The existing `QPointer` stack identity guard covers synchronous destruction during removal.
+- Added a standalone Qt regression that registers two canvases, closes the active second canvas, tries to recursively close the surviving first canvas from `currentChanged`, and asserts the nested call is denied and the survivor remains registered.
+- **Verification:** most recent reported WSL Android SUCCESS at exact commit `db077496d19079479e52619078187aa617450ed6`. This transaction-guard fix and Qt regression await exact-SHA Android compilation and standalone Qt execution. No APK uploaded.
+
 ## November 14 — retire native canvases after accepted close callbacks
 
 - An accepted `MobileNativeViewStack::closeImpl()` transaction removed the widget registration but delegated destruction entirely to the close callback. While the Krita view factory normally deletes its `KisView`, another adapter/callback may accept without deleting, leaving a detached native widget/GL surface parented to the root until app exit.
