@@ -246,6 +246,39 @@ int main(int argc,char **argv)
     if(!require(externalStack.openViews().isEmpty(),
                 "replaced view teardown cleans registry"))return 1;
 
+    // Native Save/Discard can destroy the whole host during the callback.
+    {
+        auto *closingHost=new MobileNativeViewStack;
+        QPointer<MobileNativeViewStack> guardedHost(closingHost);
+        QObject closingDocument;
+        auto *closingView=new QWidget;
+        const QPointer<QObject> closingIdentity(closingView);
+        if(!require(closingHost->adoptView(closingView,&closingDocument,
+                        QStringLiteral("Closing host"),
+                        [&]() {delete closingHost;return true;}),
+                    "register host teardown close callback"))return 1;
+        if(!require(closingHost->closeView(closingIdentity) && !guardedHost,
+                    "synchronous host teardown does not access freed stack"))
+            return 1;
+    }
+    // Reentrant close must not start another save/discard prompt.
+    {
+        MobileNativeViewStack guardedStack;
+        QObject document;
+        auto *view=new QWidget;
+        const QPointer<QObject> identity(view);
+        bool nestedRejected=false;
+        if(!require(guardedStack.adoptView(view,&document,
+                        QStringLiteral("Nested close"),[&]() {
+                            nestedRejected=!guardedStack.closeView(identity);
+                            return false;
+                        }),"register nested close callback"))return 1;
+        if(!require(!guardedStack.closeView(identity) && nestedRejected &&
+                    guardedStack.openViews().size()==1,
+                    "nested close rejected while primary prompt is open"))
+            return 1;
+    }
+
     qInfo()<<"PASS: multi-document native view ownership, duplicate rejection,"
              " activation, state changes and cancelable closing";
     return 0;
