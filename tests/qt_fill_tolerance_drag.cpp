@@ -15,6 +15,15 @@ int main()
     if(!mobileFillPreviewResultCurrent(20,20,4,4) ||
        mobileFillPreviewResultCurrent(20,20,4,6) ||
        mobileFillPreviewResultCurrent(20,30,6,6))return 7;
+    // Fill preview workers must never allocate an unbounded sample
+    // when canvas geometry or a colorspace stride is malformed.
+    if(mobileFillPreviewBufferBytes(QSize(384,384),4)!=589824 ||
+       mobileFillPreviewBufferBytes(QSize(384,384),16)!=2359296 ||
+       mobileFillPreviewBufferBytes(QSize(0,384),4)!=0 ||
+       mobileFillPreviewBufferBytes(QSize(385,384),4)!=0 ||
+       mobileFillPreviewBufferBytes(QSize(384,384),0)!=0 ||
+       mobileFillPreviewBufferBytes(QSize(384,384),1000000)!=0)
+        return 8;
     const QRect canvas(0,0,2000,1600);
     if(mobileFillPreviewWindow(canvas,QPoint(500,500))!=QRect(308,308,384,384) ||
        mobileFillPreviewWindow(canvas,QPoint(0,0))!=QRect(0,0,384,384) ||
