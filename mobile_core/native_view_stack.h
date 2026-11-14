@@ -237,8 +237,13 @@ private:
         m_closing=true;
         const bool accepted=close();
         if(!host)return accepted;
-        m_closing=false;
-        if(!accepted)return false;
+        if(!accepted) {
+            m_closing=false;
+            return false;
+        }
+        // Keep the close guard active through row removal: removeWidget()
+        // emits currentChanged and its observers may try to close the
+        // newly selected canvas before this transaction has finished.
         // Native callback usually destroys its KisView. A host adapter
         // can also report an accepted close without doing so: after
         // removing the row, retire only a still-owned, unregistered
@@ -249,6 +254,7 @@ private:
            closingView->parentWidget()==host.data() &&
            host->indexOf(closingView.data())<0)
             closingView->deleteLater();
+        m_closing=false;
         return true;
     }
 
