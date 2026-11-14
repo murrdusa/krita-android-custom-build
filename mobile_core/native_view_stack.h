@@ -71,7 +71,7 @@ public:
         // as successfully registered after those callbacks.
         if(!host)return false;
         if(inserted>=0 && guardedView && guardedDocument &&
-           indexOf(guardedView.data())>=0 && uniqueRow(guardedView))
+           indexOf(guardedView.data())>=0 && uniqueRow(QPointer<QObject>(guardedView.data())))
             return true;
         forgetToken(token);
         return false;
@@ -122,7 +122,7 @@ public:
         // Activation emits synchronous Qt signals; a handler can
         // destroy the host as well as the requested native view.
         return host && target && host->currentWidget()==target.data() &&
-               host->uniqueRow(target);
+               host->uniqueRow(QPointer<QObject>(target.data()));
     }
 
     bool closeView(const QPointer<QObject> &identity) const override
