@@ -211,6 +211,40 @@ int main(int argc,char **argv)
                 "gallery rename prompt survived destroyed Android host");
     }
 
+    // Android's document-provider delete may synchronously tear down
+    // the gallery/window. A successful provider result must not trigger
+    // follow-up UI/index updates on an already-destroyed host.
+    {
+        auto *gallery=new QWidget;
+        const QPointer<QWidget> home(gallery);
+        bool touchedGalleryAfterDelete=false;
+        const auto providerDelete=[gallery]() {
+            delete gallery;
+            return true;
+        };
+        const bool removed=providerDelete();
+        if(home && removed)
+            touchedGalleryAfterDelete=true;
+        require(removed && !home && !touchedGalleryAfterDelete,
+                "provider deletion continued into destroyed gallery state");
+    }
+    // Information/warning dialogs shown after a failed delete must be
+    // heap-owned: a parent teardown inside exec() cannot delete a
+    // stack-allocated QMessageBox that is still executing.
+    {
+        auto *gallery=new QWidget;
+        const QPointer<QWidget> home(gallery);
+        QPointer<QMessageBox> warning(new QMessageBox(
+            QMessageBox::Warning,QStringLiteral("Delete failed"),
+            QStringLiteral("Provider rejected deletion"),
+            QMessageBox::Ok,gallery));
+        QTimer::singleShot(0,&app,[gallery]() { delete gallery; });
+        warning->exec();
+        delete warning.data();
+        require(!home && !warning,
+                "delete warning outlived its destroyed gallery parent");
+    }
+
     // Regress the independent Qt ownership pattern used by the native
     // Save/Discard/Cancel dialog. This test target intentionally has no
     // KDE localization dependency, so it exercises the same heap-owned
