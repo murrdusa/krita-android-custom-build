@@ -1134,7 +1134,7 @@ private:
         const qint64 modified=useDraft?draftTime:savedTime;
         item->setData(Qt::UserRole+4,path);
         item->setData(Qt::UserRole+5,modified);
-        m_attempted.remove(qMakePair(path,modified));
+        m_attempted.remove(path);
         const auto cached=m_cache.find(path);
         if(cached!=m_cache.end() && cached->modified==modified) {
             item->setIcon(cached->icon);
@@ -1166,7 +1166,7 @@ private:
             old->setIcon(m_placeholder);
             m_cache.remove(path);
             // Reentering this row should load its preview again.
-            m_attempted.remove(qMakePair(path,revision));
+            m_attempted.remove(path);
         }
     }
 
@@ -1484,7 +1484,7 @@ private:
             const auto request=qMakePair(path,modified);
             const auto cached=m_cache.constFind(path);
             if(path.isEmpty() || m_pending.contains(request) ||
-               m_attempted.contains(request) ||
+               m_attempted.value(path,-1)==modified ||
                (cached!=m_cache.cend() && cached->modified==modified))continue;
             m_pending.insert(request);
             --budget;
@@ -1511,7 +1511,7 @@ private:
                         home->scheduleThumbnails();
                         return;
                     }
-                    home->m_attempted.insert(request);
+                    home->m_attempted.insert(path,modified);
                     if(!image.isNull()) {
                         if(home->m_cache.size()>=96)home->m_cache.erase(
                             home->m_cache.begin());
@@ -1552,7 +1552,10 @@ private:
     bool m_displayLimitReached=false;
     QHash<QString,QFileInfo> m_latestDrafts;
     QVariantMap m_savedPreviewRevisions;
-    QSet<QPair<QString,qint64>> m_pending,m_attempted;
+    QSet<QPair<QString,qint64>> m_pending;
+    // At most one attempted revision per project; repeated edits must not
+    // accumulate historical failed-preview records across a long session.
+    QHash<QString,qint64> m_attempted;
     struct CachedPreview {QIcon icon; qint64 modified=0;};
     QHash<QString,CachedPreview> m_cache;
     QList<QString> m_previewIconOrder;
