@@ -116,6 +116,24 @@ public:
     {
         return m_nativeViewPort;
     }
+    // Roll back only a failed pre-document engine bootstrap. Never
+    // dismantle a root with any native view or installed services:
+    // those may contain unsaved artwork and must follow normal Close.
+    bool discardEmptyNativeDocumentRoot()
+    {
+        auto *root=qobject_cast<MobileNativeViewStack*>(m_canvas.data());
+        if(!root || centralWidget()!=root || m_services.ready() ||
+           m_uiInstalled || !root->openViews().isEmpty() ||
+           !root->findChildren<QWidget*>(QString(),Qt::FindDirectChildrenOnly).isEmpty())
+            return false;
+        QWidget *detached=takeCentralWidget();
+        if(detached!=root)return false;
+        m_nativeViewPort.clear();
+        delete detached;
+        return !m_canvas && !centralWidget();
+    }
+
+
 
     // The independent Krita manager attaches its rotation and zoom
     // widgets to a QStatusBar in this very QMainWindow. Preserve
