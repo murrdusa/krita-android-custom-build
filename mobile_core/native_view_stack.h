@@ -70,8 +70,12 @@ public:
         // activated view or its document. Never report a stale canvas
         // as successfully registered after those callbacks.
         if(!host)return false;
+        const Row *registered=guardedView?
+            uniqueRow(QPointer<QObject>(guardedView.data())):nullptr;
         if(inserted>=0 && guardedView && guardedDocument &&
-           indexOf(guardedView.data())>=0 && uniqueRow(QPointer<QObject>(guardedView.data())))
+           indexOf(guardedView.data())>=0 && registered &&
+           registered->token==token &&
+           registered->document==guardedDocument)
             return true;
         forgetToken(token);
         return false;
@@ -116,13 +120,19 @@ public:
         if(!row || !row->view || !row->document ||
            indexOf(row->view.data())<0)return false;
         const auto target=row->view;
+        const auto document=row->document;
+        const quint64 token=row->token;
         auto *self=const_cast<MobileNativeViewStack*>(this);
         const QPointer<MobileNativeViewStack> host(self);
         self->setCurrentWidget(target.data());
-        // Activation emits synchronous Qt signals; a handler can
-        // destroy the host as well as the requested native view.
-        return host && target && host->currentWidget()==target.data() &&
-               host->uniqueRow(QPointer<QObject>(target.data()));
+        // Selection signals may synchronously remove and re-register
+        // the same QWidget under a different document. Validate the
+        // original registration, not just a still-live widget pointer.
+        if(!host || !target || !document ||
+           host->currentWidget()!=target.data())return false;
+        const Row *selected=host->uniqueRow(QPointer<QObject>(target.data()));
+        return selected && selected->token==token &&
+               selected->document==document;
     }
 
     bool closeView(const QPointer<QObject> &identity) const override
