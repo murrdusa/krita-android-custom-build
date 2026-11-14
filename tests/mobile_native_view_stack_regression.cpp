@@ -108,6 +108,20 @@ int main(int argc,char **argv)
                     recoveryBefore,reusedView),
                 "recovery refuses reused view with different document"))
         return 1;
+    auto duplicateDocument=recoveryBefore;
+    duplicateDocument.last().document=duplicateDocument.first().document;
+    if(!require(!Identity::sameRecoveryWorkspace(
+                    duplicateDocument,duplicateDocument),
+                "recovery refuses two native views sharing one document"))
+        return 1;
+    // The expected workspace itself may have been malformed at capture
+    // time. A matching malformed state must not authorize restoration.
+    auto duplicateView=recoveryBefore;
+    duplicateView.last().nativeView=duplicateView.first().nativeView;
+    if(!require(!Identity::sameRecoveryWorkspace(
+                    duplicateView,duplicateView),
+                "recovery refuses matching duplicate view identities"))
+        return 1;
     auto missingDocument=recoveryBefore;
     missingDocument.last().document.clear();
     if(!require(!Identity::sameRecoveryWorkspace(
