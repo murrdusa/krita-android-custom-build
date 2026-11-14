@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — parent-safe Version History modal lifecycle
+
+- Replaced the stack-allocated, window-parented Version History modal dialog with a guarded heap-owned QDialog. Previously Android could destroy the host window during the nested `exec()` event loop, and Qt's parent cleanup would attempt to `delete` a child dialog still residing on the caller's C++ stack. The dialog and home identities are now checked after the modal loop; successful selection is copied before deleting the dialog and opening the selected version.
+- Added a Qt lightweight-host regression that destroys a window while its history-style modal event loop runs and verifies both guarded dialog and parent identities clear without double deletion.
+- **Verification:** preceding shutdown-aware gallery worker revision `cb2e9a95631c6d1f3c4b3ef586fbf37e75ca95f5` passed exact-SHA WSL Android compilation. The new dialog lifetime code and Qt regression await an exact-SHA build/test result. No APK uploaded.
+
+
 ## November 14 — Qt shutdown-aware gallery background work
 
 - The All Projects storage scanner, gallery thumbnail workers, and Version History loader now retain a guarded Qt application identity before queuing UI callbacks. They stop publishing results if the application has begun object teardown, rather than posting to a stale global `qApp` pointer.
