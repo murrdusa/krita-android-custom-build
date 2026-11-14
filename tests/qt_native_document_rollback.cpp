@@ -1,7 +1,6 @@
 #include <QCoreApplication>
 #include <QPointer>
 #include <QSharedPointer>
-#include <QTimer>
 #include <atomic>
 #include <memory>
 #include <QEnableSharedFromThis>
@@ -75,24 +74,24 @@ int main(int argc,char **argv)
             backend.isNull() && backendDestructions==1,
             "reentrant owner release destroyed in-flight document backend");
 
-    // A queued completion notification may already be in Qt's event
-    // queue when Save disconnects its listener. Its closure must own
-    // everything it uses instead of referencing the finished call stack.
-    QTimer saveSignal;
+    // A completion event may already be queued when the Save operation
+    // unwinds. The queued closure must own both its completion flag and
+    // the expected path after their originating stack frame is gone.
+    auto posted=std::make_shared<std::atomic_bool>(false);
     QObject documentContext;
-    auto completed=std::make_shared<std::atomic_bool>(false);
-    const QString expected=QStringLiteral("drawing.kra");
-    const auto connection=QObject::connect(
-        &saveSignal,&QTimer::timeout,&documentContext,
-        [completed,expected]() {
-            if(expected==QStringLiteral("drawing.kra"))
-                completed->store(true);
-        },Qt::QueuedConnection);
-    saveSignal.timeout();
-    QObject::disconnect(connection);
-    // The signal may be dropped on some Qt versions after disconnect;
-    // whether delivered or dropped, it may not retain dangling data.
+    auto postCompletion=[&documentContext,posted]() {
+        const QString target=QStringLiteral("drawing.kra");
+        auto completion=posted;
+        QMetaObject::invokeMethod(&documentContext,
+            [completion,target]() {
+                if(target==QStringLiteral("drawing.kra"))
+                    completion->store(true);
+            },Qt::QueuedConnection);
+    };
+    postCompletion();
+    require(!posted->load(),"queued completion ran before event dispatch");
     app.processEvents();
+    require(posted->load(),"queued completion lost captured Save state");
 
     qInfo()<<"PASS: attach failure rollback, duplicate prevention and"
               "ownership isolation";
