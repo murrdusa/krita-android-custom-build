@@ -604,12 +604,18 @@ private:
                     // A modal text prompt processes Android lifecycle events.
                     // The owning gallery may be destroyed before it returns.
                     const QPointer<MobileDocumentHome> home(this);
-                    bool accepted=false;
-                    const QString name=QInputDialog::getText(this,i18n("Rename draft"),
-                        i18n("Name"),QLineEdit::Normal,title,&accepted).trimmed();
+                    QPointer<QInputDialog> prompt(new QInputDialog(this));
+                    prompt->setWindowTitle(i18n("Rename draft"));
+                    prompt->setLabelText(i18n("Name"));
+                    prompt->setInputMode(QInputDialog::TextInput);
+                    prompt->setTextEchoMode(QLineEdit::Normal);
+                    prompt->setTextValue(title);
+                    const int result=prompt->exec();
+                    const QString name=prompt?prompt->textValue().trimmed():QString();
+                    delete prompt.data();
                     if(!home || !home->isVisible() ||
                        generation!=home->m_homeListGeneration)return;
-                    if(accepted && !name.isEmpty()) {
+                    if(result==QDialog::Accepted && !name.isEmpty()) {
                         if(MobileDraftRecovery::rename(path,name))showList(m_mode);
                         else QMessageBox::warning(this,i18n("Could not rename draft"),
                             i18n("The recovery file could not be updated."));
@@ -711,10 +717,16 @@ private:
     {
         const QString key=projectKey(path);
         const QPointer<MobileDocumentHome> home(this);
-        if(QMessageBox::question(this,i18n("Delete drawing?"),
+        // The Android activity can destroy its window during the nested
+        // confirmation event loop; never parent a stack dialog to it.
+        QPointer<QMessageBox> confirm(new QMessageBox(
+            QMessageBox::Question,i18n("Delete drawing?"),
             i18n("Permanently delete %1 from storage?",title),
-            QMessageBox::Yes|QMessageBox::Cancel,QMessageBox::Cancel)!=QMessageBox::Yes ||
-            !home || !home->isVisible())return;
+            QMessageBox::Yes|QMessageBox::Cancel,this));
+        confirm->setDefaultButton(QMessageBox::Cancel);
+        const int decision=confirm->exec();
+        delete confirm.data();
+        if(decision!=QMessageBox::Yes || !home || !home->isVisible())return;
         for(const auto &entry:m_engine.openDocuments()) {
             const auto *document=qobject_cast<KisDocument*>(entry.document.data());
             if(!document)continue;
@@ -794,11 +806,15 @@ private:
             return;
         }
         const QPointer<MobileDocumentHome> home(this);
-        if(QMessageBox::question(this,i18n("Discard draft?"),
+        QPointer<QMessageBox> confirm(new QMessageBox(
+            QMessageBox::Question,i18n("Discard draft?"),
             i18n("Discard the unsaved changes in %1?",
                  MobileDraftRecovery::title(QFileInfo(path))),
-            QMessageBox::Discard|QMessageBox::Cancel,QMessageBox::Cancel)
-                !=QMessageBox::Discard || !home || !home->isVisible())return;
+            QMessageBox::Discard|QMessageBox::Cancel,this));
+        confirm->setDefaultButton(QMessageBox::Cancel);
+        const int decision=confirm->exec();
+        delete confirm.data();
+        if(decision!=QMessageBox::Discard || !home || !home->isVisible())return;
         if(draftIsOpen(path) || !MobileDraftRecovery::isDraft(path))return;
         if(!QFile::remove(path)) {
             QMessageBox::warning(this,i18n("Could not discard draft"),
