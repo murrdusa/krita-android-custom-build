@@ -730,6 +730,7 @@ private:
         m_starred.remove(key);
         saveStars();
         m_cache.remove(path);
+        m_previewIconOrder.removeAll(key);
         if(auto *item=m_projectItems.take(key))delete item;
         // Serialize removal after any queued index save.
         m_scanner.start([key]() {
@@ -927,6 +928,7 @@ private:
         m_access->setVisible(mode==AllProjects && !m_lastAccess);
         m_sort->setVisible(mode==AllProjects);
         m_projectItems.clear();
+        m_previewIconOrder.clear();
         m_displayLimitReached=false;
         m_list->clear();
         resetThumbnailRequests();
@@ -1116,11 +1118,37 @@ private:
         item->setData(Qt::UserRole+5,modified);
         m_attempted.remove(qMakePair(path,modified));
         const auto cached=m_cache.find(path);
-        if(cached!=m_cache.end() && cached->modified==modified)
+        if(cached!=m_cache.end() && cached->modified==modified) {
             item->setIcon(cached->icon);
-        else {
+            retainPreviewIcon(item);
+        } else {
             if(cached!=m_cache.end())m_cache.erase(cached);
+            m_previewIconOrder.removeAll(projectKey(project));
             item->setIcon(m_placeholder);
+        }
+    }
+
+    // A bounded PNG cache is insufficient on its own: QListWidgetItem
+    // keeps a second QIcon reference even after its cache entry is
+    // evicted. Retire icons from previously visited, offscreen rows so
+    // scrolling through thousands of paintings cannot retain them all.
+    void retainPreviewIcon(QListWidgetItem *item)
+    {
+        if(!item)return;
+        const QString key=projectKey(item->data(Qt::UserRole).toString());
+        m_previewIconOrder.removeAll(key);
+        m_previewIconOrder.append(key);
+        constexpr int maxResidentIcons=128;
+        while(m_previewIconOrder.size()>maxResidentIcons) {
+            const QString oldKey=m_previewIconOrder.takeFirst();
+            auto *old=m_projectItems.value(oldKey);
+            if(!old)continue;
+            const QString path=old->data(Qt::UserRole+4).toString();
+            const qint64 revision=old->data(Qt::UserRole+5).toLongLong();
+            old->setIcon(m_placeholder);
+            m_cache.remove(path);
+            // Reentering this row should load its preview again.
+            m_attempted.remove(qMakePair(path,revision));
         }
     }
 
@@ -1463,6 +1491,7 @@ private:
                         const QIcon icon(QPixmap::fromImage(image));
                         home->m_cache.insert(path,{icon,modified});
                         current->setIcon(icon);
+                        home->retainPreviewIcon(current);
                     }
                     home->scheduleThumbnails();
                 },Qt::QueuedConnection);
@@ -1499,6 +1528,7 @@ private:
     QSet<QPair<QString,qint64>> m_pending,m_attempted;
     struct CachedPreview {QIcon icon; qint64 modified=0;};
     QHash<QString,CachedPreview> m_cache;
+    QList<QString> m_previewIconOrder;
     std::shared_ptr<std::atomic_bool> m_previewCancelled=
         std::make_shared<std::atomic_bool>(false);
 };
