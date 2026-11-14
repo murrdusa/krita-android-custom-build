@@ -229,7 +229,8 @@ public:
 private:
     void checkpointDrafts()
     {
-        if(!m_root)return;
+        const QPointer<MobileNativeViewStack> originalRoot=m_root;
+        if(!originalRoot)return;
         if(m_checkpointing) {
             // A foreground-loss or quit request can arrive from inside
             // Krita's nested save event loop. Do not discard that later
@@ -262,7 +263,9 @@ private:
         // every distinct document hosted by this runtime, not just the
         // currently selected tab. Never activate a view to save it.
         QList<QPointer<KisDocument>> seen;
-        for(const auto &view:m_root->openViews()) {
+        for(const auto &view:originalRoot->openViews()) {
+            if(!alive || !originalRoot ||
+               alive->m_root!=originalRoot)return;
             auto *document=qobject_cast<KisDocument*>(view.document.data());
             if(!document || seen.contains(document))continue;
             seen.append(document);
@@ -277,7 +280,8 @@ private:
                 QMetaObject::invokeMethod(document,"slotAutoSave",Qt::DirectConnection);
                 // A native Save can close the final view/window. Stop
                 // iterating immediately if its runtime was torn down.
-                if(!alive || !m_root)return;
+                if(!alive || !originalRoot ||
+                   alive->m_root!=originalRoot)return;
             }
         }
     }
@@ -300,10 +304,14 @@ private:
     {
         if(m_checkpointing)return;
         const QPointer<MobileKritaStandaloneRuntime> alive(this);
+        const QPointer<MobileNativeViewStack> originalRoot=m_root;
+        if(!originalRoot)return;
         // Finish queued checkpoints independently: a busy document must
         // never block another open canvas from being protected.
         const auto pending=m_pendingDrafts;
         for(const auto &document:pending) {
+            if(!alive || !originalRoot ||
+               alive->m_root!=originalRoot)return;
             if(!document) {
                 m_pendingDrafts.removeAll(QPointer<KisDocument>());
                 continue;
@@ -313,7 +321,8 @@ private:
             if(ownsDocument(document) && document->isModified() &&
                !document->property("_mobileDraftPath").toString().isEmpty())
                 QMetaObject::invokeMethod(document,"slotAutoSave",Qt::DirectConnection);
-            if(!alive || !m_root)return;
+            if(!alive || !originalRoot ||
+               alive->m_root!=originalRoot)return;
         }
     }
 
