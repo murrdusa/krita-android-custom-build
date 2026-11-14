@@ -7,6 +7,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QPointer>
+#include <QWindow>
 #include <QVBoxLayout>
 #include <QWidget>
 #include "mobile_core/canvas_resume_observer.h"
@@ -63,6 +64,23 @@ int main(int argc,char **argv)
     drain();
     require(activations>reopened,
             "did not retry activation after the canvas root reappeared");
+
+    // A native surface can be created after the QWidget is first
+    // shown, and WinIdChange can occur more than once for the same
+    // surface. Rebinding must preserve future expose notifications.
+    window.winId();
+    QEvent windowHandleChanged(QEvent::WinIdChange);
+    QCoreApplication::sendEvent(&window,&windowHandleChanged);
+    QCoreApplication::sendEvent(&window,&windowHandleChanged);
+    drain();
+    QWindow *surface=window.windowHandle();
+    require(surface,"native window surface was not created");
+    const int beforeExpose=activations;
+    QEvent exposed(QEvent::Expose);
+    QCoreApplication::sendEvent(surface,&exposed);
+    drain();
+    require(activations>beforeExpose,
+            "window exposure no longer resumes native canvas");
 
     const int beforeDeletion=activations;
     delete root;
