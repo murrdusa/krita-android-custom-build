@@ -346,6 +346,27 @@ int main(int argc,char **argv)
     require(MobileDraftRecovery::publish(draft,true) &&
             !QFile::exists(staging) && QFileInfo(draft).size()==15,
             "successful publication must replace the draft at its stable path");
+    // Publication can fail after the native KRA export completed, for
+    // example because the destination is unexpectedly a directory.
+    // The valid staging archive is the latest user data: retain it and
+    // permit the same completed bytes to be published on retry.
+    const QString blockedDraft=MobileDraftRecovery::allocate(
+        QStringLiteral("blocked-publication"));
+    require(!blockedDraft.isEmpty() && QDir().mkpath(blockedDraft),
+            "create a temporarily unwritable publication destination");
+    const QString blockedStage=blockedDraft+QStringLiteral(".pending.kra");
+    const QByteArray latestEdits=QByteArray::fromHex("504b0304")+
+        "recoverable-after-rename-failure";
+    save(blockedStage,latestEdits);
+    require(!MobileDraftRecovery::publish(blockedDraft,true) &&
+            load(blockedStage)==latestEdits,
+            "failed atomic replace discarded a completed autosave");
+    require(QDir().rmdir(blockedDraft) &&
+            MobileDraftRecovery::publish(blockedDraft,true) &&
+            load(blockedDraft)==latestEdits &&
+            !QFile::exists(blockedStage),
+            "completed autosave could not publish after retry");
+    QFile::remove(blockedDraft);
     require(MobileDraftRecovery::hasKraHeader(draft) &&
             !MobileDraftRecovery::hasKraHeader(
                 draft+QStringLiteral(".pending.kra")),
