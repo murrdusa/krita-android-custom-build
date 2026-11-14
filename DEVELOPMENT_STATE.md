@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — serialize independent runtime autosave passes
+
+- The native standalone runtime now treats each `checkpointDrafts()` invocation as a single-flight operation. The periodic 15-second timer, foreground-to-background transition and about-to-quit handler can all fire while Krita's synchronous `slotAutoSave` processes nested Qt events; without a guard they could recursively launch overlapping canvas checkpoints and consume extra memory/IO.
+- A Qt scope guard clears the in-flight flag only if the runtime survives callbacks that may close its final view or window. If a background save completes during checkpoint processing, its pending-draft continuation is deferred until the current pass unwinds, rather than running recursively; pending draft identities remain preserved.
+- **Verification:** previous native render-wait dialog revision `39fe1dd87f4d9e4393cfb38879575ff448331536` passed exact-SHA WSL Android compilation. Latest autosave scheduling changes await their own exact-SHA compile result; no device runtime testing or APK upload.
+
+
 ## November 14 — safe native Save render-wait modal ownership
 
 - The native save pipeline's `KisDelayedSaveDialog` (which can block and process Qt events while the image finishes rendering) is now heap-owned and tracked by `QPointer`. Previously it was a stack-allocated dialog parented to the Android window, so window destruction during the nested render-wait event loop could delete an object still residing on the native Save call stack.
