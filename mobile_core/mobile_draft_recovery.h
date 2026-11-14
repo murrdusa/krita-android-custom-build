@@ -130,12 +130,21 @@ public:
             return false;
         }
         // A completed staging KRA may contain the only copy of the
-        // newest edits. If atomic replacement fails (permissions,
-        // transient storage error, busy destination), preserve it for
-        // recovery or a subsequent publication attempt instead of
-        // deleting the successful export.
-        return std::rename(QFile::encodeName(staging).constData(),
-                           QFile::encodeName(draft).constData())==0;
+        // newest edits. Never delete it merely because replacement fails.
+        if(std::rename(QFile::encodeName(staging).constData(),
+                       QFile::encodeName(draft).constData())==0)return true;
+        // A .pending.kra is intentionally excluded from the recovery
+        // browser. Move the completed export to its own private draft
+        // identity so the edits remain discoverable after a restart.
+        // Keep staging intact if even the rescue rename fails.
+        const QString rescue=allocate(title(QFileInfo(draft)));
+        if(!rescue.isEmpty() && !QFileInfo(rescue).exists() &&
+           std::rename(QFile::encodeName(staging).constData(),
+                       QFile::encodeName(rescue).constData())==0) {
+            const QString originalProject=projectFor(draft);
+            if(!originalProject.isEmpty())setProject(rescue,originalProject);
+        }
+        return false;
     }
 
     static QString projectFor(const QString &draft)
