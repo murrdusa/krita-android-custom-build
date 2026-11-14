@@ -1,0 +1,97 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+#include "mobile_studio/workspace_profiles.h"
+#include "mobile_studio/native_command_layout.h"
+#include <QApplication>
+#include <QEventLoop>
+#include <QTemporaryDir>
+
+int main(int argc,char **argv)
+{
+    QApplication app(argc,argv);
+    QTemporaryDir files;
+    if(!files.isValid())return 1;
+    QSettings settings(files.filePath(QStringLiteral("profiles.ini")),QSettings::IniFormat);
+    using namespace MobileWorkspaceProfiles;
+    if(!portraitDefault(QSize(360,800),false) ||
+       portraitDefault(QSize(800,840),false) || portraitDefault(QSize(800,360),true))return 2;
+    if(!matches(QSize(360,800),QSize(370,760)) ||
+       matches(QSize(360,800),QSize(800,800)) ||
+       !matches(QSize(799,801),QSize(801,799)))return 3;
+    remember(settings,QStringLiteral("folded"),QSize(360,800));
+    remember(settings,QStringLiteral("wide"),QSize(850,610));
+    settings.setValue(group(QStringLiteral("folded"))+QStringLiteral("layersCollapsed"),true);
+    replace(settings,QStringLiteral("wide"),QSize(850,610),QStringLiteral("folded"));
+    if(!settings.value(group(QStringLiteral("wide"))+QStringLiteral("layersCollapsed")).toBool() ||
+       closest(settings,QSize(350,780))!=QStringLiteral("folded"))return 4;
+    replace(settings,QStringLiteral("wide"),QSize(850,610));
+    if(saved(settings).size()!=1 || !closest(settings,QSize(850,610)).isEmpty())return 5;
+    // Layout edits after slightly resizing an existing Fold/split-screen
+    // workspace should track the new viewport without duplicating an ID
+    // or erasing that profile's command and panel settings.
+    if(sizeForSave(QSize(375,790),QSize(360,800),true)!=QSize(375,790) ||
+       sizeForSave(QSize(800,360),QSize(360,800),true)!=QSize(360,800) ||
+       sizeForSave(QSize(750,780),QSize(360,800),true)!=QSize(360,800))
+        return 14;
+    remember(settings,QStringLiteral("folded"),QSize(375,790));
+    if(saved(settings).size()!=1 ||
+       settings.value(group(QStringLiteral("folded"))+
+           QStringLiteral("size")).toSize()!=QSize(375,790) ||
+       !settings.value(group(QStringLiteral("folded"))+
+           QStringLiteral("layersCollapsed")).toBool() ||
+       closest(settings,QSize(375,790))!=QStringLiteral("folded"))return 12;
+    remember(settings,QStringLiteral("folded"),QSize());
+    if(settings.value(group(QStringLiteral("folded"))+
+        QStringLiteral("size")).toSize()!=QSize(375,790))return 13;
+
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,files.path());
+    QCoreApplication::setOrganizationName(QStringLiteral("KritaWorkspaceTest"));
+    QCoreApplication::setApplicationName(QStringLiteral("Studio"));
+    QMainWindow window;
+    auto *canvas=new QWidget(&window);
+    window.setCentralWidget(canvas);
+    window.resize(320,700);
+    QPixmap pixel(16,16);
+    pixel.fill(Qt::white);
+    const QIcon icon(pixel);
+    QAction home(icon,QStringLiteral("Home"),&window);
+    MobileNativeCommandLayout::Commands commands;
+    QStringList defaults;
+    for(int i=0;i<8;++i) {
+        const auto key=QString::number(i);
+        commands.insert(key,new QAction(icon,key,&window));
+        defaults.append(key);
+    }
+    auto *layout=MobileNativeCommandLayout::install(&window,&home,icon,commands,defaults,{});
+    if(!layout)return 6;
+    window.show();
+    QApplication::processEvents();
+    auto *bar=canvas->findChild<QFrame*>(QStringLiteral("_mobileNativeToolbar"));
+    auto *scroll=bar?bar->findChild<QScrollArea*>():nullptr;
+    if(!bar || !scroll || bar->geometry().bottom()!=canvas->rect().bottom()-2 ||
+       scroll->horizontalScrollBar()->maximum()!=0)return 7;
+    QString active;
+    bool portrait=false;
+    layout->bindWorkspace([&](const QString &id,bool isPortrait) {active=id;portrait=isPortrait;});
+    const QString portraitId=active;
+    if(portraitId.isEmpty() || !portrait)return 8;
+    QSettings local;
+    remember(local,portraitId,canvas->size());
+    QStringList custom=defaults;
+    custom.move(0,3);
+    local.setValue(group(portraitId)+QStringLiteral("primaryToolbarCommands"),custom);
+    const auto resize=[&](int width,int height) {
+        window.resize(width,height);
+        QEventLoop wait;
+        QTimer::singleShot(260,&wait,&QEventLoop::quit);
+        wait.exec();
+    };
+    resize(800,360);
+    if(portrait || active==portraitId || bar->geometry().left()!=2 ||
+       bar->height()<=bar->width() || scroll->verticalScrollBar()->maximum()!=0)return 9;
+    resize(750,780);
+    if(portrait || active==portraitId || bar->height()<=bar->width())return 10;
+    resize(340,720);
+    const auto *first=qobject_cast<QToolButton*>(scroll->widget()->layout()->itemAt(0)->widget());
+    if(!portrait || active!=portraitId || !first || first->defaultAction()!=commands.value(custom.first()))return 11;
+}

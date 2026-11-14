@@ -31,8 +31,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile apply_customizations.py apply_tablet_update.py apply_tablet_refinements.py apply_tablet_polish.py apply_tablet_cleanup.py apply_reference_touch_fix.py apply_compact_skin.py apply_wheel_rotation.py apply_diamond_rotation.py apply_gallery_tabs.py apply_home_mobile.py apply_mobile_recovery.py apply_mobile_touch_scroll.py apply_mobile_shell.py krita_apk_publisher.py
-          test -f tablet_compact_skin.h
+          python3 -m compileall -q tools
+          test -f mobile_studio/include/mobile_studio/tablet_compact_skin.h
           bash -n build-in-krita-container.sh local-build.sh
 
       - name: Reclaim disk space
@@ -52,20 +52,7 @@ jobs:
           ROOT="$HOME/krita-custom-android-build"
           mkdir -p "$ROOT/persistent"
           git clone --depth 1 --branch v6.0.4 https://github.com/KDE/krita.git "$ROOT/persistent/krita"
-          python3 apply_customizations.py "$ROOT/persistent/krita"
-          python3 apply_tablet_update.py "$ROOT/persistent/krita"
-          python3 apply_tablet_refinements.py "$ROOT/persistent/krita"
-          python3 apply_tablet_polish.py "$ROOT/persistent/krita"
-          python3 apply_tablet_cleanup.py "$ROOT/persistent/krita"
-          python3 apply_reference_touch_fix.py "$ROOT/persistent/krita"
-          python3 apply_compact_skin.py "$ROOT/persistent/krita"
-          python3 apply_wheel_rotation.py "$ROOT/persistent/krita"
-          python3 apply_diamond_rotation.py "$ROOT/persistent/krita"
-          python3 apply_gallery_tabs.py "$ROOT/persistent/krita"
-          python3 apply_home_mobile.py "$ROOT/persistent/krita"
-          python3 apply_mobile_recovery.py "$ROOT/persistent/krita"
-          python3 apply_mobile_touch_scroll.py "$ROOT/persistent/krita"
-          python3 apply_mobile_shell.py "$ROOT/persistent/krita"
+          python3 tools/patches/apply_all.py "$ROOT/persistent/krita"
           python3 -c 'import hashlib, pathlib; p=pathlib.Path.home()/"krita-custom-android-build/persistent/krita"; xml=(p/"krita/krita5.xmlgui").read_text(); cmake=(p/"krita/CMakeLists.txt").read_text(); actual=hashlib.md5("".join(xml.split()).encode()).hexdigest(); expected=next(s.split(chr(34))[1] for s in cmake.splitlines() if "set(krita5_xmlgui_hash_expected" in s); assert actual==expected, f"XMLGUI checksum mismatch: {actual} != {expected}"; print(f"XMLGUI checksum validated: {actual}")'
           git -C "$ROOT/persistent/krita" diff --check
           git -C "$ROOT/persistent/krita" diff --stat

@@ -10,9 +10,9 @@ if ! command -v pkg-config >/dev/null ||
 fi
 out="$(mktemp -d)"
 trap 'rm -rf "$out"' EXIT
-c++ -std=c++17 -fPIC -O2 -Wall -Wextra \
+c++ -std=c++17 -I"$repo/mobile_studio/include" -fPIC -O2 -Wall -Wextra \
   $(pkg-config --cflags Qt5Core Qt5Gui Qt5Widgets) \
-  "$repo/tests/mobile_native_view_stack_regression.cpp" \
+  "$repo/tests/cpp/mobile_native_view_stack_regression.cpp" \
   -o "$out/mobile_native_view_stack_regression" \
   $(pkg-config --libs Qt5Core Qt5Gui Qt5Widgets)
 QT_QPA_PLATFORM=offscreen "$out/mobile_native_view_stack_regression"

@@ -9,8 +9,8 @@ if ! command -v pkg-config >/dev/null || ! pkg-config --exists Qt5Core Qt5Gui Qt
 fi
 out="$(mktemp -d)"
 trap 'rm -rf "$out"' EXIT
-c++ -std=c++17 -fPIC -O2 -Wall -Wextra \
+c++ -std=c++17 -I"$repo/mobile_studio/include" -fPIC -O2 -Wall -Wextra \
   $(pkg-config --cflags Qt5Core Qt5Gui Qt5Widgets) \
-  "$repo/tests/mobile_archive_regression.cpp" -o "$out/mobile_archive_regression" \
+  "$repo/tests/cpp/mobile_archive_regression.cpp" -o "$out/mobile_archive_regression" \
   $(pkg-config --libs Qt5Core Qt5Gui Qt5Widgets)
 "$out/mobile_archive_regression"

@@ -19,15 +19,15 @@ jobs:
         with:
           python-version: "3.11"
       - name: Compile Python source
-        run: python -m py_compile apk_size_report.py krita_build_reporter.py krita_build_cache.py apply_mobile_shell.py apply_finger_contact_pressure.py apply_finger_raw_motion.py
-      - name: Test APK size reporting
+        run: python -m compileall -q tools
+      - name: Run Python tests
         run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Check canvas ownership boundary
         run: |
           python - <<'PY'
           from pathlib import Path
-          transfer = Path("mobile_core/canvas_transfer.h").read_text()
-          surface = Path("mobile_core/canvas_surface.h").read_text()
+          transfer = Path("mobile_studio/include/mobile_studio/canvas_transfer.h").read_text()
+          surface = Path("mobile_studio/include/mobile_studio/canvas_surface.h").read_text()
           for forbidden in ('"standalone_host.h"', '"engine_bridge.h"',
                             "MobileStandaloneWindow", "KisMainWindow", "KisDocument"):
               assert forbidden not in transfer, f"Canvas transfer leaked {forbidden}"
@@ -35,7 +35,7 @@ jobs:
           assert '#include <QMdiArea>' not in transfer
           assert "QPointer<QWidget> m_documents" in transfer
           assert "refreshDocumentRoot(" in transfer
-          assert '#include <QMdiArea>' not in Path("mobile_core/canvas_session.h").read_text()
+          assert '#include <QMdiArea>' not in Path("mobile_studio/include/mobile_studio/canvas_session.h").read_text()
           assert "m_backend->centralWidget()!=m_mobileWindow" in transfer
           assert "m_backend->setCentralWidget(mobile)" in transfer
           assert "mobile->setParent(m_backend,Qt::Widget)" in transfer
@@ -46,12 +46,12 @@ jobs:
           assert "m_persistentRequestedAtStartup" in transfer
           assert 'm_backend->setProperty("_mobileStudioPresentationActive",false)' in transfer
           assert 'm_backend->setProperty("_mobileStudioCanvasTransferred",true)' in transfer
-          assert 'property("_mobileStudioPresentationActive").toBool()' in Path("apply_mobile_shell.py").read_text()
+          assert 'property("_mobileStudioPresentationActive").toBool()' in Path("tools/patches/apply_mobile_shell.py").read_text()
           # The desktop fallback must always offer a manual way back
           # into the app, even if Krita remembered a hidden toolbar.
-          assert "Settings menu mobile recovery launcher" in Path("apply_mobile_shell.py").read_text()
-          assert "'set(KRITA5_XMLGUI_VERSION 553)'" in Path("apply_mobile_shell.py").read_text()
-          startup = Path("mobile_core/canvas_session.h").read_text()
+          assert "Settings menu mobile recovery launcher" in Path("tools/patches/apply_mobile_shell.py").read_text()
+          assert "'set(KRITA5_XMLGUI_VERSION 553)'" in Path("tools/patches/apply_mobile_shell.py").read_text()
+          startup = Path("mobile_studio/include/mobile_studio/canvas_session.h").read_text()
           assert "void attemptAutomaticStartup(int remaining)" in startup
           assert "attemptAutomaticStartup(12)" in startup
           assert 'MobileStartupPolicy::ready(' in startup
@@ -59,20 +59,20 @@ jobs:
           assert 'MobileStartupPolicy::complete(settings,sessionActive())' in startup
           assert 'mobile_startup_policy.h' in startup
           assert 'if(!isReady && remaining>0)' in startup
-          assert 'QStringLiteral("MobileStudio/startDirectly"),true' in Path("mobile_core/standalone_host.h").read_text()
-          assert 'startup_policy=own/"mobile_core/mobile_startup_policy.h"' in Path("apply_mobile_shell.py").read_text()
-          assert '(root/"libs/ui/mobile_startup_policy.h").write_text(' in Path("apply_mobile_shell.py").read_text()
-          policy = Path("mobile_core/mobile_startup_policy.h").read_text()
+          assert 'QStringLiteral("MobileStudio/startDirectly"),true' in Path("mobile_studio/include/mobile_studio/standalone_host.h").read_text()
+          assert 'startup_policy=CORE/"mobile_startup_policy.h"' in Path("tools/patches/apply_mobile_shell.py").read_text()
+          assert '(root/"libs/ui/mobile_startup_policy.h").write_text(' in Path("tools/patches/apply_mobile_shell.py").read_text()
+          policy = Path("mobile_studio/include/mobile_studio/mobile_startup_policy.h").read_text()
           assert 'QStringLiteral("MobileStudio/bootPending"),false' in policy
           assert 'QStringLiteral("MobileStudio/startDirectly"),false' in policy
           assert 'QStringLiteral("MobileStudio/startDirectly"),' in policy
           assert "QTimer::singleShot(4500" not in startup
           assert "manual recovery available in Settings" in startup
-          document_service = Path("mobile_core/document_service.h").read_text()
-          command_service = Path("mobile_core/command_service.h").read_text()
-          desktop_adapters = Path("mobile_core/desktop_host_adapters.h").read_text()
-          mobile_bridge = Path("mobile_core/engine_bridge.h").read_text()
-          shell_patch = Path("apply_mobile_shell.py").read_text()
+          document_service = Path("mobile_studio/include/mobile_studio/document_service.h").read_text()
+          command_service = Path("mobile_studio/include/mobile_studio/command_service.h").read_text()
+          desktop_adapters = Path("mobile_studio/include/mobile_studio/desktop_host_adapters.h").read_text()
+          mobile_bridge = Path("mobile_studio/include/mobile_studio/engine_bridge.h").read_text()
+          shell_patch = Path("tools/patches/apply_mobile_shell.py").read_text()
           # There must be exactly one isolated desktop-Krita integration
           # adapter, not KisMainWindow calls scattered through the app.
           for name, source in (("document",document_service),
@@ -87,7 +87,7 @@ jobs:
           assert "MobileDocumentHostPort" in document_service
           assert "MobileCommandRegistryPort" in command_service
           assert "MobileEngineBridge(" in mobile_bridge
-          host_bundle = Path("mobile_core/host_services.h").read_text()
+          host_bundle = Path("mobile_studio/include/mobile_studio/host_services.h").read_text()
           assert "struct MobileHostServices final" in host_bundle
           assert "QPointer<QWidget> documentRoot" in host_bundle
           assert "bool ready() const" in host_bundle
@@ -96,12 +96,12 @@ jobs:
           assert "new MobileDesktopCommandRegistry(window)" in desktop_adapters
           assert "new MobileMdiViewHostAdapter(documentRoot,manager)" in desktop_adapters
           assert "MobileEngineBridge(mobileServices,d->viewManager)" in shell_patch
-          assert 'host_services=own/"mobile_core/host_services.h"' in shell_patch
+          assert 'host_services=CORE/"host_services.h"' in shell_patch
           assert '(root/"libs/ui/host_services.h").write_text(' in shell_patch
-          switcher = Path("mobile_core/document_switcher.h").read_text()
-          view_port = Path("mobile_core/view_host_port.h").read_text()
-          view_guard = Path("mobile_core/view_identity_guard.h").read_text()
-          mdi_adapter = Path("mobile_core/mdi_view_host_adapter.h").read_text()
+          switcher = Path("mobile_studio/include/mobile_studio/document_switcher.h").read_text()
+          view_port = Path("mobile_studio/include/mobile_studio/view_host_port.h").read_text()
+          view_guard = Path("mobile_studio/include/mobile_studio/view_identity_guard.h").read_text()
+          mdi_adapter = Path("mobile_studio/include/mobile_studio/mdi_view_host_adapter.h").read_text()
           assert "MobileViewHostPort" in view_port
           assert "MobileViewIdentityGuard::maySave(" in document_service
           assert "MobileViewIdentityGuard::safeCloseTarget(" in document_service
@@ -121,21 +121,21 @@ jobs:
           assert "KisView.h" not in document_service
           assert '#include <QMdiArea>' not in mobile_bridge
           assert "new MobileMdiViewHostAdapter(documentRoot,manager)" in desktop_adapters
-          assert 'view_guard=own/"mobile_core/view_identity_guard.h"' in shell_patch
+          assert 'view_guard=CORE/"view_identity_guard.h"' in shell_patch
           assert '(root/"libs/ui/view_identity_guard.h").write_text(' in shell_patch
           assert "closeDocumentView(activeView)" in switcher
           assert "activateDocumentView(desiredView)" in switcher
-          mobile_shell = Path("mobile_core/standalone_host.h").read_text()
-          quick_actions = Path("mobile_core/quick_actions.h").read_text()
+          mobile_shell = Path("mobile_studio/include/mobile_studio/standalone_host.h").read_text()
+          quick_actions = Path("mobile_studio/include/mobile_studio/quick_actions.h").read_text()
           assert "m_engine.closeActiveDocument()" not in mobile_shell
           assert "closeDocumentView(document.nativeView)" in mobile_shell
           assert 'id==QStringLiteral("mobile:close")' in quick_actions
-          assert "m_transfer.leave()" in Path("mobile_core/canvas_session.h").read_text()
-          assert "MobileStudio/fingerContactPressureV1" in Path("mobile_core/standalone_host.h").read_text()
-          pressure_settings = Path("mobile_core/finger_pressure_settings.h").read_text()
+          assert "m_transfer.leave()" in Path("mobile_studio/include/mobile_studio/canvas_session.h").read_text()
+          assert "MobileStudio/fingerContactPressureV1" in Path("mobile_studio/include/mobile_studio/standalone_host.h").read_text()
+          pressure_settings = Path("mobile_studio/include/mobile_studio/finger_pressure_settings.h").read_text()
           assert "minPressure() {return 0.0;}" in pressure_settings
           assert "maxPressure() {return 1.0;}" in pressure_settings
-          pressure_input = Path("mobile_core/finger_contact_pressure.h").read_text()
+          pressure_input = Path("mobile_studio/include/mobile_studio/finger_contact_pressure.h").read_text()
           assert "MobileFingerPressureSettings::mapDiameter(" in pressure_input
           assert "stroke.smoothed=target;" in pressure_input
           assert "finger_pressure_settings.h" in pressure_input
@@ -143,16 +143,16 @@ jobs:
           assert "MobileFingerRawBridge::nearest(" in pressure_input
           assert "MobileFingerContactSource::select(" in pressure_input
           assert "finger_contact_source.h" in pressure_input
-          assert "finger_contact_source.h" in Path("apply_finger_contact_pressure.py").read_text()
-          pressure_ui = Path("mobile_core/finger_pressure_calibration.h").read_text()
+          assert "finger_contact_source.h" in Path("tools/patches/apply_finger_contact_pressure.py").read_text()
+          pressure_ui = Path("mobile_studio/include/mobile_studio/finger_pressure_calibration.h").read_text()
           assert "fingerPressureCurveGamma" in pressure_ui
           assert "fingerPressureStability" in pressure_ui
           assert "fingerPressureLevels" in pressure_ui
-          raw_patch = Path("apply_finger_raw_motion.py").read_text()
+          raw_patch = Path("tools/patches/apply_finger_raw_motion.py").read_text()
           assert "dispatchTouchEvent(MotionEvent event)" in raw_patch
           assert "getHistoricalTouchMajor" in raw_patch
           assert "return super.dispatchTouchEvent(event)" in raw_patch
-          native_chrome = Path("mobile_core/native_canvas_chrome.h").read_text()
+          native_chrome = Path("mobile_studio/include/mobile_studio/native_canvas_chrome.h").read_text()
           assert "class MobileNativeCanvasChrome" in native_chrome
           assert "m_backend->centralWidget()==m_nativeCanvas" in native_chrome
           assert "takeCentralWidget(" not in native_chrome
@@ -160,8 +160,8 @@ jobs:
           assert "m_nativeCanvas->setParent(" not in native_chrome
           assert "Qt::RightDockWidgetArea" in native_chrome
           assert "m_topDock->setMaximumHeight(76)" in native_chrome
-          assert "header->setMaximumHeight(68)" in Path("mobile_core/native_canvas_pilot.h").read_text()
-          lightweight = Path("mobile_core/lightweight_canvas_host.h").read_text()
+          assert "header->setMaximumHeight(68)" in Path("mobile_studio/include/mobile_studio/native_canvas_pilot.h").read_text()
+          lightweight = Path("mobile_studio/include/mobile_studio/lightweight_canvas_host.h").read_text()
           for prohibited in ("KisMainWindow", "QMdiArea", "KisViewManager", "KisDocument"):
               assert prohibited not in lightweight.replace("KisMainWindow, QMdiArea, or Krita UI types.", ""), prohibited
           assert "bool installNativeCanvas(QWidget *canvas)" in lightweight
@@ -169,7 +169,7 @@ jobs:
           assert "bool setMobileVisible(bool enabled)" in lightweight
           assert "retainsOriginalCanvas()" in lightweight
           compile_workflow = Path(".github/workflows/build-krita-android.yml").read_text()
-          compile_script = Path("build-in-krita-container.sh").read_text()
+          compile_script = Path("tools/build/build-in-krita-container.sh").read_text()
           assert "inputs.mode == 'compile'" in compile_workflow
           assert "inputs.mode == 'preflight'" in compile_workflow
           assert "contains(github.event.head_commit.message, '[android-preflight]')" in compile_workflow
@@ -190,23 +190,23 @@ jobs:
           assert "nativeViewPort()" in lightweight
           assert "void closeEvent(QCloseEvent *event) override" in lightweight
           assert "event->ignore();" in lightweight
-          assert "delete guarded.data()" in Path("mobile_core/krita_native_view_factory.h").read_text()
-          assert 'native_krita_save_host=own/"mobile_core/native_krita_save_host.h"' in shell_patch
-          assert 'native_krita_factory=own/"mobile_core/krita_native_view_factory.h"' in shell_patch
-          assert 'standalone_krita_runtime=own/"mobile_core/krita_standalone_runtime.h"' in shell_patch
-          assert 'standalone_krita_documents=own/"mobile_core/krita_standalone_documents.h"' in shell_patch
+          assert "delete guarded.data()" in Path("mobile_studio/include/mobile_studio/krita_native_view_factory.h").read_text()
+          assert 'native_krita_save_host=CORE/"native_krita_save_host.h"' in shell_patch
+          assert 'native_krita_factory=CORE/"krita_native_view_factory.h"' in shell_patch
+          assert 'standalone_krita_runtime=CORE/"krita_standalone_runtime.h"' in shell_patch
+          assert 'standalone_krita_documents=CORE/"krita_standalone_documents.h"' in shell_patch
           assert '(root/"libs/ui/krita_standalone_documents.h").write_text(' in shell_patch
-          native_docs=Path("mobile_core/krita_standalone_documents.h").read_text()
+          native_docs=Path("mobile_studio/include/mobile_studio/krita_standalone_documents.h").read_text()
           assert 'MobileNativeDocumentPathPolicy::mayAttemptOpen(path)' in native_docs
           assert 'MobileNativeDocumentPathPolicy::needsSaveAs(' in native_docs
           assert 'MobileNativeDocumentPathPolicy::saveDialogStartPath(' in native_docs
           assert '!QFile::exists(path))return false' not in native_docs
-          assert 'native_document_path_policy=own/"mobile_core/native_document_path_policy.h"' in shell_patch
+          assert 'native_document_path_policy=CORE/"native_document_path_policy.h"' in shell_patch
           assert '(root/"libs/ui/native_document_path_policy.h").write_text(' in shell_patch
           assert "MobileFailedDocumentAttach::rollback(" in native_docs
-          assert "MobileFailedDocumentAttach::rollback(" in Path("mobile_core/document_service.h").read_text()
+          assert "MobileFailedDocumentAttach::rollback(" in Path("mobile_studio/include/mobile_studio/document_service.h").read_text()
           assert '(root/"libs/ui/native_document_rollback.h").write_text(' in shell_patch
-          assert 'native_document_rollback=own/"mobile_core/native_document_rollback.h"' in shell_patch
+          assert 'native_document_rollback=CORE/"native_document_rollback.h"' in shell_patch
           for fragment in ("class MobileKritaStandaloneDocuments final",
                            "public MobileDocumentHostPort",
                            "KisPart::instance()->createDocument()",
@@ -235,15 +235,15 @@ jobs:
           assert 'candidate->viewManager()==this' in shell_patch
           assert 'native canvas color-managed surface parent' in shell_patch
           assert 'native canvas config parent' in shell_patch
-          native_probe = Path("mobile_core/krita_native_engine_compile_probe.cpp").read_text()
-          native_pilot = Path("mobile_core/krita_standalone_pilot.h").read_text()
-          assert 'standalone_engine_pilot=own/"mobile_core/krita_standalone_pilot.h"' in shell_patch
+          native_probe = Path("mobile_studio/src/krita_native_engine_compile_probe.cpp").read_text()
+          native_pilot = Path("mobile_studio/include/mobile_studio/krita_standalone_pilot.h").read_text()
+          assert 'standalone_engine_pilot=CORE/"krita_standalone_pilot.h"' in shell_patch
           assert '(root/"libs/ui/krita_standalone_pilot.h").write_text(' in shell_patch
           assert 'tablet_standalone_engine_test' in shell_patch
           assert 'tablet_standalone_engine_status' in shell_patch
           assert 'tablet_native_engine_autostart' in shell_patch
           assert 'MobileNativeStartupPolicy::beginOncePerProcess(nativeBootstrapSettings)' in shell_patch
-          assert 'static Decision beginOncePerProcess(' in Path("mobile_core/native_startup_policy.h").read_text()
+          assert 'static Decision beginOncePerProcess(' in Path("mobile_studio/include/mobile_studio/native_startup_policy.h").read_text()
           assert 'early native host startup decision' in shell_patch
           assert 'defer welcome scroll and MDI tab setup' in shell_patch
           assert 'defer legacy desktop command palette on native bootstrap' in shell_patch
@@ -258,7 +258,7 @@ jobs:
           assert 'skip desktop workspace menu updates while native' in shell_patch
           assert 'defer desktop MDI window layout restoration' in shell_patch
           assert 'property("_mobileNativeHostActive").toBool()' in shell_patch
-          assert '_mobileNativeHostActive' in Path("mobile_core/lightweight_canvas_host.h").read_text()
+          assert '_mobileNativeHostActive' in Path("mobile_studio/include/mobile_studio/lightweight_canvas_host.h").read_text()
           assert 'omit desktop workspace menu model on native bootstrap' in shell_patch
           assert 'native bootstrap omits style picker begin' in shell_patch
           assert 'native bootstrap omits style picker end' in shell_patch
@@ -267,14 +267,14 @@ jobs:
           assert 'Krita native Qt shell selected:' in shell_patch
           assert 'setProperty("_mobileNativeBootDecision",int(nativeBootDecision))' in shell_patch
           assert 'property("_mobileNativeBootDecision").toInt()' in shell_patch
-          assert 'static bool mayDeferDesktopUi(' in Path("mobile_core/native_startup_policy.h").read_text()
+          assert 'static bool mayDeferDesktopUi(' in Path("mobile_studio/include/mobile_studio/native_startup_policy.h").read_text()
           assert 'if (!mobileNativePreferred && cfg.toolOptionsInDocker())' in shell_patch
           assert 'if (!mobileNativePreferred)' in shell_patch
           assert 'Legacy mobile controller skipped on native startup' in shell_patch
           assert 'skip compact skin connection without a receiver' in shell_patch
           assert 'MobileNativeBootCoordinator::schedule(' in shell_patch
-          assert 'engine_only_policy=own/"mobile_core/engine_only_startup_policy.h"' in shell_patch
-          assert 'engine_only_root=own/"mobile_core/engine_only_root.h"' in shell_patch
+          assert 'engine_only_policy=CORE/"engine_only_startup_policy.h"' in shell_patch
+          assert 'engine_only_root=CORE/"engine_only_root.h"' in shell_patch
           assert '(root/"libs/ui/engine_only_startup_policy.h").write_text(' in shell_patch
           assert '(root/"libs/ui/engine_only_root.h").write_text(' in shell_patch
           assert 'replace desktop KisPart session bootstrap when engine-only selected' in shell_patch
@@ -282,13 +282,13 @@ jobs:
           assert 'guard late remote document intent without desktop window' in shell_patch
           assert 'if (needsMainWindow && !engineOnlyBoot)' in shell_patch
           assert 'MobileEngineOnlyBootstrap::launch()' in shell_patch
-          assert 'engine_only_bootstrap_header=own/"mobile_core/engine_only_bootstrap.h"' in shell_patch
-          assert 'engine_only_bootstrap_source=own/"mobile_core/engine_only_bootstrap.cpp"' in shell_patch
+          assert 'engine_only_bootstrap_header=CORE/"engine_only_bootstrap.h"' in shell_patch
+          assert 'engine_only_bootstrap_source=SRC/"engine_only_bootstrap.cpp"' in shell_patch
           assert '(root/"libs/ui/engine_only_bootstrap.cpp").write_text(' in shell_patch
           assert '(root/"libs/ui/engine_only_bootstrap.h").write_text(' in shell_patch
           assert 'engine_only_bootstrap.cpp' in shell_patch
           assert '#include "engine_only_bootstrap.h"' in shell_patch
-          composition=Path("mobile_core/engine_only_bootstrap.cpp").read_text()
+          composition=Path("mobile_studio/src/engine_only_bootstrap.cpp").read_text()
           assert 'MobileEngineOnlyStartupPolicy::complete(settings,success)' in composition
           assert 'MobileKritaStandalonePilot::launch(' in composition
           assert 'new MobileLightweightCanvasHost' in composition
@@ -297,7 +297,7 @@ jobs:
           assert 'root->setProperty("_mobileNativeEngineOnlyRoot",true)' in composition
           assert 'QPointer<MobileLightweightCanvasHost> alive=root' in composition
           assert '#include "KisMainWindow.h"' not in composition
-          tiny=Path("mobile_core/engine_only_bootstrap.h").read_text()
+          tiny=Path("mobile_studio/include/mobile_studio/engine_only_bootstrap.h").read_text()
           assert 'class MobileEngineOnlyBootstrap final' in tiny
           assert '#include <QtGlobal>' in tiny
           assert tiny.index('#include <QtGlobal>') < tiny.index('#ifdef Q_OS_ANDROID')
@@ -308,26 +308,26 @@ jobs:
           assert '!directRoot && !window->embedInExistingWindow(nativeWindow)' in native_pilot
           assert 'directRootAction' not in native_pilot
           assert '_mobileNativeEngineOnlyRoot' in native_pilot
-          onlyPolicy=Path("mobile_core/engine_only_startup_policy.h").read_text()
+          onlyPolicy=Path("mobile_studio/include/mobile_studio/engine_only_startup_policy.h").read_text()
           assert 'settings.value(key(),true).toBool()' in onlyPolicy
           assert 'settings.setValue(lastResultKey(),success);' in onlyPolicy
           assert 'Decision::RecoverDesktop' not in onlyPolicy
           assert 'settings.setValue(key(),success)' not in onlyPolicy
           assert 'settings.setValue(QStringLiteral("MobileStudio/nativeStartupV1"),false);' in onlyPolicy
-          onlyRoot=Path("mobile_core/engine_only_root.h").read_text()
+          onlyRoot=Path("mobile_studio/include/mobile_studio/engine_only_root.h").read_text()
           assert '#include "KisMainWindow.h"' not in onlyPolicy + onlyRoot
           assert '#include <QMdiArea>' not in onlyPolicy + onlyRoot
           assert 'MobileEngineOnlyRoot final : public QMainWindow' in onlyRoot
           assert 'applicationId "org.krita.mobilestudio"' in shell_patch
           assert 'android:label="Krita Mobile Studio"' in shell_patch
           assert 'org.krita.android.DocumentSaverService' in shell_patch
-          assert 'org.krita.mobilestudio.debug' in Path("build-in-krita-container.sh").read_text()
+          assert 'org.krita.mobilestudio.debug' in Path("tools/build/build-in-krita-container.sh").read_text()
           assert 'm_drawingHost->close()' in onlyRoot
-          assert 'native_bootstrap_audit=own/"mobile_core/native_bootstrap_audit.h"' in shell_patch
+          assert 'native_bootstrap_audit=CORE/"native_bootstrap_audit.h"' in shell_patch
           assert '(root/"libs/ui/native_bootstrap_audit.h").write_text(' in shell_patch
           assert 'MobileNativeBootstrapAudit::record(desktop)' in native_pilot
           assert 'MobileStudio/nativeDesktopWidgetAudit' in shell_patch
-          audit=Path("mobile_core/native_bootstrap_audit.h").read_text()
+          audit=Path("mobile_studio/include/mobile_studio/native_bootstrap_audit.h").read_text()
           assert 'FindDirectChildrenOnly' in audit
           assert 'desktopDockers' in audit
           assert 'commandPalettes' in audit
@@ -335,16 +335,16 @@ jobs:
           assert 'engineOnlyRoot' in audit
           assert '_mobileNativeEngineOnlyRoot' in audit
           assert 'std::move(finished)' in shell_patch
-          assert 'native_boot_coordinator=own/"mobile_core/native_boot_coordinator.h"' in shell_patch
+          assert 'native_boot_coordinator=CORE/"native_boot_coordinator.h"' in shell_patch
           assert '(root/"libs/ui/native_boot_coordinator.h").write_text(' in shell_patch
-          coordinator=Path("mobile_core/native_boot_coordinator.h").read_text()
+          coordinator=Path("mobile_studio/include/mobile_studio/native_boot_coordinator.h").read_text()
           assert 'MobileNativeStartupPolicy::complete(settings,success)' in coordinator
           assert 'QPointer<QMainWindow> m_window' in coordinator
           assert '#include "KisMainWindow.h"' not in coordinator
           assert '#include <QMdiArea>' not in coordinator
-          assert 'native_startup_policy=own/"mobile_core/native_startup_policy.h"' in shell_patch
+          assert 'native_startup_policy=CORE/"native_startup_policy.h"' in shell_patch
           assert '(root/"libs/ui/native_startup_policy.h").write_text(' in shell_patch
-          assert 'MobileStudio/nativeStartupV1' in Path("mobile_core/canvas_session.h").read_text()
+          assert 'MobileStudio/nativeStartupV1' in Path("mobile_studio/include/mobile_studio/canvas_session.h").read_text()
           assert 'MobileNativeStartupPolicy::setEnabled(' in native_pilot
           assert 'MobileKritaNativeWorkspace(' in native_pilot
           assert 'workspace->toggleBrushes()' in native_pilot
@@ -354,28 +354,28 @@ jobs:
           assert 'MobileNativeCommandLayout::install(' in native_pilot
           assert 'bar->addAction(' not in native_pilot
           assert 'native_command_layout.h' in native_pilot
-          assert 'native_command_layout=own/"mobile_core/native_command_layout.h"' in shell_patch
+          assert 'native_command_layout=CORE/"native_command_layout.h"' in shell_patch
           assert '(root/"libs/ui/native_command_layout.h").write_text(' in shell_patch
-          native_commands=Path("mobile_core/native_command_layout.h").read_text()
+          native_commands=Path("mobile_studio/include/mobile_studio/native_command_layout.h").read_text()
           assert 'menu->popup(' in native_commands
           assert 'QStringLiteral("_mobileNativeToolbar")' in native_commands
           assert 'MobileDocumentWorkflow::create(' in native_pilot
           assert 'MobileStudio/nativeWorkspaceLastAction' in shell_patch
-          assert 'MobileStudio/nativeWorkspaceLastAction' in Path("mobile_core/krita_native_workspace.h").read_text()
-          assert 'tablet_standalone_engine_test' in Path("mobile_core/standalone_host.h").read_text()
-          assert 'tablet_standalone_engine_test' in Path("mobile_core/native_canvas_pilot.h").read_text()
+          assert 'MobileStudio/nativeWorkspaceLastAction' in Path("mobile_studio/include/mobile_studio/krita_native_workspace.h").read_text()
+          assert 'tablet_standalone_engine_test' in Path("mobile_studio/include/mobile_studio/standalone_host.h").read_text()
+          assert 'tablet_standalone_engine_test' in Path("mobile_studio/include/mobile_studio/native_canvas_pilot.h").read_text()
           assert 'MobileDocumentSwitcher::open(' in native_pilot
           assert 'const MobileEngineBridge nativeBridge(' in native_pilot
-          assert 'native_workspace=own/"mobile_core/krita_native_workspace.h"' in shell_patch
+          assert 'native_workspace=CORE/"krita_native_workspace.h"' in shell_patch
           assert '(root/"libs/ui/krita_native_workspace.h").write_text(' in shell_patch
-          workspace=Path("mobile_core/krita_native_workspace.h").read_text()
+          workspace=Path("mobile_studio/include/mobile_studio/krita_native_workspace.h").read_text()
           assert 'MobileEngineBridge m_engine' in workspace
           assert 'new KritaMobileBrushWorkspace(m_engine,dock)' in workspace
           assert 'new KritaMobileLayersPanel(m_engine,dock)' in workspace
           assert 'new MobileColorWorkspace(m_engine,canvas)' in workspace
           assert 'QWidget *canvas=m_host->nativeCanvas();' in workspace
           assert 'm_color->isVisibleTo(canvas)' in workspace
-          layer_source=Path("mobile_core/layer_workspace.h").read_text()
+          layer_source=Path("mobile_studio/include/mobile_studio/layer_workspace.h").read_text()
           assert 'MobileNativeLayerReorderPolicy::plan(' in layer_source
           assert 'new KisImageLayerMoveCommand(' in layer_source
           assert 'KisProcessingApplicator stroke(' in layer_source
@@ -386,7 +386,7 @@ jobs:
           assert 'stroke.end();' in layer_source
           assert 'awaitReorder(completion,operation);' in layer_source
           assert 'm_engine.selectLayer(node)' in layer_source
-          assert 'native_reorder_policy=own/"mobile_core/native_layer_reorder_policy.h"' in shell_patch
+          assert 'native_reorder_policy=CORE/"native_layer_reorder_policy.h"' in shell_patch
           assert '(root/"libs/ui/native_layer_reorder_policy.h").write_text(' in shell_patch
           assert 'nodes->moveNodeAt(' not in layer_source
           assert 'm->raiseNode();reload();' not in layer_source
@@ -395,7 +395,7 @@ jobs:
           assert 'm->raiseNode();reload();' not in layer_source
           assert 'm->lowerNode();reload();' not in layer_source
           assert 'MobileToolBrowser::open(m_engine,host)' in workspace
-          assert 'MobileNativeStartupPolicy::setEnabled(' in Path("mobile_core/standalone_host.h").read_text()
+          assert 'MobileNativeStartupPolicy::setEnabled(' in Path("mobile_studio/include/mobile_studio/standalone_host.h").read_text()
           assert 'MobileStudio/standaloneLastPhase' in native_pilot
           assert 'MobileStudio/standaloneLaunchPending' in native_pilot
           assert 'MobileKritaStandalonePilot::launch(this)' in shell_patch
@@ -404,22 +404,22 @@ jobs:
           assert 'existing->raise()' in native_pilot
           assert 'makeAction("Exit test")' in native_pilot
           assert 'm_canvas->parentWidget()==this' in lightweight
-          assert 'root->parentWidget()!=host' in Path("mobile_core/krita_standalone_runtime.h").read_text()
-          assert 'stack->parentWidget()!=manager->qtMainWindow()' in Path("mobile_core/krita_native_view_factory.h").read_text()
-          native_factory = Path("mobile_core/krita_native_view_factory.h").read_text()
+          assert 'root->parentWidget()!=host' in Path("mobile_studio/include/mobile_studio/krita_standalone_runtime.h").read_text()
+          assert 'stack->parentWidget()!=manager->qtMainWindow()' in Path("mobile_studio/include/mobile_studio/krita_native_view_factory.h").read_text()
+          native_factory = Path("mobile_studio/include/mobile_studio/krita_native_view_factory.h").read_text()
           assert 'const bool selectionAlreadyWired=' in native_factory
           assert 'if(!selectionAlreadyWired)' in native_factory
           assert '_mobileStudioKritaCanvasBootstrapped' in native_factory
           assert 'MobileCanvasResumeObserver::attach(' in native_factory
           assert '(root/"libs/ui/canvas_resume_observer.h").write_text(' in shell_patch
           assert 'if(bootstrapped)' in native_factory
-          engine_session=Path("mobile_core/krita_engine_session.h").read_text()
+          engine_session=Path("mobile_studio/include/mobile_studio/krita_engine_session.h").read_text()
           assert 'MobileKritaEngineSession::attach(window)' in native_pilot
           assert 'MobileKritaStandaloneRuntime::create(host)' in engine_session
           assert 'MobileKritaStandaloneDocumentsBootstrap::create(runtime)' in engine_session
           assert 'MobileKritaEngineSession final : public QObject' in engine_session
           assert 'KisMainWindow.h' not in engine_session
-          assert 'standalone_engine_session=own/"mobile_core/krita_engine_session.h"' in shell_patch
+          assert 'standalone_engine_session=CORE/"krita_engine_session.h"' in shell_patch
           assert '(root/"libs/ui/krita_engine_session.h").write_text(' in shell_patch
           assert '#include "krita_engine_session.h"' in native_probe
           assert 'documents->createCanvas(' in native_pilot
@@ -434,16 +434,16 @@ jobs:
           assert 'doc->undoStack()->redo()' in native_pilot
           assert 'documents->openFiles(alive.data())' in native_pilot
           assert 'window->setAttribute(Qt::WA_DeleteOnClose,true)' in native_pilot
-          assert 'MobileKritaStandalonePilot::launch' not in Path("mobile_core/canvas_session.h").read_text()
+          assert 'MobileKritaStandalonePilot::launch' not in Path("mobile_studio/include/mobile_studio/canvas_session.h").read_text()
           assert '#include "krita_standalone_documents.h"' in native_probe
           assert '#include "krita_standalone_runtime.h"' in native_probe
           assert '#include "krita_standalone_pilot.h"' in native_probe
           assert 'MobileLightweightCanvasHost' in native_probe
-          assert 'native_engine_probe=own/"mobile_core/krita_native_engine_compile_probe.cpp"' in shell_patch
+          assert 'native_engine_probe=CORE/"krita_native_engine_compile_probe.cpp"' in shell_patch
           assert '(root/"libs/ui/mobile_native_engine_compile_probe.cpp").write_text(' in shell_patch
           assert 'real Android kritaui engine compilation gate' in shell_patch
           assert 'mobile_native_engine_compile_probe.cpp' in shell_patch
-          native_runtime = Path("mobile_core/krita_standalone_runtime.h").read_text()
+          native_runtime = Path("mobile_studio/include/mobile_studio/krita_standalone_runtime.h").read_text()
           for fragment in ("class MobileKritaStandaloneRuntime final",
                            "KoToolRegistry::instance()->values()",
                            "factory->createActions(runtime->m_actions.data())",
@@ -457,8 +457,8 @@ jobs:
           assert '(root/"libs/ui/krita_native_view_factory.h").write_text(' in shell_patch
           assert "removeTrackedCanvas(&d->canvas)" in shell_patch
           assert "d->viewManager->setCurrentView(nullptr)" in shell_patch
-          native_factory = Path("mobile_core/krita_native_view_factory.h").read_text()
-          native_host = Path("mobile_core/lightweight_canvas_host.h").read_text()
+          native_factory = Path("mobile_studio/include/mobile_studio/krita_native_view_factory.h").read_text()
+          native_host = Path("mobile_studio/include/mobile_studio/lightweight_canvas_host.h").read_text()
           assert "public KoCanvasSupervisor" in native_host
           assert "QList<KoCanvasObserverBase*> canvasObservers() const override" in native_host
           assert "dynamic_cast<KoCanvasSupervisor*>" in native_factory
@@ -487,7 +487,7 @@ jobs:
           assert 'setMobileNativeSaveHost' in shell_patch
           assert 'mobileNativeSaveHost->save(document(), !isNative)' in shell_patch
           assert 'return qtMainWindow();' in shell_patch
-          native_stack = Path("mobile_core/native_view_stack.h").read_text()
+          native_stack = Path("mobile_studio/include/mobile_studio/native_view_stack.h").read_text()
           assert "class MobileNativeViewStack final" in native_stack
           assert "MobileViewHostPort" in native_stack
           assert "QStackedWidget" in native_stack
@@ -495,14 +495,14 @@ jobs:
           assert "bool adoptView(" in native_stack
           assert "bool closeView(" in native_stack
           assert "QScopedValueRollback<bool>" in native_stack
-          assert 'native_view_stack=own/"mobile_core/native_view_stack.h"' in shell_patch
+          assert 'native_view_stack=CORE/"native_view_stack.h"' in shell_patch
           assert '(root/"libs/ui/native_view_stack.h").write_text(' in shell_patch
           assert "captureAdditionalDesktopChrome()" in native_chrome
           assert "captureAdditionalTabs()" in native_chrome
           assert "setBottomPanelVisible(bool visible)" in native_chrome
           assert "placeSidePanelForViewport()" in native_chrome
           assert "Qt::BottomDockWidgetArea" in native_chrome
-          pilot = Path("mobile_core/native_canvas_pilot.h").read_text()
+          pilot = Path("mobile_studio/include/mobile_studio/native_canvas_pilot.h").read_text()
           for component in ("MobileNativeCanvasChrome", "MobileQuickActions",
                             "KritaMobileBrushWorkspace", "KritaMobileLayersPanel",
                             "MobileColorWorkspace", "MobileDocumentSwitcher"):
@@ -516,7 +516,7 @@ jobs:
           assert "m_chrome.sidePanelAtBottom()" in pilot
           assert 'id==QStringLiteral("mobile:commands")' in pilot
           assert "return activeCount==1;" in quick_actions
-          session = Path("mobile_core/canvas_session.h").read_text()
+          session = Path("mobile_studio/include/mobile_studio/canvas_session.h").read_text()
           assert '#include "native_canvas_pilot.h"' in session
           assert "new MobileNativeCanvasPilot" in session
           assert "MobileStudio/nativeDockCanvasV1" in session
@@ -527,17 +527,17 @@ jobs:
           assert "activeModalWidget()" in session
           assert "activePopupWidget()" in session
           assert "Qt::Key_Escape" not in session
-          assert "dismissTransientControls()" in Path("mobile_core/native_canvas_pilot.h").read_text()
-          assert "dismissTransientControls()" in Path("mobile_core/standalone_host.h").read_text()
-          raw_bridge = Path("mobile_core/finger_raw_bridge.h").read_text()
+          assert "dismissTransientControls()" in Path("mobile_studio/include/mobile_studio/native_canvas_pilot.h").read_text()
+          assert "dismissTransientControls()" in Path("mobile_studio/include/mobile_studio/standalone_host.h").read_text()
+          raw_bridge = Path("mobile_studio/include/mobile_studio/finger_raw_bridge.h").read_text()
           assert "static void reset()" in raw_bridge
           assert "static bool captureEnabled(quint64 uptimeMs)" in raw_bridge
-          raw_patch = Path("apply_finger_raw_motion.py").read_text()
+          raw_patch = Path("tools/patches/apply_finger_raw_motion.py").read_text()
           assert "fingerRawGestureReset" in raw_patch
           assert "fingerRawCaptureEnabled" in raw_patch
           assert "return super.dispatchTouchEvent(event);" in raw_patch
-          assert "MobileStudio/nativeDockCanvasV1" in Path("mobile_core/standalone_host.h").read_text()
-          assert "_mobileStudioPresentationActive" in Path("apply_mobile_shell.py").read_text()
+          assert "MobileStudio/nativeDockCanvasV1" in Path("mobile_studio/include/mobile_studio/standalone_host.h").read_text()
+          assert "_mobileStudioPresentationActive" in Path("tools/patches/apply_mobile_shell.py").read_text()
           print("Canvas ownership, opt-in stationary pilot and finger pressure invariants intact")
           PY
 
@@ -554,8 +554,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends qtbase5-dev pkg-config
       - name: Build Qt-only canvas transfer smoke test
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_canvas_transfer_smoke.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_canvas_transfer_smoke.cpp \
             -o /tmp/krita-canvas-transfer-smoke \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Exercise native canvas handoffs offscreen
@@ -564,8 +564,8 @@ jobs:
         run: /tmp/krita-canvas-transfer-smoke
       - name: Compile canvas handoffs without a desktop MDI document stack
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_widget_document_root.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_widget_document_root.cpp \
             -o /tmp/krita-widget-document-root-test \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Verify native canvas identity with generic QWidget document root
@@ -574,8 +574,8 @@ jobs:
         run: /tmp/krita-widget-document-root-test
       - name: Build independent lightweight Qt painting canvas host
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_lightweight_canvas_host.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_lightweight_canvas_host.cpp \
             -o /tmp/krita-lightweight-canvas-host-test \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Test independent host lifecycle without desktop Krita
@@ -584,32 +584,32 @@ jobs:
         run: /tmp/krita-lightweight-canvas-host-test
       - name: Compile native Krita close-time Save host Qt test
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_native_krita_save_host.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_native_krita_save_host.cpp \
             -o /tmp/krita-native-save-host-test \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Test guarded close-time Save delegation
         run: /tmp/krita-native-save-host-test
       - name: Compile Android provider URI file-operation regression
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_native_document_path_policy.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_native_document_path_policy.cpp \
             -o /tmp/krita-native-path-policy-test \
             $(pkg-config --cflags --libs Qt5Core)
       - name: Check SAF URI open and Save As behavior
         run: /tmp/krita-native-path-policy-test
       - name: Build guarded native document rollback Qt regression
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_native_document_rollback.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_native_document_rollback.cpp \
             -o /tmp/krita-native-document-rollback-test \
             $(pkg-config --cflags --libs Qt5Core)
       - name: Check destroyed and registered document rollback
         run: /tmp/krita-native-document-rollback-test
       - name: Build independent engine visible controls Qt regression
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_native_command_layout.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_native_command_layout.cpp \
             -o /tmp/krita-native-command-layout-test \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Verify visible workspace controls keep original canvas
@@ -618,16 +618,16 @@ jobs:
         run: /tmp/krita-native-command-layout-test
       - name: Build native layer reorder bounds regression
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_native_layer_reorder_policy.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_native_layer_reorder_policy.cpp \
             -o /tmp/krita-native-layer-reorder-test \
             $(pkg-config --cflags --libs Qt5Core)
       - name: Verify safe layer moves and invalid-selection no-ops
         run: /tmp/krita-native-layer-reorder-test
       - name: Build Qt native bootstrap widget inventory
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_native_bootstrap_audit.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_native_bootstrap_audit.cpp \
             -o /tmp/krita-native-boot-audit-test \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Verify desktop widget isolation from native controls
@@ -636,8 +636,8 @@ jobs:
         run: /tmp/krita-native-boot-audit-test
       - name: Build engine-only Android Qt root and crash recovery test
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_engine_only_root.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_engine_only_root.cpp \
             -o /tmp/krita-engine-only-root-test \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Verify engine-only boot is MDI-free and close is save-safe
@@ -646,8 +646,8 @@ jobs:
         run: /tmp/krita-engine-only-root-test
       - name: Build native engine Qt boot coordinator regression
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_native_boot_coordinator.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_native_boot_coordinator.cpp \
             -o /tmp/krita-native-boot-coordinator-test \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Verify MDI-independent startup scheduling and fallback
@@ -656,24 +656,24 @@ jobs:
         run: /tmp/krita-native-boot-coordinator-test
       - name: Build independent Krita startup recovery Qt test
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_native_startup_policy.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_native_startup_policy.cpp \
             -o /tmp/krita-native-startup-test \
             $(pkg-config --cflags --libs Qt5Core)
       - name: Verify native startup opt-in and desktop fallback
         run: /tmp/krita-native-startup-test
       - name: Build mobile startup policy regression test
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_mobile_startup_policy.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_mobile_startup_policy.cpp \
             -o /tmp/krita-mobile-startup-test \
             $(pkg-config --cflags --libs Qt5Core)
       - name: Verify mobile-first launch, opt-out and crash recovery
         run: /tmp/krita-mobile-startup-test
       - name: Build embedded single-native-window host regression
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_embedded_native_host.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_embedded_native_host.cpp \
             -o /tmp/krita-embedded-host-test \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Verify Android test shares original top-level without moving canvas
@@ -682,8 +682,8 @@ jobs:
         run: /tmp/krita-embedded-host-test
       - name: Build MDI-free native multi-document view host
         run: |
-          c++ -std=c++17 -fPIC -g -fsanitize=address -fno-omit-frame-pointer -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_native_view_stack.cpp \
+          c++ -std=c++17 -fPIC -g -fsanitize=address -fno-omit-frame-pointer -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_native_view_stack.cpp \
             -o /tmp/krita-native-view-stack-test \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Verify view lifecycle and twelve canvas-preserving UI switches
@@ -693,8 +693,8 @@ jobs:
         run: /tmp/krita-native-view-stack-test
       - name: Build no-reparent mobile chrome smoke test
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_native_canvas_chrome.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_native_canvas_chrome.cpp \
             -o /tmp/krita-native-canvas-chrome-test \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Verify 25 chrome-only mode switches without canvas movement
@@ -703,8 +703,8 @@ jobs:
         run: /tmp/krita-native-canvas-chrome-test
       - name: Build guarded Android Back key routing test
         run: |
-          c++ -std=c++17 -fPIC -I. \
-            tests/qt_android_back_policy.cpp \
+          c++ -std=c++17 -fPIC -I mobile_studio/include \
+            tests/cpp/qt_android_back_policy.cpp \
             -o /tmp/krita-android-back-policy-test \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Test Back key popup/modal and Android focused child safety
@@ -713,16 +713,16 @@ jobs:
         run: /tmp/krita-android-back-policy-test
       - name: Build host-neutral document view lifecycle test
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_view_host_port.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_view_host_port.cpp \
             -o /tmp/krita-mobile-view-host-test \
             $(pkg-config --cflags --libs Qt5Core)
       - name: Verify view identity, safe Save and native close delegation
         run: /tmp/krita-mobile-view-host-test
       - name: Compile native canvas visibility/resume Qt regression
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_canvas_resume_observer.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_canvas_resume_observer.cpp \
             -o /tmp/krita-canvas-resume-test \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Verify canvas activation resumes after window hide/show
@@ -731,24 +731,24 @@ jobs:
         run: /tmp/krita-canvas-resume-test
       - name: Compile native document navigation Qt regression
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_document_navigation.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_document_navigation.cpp \
             -o /tmp/krita-document-navigation-test \
             $(pkg-config --cflags --libs Qt5Core)
       - name: Verify canvas cycling and native view identity protection
         run: /tmp/krita-document-navigation-test
       - name: Build deferred native document command Qt regression
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_deferred_view_command.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_deferred_view_command.cpp \
             -o /tmp/krita-deferred-view-command-test \
             $(pkg-config --cflags --libs Qt5Core)
       - name: Verify deferred native Save and Close cannot switch drawings
         run: /tmp/krita-deferred-view-command-test
       - name: Build engine-host-independent document and action port test
         run: |
-          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I. \
-            tests/qt_mobile_backend_ports.cpp \
+          c++ -std=c++17 -fPIC -DKRITA_MOBILE_QT_TEST -I mobile_studio/include \
+            tests/cpp/qt_mobile_backend_ports.cpp \
             -o /tmp/krita-mobile-backend-ports-test \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Verify new host can provide native document and action behavior
@@ -757,8 +757,8 @@ jobs:
         run: /tmp/krita-mobile-backend-ports-test
       - name: Build guarded MDI view identity test
         run: |
-          c++ -std=c++17 -fPIC -I. \
-            tests/qt_mdi_view_identity.cpp \
+          c++ -std=c++17 -fPIC -I mobile_studio/include \
+            tests/cpp/qt_mdi_view_identity.cpp \
             -o /tmp/krita-mdi-identity-test \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Verify document view identity under reordering and deletion
@@ -767,8 +767,8 @@ jobs:
         run: /tmp/krita-mdi-identity-test
       - name: Build optional finger pressure mapping test
         run: |
-          c++ -std=c++17 -fPIC -I. \
-            tests/qt_finger_contact_pressure.cpp \
+          c++ -std=c++17 -fPIC -I mobile_studio/include \
+            tests/cpp/qt_finger_contact_pressure.cpp \
             -o /tmp/krita-finger-area-pressure-test \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Verify finger mapping, smoothing and original-pressure fallback
@@ -777,24 +777,24 @@ jobs:
         run: /tmp/krita-finger-area-pressure-test
       - name: Compile Qt/raw finger source-switch regression
         run: |
-          c++ -std=c++17 -fPIC -I. \
-            tests/qt_finger_contact_source.cpp \
+          c++ -std=c++17 -fPIC -I mobile_studio/include \
+            tests/cpp/qt_finger_contact_source.cpp \
             -o /tmp/krita-finger-source-test \
             $(pkg-config --cflags --libs Qt5Core)
       - name: Verify raw contact dropouts do not change brush pressure scale
         run: /tmp/krita-finger-source-test
       - name: Compile raw Android contact Qt-only regression
         run: |
-          c++ -std=c++17 -fPIC -I. \
-            tests/qt_finger_raw_bridge.cpp \
+          c++ -std=c++17 -fPIC -I mobile_studio/include \
+            tests/cpp/qt_finger_raw_bridge.cpp \
             -o /tmp/krita-finger-raw-bridge-test \
             $(pkg-config --cflags --libs Qt5Core)
       - name: Test raw size, history, finger identity and stale-sample rejection
         run: /tmp/krita-finger-raw-bridge-test
       - name: Build min/max finger calibration dialog smoke test
         run: |
-          c++ -std=c++17 -fPIC -I. \
-            tests/qt_finger_pressure_calibration.cpp \
+          c++ -std=c++17 -fPIC -I mobile_studio/include \
+            tests/cpp/qt_finger_pressure_calibration.cpp \
             -o /tmp/krita-finger-calibration-test \
             $(pkg-config --cflags --libs Qt5Widgets)
       - name: Check calibration ranges and persistence offscreen

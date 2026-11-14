@@ -61,7 +61,7 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 [[ "$JOBS" =~ ^[1-9][0-9]*$ ]] || die "Invalid KRITA_BUILD_JOBS"
 for p in git python3 docker; do command -v "$p" >/dev/null || die "Missing $p. See LOCAL-BUILD.md"; done
 docker info >/dev/null 2>&1 || die "Start Docker Desktop and enable Ubuntu under Resources > WSL Integration."
-[[ -f "$REPO/apply_tablet_refinements.py" ]] || die "Please clone/update the Krita customization repository."
+[[ -f "$REPO/tools/patches/apply_customizations.py" ]] || die "Please clone/update the Krita customization repository."
 if [[ "$MODE" == status ]]; then
     echo "Workspace: $ROOT"
     [[ ! -d "$OUT" ]] || find "$OUT" -maxdepth 1 -name '*.apk' -print
@@ -105,22 +105,7 @@ else
     git -C "$SOURCE" restore .
 fi
 say "Apply customizations from this repository"
-python3 "$REPO/apply_customizations.py" "$SOURCE"
-python3 "$REPO/apply_tablet_update.py" "$SOURCE"
-python3 "$REPO/apply_tablet_refinements.py" "$SOURCE"
-python3 "$REPO/apply_tablet_polish.py" "$SOURCE"
-python3 "$REPO/apply_tablet_cleanup.py" "$SOURCE"
-python3 "$REPO/apply_reference_touch_fix.py" "$SOURCE"
-python3 "$REPO/apply_compact_skin.py" "$SOURCE"
-python3 "$REPO/apply_wheel_rotation.py" "$SOURCE"
-python3 "$REPO/apply_diamond_rotation.py" "$SOURCE"
-python3 "$REPO/apply_gallery_tabs.py" "$SOURCE"
-python3 "$REPO/apply_home_mobile.py" "$SOURCE"
-python3 "$REPO/apply_mobile_recovery.py" "$SOURCE"
-python3 "$REPO/apply_mobile_touch_scroll.py" "$SOURCE"
-python3 "$REPO/apply_mobile_shell.py" "$SOURCE"
-python3 "$REPO/apply_finger_contact_pressure.py" "$SOURCE"
-python3 "$REPO/apply_finger_raw_motion.py" "$SOURCE"
+python3 "$REPO/tools/patches/apply_all.py" "$SOURCE"
 python3 - "$SOURCE" <<'PY'
 import hashlib, pathlib, sys
 root=pathlib.Path(sys.argv[1])
