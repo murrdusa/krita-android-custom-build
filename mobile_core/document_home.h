@@ -776,7 +776,9 @@ private:
         QImageReader reader(&buffer,"png");
         const QSize original=reader.size();
         if(!original.isValid() || original.width()>8192 ||
-           original.height()>8192)return {};
+           original.height()>8192 ||
+           qint64(original.width())*original.height()>40000000LL)
+            return {};
         reader.setScaledSize(original.scaled(124,124,Qt::KeepAspectRatio));
         return reader.read();
     }
@@ -806,7 +808,8 @@ private:
             // history. Read them with the native Qt image decoder.
             QImageReader reader(path);
             const QSize size=reader.size();
-            if(!size.isValid() || size.width()>8192 || size.height()>8192)
+            if(!size.isValid() || size.width()>8192 || size.height()>8192 ||
+               qint64(size.width())*size.height()>40000000LL)
                 return {};
             reader.setScaledSize(size.scaled(124,124,Qt::KeepAspectRatio));
             return reader.read();
