@@ -29,7 +29,10 @@ public:
         if(!path.startsWith(QStringLiteral("file:"),Qt::CaseInsensitive))
             return path;
         const QUrl url(path);
-        return url.isValid() && url.isLocalFile()?url.toLocalFile():QString();
+        return url.isValid() && url.isLocalFile() &&
+               (url.host().isEmpty() ||
+                url.host().compare(QStringLiteral("localhost"),Qt::CaseInsensitive)==0)?
+            url.toLocalFile():QString();
     }
 
     static QUrl recentFileUrl(const QString &path)
