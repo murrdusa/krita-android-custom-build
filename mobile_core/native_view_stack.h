@@ -9,6 +9,7 @@
 #if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
 #include <QPointer>
 #include <QStackedWidget>
+#include <QTimer>
 #include <QVector>
 #include <functional>
 #include <utility>
@@ -72,10 +73,8 @@ public:
                 // Qt's synchronous currentChanged observers may move
                 // the widget into another host or register it again.
                 // Only retire a detached canvas still owned by us.
-                if(removed && host && orphan &&
-                   orphan->parentWidget()==host.data() &&
-                   host->indexOf(orphan.data())<0)
-                    orphan->deleteLater();
+                if(removed && host && orphan)
+                    retireDetachedView(host,orphan);
             });
         m_rows.append(std::move(row));
         // addWidget() can synchronously emit currentChanged for the
@@ -167,6 +166,21 @@ public:
     }
 
 private:
+    // A canvas can be transferred *after* removeWidget() returns but
+    // before a posted DeferredDelete is processed. Delay the decision,
+    // not just deletion: the old stack must not destroy a widget now
+    // owned by another host or registered in a later transaction.
+    static void retireDetachedView(const QPointer<MobileNativeViewStack> &host,
+                                   const QPointer<QWidget> &view)
+    {
+        if(!host || !view)return;
+        QTimer::singleShot(0,host.data(),[host,view]() {
+            if(host && view && view->parentWidget()==host.data() &&
+               host->indexOf(view.data())<0)
+                view->deleteLater();
+        });
+    }
+
     struct Row {
         quint64 token=0;
         QPointer<QWidget> view;
@@ -261,10 +275,8 @@ private:
         // widget. A reparented canvas belongs to its new host.
         const bool removed=forgetToken(token);
         if(!host)return accepted;
-        if(removed && closingView &&
-           closingView->parentWidget()==host.data() &&
-           host->indexOf(closingView.data())<0)
-            closingView->deleteLater();
+        if(removed && closingView)
+            retireDetachedView(host,closingView);
         m_closing=false;
         return true;
     }
