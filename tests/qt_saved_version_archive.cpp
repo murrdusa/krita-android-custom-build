@@ -338,6 +338,13 @@ int main(int argc,char **argv)
             !MobileDraftRecovery::publish(draft,true) &&
             !QFile::exists(staging) && QFileInfo(draft).size()==9,
             "interrupted staging must never replace the last completed checkpoint");
+    // A failed exporter can leave a nonparseable partial KRA. Its
+    // bytes must not be destroyed by the failure cleanup path.
+    const QByteArray partialExport("partial-user-data");
+    save(staging,partialExport);
+    require(!MobileDraftRecovery::publish(draft,false) &&
+            load(staging)==partialExport && QFileInfo(draft).size()==9,
+            "failed export discarded partial staging user data");
     const QByteArray failedExport=QByteArray::fromHex("504b0304")+
         "failed-export-but-readable";
     save(staging,failedExport);
@@ -376,6 +383,7 @@ int main(int argc,char **argv)
     const QByteArray latestEdits=QByteArray::fromHex("504b0304")+
         "recoverable-after-rename-failure";
     save(blockedStage,latestEdits);
+    save(blockedDraft+QStringLiteral(".title"),"User-customized-title");
     require(MobileDraftRecovery::setProject(blockedDraft,source),
             "associate blocked autosave with its saved project");
     require(!MobileDraftRecovery::publish(blockedDraft,true),
@@ -389,13 +397,17 @@ int main(int argc,char **argv)
     require(!rescuedDraft.isEmpty() &&
             MobileDraftRecovery::hasReadableProject(rescuedDraft) &&
             MobileDraftRecovery::projectFor(rescuedDraft)==source &&
+            load(rescuedDraft+QStringLiteral(".title"))==
+                QByteArray("User-customized-title") &&
             !QFile::exists(blockedStage),
-            "failed publication did not expose a recoverable project draft");
+            "failed publication lost recoverable project or its title");
     require(QDir().rmdir(blockedDraft),
             "remove blocked destination directory");
     QFile::remove(blockedDraft+QStringLiteral(".project"));
     QFile::remove(rescuedDraft);
     QFile::remove(rescuedDraft+QStringLiteral(".project"));
+    QFile::remove(rescuedDraft+QStringLiteral(".title"));
+    QFile::remove(blockedDraft+QStringLiteral(".title"));
     require(MobileDraftRecovery::hasKraHeader(draft) &&
             !MobileDraftRecovery::hasKraHeader(
                 draft+QStringLiteral(".pending.kra")),
