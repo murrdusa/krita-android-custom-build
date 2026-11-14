@@ -69,9 +69,14 @@ int main(int argc,char **argv)
             P::recentFileUrl(realFile)==QUrl::fromLocalFile(realFile) &&
             P::recentFileUrl(provider)==QUrl(provider),
             "native open/recent paths differ for the same drawing");
-    require(P::recentFileUrl(QStringLiteral("file://remote-host/drawing.kra"))
-                .isEmpty(),
-            "nonlocal file URL was registered as a recent project");
+    const QString remoteUrl=QStringLiteral("file://remote-host/drawing.kra");
+    require(P::recentFileUrl(remoteUrl).isEmpty() &&
+            P::localFilePath(remoteUrl).isEmpty() &&
+            !P::mayAttemptOpen(remoteUrl) &&
+            P::needsSaveAs(remoteUrl,false,false,false) &&
+            MobileSavedVersionArchive::canonicalIdentity(remoteUrl).isEmpty() &&
+            !Guard::sameFile(remoteUrl,realFile),
+            "nonlocal file URL was treated as an Android local project");
     require(P::mayAttemptOpen(fileUrl) &&
             !P::needsSaveAs(fileUrl,false,false,false) &&
             P::saveDialogStartPath(fileUrl,pictures)==realFile,
