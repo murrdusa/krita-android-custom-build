@@ -15,6 +15,7 @@
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QMutex>
@@ -575,6 +576,38 @@ public:
            (!expectedHash.isEmpty() && hash.result().toHex()!=expectedHash))
             return {};
         return destination.commit()?path:QString();
+    }
+
+    // A hard process kill bypasses the queued recovery-copy owner.
+    // On a later launch, retire only old, validly named private copies.
+    // Saved versions and autosave drafts live in other directories and
+    // must never be touched. Enumeration streams paths instead of
+    // allocating a potentially large QFileInfoList.
+    static int cleanupStaleRecoveryCopies(const QString &rootOverride=QString(),
+                                          qint64 minAgeMs=24LL*60*60*1000)
+    {
+        QMutexLocker guard(&lock());
+        const QString folder=rootOverride.isEmpty()?
+            recoveryDirectory():rootOverride;
+        if(folder.isEmpty() || !QDir(folder).exists() || minAgeMs<0)return 0;
+        const QDateTime now=QDateTime::currentDateTimeUtc();
+        QDirIterator files(folder,{QStringLiteral("Recovered-*.kra")},
+                           QDir::Files|QDir::NoSymLinks);
+        int removed=0;
+        while(files.hasNext()) {
+            const QString path=files.next();
+            const QFileInfo info=files.fileInfo();
+            if(!info.isFile() || info.isSymLink() ||
+               info.suffix()!=QStringLiteral("kra"))continue;
+            const QString name=info.completeBaseName();
+            if(!name.startsWith(QStringLiteral("Recovered-")) ||
+               name.size()!=46 ||
+               QUuid(name.mid(10)).isNull())continue;
+            const qint64 age=info.lastModified().toUTC().msecsTo(now);
+            if(age<minAgeMs)continue;
+            if(QFile::remove(path))++removed;
+        }
+        return removed;
     }
 
     static bool isRecoveryCopy(const QString &path)
