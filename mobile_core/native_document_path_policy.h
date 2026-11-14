@@ -54,8 +54,10 @@ public:
     {
         // A provider document is a file identity, not a filesystem
         // directory. Keep the picker away from content:// identifiers.
-        return currentPath.isEmpty() || isProviderUri(currentPath)?
-            picturesFolder:localFilePath(currentPath);
+        if(currentPath.isEmpty() || isProviderUri(currentPath))
+            return picturesFolder;
+        const QString local=localFilePath(currentPath);
+        return local.isEmpty()?picturesFolder:local;
     }
 
     static bool needsSaveAs(const QString &path,bool saveAs,
