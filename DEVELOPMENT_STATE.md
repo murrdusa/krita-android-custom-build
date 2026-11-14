@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — native canvas registration identity after reentrant activation
+
+- Canvas adoption now verifies the original registration token and document identity after Qt's synchronous first-tab activation; re-registering the same QWidget under a new document cannot falsely satisfy the earlier adopt request.
+- Native tab activation similarly checks that the selected view retains its original document and registration token after `currentChanged` listeners run. This prevents a stale selection from being reported as successful when a callback swaps the backing canvas.
+- Added desktop Qt regression cases for view re-registration inside selection notification and destruction of the first canvas's document during adoption. These tests are committed but not yet executed.
+- **Verification:** last locally confirmed Android WSL build was `1ffe097bc1b5f32b976eae39d4917b94c40a78f2` (SUCCESS). Subsequent watcher statuses are pending/unreported at last check. This revision needs exact-SHA compile and host Qt tests. No APK uploaded or phone testing requested.
+
+
 ## November 14 — validate unique document owners before recovery
 
 - The recovery workspace identity guard now rejects snapshots containing two native canvas views for one backing document, even if both the captured and current snapshots match. This prevents queued recovery actions from trusting malformed document ownership.
