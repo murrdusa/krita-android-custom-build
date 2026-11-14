@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — rescue pending drafts without skipping eligible files
+
+- Audited the bounded startup draft-rescue cursor. `MobileDraftRecovery::list()` advanced the shared `QDirIterator` over up to 128 pending files but only validated two qualifying old orphans. The other candidates had already been consumed and could remain hidden from recovery until an entire directory traversal wrapped.
+- The iterator now stops as soon as it has selected two age/path-eligible staging files, still examining at most 128 entries per gallery visit. Slow KoStore validation and publication remain outside the cursor mutex; the earlier size/mtime recheck and non-overwriting rescue semantics remain intact.
+- Expanded the native-free `qt_saved_version_archive.cpp` regression to stage six old `.pending.kra` exports and assert that repeated bounded scans rescue all of them without skipping the candidates following the first two. Test fixtures are removed after recovery.
+- **Verification:** previous reported WSL Android build SUCCESS at `bd9366aa02431ca95725b3a708047fb3fe1d8f77`. This fix and its standalone Qt test await exact-SHA verification. No APK uploaded.
+
+
 ## November 14 — enforce gallery decoded-thumbnail memory bounds
 
 - `MobileProjectPreviewCache::load()` requested a 124×124 scaled PNG decode, but returned `QImageReader::read()` without verifying the decoded dimensions. A plugin that ignored the requested size could allow a large legacy cache PNG to persist in the gallery's in-memory icon cache.
