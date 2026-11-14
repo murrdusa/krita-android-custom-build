@@ -46,6 +46,7 @@ public:
         KisView *view=KisPart::instance()->createView(document,manager,nullptr);
         if(!view)return nullptr;
         QPointer<KisView> guarded=view;
+        const QPointer<KisDocument> guardedDocument(document);
         view->setAttribute(Qt::WA_DeleteOnClose,false);
         view->setMobileNativeSaveHost(saver);
         // Krita's view-manager and loading hooks can run synchronous
@@ -53,15 +54,15 @@ public:
         const QPointer<KisViewManager> guardedManager(manager);
         const QPointer<MobileNativeViewStack> guardedStack(stack);
         manager->inputManager()->addTrackedCanvas(view->canvasBase());
-        if(!guarded || !guardedManager || !guardedStack)return nullptr;
+        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)return nullptr;
         view->setViewManager(manager);
-        if(!guarded || !guardedManager || !guardedStack)return nullptr;
+        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)return nullptr;
         if(!view->canvasBase() || !manager->paintOpBox())return nullptr;
         view->canvasBase()->setFavoriteResourceManager(
             manager->paintOpBox()->favoriteResourcesManager());
-        if(!guarded || !guardedManager || !guardedStack)return nullptr;
+        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)return nullptr;
         view->slotLoadingFinished();
-        if(!guarded || !guardedManager || !guardedStack)return nullptr;
+        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)return nullptr;
 
         const QString title=document->path().isEmpty()?
             QStringLiteral("Untitled"):
@@ -170,6 +171,9 @@ private:
             const bool changedView=
                 manager->canvasBase()!=(selected?selected->canvasBase():nullptr);
             if(changedView)manager->setCurrentView(selected);
+            if(!manager || !root)return;
+            if(selected && (root->currentWidget()!=selected.data() ||
+                            !selected->document()))return;
             if(selected) {
                 if(!root || !manager || root->currentWidget()!=selected ||
                    !selected->document() || root->currentDocument()!=selected->document())return;
@@ -181,6 +185,7 @@ private:
                     const bool bootstrapped=QMetaObject::invokeMethod(
                         selected->canvasBase(),"bootstrapFinished",
                         Qt::DirectConnection);
+                    if(!selected || !manager || !root)return;
                     if(bootstrapped)
                         selected->setProperty(
                             "_mobileStudioKritaCanvasBootstrapped",true);
