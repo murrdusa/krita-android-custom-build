@@ -58,7 +58,16 @@ public:
             [this,token]() {forgetToken(token);});
         row.documentDestroyed=QObject::connect(
             document,&QObject::destroyed,this,
-            [this,token]() {forgetToken(token);});
+            [this,token,orphan=QPointer<QWidget>(view)]() {
+                // An engine-driven document teardown can destroy the
+                // document before its QWidget canvas. forgetToken()
+                // detaches the widget but does not own its deletion.
+                // Otherwise the hidden GL canvas remains a child of the
+                // window until the whole application is closed.
+                const QPointer<MobileNativeViewStack> host(this);
+                forgetToken(token);
+                if(host && orphan)orphan->deleteLater();
+            });
         m_rows.append(std::move(row));
         // addWidget() can synchronously emit currentChanged for the
         // first tab. Its observers need the registered document then.
