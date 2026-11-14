@@ -1122,7 +1122,9 @@ private:
                 if(batch.isEmpty() || cancel->load())return;
                 constexpr int maxQueuedBatches=8;
                 while(queued->load(std::memory_order_acquire)>=maxQueuedBatches) {
-                    if(cancel->load())return;
+                    // With no Qt event loop, queued batches cannot drain.
+                    // Do not strand the thread pool during application exit.
+                    if(cancel->load() || !application)return;
                     QThread::msleep(10);
                 }
                 if(cancel->load())return;
@@ -1138,7 +1140,7 @@ private:
                     },Qt::QueuedConnection))
                     queued->fetch_sub(1,std::memory_order_acq_rel);
             };
-            while(!roots.isEmpty() && !cancel->load()) {
+            while(!roots.isEmpty() && !cancel->load() && application) {
                 if(!fullScan && timer.elapsed()>automaticLimitMs) {
                     truncated=true;
                     break;
@@ -1148,7 +1150,7 @@ private:
                 visited.insert(root);
                 QDirIterator it(root,QDir::Dirs|QDir::Files|QDir::Hidden|
                     QDir::NoDotAndDotDot|QDir::NoSymLinks);
-                while(!cancel->load() && it.hasNext()) {
+                while(!cancel->load() && application && it.hasNext()) {
                     if(!fullScan && timer.elapsed()>automaticLimitMs) {
                         truncated=true;
                         break;
@@ -1171,8 +1173,9 @@ private:
             }
             deliverBatch();
             if(cancel->load())return;
+            if(cancel->load() || !application)return;
             for(const auto &project:androidList("tabletGrantedProjects")) {
-                if(cancel->load())return;
+                if(cancel->load() || !application)return;
                 const auto entry=project.toObject();
                 if(seen.contains(QDir::cleanPath(entry.value(QStringLiteral("localPath")).toString())))
                     continue;
