@@ -20,6 +20,8 @@
 #include <QMenu>
 #include "touch_action_picker.h"
 #include <QMargins>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QDir>
 #include <QDirIterator>
 #include <QElapsedTimer>
@@ -1429,9 +1431,35 @@ private:
             entry.source=QStringLiteral("index");
             entries.append(entry);
         }
-        // The pool serializes index writes; no need to block the touch UI.
-        m_scanner.start([entries]() {
-            MobileProjectIndex::save(MobileProjectIndex::merge(MobileProjectIndex::load(),entries));
+        // Several gallery refreshes can queue 20k-entry snapshots while
+        // the scanner is busy. Retain only the latest pending snapshot;
+        // one worker drains it and reruns if a refresh arrived mid-write.
+        const auto state=m_indexWriteState;
+        bool schedule=false;
+        {
+            QMutexLocker guard(&state->mutex);
+            state->latest=std::move(entries);
+            if(!state->queued) {
+                state->queued=true;
+                schedule=true;
+            }
+        }
+        if(!schedule)return;
+        m_scanner.start([state]() {
+            for(;;) {
+                QVector<MobileProjectIndexEntry> latest;
+                {
+                    QMutexLocker guard(&state->mutex);
+                    latest.swap(state->latest);
+                }
+                MobileProjectIndex::save(
+                    MobileProjectIndex::merge(MobileProjectIndex::load(),latest));
+                QMutexLocker guard(&state->mutex);
+                if(state->latest.isEmpty()) {
+                    state->queued=false;
+                    return;
+                }
+            }
         });
     }
 
@@ -1632,6 +1660,13 @@ private:
     int m_scanGeneration=0;
     int m_scanDiscoveredCount=0;
     std::shared_ptr<std::atomic_bool> m_scanCancel;
+    struct IndexWriteState {
+        QMutex mutex;
+        QVector<MobileProjectIndexEntry> latest;
+        bool queued=false;
+    };
+    std::shared_ptr<IndexWriteState> m_indexWriteState=
+        std::make_shared<IndexWriteState>();
     QThreadPool m_scanner,m_thumbnails;
     QHash<QString,QListWidgetItem*> m_projectItems;
     bool m_displayLimitReached=false;
