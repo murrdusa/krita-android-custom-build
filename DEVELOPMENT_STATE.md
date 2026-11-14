@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — reduce gallery thumbnail encoding memory
+
+- `MobileProjectPreviewCache::store()` previously PNG-encoded full-size gallery source images (up to 4096×4096) before applying a disk-size cap. Large noisy previews could consume substantial temporary encoder memory on Android even though the UI displays at most 124×124 pixels.
+- The cache now downscales to the actual gallery display size **before** encoding, skips a failed scale allocation or cancelled request, and retains the existing encoded-size and cache-retention guards. The legacy load-side downscale remains to handle old oversized PNG entries.
+- Updated the Qt thumbnail regression to check that a 3500×3500 noisy source produces a readable, bounded 124×124 cached preview instead of spending memory encoding an unused full-resolution image.
+- **Verification:** latest reported WSL Android SUCCESS remains `ceba8f66c5378aa7af8e4355dc1e72257780e1e1`. New preview allocation and thumbnail encoder commits await exact-SHA local Android build and standalone Qt regression execution. No APK uploaded.
+
+
 ## November 14 — bound interactive fill-tolerance preview sample allocations
 
 - Audited the asynchronous Fill/Select tolerance preview while waiting for canvas cleanup builds. `MobileFillTolerancePreview::requestMask()` directly computed and resized its raw pixel sampling buffer with `width * height * pixelSize` using implicit integer arithmetic and assumed engine image/source were available. An unexpected colorspace stride or stale/empty preview source could cause excessive allocations or null dereferences during tool/canvas transitions.
