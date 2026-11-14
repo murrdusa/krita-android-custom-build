@@ -996,7 +996,11 @@ private:
                                     reinterpret_cast<jbyte*>(bytes.data()));
             return decodePreview(bytes);
         }
-        if(!QFileInfo(path).isReadable())return {};
+        const QFileInfo entry(path);
+        // A gallery scan may encounter truncated, linked, or enormous
+        // documents. Never hand those directly to Krita's ZIP preview
+        // reader, where malformed archive indexing can be expensive.
+        if(!entry.isFile() || entry.isSymLink() || !entry.isReadable())return {};
         if(!isKra(path)) {
             // Imported PNG/JPEG drawings are also part of Krita's recent
             // history. Read them with the native Qt image decoder.
@@ -1008,6 +1012,12 @@ private:
             reader.setScaledSize(size.scaled(124,124,Qt::KeepAspectRatio));
             return reader.read();
         }
+        constexpr qint64 maxKraBytes=8LL*1024*1024*1024;
+        if(entry.size()<4 || entry.size()>maxKraBytes)return {};
+        QFile header(path);
+        if(!header.open(QIODevice::ReadOnly) ||
+           header.peek(4)!=QByteArray::fromHex("504b0304"))return {};
+        header.close();
         QScopedPointer<KoStore> store(KoStore::createStore(path,KoStore::Read));
         if(!store || store->bad())return {};
         for(const QString &part:{QStringLiteral("preview.png"),
