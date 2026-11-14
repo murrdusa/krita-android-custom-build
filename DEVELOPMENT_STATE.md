@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — remove whole-folder history move that bypassed checksum validation
+
+- Found a high-impact integrity bypass in `MobileSavedVersionArchive::migrateFolder()`: when the Save As destination version folder did not yet exist, it attempted `QDir().rename(from,to)` and returned immediately. That fast path skipped every size, symlink, SHA format and actual KRA-byte verification added to the normal migration loop. Removed the whole-directory shortcut; all archive pairs now migrate through the same validated, collision-safe path, even for brand-new saved projects.
+- Added a Qt regression with one valid and one checksum-mismatched KRA under a source history folder, and **no pre-existing destination folder**. The valid historical version must migrate; the damaged KRA and its checksum must remain in the source folder. This protects a normal first Save As, not only merges into an existing project timeline.
+- **Verification:** last reported local WSL Android build SUCCESS was for `46e0a218a12d230cb4f906033488b4657eecb843`. New changes and test require their own exact-SHA build/regression result; no APK uploaded.
+
 ## November 14 — verify saved-version bytes against sidecars before Save As migration
 
 - The Save As/legacy-history migration already rejects oversized, linked, and malformed SHA-256 sidecars. A remaining integrity hole was a syntactically valid 64-hex-digit checksum that did not match the KRA contents: the source pair would be moved to the new project despite being unrecoverable under normal checksum validation. The migration now calls the existing bounded `hasPublishedCheckpoint()` verifier before moving any source KRA that has a checksum. Rejected pairs stay in the original history folder for repair/retry; legacy archives with no sidecar still follow existing behavior.
