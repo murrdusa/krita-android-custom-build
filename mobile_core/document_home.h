@@ -319,11 +319,15 @@ public:
         connect(m_list,&QListWidget::itemClicked,this,[this](QListWidgetItem *item) {
             if(!item || !item->flags().testFlag(Qt::ItemIsEnabled))return;
             const QString path=item->data(Qt::UserRole).toString();
-            const QString title=item->data(Qt::UserRole+3).toString();
-            const Mode mode=m_mode;
-            QTimer::singleShot(0,this,[this,path,title,mode]() {
-                if(isVisible() && m_mode==mode && !path.isEmpty())
-                    projectActions(path,title,mode==RecoveryDrafts || MobileDraftRecovery::isDraft(path));
+            if(path.isEmpty())return;
+            const auto generation=m_homeListGeneration;
+            QTimer::singleShot(0,this,[this,key=projectKey(path),generation]() {
+                if(!isVisible() || generation!=m_homeListGeneration)return;
+                const auto *current=m_projectItems.value(key);
+                if(!current || current->isHidden())return;
+                const QString path=current->data(Qt::UserRole).toString();
+                projectActions(path,current->data(Qt::UserRole+3).toString(),
+                               m_mode==RecoveryDrafts || MobileDraftRecovery::isDraft(path));
             });
         });
         connect(m_list->verticalScrollBar(),&QScrollBar::valueChanged,
@@ -333,7 +337,9 @@ public:
             if(state!=Qt::ApplicationActive || !isVisible())return;
             const bool access=hasAllFilesAccess();
             if(access==m_lastAccess)return;
-            QSettings().remove(QStringLiteral("MobileStudio/projectIndexSharedStorageScanMs"));
+            QSettings settings;
+            settings.remove(QStringLiteral("MobileStudio/projectIndexSharedStorageScanMs"));
+            settings.remove(QStringLiteral("MobileStudio/projectIndexPartialScanMs"));
             if(access || m_mode==AllProjects)showList(AllProjects,true);
             else m_lastAccess=access;
         });
@@ -437,8 +443,10 @@ protected:
     void hideEvent(QHideEvent *event) override
     {
         ++m_recoveryGeneration;
+        ++m_homeListGeneration;
         if(m_scanCancel && !m_scanCancel->exchange(true) && m_mode==AllProjects)
             persistIndex();
+        resetThumbnailRequests();
         QFrame::hideEvent(event);
     }
 
@@ -508,10 +516,12 @@ private:
         add(i18n("Version history"),History);
         if(!draft)add(m_starred.contains(key)?i18n("Remove star"):i18n("Star project"),Star);
         add(draft?i18n("Discard draft…"):i18n("Delete…"),Delete);
-        const Mode mode=m_mode;
+        const auto generation=m_homeListGeneration;
         m_projectMenu=mobileShowActionList(this,nullptr,menu,this,
-            [this,path,title,draft,key,draftProject,mode](const QVariant &chosen) {
-                if(!isVisible() || m_mode!=mode || m_restoringVersion)return;
+            [this,path,title,draft,key,draftProject,generation](const QVariant &chosen) {
+                if(!isVisible() || generation!=m_homeListGeneration || m_restoringVersion)return;
+                const auto *current=m_projectItems.value(key);
+                if(!current || current->data(Qt::UserRole).toString()!=path)return;
                 switch(chosen.toInt()) {
                 case Rename: {
                     bool accepted=false;
@@ -664,6 +674,7 @@ private:
     {
         const QString title=item->data(Qt::UserRole+3).toString();
         const bool starred=m_starred.contains(projectKey(item->data(Qt::UserRole).toString()));
+        item->setData(Qt::UserRole+6,starred);
         item->setText(starred?QStringLiteral("★ ")+title:title);
     }
 
@@ -804,6 +815,7 @@ private:
 
     void showList(Mode mode,bool forceScan=false)
     {
+        ++m_homeListGeneration;
         if(mode!=m_mode)++m_recoveryGeneration;
         if(m_projectMenu)m_projectMenu->close();
         if(m_mode==AllProjects && m_list->count()>0)persistIndex();
@@ -841,10 +853,7 @@ private:
         m_sort->setVisible(mode==AllProjects);
         m_projectItems.clear();
         m_list->clear();
-        m_previewCancelled->store(true);
-        m_previewCancelled=std::make_shared<std::atomic_bool>(false);
-        m_thumbnails.clear();
-        m_pending.clear();
+        resetThumbnailRequests();
         m_attempted.clear();
         if(m_scanCancel)m_scanCancel->store(true);
         if(mode!=RecoveryDrafts)
@@ -906,10 +915,14 @@ private:
             addMissingDraftProjects(draftProjects);
             // Keep the index visible during refresh and reuse it between scans.
             const qint64 now=QDateTime::currentMSecsSinceEpoch();
-            const qint64 last=QSettings().value(
+            const QSettings settings;
+            const qint64 last=settings.value(
                 QStringLiteral("MobileStudio/projectIndexSharedStorageScanMs"),0).toLongLong();
-            const bool needsScan=forceScan || last<=0 || last>now ||
-                                  now-last>24LL*60*60*1000;
+            const qint64 partial=settings.value(
+                QStringLiteral("MobileStudio/projectIndexPartialScanMs"),0).toLongLong();
+            const bool complete=last>0 && last<=now && now-last<24LL*60*60*1000;
+            const bool coolingDown=partial>0 && partial<=now && now-partial<10LL*60*1000;
+            const bool needsScan=forceScan || (!complete && !coolingDown);
             if(needsScan) {
                 if(m_list->count()>0) {
                     m_message->setText(i18n("Updating saved projects in background…"));
@@ -920,7 +933,9 @@ private:
                 startScan(forceScan);
             } else {
                 const int count=m_list->count();
-                m_message->setText(count==0?
+                m_message->setText(!complete && count>0?
+                    i18n("%1 indexed projects. Tap Refresh to finish searching shared storage.",count):
+                    count==0?
                     i18n("No indexed Krita projects. Tap Refresh or use Browse Files."):
                     i18np("%1 indexed Krita project", "%1 indexed Krita projects",count));
                 // New recent entries are remembered immediately rather than
@@ -1170,9 +1185,11 @@ private:
                 i18n("No Krita projects found. Try Browse Files."):
                 i18np("%1 Krita project found", "%1 Krita projects found",count));
         }
-        QSettings().setValue(
-            QStringLiteral("MobileStudio/projectIndexSharedStorageScanMs"),
-            QDateTime::currentMSecsSinceEpoch());
+        QSettings settings;
+        settings.setValue(truncated?QStringLiteral("MobileStudio/projectIndexPartialScanMs"):
+                                   QStringLiteral("MobileStudio/projectIndexSharedStorageScanMs"),
+                          QDateTime::currentMSecsSinceEpoch());
+        if(!truncated)settings.remove(QStringLiteral("MobileStudio/projectIndexPartialScanMs"));
         persistIndex();
     }
 
@@ -1192,8 +1209,8 @@ private:
                 const qint64 am=a->data(Qt::UserRole+5).toLongLong();
                 const qint64 bm=b->data(Qt::UserRole+5).toLongLong();
                 if(m_sortOrder==Starred) {
-                    const bool aStar=m_starred.contains(projectKey(a->data(Qt::UserRole).toString()));
-                    const bool bStar=m_starred.contains(projectKey(b->data(Qt::UserRole).toString()));
+                    const bool aStar=a->data(Qt::UserRole+6).toBool();
+                    const bool bStar=b->data(Qt::UserRole+6).toBool();
                     if(aStar!=bStar)return aStar;
                 }
                 if(m_sortOrder!=Name && am!=bm)return am>bm;
@@ -1245,6 +1262,14 @@ private:
             m_thumbnailScheduled=false;
             requestVisibleThumbnails();
         });
+    }
+
+    void resetThumbnailRequests()
+    {
+        m_previewCancelled->store(true);
+        m_previewCancelled=std::make_shared<std::atomic_bool>(false);
+        m_thumbnails.clear();
+        m_pending.clear();
     }
 
     void requestVisibleThumbnails()
@@ -1314,6 +1339,7 @@ private:
     QPointer<MobileTransientPanel> m_projectMenu;
     bool m_restoringVersion=false;
     quint64 m_recoveryGeneration=0;
+    quint64 m_homeListGeneration=0;
     bool m_thumbnailScheduled=false;
     bool m_forceThumbnailRefresh=false;
     int m_scanGeneration=0;

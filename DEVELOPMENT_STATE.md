@@ -1,5 +1,7 @@
 # Krita Mobile Studio — current development state
 
+Home drops stale project menu actions after a list rebuild and cancels queued thumbnail work when hidden. A timed partial scan can retry after ten minutes instead of setting the full-scan daily timestamp. Starred sorting uses cached row state to avoid resolving project paths repeatedly.
+
 Closing the app now starts with the active canvas and follows the live tab selection after each close. The native view manager is synchronized before the next Save/Discard/Cancel prompt. Home stops its directory scan when hidden and keeps projects already found. Sorting keeps the selected project and the top visible tile when possible.
 
 Leaving Home or switching its tabs cancels pending version or duplicate opens. Home thumbnail requests check cached revisions, so older previews cannot block a newer save from appearing. Toolbar gestures cancel when a canvas or tool changes or Android backgrounds the app.
