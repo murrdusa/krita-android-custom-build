@@ -64,8 +64,13 @@ public:
         return !m_opening && attachCanvas(document);
     }
 
-    bool openFile(const QString &path) const override
+    bool openFile(const QString &requestedPath) const override
     {
+        // Native Krita openPath expects a filesystem path, not the
+        // file:// spelling returned by some Android/Qt file pickers.
+        // Keep content:// URIs intact for the SAF bridge.
+        const QString path=MobileNativeDocumentPathPolicy::localFilePath(
+            requestedPath);
         if(!available() || m_opening || m_replacing || m_saving ||
            path.trimmed().isEmpty())return false;
         const QScopedValueRollback<bool> transaction(m_opening,true);
@@ -353,9 +358,9 @@ private:
     static void rememberPath(const QString &path)
     {
         if(path.isEmpty())return;
-        const QUrl url=path.startsWith(QStringLiteral("content:"))?
-            QUrl(path):QUrl::fromLocalFile(path);
-        KisRecentFilesManager::instance()->add(url);
+        const QUrl url=MobileNativeDocumentPathPolicy::recentFileUrl(path);
+        if(url.isValid() && !url.isEmpty())
+            KisRecentFilesManager::instance()->add(url);
     }
 
     static bool isRegistered(KisDocument *document)
