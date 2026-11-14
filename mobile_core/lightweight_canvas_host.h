@@ -13,11 +13,13 @@
 #include <QEvent>
 #include <QMainWindow>
 #include <QPointer>
+#include <QScopedValueRollback>
 #include <QStatusBar>
 #include <QWidget>
 #include "host_services.h"
 #include "native_canvas_chrome.h"
 #include "native_view_stack.h"
+#include "view_identity_guard.h"
 #ifdef Q_OS_ANDROID
 #include <KoCanvasSupervisor.h>
 #endif
@@ -198,13 +200,24 @@ protected:
         // transaction before the Qt host can destroy their paint views.
         // An unavailable/destroyed view or a canceled dialog fails closed.
         if(m_nativeViewPort) {
-            const auto pending=m_nativeViewPort->openViews();
-            for(const auto &entry:pending) {
-                if(!entry.nativeView ||
-                   !m_nativeViewPort->closeView(entry.nativeView)) {
+            if(m_closing) {
+                event->ignore();
+                return;
+            }
+            const QScopedValueRollback<bool> closing(m_closing,true);
+            auto pending=m_nativeViewPort->openViews();
+            while(!pending.isEmpty()) {
+                const auto current=MobileViewIdentityGuard::uniqueActive(pending);
+                if(!current || !m_nativeViewPort->closeView(current)) {
                     event->ignore();
                     return;
                 }
+                const auto remaining=m_nativeViewPort->openViews();
+                if(remaining.size()>=pending.size()) {
+                    event->ignore();
+                    return;
+                }
+                pending=remaining;
             }
         }
         QMainWindow::closeEvent(event);
@@ -216,6 +229,7 @@ private:
     bool m_desktopStatusWasVisible=false;
     QPointer<QWidget> m_canvas;
     QSharedPointer<MobileViewHostPort> m_nativeViewPort;
+    bool m_closing=false;
     MobileHostServices m_services;
     MobileNativeCanvasChrome m_mobileChrome;
     bool m_uiInstalled=false;

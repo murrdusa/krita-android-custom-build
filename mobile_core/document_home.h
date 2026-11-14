@@ -437,6 +437,8 @@ protected:
     void hideEvent(QHideEvent *event) override
     {
         ++m_recoveryGeneration;
+        if(m_scanCancel && !m_scanCancel->exchange(true) && m_mode==AllProjects)
+            persistIndex();
         QFrame::hideEvent(event);
     }
 
@@ -1157,6 +1159,7 @@ private:
     void finishScan(int generation,bool truncated)
     {
         if(generation!=m_scanGeneration || m_mode!=AllProjects)return;
+        m_scanCancel.reset();
         sortProjects();
         const int count=m_list->count();
         if(truncated) {
@@ -1175,6 +1178,13 @@ private:
 
     void sortProjects()
     {
+        if(m_list->count()<2) {
+            filterItems();
+            return;
+        }
+        const auto selected=m_list->currentItem();
+        const auto top=m_list->itemAt(QPoint(4,4));
+        m_list->setUpdatesEnabled(false);
         QList<QListWidgetItem*> sorted;
         while(m_list->count())sorted.append(m_list->takeItem(0));
         std::stable_sort(sorted.begin(),sorted.end(),
@@ -1194,6 +1204,9 @@ private:
             });
         for(QListWidgetItem *item:sorted)m_list->addItem(item);
         filterItems();
+        if(selected && !selected->isHidden())m_list->setCurrentItem(selected);
+        if(top && !top->isHidden())m_list->scrollToItem(top,QAbstractItemView::PositionAtTop);
+        m_list->setUpdatesEnabled(true);
     }
 
     void filterItem(QListWidgetItem *item,const QString &query) const

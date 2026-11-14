@@ -57,7 +57,13 @@ public:
         const QString title=document->path().isEmpty()?
             QStringLiteral("Untitled"):
             MobileSavedVersionArchive::projectName(document->path());
-        if(!stack->adoptView(view,document,title,[guarded]() {
+        if(!stack->adoptView(view,document,title,
+                            [guarded,manager=QPointer<KisViewManager>(manager)]() {
+            if(!guarded || !manager)return false;
+            // Closing several tabs can advance the Qt stack before the
+            // queued native activation runs. Save must use that same view.
+            if(manager->canvasBase()!=guarded->canvasBase())
+                manager->setCurrentView(guarded);
             if(!guarded || !guarded->close())return false;
             // Close may be canceled. Once accepted, destroy the native
             // view synchronously while its Krita view manager is alive.

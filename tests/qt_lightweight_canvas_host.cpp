@@ -111,6 +111,32 @@ int main(int argc,char **argv)
     doc->online=false;
     require(!window.ready() && !window.setMobileVisible(true),
             "offline engine document port allowed unsafe host activation");
+
+    MobileLightweightCanvasHost multi;
+    auto *stack=multi.createNativeDocumentRoot();
+    require(stack,"could not create the multi-canvas root");
+    QObject firstDocument,secondDocument;
+    auto *first=new QWidget;
+    auto *second=new QWidget;
+    QStringList closed;
+    bool confirmFirst=false;
+    require(stack->adoptView(first,&firstDocument,QStringLiteral("First"),[&]() {
+        if(!confirmFirst)return false;
+        closed.append(QStringLiteral("First"));
+        return true;
+    }),"could not adopt first canvas");
+    require(stack->adoptView(second,&secondDocument,QStringLiteral("Second"),[&]() {
+        closed.append(QStringLiteral("Second"));
+        return true;
+    }),"could not adopt second canvas");
+    stack->setCurrentWidget(second);
+    multi.show();
+    require(!multi.close() && multi.isVisible() && stack->currentWidget()==first &&
+            closed==QStringList{QStringLiteral("Second")},
+            "app close must begin on the active tab and respect cancellation");
+    confirmFirst=true;
+    require(multi.close() && stack->openViews().isEmpty(),
+            "app close must finish after all remaining canvases confirm");
     qInfo() << "PASS: Krita-independent Qt window host, immutable canvas,"
             << "injected real-engine-compatible backend ports, 12 mode"
             << "transitions, Back restoration and offline service refusal";
