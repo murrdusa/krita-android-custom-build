@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — bound merged project lists and index retention
+
+- All Projects now caps the actual Qt list/widget inventory at 20,000 distinct project identities, including when a previously saturated persisted index is combined with a new scan. Existing identities still refresh their paths, timestamps and previews; extra discoveries do not allocate additional rows. The gallery reports that its safety limit was reached.
+- The persistent index merge also trims back to 20,000 entries before writing; previously the merge could exceed the JSON writer's hard limit, silently suppressing the entire updated index. Newly opened/refreshed entries are retained before stale historical entries, even when an SAF document has no modification timestamp.
+- **Verification:** preceding full-scan safety limits revision `2956856a8b5e9d60364eee987b851cd459bae01e` passed exact-SHA local WSL Android compilation. Latest merged-index changes await exact-SHA WSL compilation and realistic high-volume stress testing. No APK uploaded.
+
+
 ## November 14 — cap Android All Projects scan memory
 
 - The gallery's full storage refresh now limits discovery to 20,000 projects (matching the persisted JSON index ceiling) and 50,000 traversed/pending directories. Large shared-storage trees can otherwise grow the scanner's in-memory `roots`, `visited` and `seen` sets without bound, especially during explicit full scans.
