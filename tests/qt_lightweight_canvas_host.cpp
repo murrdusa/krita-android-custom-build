@@ -396,12 +396,26 @@ int main(int argc,char **argv)
                                      QStringLiteral("Orphaned"),
                                      [](){return true;}),
                 "could not attach orphan-view test canvas");
+        auto *survivingDocument=new QObject;
+        auto *survivingCanvas=new QWidget;
+        QPointer<QWidget> survivorGuard(survivingCanvas);
+        require(orphanRoot->adoptView(survivingCanvas,survivingDocument,
+                                     QStringLiteral("Survivor"),
+                                     [](){return true;}),
+                "could not attach surviving native drawing");
         delete orphanDocument;
-        require(orphanRoot->openViews().isEmpty(),
-                "destroyed engine document remained registered as a canvas");
+        const auto remaining=orphanRoot->openViews();
+        require(remaining.size()==1 && remaining.first().document==survivingDocument,
+                "orphan document teardown disturbed a surviving native canvas");
         QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
-        require(!canvasGuard,
-                "destroyed engine document retained orphaned canvas widget");
+        require(!canvasGuard && survivorGuard &&
+                orphanRoot->openViews().size()==1 &&
+                orphanRoot->currentWidget()==survivingCanvas,
+                "orphan cleanup freed the wrong canvas or retained its widget");
+        delete survivingDocument;
+        QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        require(!survivorGuard && orphanRoot->openViews().isEmpty(),
+                "last document teardown retained native canvas resources");
     }
 
     MobileLightweightCanvasHost multi;
