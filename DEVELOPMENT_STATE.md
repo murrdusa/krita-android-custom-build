@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — retain native document backend during reentrant operations
+
+- The independently hosted `MobileKritaStandaloneDocuments` backend now uses `QEnableSharedFromThis` to retain its own shared ownership during Open, New-canvas attachment, Save, and Export. These operations run Krita callbacks and native modal dialogs which can synchronously close the last window and release the host's service ports. Keeping the document backend alive until the operation unwinds prevents its `QScopedValueRollback` members from referencing freed memory.
+- Extended the independent Qt document-rollback regression with a synchronous external-owner release during an in-flight shared-backend operation, verifying that destruction occurs only after the call has finished.
+- **Verification:** preceding merged-index revision `67420c9b3ce2bf0fee8f732fc951f2fe4f255b92` passed local WSL Android compilation. New backend-lifetime code and Qt test await exact-SHA build/test verification. No APK uploaded.
+
+
 ## November 14 — bound merged project lists and index retention
 
 - All Projects now caps the actual Qt list/widget inventory at 20,000 distinct project identities, including when a previously saturated persisted index is combined with a new scan. Existing identities still refresh their paths, timestamps and previews; extra discoveries do not allocate additional rows. The gallery reports that its safety limit was reached.
