@@ -671,7 +671,9 @@ private:
         if(version.path.isEmpty() || QFileInfo(version.path).isSymLink())
             return false;
         QFile archive(version.path);
+        constexpr qint64 maxArchiveBytes=8LL*1024*1024*1024;
         if(!archive.open(QIODevice::ReadOnly) ||
+           archive.size()<4 || archive.size()>maxArchiveBytes ||
            archive.peek(4)!=QByteArray::fromHex("504b0304") ||
            archive.size()!=version.bytes)return false;
         const QString digestPath=version.path+QStringLiteral(".sha256");
@@ -693,6 +695,9 @@ private:
         qint64 count=0;
         qint64 hashed=0;
         while((count=archive.read(block.data(),block.size()))>0) {
+            // A concurrent writer can grow an initially valid file.
+            // Stop rather than hashing beyond the scanned archive size.
+            if(count>version.bytes-hashed) return false;
             hashed+=count;
             actual.addData(block.constData(),count);
         }
