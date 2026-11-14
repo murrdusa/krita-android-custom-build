@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — cancel-safe Version History thumbnail callbacks
+
+- Version History now tracks its asynchronous result label and Open button with QPointer rather than capturing raw child widget pointers. A queued worker result is discarded when the dialog was dismissed or its controls have been destroyed.
+- Individual preview delivery now checks cancellation and verifies that its target row still exists before setting the icon. Prevents null dereference if the list was reset/closed while thumbnails were being decoded.
+- **Verification:** preceding native attach/manager-lifetime revision `6e1396ca3ff0982f79a49422a876cef922ec82a3` passed local WSL Android compilation. The Version History callback change awaits exact-SHA local WSL compilation; runtime dialog-close tests were not performed. No APK uploaded.
+
+
 ## November 14 — native attachment and manager teardown safety
 
 - Standalone runtime now retains QPointer identities for itself and the imported KisDocument across the real Krita view factory's synchronous loading/selection callbacks. If attachment destroys its owner or document, callback connections are not installed into dead objects and the attach reports failure.
