@@ -230,9 +230,13 @@ public:
         QByteArray block(256*1024,Qt::Uninitialized);
         qint64 length=0;
         while((length=input.read(block.data(),block.size()))>0) {
-            copied+=length;
-            if(copied>copyLimit || output.write(block.constData(),length)!=length)
+            // A file can grow after its initial size check. Do not fill
+            // app storage copying newly appended bytes that would fail
+            // the final exact-length validation anyway.
+            if(length>expected-copied || length>copyLimit-copied)
                 return false;
+            copied+=length;
+            if(output.write(block.constData(),length)!=length)return false;
             hash.addData(block.constData(),length);
         }
         if(length<0 || (expected>0 && copied!=expected))return false;
