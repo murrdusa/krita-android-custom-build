@@ -174,6 +174,15 @@ public:
         return QStringLiteral("content://")+authority+path;
     }
 
+    // Never resolve an unavailable Android AppDataLocation through
+    // QDir(""), which otherwise turns the private archive root into
+    // a path relative to the process working directory.
+    static QString privateVersionRoot(const QString &appData)
+    {
+        return appData.isEmpty()?QString():
+            QDir(appData).filePath(QStringLiteral("saved-versions"));
+    }
+
     static QString folderFor(const QString &source,
                              const QString &rootOverride=QString())
     {
@@ -181,9 +190,8 @@ public:
         const QString identity=canonicalIdentity(source);
         if(identity.isEmpty())return {};
         const QString base=rootOverride.isEmpty()?
-            QDir(QStandardPaths::writableLocation(
-                QStandardPaths::AppDataLocation))
-                .filePath(QStringLiteral("saved-versions")):rootOverride;
+            privateVersionRoot(QStandardPaths::writableLocation(
+                QStandardPaths::AppDataLocation)):rootOverride;
         if(base.isEmpty())return {};
         const QString digest=QString::fromLatin1(QCryptographicHash::hash(
             identity.toUtf8(),QCryptographicHash::Sha256).toHex());
