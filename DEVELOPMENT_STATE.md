@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — stream interrupted draft candidates instead of materializing a full file list
+
+- Followed up the per-visit orphan-recovery limit by replacing the unbounded `QDir::entryInfoList("*.pending.kra")` allocation with a mutex-protected, persistent `QDirIterator` cursor. Each `MobileDraftRecovery::list()` invocation now retains at most 128 pending `QFileInfo` candidates, and resumes at the next filesystem entry on subsequent gallery visits. At the end of a traversal, the cursor resets for the **next** visit, not in the middle of the same batch.
+- Retained the limit of two potentially expensive ZIP checks per visit, the five-minute staging age requirement, and unchanged-file validation before rescue. Completed draft listing is unchanged, so finished artwork is not hidden by an arbitrary cap.
+- The preceding 260-pending-file/one-old-orphan regression already exercises multi-visit progress and is applicable to the streaming cursor; exact-SHA Qt regression execution remains to be verified. This reduces the pending-file candidate memory and enumeration work, not the cost of listing all completed drafts.
+- **Verification:** last exact-SHA WSL Android build SUCCESS was `68af945462433e9ee8245b05afeeb7d74268123d`. New iterator code awaits its own build/test result; no APK uploaded.
+
 ## November 14 — bound gallery scans of pending draft staging files
 
 - `MobileDraftRecovery::list()` previously bounded expensive ZIP validation to two pending files but would still iterate every pending candidate when most were too recent to rescue. The recovery browser now inspects a maximum of 128 staging candidates per invocation, rotating its starting window across refreshes so older recoverable files are not permanently starved.
