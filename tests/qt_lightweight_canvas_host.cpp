@@ -11,6 +11,8 @@
 #include <memory>
 #include <QDialog>
 #include <QMenu>
+#include <QMessageBox>
+#include <QInputDialog>
 #include "mobile_core/touch_action_picker.h"
 #include <QTimer>
 #include <QHBoxLayout>
@@ -174,6 +176,38 @@ int main(int argc,char **argv)
         historyDialog->exec();
         require(!parentGuard && !historyDialog,
                 "nested history dialog survived destroyed owning window");
+    }
+
+    // Gallery permission/deletion and rename prompts use guarded, heap-
+    // owned Qt dialogs. An Android window teardown during exec() must
+    // clear both identities without deleting a C++ stack child.
+    {
+        auto *closingParent=new QWidget;
+        QPointer<QWidget> parentGuard(closingParent);
+        QPointer<QMessageBox> confirm(new QMessageBox(
+            QMessageBox::Question,QStringLiteral("Confirm"),
+            QStringLiteral("Continue?"),
+            QMessageBox::Yes|QMessageBox::No,closingParent));
+        QTimer::singleShot(0,&app,[closingParent]() {
+            delete closingParent;
+        });
+        confirm->exec();
+        delete confirm.data();
+        require(!parentGuard && !confirm,
+                "gallery confirmation survived destroyed Android host");
+    }
+    {
+        auto *closingParent=new QWidget;
+        QPointer<QWidget> parentGuard(closingParent);
+        QPointer<QInputDialog> prompt(new QInputDialog(closingParent));
+        prompt->setInputMode(QInputDialog::TextInput);
+        QTimer::singleShot(0,&app,[closingParent]() {
+            delete closingParent;
+        });
+        prompt->exec();
+        delete prompt.data();
+        require(!parentGuard && !prompt,
+                "gallery rename prompt survived destroyed Android host");
     }
 
     // The shared action picker is used throughout the mobile UI.
