@@ -943,6 +943,39 @@ int main(int argc,char **argv)
     require(MobileSavedVersionArchive::cleanupStaleRecoveryCopies(
                 orphanFolder)==0,"orphan pruning was not idempotent");
 
+    // Streaming completed draft enumeration must retain every valid
+    // published KRA in newest-first order. Recovery checkpoint lookup
+    // depends on this ordering to stop at an older save boundary.
+    QStringList orderedDrafts;
+    for(int i=0;i<3;++i) {
+        const QString path=MobileDraftRecovery::allocate(
+            QStringLiteral("order-fixture"));
+        require(!path.isEmpty(),"could not allocate completed draft fixture");
+        save(path,QByteArray::fromHex("504b0304")+"completed");
+        QFile file(path);
+        require(file.open(QIODevice::ReadWrite) &&
+                file.setFileTime(QDateTime::currentDateTime().addSecs(-3600*(3-i)),
+                                 QFileDevice::FileModificationTime),
+                "could not timestamp completed draft fixture");
+        file.close();
+        orderedDrafts.append(path);
+    }
+    const auto ordered=MobileDraftRecovery::list();
+    int lastPosition=-1;
+    for(int i=2;i>=0;--i) {
+        int position=-1;
+        for(int j=0;j<ordered.size();++j)
+            if(ordered.at(j).absoluteFilePath()==orderedDrafts.at(i)) {
+                position=j;
+                break;
+            }
+        require(position>=0 && position>lastPosition,
+                "streamed draft listing dropped a valid KRA or lost newest-first order");
+        lastPosition=position;
+    }
+    for(const auto &path:orderedDrafts)
+        QFile::remove(path);
+
     // Gallery listing should inspect only a bounded window of pending
     // staging files per refresh, yet eventually reach a recoverable
     // orphan behind many recent (still actively written) candidates.
