@@ -121,7 +121,15 @@ private:
         if(!m_pixels.size()) {
             const int bytes=mobileFillPreviewBufferBytes(
                 m_window.size(),m_source->pixelSize());
-            if(!bytes)return;
+            const bool needsSelection=m_selection &&
+                (m_options.selectionBoundary || m_options.clipToSelection);
+            const int selectionBytes=needsSelection?
+                mobileFillPreviewSelectionBytes(
+                    m_window.size(),m_selection->pixelSize()):0;
+            // An unexpected selection pixel stride cannot be written
+            // into the one-byte-per-pixel coverage buffer safely.
+            if(!bytes || (needsSelection && !selectionBytes) ||
+               !m_source->colorSpace())return;
             if(!m_image->tryBarrierLock(true)) {
                 m_delay.start();
                 return;
@@ -129,8 +137,8 @@ private:
             m_colorSpace=m_source->colorSpace();
             m_pixels.resize(bytes);
             m_source->readBytes(reinterpret_cast<quint8*>(m_pixels.data()),m_window);
-            if(m_selection && (m_options.selectionBoundary || m_options.clipToSelection)) {
-                m_selectionPixels.resize(m_window.width()*m_window.height());
+            if(needsSelection) {
+                m_selectionPixels.resize(selectionBytes);
                 m_selection->readBytes(reinterpret_cast<quint8*>(m_selectionPixels.data()),m_window);
             }
             m_image->unlock();
