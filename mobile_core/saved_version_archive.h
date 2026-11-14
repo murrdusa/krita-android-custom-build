@@ -622,6 +622,7 @@ public:
             !file.isSymLink() && file.isFile() &&
             file.suffix()==QStringLiteral("kra") &&
             name.startsWith(QStringLiteral("Recovered-")) &&
+            name.size()==46 &&
             !QUuid(name.mid(10)).isNull();
     }
 
