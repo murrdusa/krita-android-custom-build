@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — safe native Save render-wait modal ownership
+
+- The native save pipeline's `KisDelayedSaveDialog` (which can block and process Qt events while the image finishes rendering) is now heap-owned and tracked by `QPointer`. Previously it was a stack-allocated dialog parented to the Android window, so window destruction during the nested render-wait event loop could delete an object still residing on the native Save call stack.
+- Completion status is captured only while the guarded dialog survives, then the dialog is explicitly released before further document checks. The existing document and runtime ownership checks remain in effect. The prior Qt parent-destruction modal test covers this Qt ownership pattern, but no device-specific render-wait test has been performed.
+- **Verification:** the preceding shared-document-backend lifetime revision `bf8fb6638b132dacf949798fce7e7e7731b3727e` passed exact-SHA local WSL Android compilation. This dialog fix awaits its own exact-SHA compilation status. No APK uploaded.
+
+
 ## November 14 — retain native document backend during reentrant operations
 
 - The independently hosted `MobileKritaStandaloneDocuments` backend now uses `QEnableSharedFromThis` to retain its own shared ownership during Open, New-canvas attachment, Save, and Export. These operations run Krita callbacks and native modal dialogs which can synchronously close the last window and release the host's service ports. Keeping the document backend alive until the operation unwinds prevents its `QScopedValueRollback` members from referencing freed memory.
