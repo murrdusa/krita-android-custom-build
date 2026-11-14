@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — make draft discard notices safe during Android window teardown
+
+- The gallery's `discardDraft()` branch still used stack-backed static Qt information/warning dialogs for both an open drawing and a failed private-draft deletion. These nested modal event loops can outlive their Android parent window. Both messages now use heap-owned `QMessageBox` instances with `QPointer` post-exec cleanup, matching the existing guarded confirmation dialog.
+- Extended the lightweight Qt host regression to destroy the gallery parent while each of the information/warning dialog severities is executing. Tests the Qt ownership pattern; not a real Android file delete.
+- **Verification:** the prior Fill preview worker completion code and this follow-up await an exact-SHA WSL Android result. No APK uploaded.
+
 ## November 14 — protect Fill tolerance worker completion during app teardown
 
 - The non-destructive Fill/Select tolerance preview launches background flood-fill work on the global Qt pool. Its stale-result and completed-result paths previously called `QMetaObject::invokeMethod(qApp,...)` from that worker. Android shutdown could destroy the application receiver before completion. The preview now captures a guarded `QPointer<QCoreApplication>` before submission and checks its lifetime before dispatching all three categories of results; callbacks continue to guard the preview itself.
