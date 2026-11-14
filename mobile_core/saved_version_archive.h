@@ -711,7 +711,16 @@ private:
                         QFile::exists(targetPath+QStringLiteral(".sha256")));
             }
             const QString targetDigest=targetPath+QStringLiteral(".sha256");
-            const bool hasDigest=QFile::exists(oldDigest);
+            const QFileInfo digestInfo(oldDigest);
+            const bool hasDigest=digestInfo.exists() || digestInfo.isSymLink();
+            // A corrupted checksum can be a very large file or a
+            // substituted symlink. Never copy it during Save As or
+            // migrate the KRA without its existing checksum: leave the
+            // complete source pair available for recovery or repair.
+            if(hasDigest && (!digestInfo.isFile() ||
+                             digestInfo.isSymLink() ||
+                             digestInfo.size()<0 || digestInfo.size()>128))
+                continue;
             // Install the tiny checksum sidecar first. If that copy
             // fails, leave the original KRA/digest pair untouched so
             // history migration can be retried. A failed KRA rename
