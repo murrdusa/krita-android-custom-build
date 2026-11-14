@@ -943,6 +943,38 @@ int main(int argc,char **argv)
     require(MobileSavedVersionArchive::cleanupStaleRecoveryCopies(
                 orphanFolder)==0,"orphan pruning was not idempotent");
 
+    // Gallery listing should inspect only a bounded window of pending
+    // staging files per refresh, yet eventually reach a recoverable
+    // orphan behind many recent (still actively written) candidates.
+    QStringList staged;
+    for(int i=0;i<260;++i) {
+        const QString candidate=MobileDraftRecovery::allocate(
+            QStringLiteral("recent-staging"));
+        require(!candidate.isEmpty(),"could not allocate staging fixture");
+        const QString pending=candidate+QStringLiteral(".pending.kra");
+        save(pending,"still-being-written");
+        staged.append(pending);
+    }
+    const QString orphanDraft=MobileDraftRecovery::allocate(
+        QStringLiteral("rotated-orphan"));
+    require(!orphanDraft.isEmpty(),"could not allocate aged orphan");
+    const QString oldPending=orphanDraft+QStringLiteral(".pending.kra");
+    save(oldPending,QByteArray::fromHex("504b0304")+"recoverable");
+    QFile aged(oldPending);
+    require(aged.open(QIODevice::ReadWrite) &&
+            aged.setFileTime(QDateTime::currentDateTime().addSecs(-600),
+                             QFileDevice::FileModificationTime),
+            "could not age orphan staging fixture");
+    aged.close();
+    bool rescued=false;
+    for(int attempt=0;attempt<8 && !rescued;++attempt) {
+        MobileDraftRecovery::list();
+        rescued=!QFile::exists(oldPending);
+    }
+    require(rescued,"bounded orphan search failed to rotate across staged files");
+    for(const auto &pending:staged)
+        QFile::remove(pending);
+
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
                " provider identity, SAF tree normalization and legacy migration";
     return 0;
