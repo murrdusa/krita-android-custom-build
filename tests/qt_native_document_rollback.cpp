@@ -1,6 +1,9 @@
 #include <QCoreApplication>
 #include <QPointer>
 #include <QSharedPointer>
+#include <QTimer>
+#include <atomic>
+#include <memory>
 #include <QEnableSharedFromThis>
 #include <functional>
 #include <QDebug>
@@ -71,6 +74,25 @@ int main(int argc,char **argv)
     require(running->run([&backend]() {backend.clear();}) &&
             backend.isNull() && backendDestructions==1,
             "reentrant owner release destroyed in-flight document backend");
+
+    // A queued completion notification may already be in Qt's event
+    // queue when Save disconnects its listener. Its closure must own
+    // everything it uses instead of referencing the finished call stack.
+    QTimer saveSignal;
+    QObject documentContext;
+    auto completed=std::make_shared<std::atomic_bool>(false);
+    const QString expected=QStringLiteral("drawing.kra");
+    const auto connection=QObject::connect(
+        &saveSignal,&QTimer::timeout,&documentContext,
+        [completed,expected]() {
+            if(expected==QStringLiteral("drawing.kra"))
+                completed->store(true);
+        },Qt::QueuedConnection);
+    saveSignal.timeout();
+    QObject::disconnect(connection);
+    // The signal may be dropped on some Qt versions after disconnect;
+    // whether delivered or dropped, it may not retain dangling data.
+    app.processEvents();
 
     qInfo()<<"PASS: attach failure rollback, duplicate prevention and"
               "ownership isolation";
