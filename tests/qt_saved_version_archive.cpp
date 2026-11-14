@@ -753,10 +753,11 @@ int main(int argc,char **argv)
                     "oversized historical entry prevented new checkpoint");
             const auto quotaEntries=MobileSavedVersionArchive::list(
                 source,quotaRoot);
+            const QByteArray newestSource=load(source);
             bool validSaved=false;
             for(const auto &item:quotaEntries) {
-                if(item.bytes==initial.size() &&
-                   load(item.path)==initial)validSaved=true;
+                if(item.bytes==newestSource.size() &&
+                   load(item.path)==newestSource)validSaved=true;
             }
             require(validSaved && !QFile::exists(sparseOld),
                     "retention failed to evict oversized older archive");
