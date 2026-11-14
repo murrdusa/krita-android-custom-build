@@ -217,6 +217,18 @@ private:
             QByteArray coverage(size.width()*size.height(),Qt::Uninitialized);
             mask->readBytes(reinterpret_cast<quint8*>(coverage.data()),rect);
             QImage overlay(size,QImage::Format_ARGB32_Premultiplied);
+            // Under Android memory pressure a QImage allocation can
+            // fail without throwing. Never dereference a null scanLine.
+            // Unlike a superseded request, retrying the same failed
+            // allocation immediately would create a busy failure loop.
+            if(overlay.isNull()) {
+                if(application) {
+                    QMetaObject::invokeMethod(application.data(),[preview]() {
+                        if(preview)preview->m_running=false;
+                    },Qt::QueuedConnection);
+                }
+                return;
+            }
             for(int y=0;y<size.height();++y) {
                 if(generation->load(std::memory_order_relaxed)!=request) {
                     notifyStale();
