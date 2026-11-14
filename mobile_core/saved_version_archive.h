@@ -28,6 +28,7 @@
 #include <QThreadPool>
 #include <QUuid>
 #include <QVector>
+#include <QUrl>
 
 class MobileSavedVersionArchive final
 {
@@ -43,6 +44,17 @@ public:
     static bool isProviderUri(const QString &source)
     {
         return source.startsWith(QStringLiteral("content://"),Qt::CaseInsensitive);
+    }
+
+    // A local file URL and its filesystem path are the same saved
+    // drawing. Unlike content://, file:// must be decoded before QFile
+    // operations and version-history identity hashing.
+    static QString localSourcePath(const QString &source)
+    {
+        if(!source.startsWith(QStringLiteral("file:"),Qt::CaseInsensitive))
+            return source;
+        const QUrl url(source);
+        return url.isValid() && url.isLocalFile()?url.toLocalFile():QString();
     }
 
     static bool isKritaProjectName(const QString &name)
@@ -64,7 +76,7 @@ public:
             if(!name.isEmpty())return name;
         }
 #endif
-        return QFileInfo(path).fileName();
+        return QFileInfo(localSourcePath(path)).fileName();
     }
 
     static qint64 projectModified(const QString &path)
@@ -77,7 +89,7 @@ public:
                 uri.object<jstring>());
         }
 #endif
-        return QFileInfo(path).lastModified().toMSecsSinceEpoch();
+        return QFileInfo(localSourcePath(path)).lastModified().toMSecsSinceEpoch();
     }
 
     static QVariantMap previewRevisions()
@@ -106,7 +118,9 @@ public:
     {
         if(source.isEmpty())return {};
         if(!isProviderUri(source)) {
-            const QFileInfo file(source);
+            const QString local=localSourcePath(source);
+            if(local.isEmpty())return {};
+            const QFileInfo file(local);
             if(!isKritaProjectName(file.fileName()))return {};
             const QString canonical=file.canonicalFilePath();
             return QDir::cleanPath(canonical.isEmpty()?
@@ -188,12 +202,14 @@ public:
         // must never be reported as successfully checkpointed.
         constexpr qint64 copyLimit=8LL*1024*1024*1024;
         const bool provider=isProviderUri(source);
+        const QString sourceFile=provider?source:localSourcePath(source);
+        if(sourceFile.isEmpty())return false;
         QFileInfo original;
         if(!provider) {
-            original.setFile(source);
+            original.setFile(sourceFile);
             if(!original.isFile() || original.isSymLink())return false;
         }
-        QFile input(source);
+        QFile input(sourceFile);
         if(!input.open(QIODevice::ReadOnly) ||
            input.peek(4)!=QByteArray::fromHex("504b0304"))return false;
         const qint64 expected=provider?input.size():original.size();
