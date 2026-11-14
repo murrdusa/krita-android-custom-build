@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — one version history for symlinked Save As parents
+
+- Local saved-version identity now resolves the closest existing ancestor for a not-yet-created project destination. Save As to `real-folder/future.kra`, a symlinked folder alias, or its local `file://` URL therefore shares one version-history identity before the new file exists.
+- Added a Qt regression for canonical and symlinked parent paths, including a file URL alias.
+- **Verification:** these commits await exact-SHA local WSL build and desktop Qt regression results. No APK upload.
+
+
 ## November 14 — unify file URL version-history identity
 
 - Saved-version history now decodes local `file://` URLs before calculating project identity, reading modified timestamps, and opening archive input. A picker URL and filesystem path for the same drawing therefore share one version folder, rather than silently splitting backup history or failing to copy the KRA.
