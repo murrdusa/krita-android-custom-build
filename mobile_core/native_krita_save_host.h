@@ -9,7 +9,7 @@
 #pragma once
 #if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
 #include <QObject>
-#include <QScopedValueRollback>
+#include <QPointer>
 #include <QSharedPointer>
 #include "document_host_port.h"
 
@@ -37,10 +37,17 @@ public:
 
     bool save(KisDocument *document,bool saveAs) override
     {
-        if(m_saving || !document || !m_documents ||
-           !m_documents->available())return false;
-        const QScopedValueRollback<bool> transaction(m_saving,true);
-        return m_documents->save(document,saveAs);
+        if(m_saving || !document)return false;
+        // A native Save may close the last canvas and synchronously
+        // destroy this adapter. Hold the backend alive independently and
+        // never run a scoped rollback against a deleted QObject.
+        const QSharedPointer<MobileDocumentHostPort> documents=m_documents;
+        if(!documents || !documents->available())return false;
+        QPointer<MobileKritaNativeSavePortAdapter> self(this);
+        m_saving=true;
+        const bool result=documents->save(document,saveAs);
+        if(self)self->m_saving=false;
+        return result;
     }
 
     bool saving() const override {return m_saving;}
