@@ -355,7 +355,8 @@ int main(int argc,char **argv)
         showCallback();
         const bool mayFinishAttach=guardedView && guardedDocument &&
                                    stack.openViews().size()==1;
-        require(!mayFinishAttach && !guardedDocument,
+        require(!mayFinishAttach && !guardedDocument && guardedView &&
+                stack.openViews().isEmpty(),
                 "destroyed document remained eligible for final attachment");
     }
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
