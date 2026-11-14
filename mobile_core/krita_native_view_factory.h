@@ -114,6 +114,11 @@ public:
             if(guarded && guardedManager)delete guarded.data();
             return nullptr;
         }
+        // addWidget() emits currentChanged synchronously. Its listeners
+        // can destroy the Krita manager without destroying this root or
+        // view; do not wire or display a canvas with a dead manager.
+        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
+            return nullptr;
 
         // Krita emits both title/path and dirty-state changes. Keep
         // the native document switcher in sync with the actual engine,
@@ -138,6 +143,11 @@ public:
         QObject::connect(document,&KisDocument::modified,stack,
                          [refresh](bool) {refresh();});
         refresh();
+        // The update can notify native document-switcher observers and
+        // synchronously tear down the host. Do not read stack properties
+        // or attach activation observers after that teardown.
+        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
+            return nullptr;
 
         // One native manager activation router per Qt document root.
         // Connections are scoped to the native manager QObject.
