@@ -577,7 +577,9 @@ public:
     static bool isRecoveryCopy(const QString &path)
     {
         if(isProviderUri(path))return false;
-        const QFileInfo file(path);
+        const QString local=localSourcePath(path);
+        if(local.isEmpty())return false;
+        const QFileInfo file(local);
         const QString name=file.completeBaseName();
         const QString folder=recoveryDirectory();
         return !folder.isEmpty() && file.absolutePath()==folder &&
