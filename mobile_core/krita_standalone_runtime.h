@@ -211,8 +211,7 @@ public:
                         QGuiApplication::applicationState()!=Qt::ApplicationActive);
                 });
             connect(liveDocument.data(),&KisDocument::sigCompleteBackgroundSaving,this,[this]() {
-                if(!m_pendingDrafts.isEmpty())
-                    QTimer::singleShot(0,this,[this]() {continueDrafts();});
+                scheduleDraftContinuation();
             });
             // A tab may be closed while its background save completes.
             // Drop its queued identity immediately rather than retaining
@@ -257,10 +256,7 @@ private:
             // A background save may have completed inside slotAutoSave's
             // nested event loop. Drain its pending checkpoint after this
             // pass, never recursively while it is traversing native views.
-            if(!alive->m_pendingDrafts.isEmpty())
-                QTimer::singleShot(0,alive.data(),[alive]() {
-                    if(alive)alive->continueDrafts();
-                });
+            alive->scheduleDraftContinuation();
         });
         // An inactive canvas can contain unsaved strokes too. Checkpoint
         // every distinct document hosted by this runtime, not just the
@@ -284,6 +280,20 @@ private:
                 if(!alive || !m_root)return;
             }
         }
+    }
+
+    void scheduleDraftContinuation()
+    {
+        if(m_pendingDrafts.isEmpty() || m_draftContinuationQueued)return;
+        m_draftContinuationQueued=true;
+        const QPointer<MobileKritaStandaloneRuntime> alive(this);
+        QTimer::singleShot(0,this,[alive]() {
+            if(!alive)return;
+            alive->m_draftContinuationQueued=false;
+            // If a nested event loop delivered this while checkpointing,
+            // that pass's exit guard will queue the remaining work.
+            if(!alive->m_checkpointing)alive->continueDrafts();
+        });
     }
 
     void continueDrafts()
@@ -321,6 +331,7 @@ private:
     QList<QPointer<KisDocument>> m_pendingDrafts;
     bool m_checkpointing=false;
     bool m_checkpointAgain=false;
+    bool m_draftContinuationQueued=false;
     QSharedPointer<MobileCommandRegistryPort> m_commands;
 };
 #endif
