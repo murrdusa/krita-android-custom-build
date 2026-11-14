@@ -7,6 +7,8 @@
 #include <QAction>
 #include <QDebug>
 #include <QDialog>
+#include <QMenu>
+#include "mobile_core/touch_action_picker.h"
 #include <QTimer>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -169,6 +171,21 @@ int main(int argc,char **argv)
         historyDialog->exec();
         require(!parentGuard && !historyDialog,
                 "nested history dialog survived destroyed owning window");
+    }
+
+    // The shared action picker is used throughout the mobile UI.
+    // Destroying its owning Android window during exec() must cancel
+    // safely, without Qt deleting a stack-allocated dialog.
+    {
+        QMenu actions(QStringLiteral("Actions"));
+        actions.addAction(QStringLiteral("Paint"));
+        auto *closingParent=new QWidget;
+        QPointer<QWidget> parentGuard(closingParent);
+        QTimer::singleShot(0,&app,[closingParent]() {
+            delete closingParent;
+        });
+        require(!mobilePickAction(closingParent,actions) && !parentGuard,
+                "touch action picker survived destroyed Android host");
     }
 
     MobileLightweightCanvasHost multi;
