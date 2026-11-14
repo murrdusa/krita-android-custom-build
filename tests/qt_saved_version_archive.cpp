@@ -431,6 +431,19 @@ int main(int argc,char **argv)
     // A process crash may leave a fully written .pending.kra which
     // was never published. Recent staging is left alone for active
     // exporters; old completed staging becomes a separate recovery.
+    // A background exporter can overwrite a pending file while the
+    // recovery scanner verifies its ZIP structure. A stale QFileInfo
+    // snapshot must not authorize moving those newly written bytes.
+    const QString changingStage=temp.filePath(QStringLiteral("changing-stage.kra"));
+    save(changingStage,QByteArray::fromHex("504b0304")+"old-stage");
+    const QFileInfo beforeChange(changingStage);
+    require(MobileDraftRecovery::unchangedStaging(beforeChange),
+            "intact staging metadata unexpectedly changed");
+    save(changingStage,QByteArray::fromHex("504b0304")+
+         "newer-and-longer-stage");
+    require(!MobileDraftRecovery::unchangedStaging(beforeChange),
+            "recovery scanner accepted staging modified during verification");
+    QFile::remove(changingStage);
     const QByteArray abandonedBytes=QByteArray::fromHex("504b0304")+
         "abandoned-but-complete";
     save(staging,abandonedBytes);
