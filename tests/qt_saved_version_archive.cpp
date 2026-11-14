@@ -538,6 +538,48 @@ int main(int argc,char **argv)
                 "orphan staging survived after successful rescue");
         QFile::remove(candidate+QStringLiteral(".project"));
     }
+    // Malformed older staging files cannot permanently block a later
+    // valid orphan. Rotating the bounded scan must eventually examine
+    // all candidates without deleting damaged files.
+    QStringList invalidStages;
+    for(int i=0;i<3;++i) {
+        const QString name=MobileDraftRecovery::allocate(
+            QStringLiteral("invalid-orphan"));
+        require(!name.isEmpty(),"allocate invalid orphan");
+        const QString stage=name+QStringLiteral(".pending.kra");
+        save(stage,QByteArray("truncated-or-invalid"));
+        QFile file(stage);
+        require(file.open(QIODevice::ReadWrite) &&
+                file.setFileTime(QDateTime::currentDateTimeUtc().addSecs(-3600),
+                    QFileDevice::FileModificationTime),
+                "age malformed orphan");
+        invalidStages.append(stage);
+    }
+    const QString validOrphan=MobileDraftRecovery::allocate(
+        QStringLiteral("valid-behind-invalid"));
+    const QString validStage=validOrphan+QStringLiteral(".pending.kra");
+    const QByteArray validOrphanBytes=QByteArray::fromHex("504b0304")+
+        "should-not-starve";
+    save(validStage,validOrphanBytes);
+    {
+        QFile file(validStage);
+        require(file.open(QIODevice::ReadWrite) &&
+                file.setFileTime(QDateTime::currentDateTimeUtc().addSecs(-3600),
+                    QFileDevice::FileModificationTime),
+                "age valid orphan behind invalid entries");
+    }
+    QString nonStarvedRecovery;
+    for(int attempt=0;attempt<8 && nonStarvedRecovery.isEmpty();++attempt) {
+        for(const QFileInfo &entry:MobileDraftRecovery::list()) {
+            if(entry.absoluteFilePath()!=draft &&
+               load(entry.absoluteFilePath())==validOrphanBytes)
+                nonStarvedRecovery=entry.absoluteFilePath();
+        }
+    }
+    require(!nonStarvedRecovery.isEmpty() && QFile::exists(invalidStages.first()),
+            "damaged staging starved a valid later recovery");
+    QFile::remove(nonStarvedRecovery);
+    for(const QString &invalid:invalidStages)QFile::remove(invalid);
     const auto drafts=MobileDraftRecovery::list();
     require(drafts.size()==1 && drafts.first().absoluteFilePath()==draft &&
             MobileDraftRecovery::title(drafts.first())==QStringLiteral("a_b") &&
