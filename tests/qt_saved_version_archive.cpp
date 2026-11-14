@@ -902,6 +902,37 @@ int main(int argc,char **argv)
     }
     QFile::remove(sparseOld);
 
+    // Hard Android process termination may leave recovery-copy KRAs.
+    // The next gallery startup may remove only old generated copies,
+    // never current recoveries, unrelated files, or saved sidecars.
+    const QString orphanFolder=temp.filePath(QStringLiteral("orphan-copies"));
+    require(QDir().mkpath(orphanFolder),"create orphan recovery folder");
+    const QString expired=QDir(orphanFolder).filePath(
+        QStringLiteral("Recovered-11111111-1111-4111-8111-111111111111.kra"));
+    const QString fresh=QDir(orphanFolder).filePath(
+        QStringLiteral("Recovered-22222222-2222-4222-8222-222222222222.kra"));
+    const QString unrelated=QDir(orphanFolder).filePath(
+        QStringLiteral("notes.kra"));
+    const QString badName=QDir(orphanFolder).filePath(
+        QStringLiteral("Recovered-not-a-uuid.kra"));
+    save(expired,initial);
+    save(fresh,initial);
+    save(unrelated,initial);
+    save(badName,initial);
+    QFile oldFile(expired);
+    require(oldFile.open(QIODevice::ReadWrite) &&
+            oldFile.setFileTime(QDateTime::currentDateTime().addDays(-3),
+                                QFileDevice::FileModificationTime),
+            "stage old orphan recovery file");
+    oldFile.close();
+    require(MobileSavedVersionArchive::cleanupStaleRecoveryCopies(
+                orphanFolder)==1 &&
+            !QFile::exists(expired) && QFile::exists(fresh) &&
+            QFile::exists(unrelated) && QFile::exists(badName),
+            "orphan recovery pruning removed a live or unrelated file");
+    require(MobileSavedVersionArchive::cleanupStaleRecoveryCopies(
+                orphanFolder)==0,"orphan pruning was not idempotent");
+
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
                " provider identity, SAF tree normalization and legacy migration";
     return 0;
