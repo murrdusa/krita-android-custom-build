@@ -5,6 +5,8 @@
 #include <QApplication>
 #include <QAction>
 #include <QDebug>
+#include <QDialog>
+#include <QTimer>
 #include <QLabel>
 #include <QPointer>
 #include <QSharedPointer>
@@ -177,6 +179,25 @@ int main(int argc,char **argv)
         require(closingStack->forgetView(closingIdentity) && !closingStack,
                 "native stack removal used destroyed host after selection signal");
         delete closingDoc;
+    }
+    // A native Save As dialog can process queued activity events while
+    // the runtime stays alive but its old view stack is replaced.
+    // Never authorize a save using a pointer captured before the modal.
+    {
+        QWidget owner;
+        QPointer<MobileNativeViewStack> original(new MobileNativeViewStack(&owner));
+        MobileNativeViewStack *replacement=nullptr;
+        QDialog picker(&owner);
+        QTimer::singleShot(0,&app,[&]() {
+            delete original.data();
+            replacement=new MobileNativeViewStack(&owner);
+            picker.accept();
+        });
+        require(picker.exec()==QDialog::Accepted,
+                "test modal did not resume after replacing document root");
+        require(!original && replacement &&
+                original.data()!=replacement,
+                "stale native document root was not invalidated by Qt");
     }
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
