@@ -28,6 +28,14 @@ public:
         if(!window || !canvasRoot || !owner || !activate)return nullptr;
         auto *observer=new MobileCanvasResumeObserver(
             window,canvasRoot,owner,std::move(activate));
+        // The view manager may outlive a replaced native canvas root
+        // or Android window. Do not retain an observer on its old GL
+        // surface until the entire manager finally shuts down.
+        QObject::connect(window,&QObject::destroyed,observer,
+                         &QObject::deleteLater);
+        if(canvasRoot!=window)
+            QObject::connect(canvasRoot,&QObject::destroyed,observer,
+                             &QObject::deleteLater);
         window->installEventFilter(observer);
         if(canvasRoot!=window)canvasRoot->installEventFilter(observer);
         // On Android the first QWidget::Show can precede exposure of
