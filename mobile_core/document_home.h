@@ -389,6 +389,11 @@ public:
         });
         parent->installEventFilter(this);
         hide();
+        // Hard Android kills skip Qt's queued recovery-copy cleanup.
+        // Run conservative orphan pruning off the touch UI thread.
+        m_scanner.start([]() {
+            MobileSavedVersionArchive::cleanupStaleRecoveryCopies();
+        });
     }
 
     ~MobileDocumentHome() override
