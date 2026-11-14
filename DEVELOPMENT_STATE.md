@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — native canvas lifetime hardening
+
+- Guarded real KisView, KisDocument, view manager and native stack pointers across synchronous Krita view-manager hooks, document loading, first-show/currentChanged callbacks, and native GL/tool activation. A callback that closes a canvas must no longer lead to raw KisView dereferences in the factory.
+- Failed native adoption only deletes the candidate when its QPointer remains live, preventing a second delete after a currentChanged handler already destroyed it. Deferred activation now stops after view-manager or tool initialization if the view/manager/root has disappeared.
+- Extended desktop Qt native-view regression to exercise view deletion during first adoption and during tab activation. This verifies native stack identities and rejection of stale activations; live Krita-specific callbacks still require local Android compilation/device evidence.
+- **Verification:** previous baseline `f3ef2ac11eb08dac8be28fb3f7c05fce4cf5f872` passed WSL Android build. Latest native lifetime changes and Qt regression await exact-SHA compilation/testing. No APK uploaded.
+
+
 ## November 14 — reject directories masquerading as native project files
 
 - Native Open no longer treats an existing directory (including a `file://` URL naming that directory) as a valid drawing merely because `QFile::exists()` succeeds. Save As correctly requests a file destination and Recent Files will not record a directory as a project.
