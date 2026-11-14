@@ -199,6 +199,28 @@ int main(int argc,char **argv)
                 original.data()!=replacement,
                 "stale native document root was not invalidated by Qt");
     }
+    // Krita openPath may reenter the event loop before registration.
+    // A pending import must not be attached to a replacement native root.
+    {
+        QWidget owner;
+        QPointer<MobileNativeViewStack> original(new MobileNativeViewStack(&owner));
+        auto *pendingDocument=new QObject;
+        QPointer<QObject> pending(pendingDocument);
+        QDialog importer(&owner);
+        MobileNativeViewStack *replacement=nullptr;
+        QTimer::singleShot(0,&app,[&]() {
+            delete original.data();
+            replacement=new MobileNativeViewStack(&owner);
+            importer.accept();
+        });
+        require(importer.exec()==QDialog::Accepted,
+                "test import dialog did not resume");
+        if(!original || original.data()!=replacement)
+            delete pendingDocument;
+        require(!original && replacement && !pending &&
+                replacement->openViews().isEmpty(),
+                "stale import leaked document into a replacement root");
+    }
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
