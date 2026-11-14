@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — shared touch action picker survives host teardown
+
+- Replaced the stack-allocated, parented `QDialog` in `mobilePickAction()` with a `QPointer`-guarded heap child and scoped cleanup. Android may destroy the parent while the picker processes nested modal events; Qt would previously try to delete the picker from the parent's child list even though it was still allocated on the C++ caller's stack.
+- Action selection now checks that both the dialog and owning widget survived `exec()` before returning an action or opening nested submenus. This applies across the mobile touch UI wherever `mobilePickAction()` is used, not just Version History.
+- Added a Qt lightweight-host regression that destroys the picker's parent window during its modal loop and confirms a canceled selection with no surviving parent. The preceding gallery memory revision `f4f1e1c3f4383e333aa6ce9be1cf6119a824e63a` passed exact-SHA WSL Android compilation; the action picker fix and new regression await their own verification. No APK uploaded.
+
+
 ## November 14 — bound gallery widget icon memory and viewport scan costs
 
 - Confirmed the gallery's separate `m_cache` icon cache was already capped at 96 entries. However, individual `QListWidgetItem` rows also retained decoded `QIcon` references after cache eviction; browsing many drawings could therefore accumulate thousands of resident icons. The gallery now keeps at most 128 decoded row icons, replacing the oldest visited rows with a placeholder and allowing their disk-cached thumbnails to reload when revisited. The residency ledger is cleared on gallery reconstruction and updated on project deletion/preview replacement.
