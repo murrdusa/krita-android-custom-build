@@ -25,6 +25,8 @@ class FakeViews final : public MobileViewHostPort
 public:
     QPointer<QObject> a,b,da,db,selected,current;
     bool ambiguous=false;
+    mutable bool replaceDocumentOnRead=false;
+    QPointer<QObject> replacementDocument;
     QVector<ViewSnapshot> openViews() const override
     {
         return {
@@ -34,7 +36,14 @@ public:
              selected==b || ambiguous,1,b,db}
         };
     }
-    QPointer<QObject> currentDocument() const override {return current;}
+    QPointer<QObject> currentDocument() const override
+    {
+        if(replaceDocumentOnRead) {
+            replaceDocumentOnRead=false;
+            const_cast<FakeViews*>(this)->db=replacementDocument;
+        }
+        return current;
+    }
     bool activateView(const QPointer<QObject> &v) const override
     {return v==a || v==b;}
     bool closeView(const QPointer<QObject> &) const override {return true;}
@@ -65,6 +74,18 @@ int main(int argc,char **argv)
     pump();
     require(calls==1 && last==pointerA,
             "valid command did not target captured canvas");
+
+    // A reentrant engine lookup may detach or replace a different
+    // document without changing the currently active one. Dispatch
+    // must reject the now-stale workspace even in that case.
+    QObject replacedB;
+    views->replacementDocument=&replacedB;
+    require(MobileDeferredViewCommand::schedule(&window,views,command),
+            "reentrant document scenario was refused");
+    views->replaceDocumentOnRead=true;
+    pump();
+    require(calls==1,"reentrant view change allowed stale command");
+    views->db=&docB;
 
     require(MobileDeferredViewCommand::schedule(&window,views,command),
             "second command was refused");
