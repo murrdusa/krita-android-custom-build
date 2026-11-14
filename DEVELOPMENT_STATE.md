@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — cancel gallery image decoding before allocating thumbnail buffers
+
+- Audited native canvas teardown paths and the gallery thumbnail workers. The thumbnail pool cancellation was checked before and after `preview(path)`, but `preview()` itself could continue JNI byte-array transfer, KoStore embedded-preview extraction, and PNG decoding after the gallery had been dismissed. These are potentially substantial CPU and memory allocations on a foldable device while another drawing is being painted.
+- Threaded the existing per-gallery atomic cancel token into `preview()` and its PNG decoder. Checks now run before JNI bytes are copied, before local KRA/ZIP access and each embedded-preview lookup, after reading embedded bytes and before decoding PNG data. `MobileProjectPreviewCache::load()` accepts the same optional token and checks it before starting cached image decoding. No thumbnail, recovery document, or drawing file is deleted by cancellation.
+- Added Qt regression for a pre-canceled cached PNG load followed by a successful retry after clearing cancellation. Native Krita/SAF thumbnail behavior still needs device verification.
+- **Verification:** preceding local WSL Android build succeeded for `b806c9fa1146b7b8f53705cf07d906b77da210d7`. New changes await exact-SHA WSL Android compilation and standalone Qt tests. No APK uploaded.
+
 ## November 14 — cancel oversized Version History scans after dialog dismissal
 
 - A Version History dialog was already limited to the newest 256 archive rows, but its background `listForBrowser()` could still continue iterating a huge interrupted-pruning history folder after the dialog was dismissed. The scan holds the archive I/O mutex, so unnecessary enumeration could also defer new checkpoints or Save As migration.
