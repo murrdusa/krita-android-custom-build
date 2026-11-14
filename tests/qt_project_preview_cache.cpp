@@ -175,5 +175,36 @@ int main(int argc,char **argv)
            QStringLiteral("preview-0619.png"))))
         return 24;
 
+    // Newer corrupt/empty PNGs must not evict older usable previews.
+    // They are deleted, but should not occupy any of the 512 slots.
+    const QString invalidFolder=directory.filePath(QStringLiteral("invalid-backlog"));
+    if(!QDir().mkpath(invalidFolder))return 25;
+    const MobileProjectPreviewCache invalidCache(invalidFolder);
+    invalidCache.store(source,41,newImage);
+    const QByteArray validKey=QCryptographicHash::hash(
+        source.toUtf8()+'\n'+QByteArray::number(41),
+        QCryptographicHash::Sha256).toHex();
+    const QString validPath=QDir(invalidFolder).filePath(
+        QString::fromLatin1(validKey)+QStringLiteral(".png"));
+    {
+        QFile valid(validPath);
+        if(!valid.open(QIODevice::ReadWrite) ||
+           !valid.setFileTime(QDateTime::currentDateTime().addDays(-7),
+                              QFileDevice::FileModificationTime))
+            return 26;
+    }
+    for(int i=0;i<520;++i) {
+        QFile invalid(QDir(invalidFolder).filePath(
+            QStringLiteral("empty-%1.png").arg(i,4,10,QLatin1Char('0'))));
+        if(!invalid.open(QIODevice::WriteOnly))return 27;
+        invalid.close();
+    }
+    invalidCache.prune();
+    if(!QFileInfo::exists(validPath) ||
+       invalidCache.load(source,41).isNull() ||
+       QDir(invalidFolder).entryList({QStringLiteral("empty-*.png")},
+                                    QDir::Files).size()!=0)
+        return 28;
+
     qInfo("PASS: thumbnail revisions, cancellation, retention, clock skew and invalid images");
 }
