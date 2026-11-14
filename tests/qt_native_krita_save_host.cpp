@@ -21,7 +21,11 @@ struct FakeDocumentPort final : MobileDocumentHostPort {
     int attempts=0;
     bool lastSaveAs=false;
     std::function<void()> duringSave;
-    bool available() const override {return online;}
+    std::function<void()> duringAvailable;
+    bool available() const override {
+        if(duringAvailable)duringAvailable();
+        return online;
+    }
     bool attachNewDocument(KisDocument *d) const override {return d!=nullptr;}
     bool openFile(const QString &s) const override {return !s.isEmpty();}
     bool save(KisDocument *d,bool as) const override {
@@ -91,6 +95,18 @@ int main(int argc,char **argv)
     require(!failingAdapter->save(&document,true) &&
             !failedHost && failingPort->attempts==1,
             "failed Save accessed a destroyed native host");
+    // Availability can synchronously run a host callback too. A
+    // deleted adapter must not start a Save or write to m_saving.
+    auto probePort=QSharedPointer<FakeDocumentPort>::create();
+    auto *probeAdapter=new MobileKritaNativeSavePortAdapter(probePort);
+    const QPointer<MobileKritaNativeSavePortAdapter> probeHost(probeAdapter);
+    probePort->duringAvailable=[&]() {
+        delete probeAdapter;
+        probeAdapter=nullptr;
+    };
+    require(!probeAdapter->save(&document,false) &&
+            !probeHost && probePort->attempts==0,
+            "available() deleted native host but Save proceeded");
     qInfo() << "PASS: native close-save host, Save As delegation,"
             << "reentrant transaction guard, failure and invalidation";
     return 0;
