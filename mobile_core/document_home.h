@@ -89,12 +89,18 @@ struct MobileProjectIndexEntry {
 class MobileProjectIndex {
 public:
     static QString indexPath() {
-        return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
-               + QStringLiteral("/project-index.json");
+        const QString folder=QStandardPaths::writableLocation(
+            QStandardPaths::AppDataLocation);
+        // Missing app-private storage must never turn a cache write into
+        // an attempted write to the filesystem root.
+        return folder.isEmpty()?QString():
+            QDir(folder).filePath(QStringLiteral("project-index.json"));
     }
     static QVector<MobileProjectIndexEntry> load() {
         QVector<MobileProjectIndexEntry> entries;
-        QFile f(indexPath());
+        const QString path=indexPath();
+        if(path.isEmpty())return entries;
+        QFile f(path);
         constexpr qint64 maxIndexBytes=16LL*1024*1024;
         constexpr int maxIndexEntries=20000;
         if(!f.open(QIODevice::ReadOnly) || !QFileInfo(f).isFile() ||
