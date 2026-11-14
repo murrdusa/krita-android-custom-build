@@ -83,11 +83,31 @@ int main(int argc,char **argv)
             "window exposure no longer resumes native canvas");
 
     const int beforeDeletion=activations;
+    const QPointer<MobileCanvasResumeObserver> observerGuard(observer);
     delete root;
-    observer->request();
     drain();
-    require(activations==beforeDeletion,
-            "reactivated a deleted canvas root");
+    QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+    drain();
+    require(activations==beforeDeletion && !observerGuard,
+            "retained a canvas observer after its root was destroyed");
+
+    // The owner can remain alive after a root is replaced. A stale
+    // surface observer must not linger until the owner is deleted.
+    {
+        QWidget survivingOwner;
+        QWidget separateWindow;
+        auto *separateRoot=new QWidget(&separateWindow);
+        auto *detached=MobileCanvasResumeObserver::attach(
+            &separateWindow,separateRoot,&survivingOwner,[](){});
+        const QPointer<MobileCanvasResumeObserver> detachedGuard(detached);
+        separateWindow.show();
+        drain();
+        delete separateRoot;
+        QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        drain();
+        require(!detachedGuard,
+                "old canvas watcher survived replacement under a live manager");
+    }
 
     // An activation can close the final native canvas and destroy the
     // observer synchronously. Its callback must remain valid until
