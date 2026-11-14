@@ -11,6 +11,7 @@
 #include <QFile>
 #include <QSaveFile>
 #include <cstdio>
+#include <atomic>
 #include "saved_version_archive.h"
 #include <QStandardPaths>
 #include <QUuid>
@@ -108,10 +109,18 @@ public:
         // gallery's UI thread. Process only a small batch per listing;
         // subsequent refreshes continue rescuing the remaining files.
         constexpr int maxOrphanChecksPerScan=2;
-        int orphanChecks=0;
-        for(const QFileInfo &pending:QDir(folder).entryInfoList(
+        const auto candidates=QDir(folder).entryInfoList(
                 {QStringLiteral("*.pending.kra")},
-                QDir::Files|QDir::Readable|QDir::NoSymLinks)) {
+                QDir::Files|QDir::Readable|QDir::NoSymLinks);
+        // A permanently invalid first entry must not starve every
+        // valid orphan that sorts after it. Rotate the starting point
+        // across refreshes; atomic for concurrent gallery lookups.
+        static std::atomic_uint nextStart{0};
+        const unsigned start=nextStart.fetch_add(maxOrphanChecksPerScan);
+        int orphanChecks=0;
+        for(int offset=0;offset<candidates.size();++offset) {
+            const QFileInfo &pending=candidates.at(
+                (start+unsigned(offset))%unsigned(candidates.size()));
             const qint64 age=pending.lastModified().toUTC().secsTo(now);
             if(age<300)continue;
             const QString path=pending.absoluteFilePath();
