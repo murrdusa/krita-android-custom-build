@@ -246,19 +246,29 @@ public:
         if(!previous.isEmpty() && previous.first().bytes==copied) {
             QFile sidecar(previous.first().path+QStringLiteral(".sha256"));
             QByteArray oldSha;
-            if(sidecar.open(QIODevice::ReadOnly))
-                oldSha=sidecar.readAll().trimmed();
+            // A missing, oversized or linked checksum is not trustworthy
+            // metadata. Never load arbitrarily large sidecars while an
+            // autosave worker holds the archive lock.
+            if(!QFileInfo(sidecar.fileName()).isSymLink() &&
+               sidecar.open(QIODevice::ReadOnly) &&
+               sidecar.size()>=0 && sidecar.size()<=128)
+                oldSha=sidecar.read(129).trimmed().toLower();
             // Always verify the archived *bytes*, even if its SHA-256
             // sidecar contains a different valid-looking digest. A bad
             // sidecar must not fork identical versions or permanently
             // render intact history unrecoverable.
             QFile last(previous.first().path);
-            if(last.open(QIODevice::ReadOnly)) {
+            if(!QFileInfo(last.fileName()).isSymLink() &&
+               last.open(QIODevice::ReadOnly)) {
                 QCryptographicHash actual(QCryptographicHash::Sha256);
                 QByteArray chunk(256*1024,Qt::Uninitialized);
                 qint64 got=0;
                 qint64 hashed=0;
                 while((got=last.read(chunk.data(),chunk.size()))>0) {
+                    // Files can grow or be replaced after scan(). Stop
+                    // once the archived bytes exceed this exact save;
+                    // deduplication must not hash unbounded stale input.
+                    if(got>copied-hashed)break;
                     hashed+=got;
                     actual.addData(chunk.constData(),got);
                 }
