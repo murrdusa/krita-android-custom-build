@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — Qt shutdown-aware gallery background work
+
+- The All Projects storage scanner, gallery thumbnail workers, and Version History loader now retain a guarded Qt application identity before queuing UI callbacks. They stop publishing results if the application has begun object teardown, rather than posting to a stale global `qApp` pointer.
+- The scanner's bounded-delivery backpressure loop also exits if the Qt application no longer exists. Otherwise queued callbacks cannot drain after event-loop shutdown and a worker can hold up process teardown indefinitely. Recursive scanning and SAF project enumeration likewise stop when the application is gone.
+- Canceled thumbnail work now exits after cached PNG decoding or source extraction before doing expensive KRA/SAF extraction or publishing a stale icon.
+- **Verification:** preceding Version History revision `855c270b795fa93ffc74391e05a4bd225c128a70` passed exact-SHA WSL Android compilation. Current shutdown/cancellation changes await exact-SHA WSL compilation and device testing. No APK uploaded.
+
+
 ## November 14 — cancel-safe Version History thumbnail callbacks
 
 - Version History now tracks its asynchronous result label and Open button with QPointer rather than capturing raw child widget pointers. A queued worker result is discarded when the dialog was dismissed or its controls have been destroyed.
