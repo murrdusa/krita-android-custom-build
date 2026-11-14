@@ -231,12 +231,17 @@ private:
 
         // Match Krita's native render-completion protection. Refuse
         // Ignore instead of allowing a potentially corrupt overwrite.
-        KisDelayedSaveDialog idle(
+        // The Android host may be destroyed while the render-completion
+        // dialog processes a nested event loop. A stack-allocated child
+        // would otherwise be deleted by Qt's parent teardown.
+        QPointer<KisDelayedSaveDialog> idle(new KisDelayedSaveDialog(
             document->image(),KisDelayedSaveDialog::SaveDialog,0,
-            m_runtime->window());
-        idle.blockIfImageIsBusy();
-        if(idle.result()!=KisDelayedSaveDialog::Accepted ||
-           !guardedDocument || !m_runtime ||
+            m_runtime->window()));
+        idle->blockIfImageIsBusy();
+        const bool renderReady=idle &&
+            idle->result()==KisDelayedSaveDialog::Accepted;
+        if(idle)delete idle.data();
+        if(!renderReady || !guardedDocument || !m_runtime ||
            !m_runtime->ownsDocument(guardedDocument) ||
            m_runtime->documentRoot()->currentDocument().data()!=guardedDocument.data())
             return false;
