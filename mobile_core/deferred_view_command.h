@@ -38,11 +38,20 @@ public:
         QPointer<QObject> owner=context;
         QTimer::singleShot(0,context,
             [owner,views,view,document,command=std::move(command)]() {
-                if(!owner || !view || !document || !views ||
-                   views->currentDocument()!=document ||
-                   !MobileViewIdentityGuard::maySave(
-                       views->openViews(),view,document))
-                    return;
+                if(!owner || !view || !document || !views)return;
+                // A host may process pending document removal while a
+                // currentDocument() lookup invokes Qt callbacks. Capture
+                // and recheck both the document and live view ownership
+                // before dispatching a potentially destructive command.
+                const auto before=views->openViews();
+                if(!MobileViewIdentityGuard::maySave(before,view,document) ||
+                   views->currentDocument()!=document || !owner ||
+                   !view || !document)return;
+                const auto after=views->openViews();
+                if(!MobileViewIdentityGuard::sameRecoveryWorkspace(before,after) ||
+                   !MobileViewIdentityGuard::maySave(after,view,document) ||
+                   views->currentDocument()!=document || !owner ||
+                   !view || !document)return;
                 command(view);
             });
         return true;
