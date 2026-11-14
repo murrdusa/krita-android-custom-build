@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — reject directories masquerading as native project files
+
+- Native Open no longer treats an existing directory (including a `file://` URL naming that directory) as a valid drawing merely because `QFile::exists()` succeeds. Save As correctly requests a file destination and Recent Files will not record a directory as a project.
+- Added desktop Qt regression covering a folder named `project-folder.kra`, its local URL, and their open/save/recent behavior. Android SAF `content://` support remains unchanged.
+- **Verification:** earlier URL-helper compilation failure occurred in an intermediate commit before the helper was added; the watcher later reported success at `4f586425bfd2f53b766ddbd43c9bbe04a4fd7f19`. This batch's exact-SHA WSL compilation and Qt regression are pending; no APK uploaded.
+
+
 ## November 14 — native open path and recent-file URL consistency
 
 - The independent Krita native document host decodes local `file://` URLs into filesystem paths before handing them to the engine's openPath() method, while keeping Android `content://` SAF identities intact.
