@@ -867,6 +867,20 @@ int main(int argc,char **argv)
                 QByteArray("not-a-sha256") &&
             MobileSavedVersionArchive::list(unsafeSaved,unsafeStore).isEmpty(),
             "malformed checksum was migrated or separated from its KRA");
+    // Even a syntactically valid 64-digit digest may describe
+    // different bytes. Migration must preserve that damaged pair for
+    // repair instead of advertising it as a recoverable saved version.
+    const QString mismatchedArchive=QDir(unsafeFrom).filePath(
+        QStringLiteral("20261114T000000003-mismatched.kra"));
+    save(mismatchedArchive,initial);
+    const QByteArray incorrectHash=QCryptographicHash::hash(
+        QByteArray("different-KRA-bytes"),QCryptographicHash::Sha256).toHex();
+    save(mismatchedArchive+QStringLiteral(".sha256"),incorrectHash);
+    MobileSavedVersionArchive::adoptHistory(unsafeDraft,unsafeSaved,unsafeStore);
+    require(QFile::exists(mismatchedArchive) &&
+            load(mismatchedArchive+QStringLiteral(".sha256"))==incorrectHash &&
+            MobileSavedVersionArchive::list(unsafeSaved,unsafeStore).isEmpty(),
+            "valid-looking but incorrect checksum migrated damaged history");
     const QString linkedArchive=QDir(unsafeFrom).filePath(
         QStringLiteral("20261114T000000001-linked.kra"));
     save(linkedArchive,initial);
