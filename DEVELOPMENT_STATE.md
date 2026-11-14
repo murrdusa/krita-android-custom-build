@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — reject incomplete Android provider thumbnail transfers
+
+- Audited the Android SAF thumbnail path in `MobileDocumentHome::preview()`. It receives a Java byte array of compressed KRA preview data and copies it with JNI `GetByteArrayRegion()` before decoding. A failed JNI transfer left an exception pending and the decoder could proceed with incomplete data.
+- The gallery now verifies the bounded `QByteArray` allocation, checks cancellation before the copy, and detects/clears JNI copy exceptions. Failed provider previews return empty instead of being decoded or cached.
+- This path is Android-only, so existing host-side Qt thumbnail tests do not exercise Java/JNI exception behavior. **Verification:** last local WSL build was `5c8184f3ed7c390cb3041549f52f6d11efd890fb` (SUCCESS); current change awaits its own exact-SHA Android build. No APK uploaded or device test requested.
+
+
 ## November 14 — avoid queued fill-preview workers retaining image buffers
 
 - Audited `MobileFillTolerancePreview::requestMask()` after the latest memory-allocation safeguards. Each preview submission captured the sampled pixel and selection buffers into a `QThreadPool::globalInstance()->start()` closure. If Krita/gallery workers saturated the global pool, superseded previews could remain queued and retain buffers while their associated tool or canvas was already closing.
