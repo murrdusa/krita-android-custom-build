@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — bound abandoned-autosave recovery work per gallery refresh
+
+- The project library now verifies at most two aged pending KRA exports per recovery listing, instead of parsing an arbitrary number of large ZIP archives in one UI-thread pass. Further gallery refreshes continue recovery without deleting or overwriting remaining staged drafts.
+- Qt regression stages five abandoned KRA files, verifies recovery in batches of two/two/one, confirms saved-project associations survive, and checks that all staging paths are eventually cleared.
+- **Verification:** previous version-retention revision `f609ea9893d974942626e1afb3a0837bcf368f36` passed local Android WSL compilation. New source and Qt regression await their exact-SHA local verification. No APK upload.
+
+
 ## November 14 — overflow-safe version-history quota enforcement
 
 - Version-history pruning now saturates its total byte tally once it exceeds the 512 MiB history quota, and uses subtraction-based capacity checks before retaining older checkpoints. This avoids overflow or accidental quota bypass when encountering oversized/sparse historical files, while preserving the newest save and verified older recovery entries.
