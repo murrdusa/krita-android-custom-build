@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — bound all decoded gallery preview sources
+
+- The on-disk thumbnail-cache decoder had a 124 px post-decode limit, but direct PNG/JPEG imports and embedded KRA/SAF PNG previews used `QImageReader::setScaledSize()` without bounding the actual returned `QImage`. Image plugins that ignore the scaled-size request could leave oversized bitmaps retained in gallery worker results and image icon caches.
+- Added a common `MobileProjectPreviewCache::boundedThumbnail()` helper and applied it to cached PNGs, direct imported image previews, and decoded KRA/SAF previews. It preserves valid small images, downscales unexpected larger results to a maximum 124 px in either dimension, and returns null on decode/scale failure. Cancellation is checked around the direct decoders.
+- Extended `qt_project_preview_cache.cpp` with an intentionally oversized decoded image (900×600) and asserts the 124×83 output, unchanged 90×60 small preview, and null-input handling.
+- **Verification:** latest reported local Android build SUCCESS at `309e6b88e4b2e8b92f3dda1ba9f07d1ca4c911a7`. These changes await exact-SHA Android build and standalone Qt test. No APK uploaded.
+
+
 ## November 14 — keep project-index writes independent of scan cancellation
 
 - Investigated the previous All Projects scan coalescing change. `startScan()` calls `m_scanner.clear()` to discard old scan runnables, but the same thread pool also carried recent-file index saves, project deletion index updates, scheduled index snapshot persistence, and startup maintenance. Refreshing All Projects could therefore silently discard a queued durable index update.
