@@ -89,8 +89,10 @@ public:
         // and activates the existing native tab. Equivalent Android SAF
         // tree/document URIs must also resolve to that same project.
         const QString identity=MobileSavedVersionArchive::canonicalIdentity(path);
-        auto *root=m_runtime->documentRoot();
-        for(const auto &view:root->openViews()) {
+        const QPointer<MobileNativeViewStack> originalRoot(
+            m_runtime->documentRoot());
+        if(!originalRoot)return false;
+        for(const auto &view:originalRoot->openViews()) {
             auto *existing=qobject_cast<KisDocument*>(view.document.data());
             if(!existing || !view.nativeView)continue;
             const QString currentPath=existing->path();
@@ -99,8 +101,12 @@ public:
             const bool sameProject=!identity.isEmpty() &&
                 (identity==MobileSavedVersionArchive::canonicalIdentity(currentPath) ||
                  identity==MobileSavedVersionArchive::canonicalIdentity(draft));
-            if(samePath || sameProject)
-                return root->activateView(view.nativeView);
+            if(samePath || sameProject) {
+                if(!m_runtime || !originalRoot ||
+                   m_runtime->documentRoot()!=originalRoot.data())
+                    return false;
+                return originalRoot->activateView(view.nativeView);
+            }
         }
 
         const bool privateDraft=MobileDraftRecovery::isDraft(path);
@@ -139,6 +145,14 @@ public:
                 return false;
             }
         }
+        // openPath() may dispatch callbacks that close or replace the native
+        // view stack. Never attach the finished import to a different host
+        // from the one which initiated this Open operation.
+        if(!m_runtime || !originalRoot ||
+           m_runtime->documentRoot()!=originalRoot.data()) {
+            if(document)delete document; // Not yet registered with KisPart.
+            return false;
+        }
         if(!latest.isEmpty()) {
             // Reopen the latest completed checkpoint as the original project.
             // Keeping the original path lets the next native Save update it.
@@ -161,7 +175,9 @@ public:
         // Registration notifies Krita observers. A callback can close
         // the imported document before the native view is attached.
         if(!guardedDocument)return false;
-        if(!attachCanvas(guardedDocument.data())) {
+        if(!m_runtime || !originalRoot ||
+           m_runtime->documentRoot()!=originalRoot.data() ||
+           !attachCanvas(guardedDocument.data())) {
             MobileFailedDocumentAttach::rollback(
                 guardedDocument,
                 [](KisDocument *candidate) {
