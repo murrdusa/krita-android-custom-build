@@ -782,13 +782,26 @@ private:
         if(folder.isEmpty())return result;
         const QDir dir(folder);
         if(!dir.exists())return result;
-        const auto files=dir.entryInfoList({QStringLiteral("*.kra")},
-                         QDir::Files|QDir::Readable|QDir::NoSymLinks,
-                         QDir::Name|QDir::Reversed);
-        for(const QFileInfo &entry:files)
+        // Version History needs the valid archive metadata, not a
+        // second, full QFileInfoList sorted by Qt. Stream directory
+        // entries to reduce peak memory for folders left overfull by
+        // interrupted cleanup, then sort the retained versions.
+        QDirIterator files(folder,{QStringLiteral("*.kra")},
+                           QDir::Files|QDir::Readable|QDir::NoSymLinks);
+        while(files.hasNext()) {
+            files.next();
+            const QFileInfo entry=files.fileInfo();
             if(entry.size()>0)
                 result.append({entry.absoluteFilePath(),
                     entry.lastModified().toUTC(),entry.size()});
+        }
+        // The generated timestamp/UUID filename is the canonical
+        // version order. Keep the same ordering as QDir::Name|Reversed,
+        // rather than sorting by mutable filesystem modification time.
+        std::sort(result.begin(),result.end(),
+                  [](const Version &a,const Version &b) {
+            return QFileInfo(a.path).fileName()>QFileInfo(b.path).fileName();
+        });
         return result;
     }
 
