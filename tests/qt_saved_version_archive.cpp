@@ -974,6 +974,12 @@ int main(int argc,char **argv)
     require(rescued,"bounded orphan search failed to rotate across staged files");
     for(const auto &pending:staged)
         QFile::remove(pending);
+    // The test must not leave a rescued private KRA in the app's draft
+    // directory where later test runs could mistake it for user work.
+    for(const auto &entry:MobileDraftRecovery::list()) {
+        if(entry.completeBaseName().endsWith(QStringLiteral("_rotated-orphan")))
+            QFile::remove(entry.absoluteFilePath());
+    }
 
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
                " provider identity, SAF tree normalization and legacy migration";
