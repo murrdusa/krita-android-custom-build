@@ -5,7 +5,7 @@
 - Reviewed gallery background index and recovery-copy paths. Identified a concrete native lifecycle gap in `MobileDocumentHome::deleteProject()`: Android's `tabletDeleteProject` provider operation may dispatch activity/window teardown. The gallery now checks its original `QPointer<MobileDocumentHome>` after that call and stops before touching the recent-files registry, star list, index queue, thumbnail widgets or status text if the gallery was destroyed.
 - Converted the three delete-related information/error notices from static `QMessageBox::information/warning` to guarded heap-owned `QMessageBox` instances parented to the gallery. If Android destroys the window during their nested modal loops, Qt does not delete a dialog still allocated on the C++ stack.
 - Added Qt-only lightweight-host regressions for synchronous gallery destruction during a successful deletion callback and destruction of a parent while its warning dialog is open. These check lifetime patterns, not a real SAF provider.
-- **Verification:** local WSL Android build last reported SUCCESS for `f80c6504097aac0b813aa1e3463552975a81ba51`. These new gallery deletion changes and tests await their own exact-SHA compile/test result. No APK uploaded.
+- **Verification:** local WSL Android build last reported SUCCESS for `a17f5d01df6d439831c3cc08d20feb10f6deb698`. These new gallery deletion changes and tests await their own exact-SHA compile/test result. No APK uploaded.
 
 ## November 14 — stream completed recovery drafts without duplicate directory arrays
 
