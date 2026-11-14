@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — release gallery lists and thumbnail icons when hidden
+
+- `MobileDocumentHome::hideEvent()` previously canceled pending thumbnails but kept all `QListWidgetItem` project rows (up to 20,000), the per-row icon pixmaps, the decoded preview icon cache, draft metadata, and saved preview revision maps alive while the user painted. `showHome()` already rebuilds the gallery with `showList()`, so holding these hidden UI allocations has no functional benefit.
+- After snapshotting the All Projects index and canceling thumbnail requests, gallery hide now clears the row/index maps and `QListWidget` items, draft/index preview metadata and thumbnail icon caches. The background index writer owns its copied snapshot, and old queued scan/thumbnail completions are rejected by existing cancellation/generation checks. Tab selection and on-disk project history are unchanged.
+- **Verification:** preceding recovery-cancellation revision `69607ffb3e550caaeabae8399eb6fb76ab4f0a8f` passed local WSL Android compilation at 15:56:56 UTC. New hidden-gallery cleanup awaits exact-SHA Android compilation and device memory profiling. No APK uploaded.
+
 ## November 14 — cancel long Version History recovery copies on gallery teardown
 
 - `MobileSavedVersionArchive::materializeRecovery()` could copy up to 8 GiB of archived data into a private recovered KRA while Android destroyed the gallery. Even though the eventual temporary file was cleaned up, the worker continued disk I/O, hash calculation, and disk-space consumption until completion.
