@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — keep project-index writes independent of scan cancellation
+
+- Investigated the previous All Projects scan coalescing change. `startScan()` calls `m_scanner.clear()` to discard old scan runnables, but the same thread pool also carried recent-file index saves, project deletion index updates, scheduled index snapshot persistence, and startup maintenance. Refreshing All Projects could therefore silently discard a queued durable index update.
+- Created a separate single-threaded `m_indexWorkers` pool for those four non-scan job types; the existing `m_scanner` now contains only cancellable directory scans. Refresh still cancels stale scans without cancelling index changes, while index operations remain serial and their ordering is preserved. Gallery destruction now waits for index workers as well as scan and thumbnail workers.
+- **Verification:** previously reported local Android build SUCCESS at `3523b2a8a614cfae39abffcf8edbc296b3ae670d`. The new queue separation awaits exact-SHA compilation and runtime refresh/delete/persistence checks. No APK uploaded.
+
+
 ## November 14 — rescue pending drafts without skipping eligible files
 
 - Audited the bounded startup draft-rescue cursor. `MobileDraftRecovery::list()` advanced the shared `QDirIterator` over up to 128 pending files but only validated two qualifying old orphans. The other candidates had already been consumed and could remain hidden from recovery until an entire directory traversal wrapped.
