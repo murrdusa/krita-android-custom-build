@@ -6,6 +6,7 @@
  */
 #pragma once
 #include <QSettings>
+#include <atomic>
 #include <algorithm>
 #include <QRegularExpression>
 #ifdef Q_OS_ANDROID
@@ -504,8 +505,10 @@ public:
     // or the user's original file. Saving a recovered document can
     // therefore never overwrite a historical checkpoint by accident.
     static QString materializeRecovery(const Version &version,
-                                       const QString &rootOverride=QString())
+                                       const QString &rootOverride=QString(),
+                                       const std::atomic_bool *cancelled=nullptr)
     {
+        if(cancelled && cancelled->load(std::memory_order_relaxed))return {};
         // Snapshot publication, checksum sidecar changes, and retention
         // pruning all share this lock. Recovery must read a consistent
         // archived pair rather than racing deletion of an old version.
@@ -557,6 +560,7 @@ public:
         qint64 copied=0;
         qint64 count=0;
         while((count=source.read(block.data(),block.size()))>0) {
+            if(cancelled && cancelled->load(std::memory_order_relaxed))return {};
             if(copied==0 &&
                (count<4 || QByteArray(block.constData(),4)!=
                    QByteArray::fromHex("504b0304")))return {};
@@ -573,8 +577,11 @@ public:
         // A concurrent truncate must never publish a partial KRA.
         if(count!=0 || copied!=size ||
            (version.bytes>0 && copied!=version.bytes) ||
-           (!expectedHash.isEmpty() && hash.result().toHex()!=expectedHash))
+           (!expectedHash.isEmpty() && hash.result().toHex()!=expectedHash) ||
+           (cancelled && cancelled->load(std::memory_order_relaxed)))
             return {};
+        // A cancelled large copy must not publish a temporary KRA.
+        // QSaveFile removes the incomplete staging file on return.
         return destination.commit()?path:QString();
     }
 
