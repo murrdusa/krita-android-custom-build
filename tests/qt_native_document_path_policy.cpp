@@ -73,6 +73,7 @@ int main(int argc,char **argv)
     require(P::recentFileUrl(remoteUrl).isEmpty() &&
             P::localFilePath(remoteUrl).isEmpty() &&
             !P::mayAttemptOpen(remoteUrl) &&
+            P::saveDialogStartPath(remoteUrl,pictures)==pictures &&
             P::needsSaveAs(remoteUrl,false,false,false) &&
             MobileSavedVersionArchive::canonicalIdentity(remoteUrl).isEmpty() &&
             !Guard::sameFile(remoteUrl,realFile),
