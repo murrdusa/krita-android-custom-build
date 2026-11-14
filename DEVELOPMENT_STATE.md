@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — teardown-safe canvas resume and host close
+
+- Canvas resume dispatch now invokes a local copy of the activation function. If activating the selected native canvas destroys its own observer, Qt no longer executes the observer's already-freed member std::function. Desktop Qt regression explicitly destroys the observer from its own callback and confirms no later activation.
+- The lightweight native window close handler retains a local shared view port and tracks the host with QPointer instead of a scoped rollback on a destructible QWidget. When a Save/Discard callback tears down the host, the close path stops rather than accessing freed window members; ordinary rejected closes reset the reentrancy flag explicitly.
+- Extended the Qt lightweight host regression to request a nested Close while closing a second canvas, verifying that reentrant dismissal is rejected without losing the outer transaction.
+- **Verification:** previous thumbnail retention revision `b623f0c1605853c1720dec2e338a5e3b73642c23` passed local WSL Android compilation. New native lifetime commits and Qt regressions await exact-SHA build/test verification. No APK uploaded.
+
+
 ## November 14 — aggregate gallery preview cache budget
 
 - The gallery's persistent PNG preview cache now enforces an aggregate 128 MiB disk budget in addition to the existing 512-entry count and 32 MiB per-image limit. Oldest previews are evicted first; it never deletes KRA drawings or non-PNG files.
