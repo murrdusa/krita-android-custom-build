@@ -429,13 +429,18 @@ public:
         const auto versions=std::make_shared<QVector<MobileSavedVersionArchive::Version>>();
         const auto cancelled=std::make_shared<std::atomic_bool>(false);
         const QPointer<QListWidget> target(list);
+        const QPointer<QLabel> explanationGuard(explanation);
+        const QPointer<QPushButton> openGuard(open);
         const QIcon placeholder=m_placeholder;
-        QThreadPool::globalInstance()->start([path,target,explanation,open,placeholder,versions,cancelled]() {
+        QThreadPool::globalInstance()->start(
+            [path,target,explanationGuard,openGuard,placeholder,versions,cancelled]() {
             const auto found=MobileSavedVersionArchive::list(path);
-            QMetaObject::invokeMethod(qApp,[target,explanation,open,placeholder,versions,found]() {
-                if(!target)return;
+            if(cancelled->load())return;
+            QMetaObject::invokeMethod(qApp,
+                [target,explanationGuard,openGuard,placeholder,versions,found,cancelled]() {
+                if(cancelled->load() || !target || !explanationGuard || !openGuard)return;
                 *versions=found;
-                explanation->setText(found.isEmpty()?
+                explanationGuard->setText(found.isEmpty()?
                     i18n("Earlier saves and completed checkpoints will appear here."):
                     i18n("Open a saved copy as a new canvas. Use Save As to keep it."));
                 for(const auto &version:found) {
@@ -444,15 +449,17 @@ public:
                         QString::number(version.bytes/(1024.0*1024.0),'f',1)),target);
                 }
                 if(!found.isEmpty())target->setCurrentRow(0);
-                open->setEnabled(!found.isEmpty());
+                openGuard->setEnabled(!found.isEmpty());
             },Qt::QueuedConnection);
             for(int row=0;row<found.size() && !cancelled->load();++row) {
                 const auto &version=found.at(row);
                 const QImage image=cachedPreview(version.path,version.createdUtc.toMSecsSinceEpoch(),
                                                  false,cancelled.get());
                 if(image.isNull())continue;
-                QMetaObject::invokeMethod(qApp,[target,image,row]() {
-                    if(target)target->item(row)->setIcon(QIcon(QPixmap::fromImage(image)));
+                QMetaObject::invokeMethod(qApp,[target,image,row,cancelled]() {
+                    if(cancelled->load() || !target)return;
+                    if(auto *item=target->item(row))
+                        item->setIcon(QIcon(QPixmap::fromImage(image)));
                 },Qt::QueuedConnection);
             }
         });
