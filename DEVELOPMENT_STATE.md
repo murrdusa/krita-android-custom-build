@@ -3,7 +3,7 @@
 ## November 14 — bounded persistent project index loading
 
 - The All Projects index cache now rejects JSON files larger than 16 MiB and arrays over 20,000 records before parsing or allocating the gallery list. Reads are byte-limited and substituted/symlinked index files are ignored, avoiding unbounded startup memory use from a malformed or damaged cache.
-- Index saves enforce the same size and entry limits, retaining the last good atomic index when a new payload would exceed them. The KRA projects themselves remain untouched.
+- Index saves enforce the same size and entry limits, retaining the last good atomic index when a new payload would exceed them. The index location now requires a valid app-private data directory rather than falling back to the filesystem root. The KRA projects themselves remain untouched.
 - **Verification:** exact-SHA Android WSL compilation pending for these source changes; no host Qt regression executed or APK published.
 
 
