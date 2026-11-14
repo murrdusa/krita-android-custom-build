@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — bound thumbnail-cache retention memory independently of folder size
+
+- `MobileProjectPreviewCache::pruneLocked()` previously called `QDir::entryInfoList("*.png", QDir::Time)`, allocating and sorting metadata for every file in the cache during gallery startup and periodic publications. The cache retains no more than 512 entries and 128 MiB, so very large interrupted cache directories need not consume unbounded metadata RAM.
+- Replaced the full sorted directory snapshot with a streaming `QDirIterator` and a 512-element oldest-first heap that selects the newest entries by file modification time (filename tie-break). Applies the existing 128 MiB byte quota to the selected candidates, then uses a second streaming pass to remove unretained PNGs. The publication mutex still serializes concurrent pruning and writes. Other files, including KRA drawings, remain untouched.
+- Added a Qt cache regression with 620 PNG files and strictly increasing modification times; pruning must leave exactly the newest 512, not depend on directory enumeration order. Existing sparse 28 MiB cache and startup-quota tests remain.
+- **Verification:** preceding WSL Android result passed for `48f07dfa04f69e16c261434a684c08c0cc502902`; new code and tests await exact-SHA build/regression verification. No APK uploaded.
+
 ## November 14 — remove whole-folder history move that bypassed checksum validation
 
 - Found a high-impact integrity bypass in `MobileSavedVersionArchive::migrateFolder()`: when the Save As destination version folder did not yet exist, it attempted `QDir().rename(from,to)` and returned immediately. That fast path skipped every size, symlink, SHA format and actual KRA-byte verification added to the normal migration loop. Removed the whole-directory shortcut; all archive pairs now migrate through the same validated, collision-safe path, even for brand-new saved projects.
