@@ -549,6 +549,17 @@ protected:
         if(m_scanCancel && !m_scanCancel->exchange(true) && m_mode==AllProjects)
             persistIndex();
         resetThumbnailRequests();
+        // The gallery can contain 20,000 list items plus retained icon
+        // pixmaps. Painting does not need those hidden UI allocations,
+        // and showHome() rebuilds the list from the persisted index.
+        // Clear only after scheduling the index snapshot above.
+        m_projectItems.clear();
+        m_list->clear();
+        m_latestDrafts.clear();
+        m_savedPreviewRevisions.clear();
+        m_attempted.clear();
+        m_cache.clear();
+        m_previewIconOrder.clear();
         QFrame::hideEvent(event);
     }
 
