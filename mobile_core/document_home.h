@@ -962,9 +962,11 @@ private:
         return QIcon(pix);
     }
 
-    static QImage decodePreview(const QByteArray &bytes)
+    static QImage decodePreview(const QByteArray &bytes,
+                                const std::atomic_bool *cancelled=nullptr)
     {
-        if(bytes.isEmpty() || bytes.size()>8*1024*1024)return {};
+        if((cancelled && cancelled->load()) ||
+           bytes.isEmpty() || bytes.size()>8*1024*1024)return {};
         QBuffer buffer;
         buffer.setData(bytes);
         if(!buffer.open(QIODevice::ReadOnly))return {};
@@ -975,11 +977,13 @@ private:
            qint64(original.width())*original.height()>40000000LL)
             return {};
         reader.setScaledSize(original.scaled(124,124,Qt::KeepAspectRatio));
-        return reader.read();
+        return cancelled && cancelled->load()?QImage():reader.read();
     }
 
-    static QImage preview(const QString &path)
+    static QImage preview(const QString &path,
+                          const std::atomic_bool *cancelled=nullptr)
     {
+        if(cancelled && cancelled->load())return {};
         if(path.startsWith(QStringLiteral("content:"),Qt::CaseInsensitive)) {
             // Only Android's ContentResolver can access documents opened
             // with SAF. Read just the small embedded KRA PNG preview.
@@ -991,11 +995,12 @@ private:
             QAndroidJniEnvironment env;
             const jbyteArray array=data.object<jbyteArray>();
             const jsize size=env->GetArrayLength(array);
-            if(size<=0 || size>8*1024*1024)return {};
+            if(size<=0 || size>8*1024*1024 ||
+               (cancelled && cancelled->load()))return {};
             QByteArray bytes(size,'\0');
             env->GetByteArrayRegion(array,0,size,
                                     reinterpret_cast<jbyte*>(bytes.data()));
-            return decodePreview(bytes);
+            return decodePreview(bytes,cancelled);
         }
         const QFileInfo entry(path);
         // A gallery scan may encounter truncated, linked, or enormous
@@ -1011,13 +1016,15 @@ private:
                qint64(size.width())*size.height()>40000000LL)
                 return {};
             reader.setScaledSize(size.scaled(124,124,Qt::KeepAspectRatio));
-            return reader.read();
+            return cancelled && cancelled->load()?QImage():reader.read();
         }
-        if(!MobileProjectPreviewCache::safeLocalKraSource(path))return {};
+        if((cancelled && cancelled->load()) ||
+           !MobileProjectPreviewCache::safeLocalKraSource(path))return {};
         QScopedPointer<KoStore> store(KoStore::createStore(path,KoStore::Read));
         if(!store || store->bad())return {};
         for(const QString &part:{QStringLiteral("preview.png"),
                                  QStringLiteral("Thumbnails/thumbnail.png")}) {
+            if(cancelled && cancelled->load())return {};
             if(!store->hasFile(part) || !store->open(part))continue;
             const qint64 size=store->size();
             if(size<=0 || size>8LL*1024*1024) {
@@ -1026,7 +1033,8 @@ private:
             }
             const QByteArray bytes=store->read(size);
             store->close();
-            const QImage image=decodePreview(bytes);
+            if(cancelled && cancelled->load())return {};
+            const QImage image=decodePreview(bytes,cancelled);
             if(!image.isNull())return image;
         }
         return {};
@@ -1593,7 +1601,7 @@ private:
         // more expensive project/SAF preview extraction afterward.
         if(cancelled->load())return {};
         if(image.isNull()) {
-            image=preview(path);
+            image=preview(path,cancelled);
             if(cancelled->load())return {};
             cache.store(path,revision,image,cancelled);
         }
