@@ -4,6 +4,7 @@
 #include <atomic>
 #include <memory>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QEvent>
 #include <QImage>
 #include <QPainter>
@@ -136,14 +137,18 @@ private:
         const auto generation=m_requestGeneration;
         const int request=generation->load(std::memory_order_relaxed);
         const QPointer<MobileFillTolerancePreview> preview(this);
+        // Worker completion may race Android process teardown. Do not
+        // dereference qApp from a worker after the QObject has died.
+        const QPointer<QCoreApplication> application(QCoreApplication::instance());
         m_running=true;
-        QThreadPool::globalInstance()->start([preview,pixels,selectionPixels,colorSpace,size,seed,options,threshold,generation,request]() {
+        QThreadPool::globalInstance()->start([preview,application,pixels,selectionPixels,colorSpace,size,seed,options,threshold,generation,request]() {
             // With a busy global pool, rapid pen movement can supersede
             // this request before it even begins. Avoid spending a flood
             // fill on an obsolete tolerance; the GUI callback schedules
             // the latest value.
-            const auto notifyStale=[preview]() {
-                QMetaObject::invokeMethod(qApp,[preview]() {
+            const auto notifyStale=[preview,application]() {
+                if(!application)return;
+                QMetaObject::invokeMethod(application.data(),[preview]() {
                     if(!preview)return;
                     preview->m_running=false;
                     preview->m_delay.start();
@@ -188,7 +193,8 @@ private:
                 return;
             }
             if(!mask) {
-                QMetaObject::invokeMethod(qApp,[preview,threshold,generation,request]() {
+                if(!application)return;
+                QMetaObject::invokeMethod(application.data(),[preview,threshold,generation,request]() {
                     if(!preview)return;
                     preview->m_running=false;
                     // The pen may move away from a value and back while
@@ -217,7 +223,8 @@ private:
                     line[x]=qPremultiply(qRgba(55,195,255,opacity));
                 }
             }
-            QMetaObject::invokeMethod(qApp,[preview,overlay,threshold,generation,request]() {
+            if(!application)return;
+            QMetaObject::invokeMethod(application.data(),[preview,overlay,threshold,generation,request]() {
                 if(!preview)return;
                 preview->m_running=false;
                 if(mobileFillPreviewResultCurrent(threshold,preview->m_threshold,
