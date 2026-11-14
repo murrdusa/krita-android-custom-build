@@ -46,9 +46,14 @@ public:
         m_queued=true;
         QTimer::singleShot(0,this,[this]() {
             m_queued=false;
-            if(m_window && m_root && m_window->isVisible() &&
-               m_root->isVisible() && m_activate)
-                m_activate();
+            if(!m_window || !m_root || !m_window->isVisible() ||
+               !m_root->isVisible())return;
+            // Activation may close the last native canvas and destroy
+            // this observer as a side effect. Invoke a local copy: the
+            // std::function stored on this QObject must not be freed
+            // while its own operator() is still executing.
+            const auto activate=m_activate;
+            if(activate)activate();
         });
     }
 
