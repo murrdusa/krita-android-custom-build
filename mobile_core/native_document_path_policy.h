@@ -13,6 +13,7 @@
 #if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
 #include <QFile>
 #include <QString>
+#include <QUrl>
 
 class MobileNativeDocumentPathPolicy final
 {
@@ -23,10 +24,18 @@ public:
                                Qt::CaseInsensitive);
     }
 
+    static QString localFilePath(const QString &path)
+    {
+        if(!path.startsWith(QStringLiteral("file:"),Qt::CaseInsensitive))
+            return path;
+        const QUrl url(path);
+        return url.isValid() && url.isLocalFile()?url.toLocalFile():QString();
+    }
+
     static bool mayAttemptOpen(const QString &path)
     {
         return !path.trimmed().isEmpty() &&
-               (isProviderUri(path) || QFile::exists(path));
+               (isProviderUri(path) || QFile::exists(localFilePath(path)));
     }
 
     static QString saveDialogStartPath(const QString &currentPath,
@@ -35,7 +44,7 @@ public:
         // A provider document is a file identity, not a filesystem
         // directory. Keep the picker away from content:// identifiers.
         return currentPath.isEmpty() || isProviderUri(currentPath)?
-            picturesFolder:currentPath;
+            picturesFolder:localFilePath(currentPath);
     }
 
     static bool needsSaveAs(const QString &path,bool saveAs,
@@ -46,7 +55,8 @@ public:
         // Provider identity and permissions are Krita's responsibility.
         // Do not force another picker merely because QFile::exists()
         // does not understand a previously granted content URI.
-        return !isProviderUri(path) && !QFile::exists(path);
+        return !isProviderUri(path) &&
+               !QFile::exists(localFilePath(path));
     }
 };
 #endif
