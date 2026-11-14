@@ -105,19 +105,27 @@ public:
             for(const auto &checkpoint:checkpoints) {
                 document=KisPart::instance()->createDocument();
                 if(!document)return false;
-                if(openProjectSource(document,checkpoint.absoluteFilePath(),true)) {
+                const QPointer<KisDocument> candidate(document);
+                const bool opened=openProjectSource(
+                    document,checkpoint.absoluteFilePath(),true);
+                if(!candidate)return false;
+                if(opened) {
                     latest=checkpoint.absoluteFilePath();
                     break;
                 }
-                delete document;
+                delete candidate.data();
                 document=nullptr;
             }
         }
         if(!document) {
             if(!MobileNativeDocumentPathPolicy::mayAttemptOpen(path))return false;
             document=KisPart::instance()->createDocument();
-            if(!document || !openProjectSource(document,path,privateDraft || savedVersion)) {
-                delete document;
+            if(!document)return false;
+            const QPointer<KisDocument> candidate(document);
+            const bool opened=openProjectSource(
+                document,path,privateDraft || savedVersion);
+            if(!candidate || !opened) {
+                if(candidate)delete candidate.data();
                 return false;
             }
         }
