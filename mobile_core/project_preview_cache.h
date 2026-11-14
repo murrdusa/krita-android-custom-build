@@ -4,6 +4,8 @@
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
+#include <QFileInfo>
+#include <QImage>
 #include <QImageReader>
 #include <QMutex>
 #include <QSaveFile>
@@ -17,17 +19,34 @@ public:
     QImage load(const QString &source,qint64 revision) const
     {
         const QFileInfo entry(fileName(source,revision));
-        if(!entry.isReadable() ||
-           (revision==0 && entry.lastModified().secsTo(QDateTime::currentDateTime())>1800))
+        if(!entry.isFile() || entry.isSymLink() || !entry.isReadable() ||
+           entry.size()>32*1024*1024)
             return {};
+        if(revision==0) {
+            const qint64 age=entry.lastModified().secsTo(QDateTime::currentDateTime());
+            // Unsaved projects have no stable revision. Clock skew must not
+            // make a future-dated thumbnail valid indefinitely.
+            if(age>1800 || age < -300)return {};
+        }
         QImageReader reader(entry.absoluteFilePath(),"png");
+        const QSize size=reader.size();
+        // Cache files are untrusted disk input. Reject malformed or very
+        // large images before allocating their decoded pixel buffers.
+        if(!size.isValid() || size.width()>4096 || size.height()>4096 ||
+           qint64(size.width())*size.height()>4096*4096)
+            return {};
         return reader.read();
     }
 
     void store(const QString &source,qint64 revision,const QImage &image,
                const std::atomic_bool *cancelled=nullptr) const
     {
-        if(image.isNull() || !QDir().mkpath(m_directory))return;
+        // A queued thumbnail may have been superseded while waiting for
+        // its worker. Avoid expensive encoding and filesystem work then.
+        if((cancelled && cancelled->load()) || image.isNull() ||
+           image.width()>4096 || image.height()>4096 ||
+           qint64(image.width())*image.height()>4096*4096 ||
+           !QDir().mkpath(m_directory))return;
         QSaveFile output(fileName(source,revision));
         if(!output.open(QIODevice::WriteOnly) || !image.save(&output,"PNG"))return;
         static QMutex publication;
