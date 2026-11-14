@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — reclaim stale recovery copies after hard Android process termination
+
+- Version History already cleans its temporary recovery copy when queued Qt delivery succeeds or is canceled; an abrupt OS process kill still bypasses all in-process destructors. A new `cleanupStaleRecoveryCopies()` streams only app-generated `Recovered-{UUID}.kra` entries in the private `recovered-versions` directory, removes files older than 24 hours, skips links/invalid names/recent copies, and shares the archive I/O mutex. It never targets saved version archives, active draft checkpoints or other files.
+- The gallery submits cleanup to its existing scanner thread pool at startup, keeping directory traversal and deletion off the touch UI thread. Added a Qt archive regression that stages stale, fresh and unrelated files and checks selective, idempotent cleanup.
+- **Verification:** prior Version History queued-copy cleanup revision `8b71ce4dc197b5ba6cb1e407c99639024ef9e826` passed exact-SHA local WSL Android compilation. The startup cleanup and new archive regression await exact-SHA build/test results. No APK uploaded.
+
+
 ## November 14 — clean up canceled Version History recovery copies
 
 - The gallery's `openCopy()` materializes an archive to a separate private KRA before posting its native-open callback to the GUI thread. Previously the temporary file was removed only inside that callback, so a receiver/app shutdown before delivery could leave full-sized KRA copies on disk indefinitely. A shared cleanup owner captured by the Qt event now removes the copy whether the callback runs, the app dies before it runs, or posting is impossible. A guarded Qt application identity also avoids dispatching to a destroyed `qApp`.
