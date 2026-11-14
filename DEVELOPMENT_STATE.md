@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — validate unique document owners before recovery
+
+- The recovery workspace identity guard now rejects snapshots containing two native canvas views for one backing document, even if both the captured and current snapshots match. This prevents queued recovery actions from trusting malformed document ownership.
+- Added host Qt regression cases for matching duplicate document ownership and duplicate native view identities.
+- **Verification:** latest local WSL build status for the preceding deferred-command revision `bde29bf06dba92f005d17a3b4e65a92aebeb5028` was pending when checked. These new source/test changes require exact-SHA WSL verification. Host Qt tests were not executed; APK publishing remains paused.
+
+
 ## November 14 — deferred document action revalidation
 
 - Deferred Save/Close dispatch now compares live view/document ownership on both sides of the native selected-document lookup. A reentrant Qt callback that replaces any canvas during that lookup invalidates the pending action rather than allowing it to run against a stale workspace.
