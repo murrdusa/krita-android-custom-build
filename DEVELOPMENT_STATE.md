@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — reject native Save after document-stack replacement
+
+- The standalone Krita Save/Save As/Export transaction now captures the native view-stack QObject identity with QPointer. After the render-wait modal and again after the Android Save As file picker, it checks that the original stack remains alive and is still the runtime's active root before querying current document or proceeding with disk writes. This prevents null dereferences and stale-canvas writes if the activity destroys/replaces the stack during nested Qt events.
+- Added a Qt-only native-view-stack regression simulating root destruction and replacement while a modal picker is running. This validates the lifetime guard pattern, not a real Android SAF save.
+- **Verification:** latest reported local WSL Android build passed for `2ae496f1bf1398feb9ea33945789047031266ba0`; the new Save guard and regression await exact-SHA WSL compilation and test execution. No APK uploaded.
+
 ## November 14 — safely destroy unsaved-document close prompt on Android activity teardown
 
 - The native Save / Hold to discard / Cancel prompt no longer constructs a parented stack QDialog, QVBoxLayout, QLabel, buttons or progress bar. The modal and all its child controls now have heap ownership guarded by QPointer, and the hold timer is a dialog child so it is canceled along with the dialog. If the host vanishes while the modal loop is active, the result is forced to Cancel rather than Save or Discard. The existing two-second hold requirement and translated labels remain unchanged.
