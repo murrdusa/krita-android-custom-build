@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — cap Android All Projects scan memory
+
+- The gallery's full storage refresh now limits discovery to 20,000 projects (matching the persisted JSON index ceiling) and 50,000 traversed/pending directories. Large shared-storage trees can otherwise grow the scanner's in-memory `roots`, `visited` and `seen` sets without bound, especially during explicit full scans.
+- A capped scan stops traversing immediately, still publishes its already-discovered batch and Android granted-project entries when space remains, and marks its result incomplete. The gallery differentiates a safety-limit result from an ordinary 12-second timeout, and directs users to Browse Files for missing artwork rather than promising Refresh will bypass the limit.
+- **Verification:** previous Version History dialog revision `11976bcd5964b886f067c421f4cc390e9d731f50` passed exact-SHA WSL Android compilation. This scan budget revision awaits local WSL compilation; no Android storage stress test yet, no APK uploaded.
+
+
 ## November 14 — parent-safe Version History modal lifecycle
 
 - Replaced the stack-allocated, window-parented Version History modal dialog with a guarded heap-owned QDialog. Previously Android could destroy the host window during the nested `exec()` event loop, and Qt's parent cleanup would attempt to `delete` a child dialog still residing on the caller's C++ stack. The dialog and home identities are now checked after the modal loop; successful selection is copied before deleting the dialog and opening the selected version.
