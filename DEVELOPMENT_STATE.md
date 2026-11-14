@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — bound Version History browser rows after interrupted cleanup
+
+- A large history folder left behind by interrupted retention could make the Version History dialog call the unbounded `list()`, then create a `QListWidgetItem` and queued preview for **every** archived KRA. This risks main-thread freezes or out-of-memory failures even though normal retention aims for only 12 versions.
+- Added `MobileSavedVersionArchive::listForBrowser()`: streams KRA metadata under the existing archive mutex, selects the latest 256 by canonical timestamp/filename using a bounded oldest-first heap, and sorts those entries newest first. The Version History dialog uses this new method; `list()` remains complete for internal retention and tests, and no disk files are removed by browsing.
+- Added Qt archive regression with 300 files: browser must return 256 newest in correct order, full listing remains 300, and oldest KRA stays on disk.
+- **Verification:** last reported local WSL Android SUCCESS was exact commit `3e770b21cca0da4d37d525cac00a9ba6f777eb72`. These commits require new compilation and standalone Qt regression verification. No APK uploaded.
+
 ## November 14 — preflight local KRA previews before native ZIP decoding
 
 - The gallery's background `preview()` path previously passed any readable local `*.kra` to `KoStore::createStore()`, including symlinks, truncated files, and unexpectedly large archives. This can cause unnecessary archive parsing, memory pressure, or long worker stalls when shared storage includes damaged documents. Introduced the Qt-only `MobileProjectPreviewCache::safeLocalKraSource()` preflight (regular non-linked file, 4 bytes–8 GiB, ZIP local-file header) and call it before opening a local KRA with KoStore. Non-KRA image preview dimensional bounds remain unchanged.
