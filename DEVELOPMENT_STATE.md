@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — prevent external document teardown from deleting transferred canvases
+
+- During engine-owned document destruction, the native stack's `documentDestroyed` callback deregistered the associated view and scheduled `deleteLater()` if it was still alive. That path lacked the ownership checks already present after accepted explicit closes. `removeWidget()` emits `currentChanged` synchronously; one of its observers can reparent or re-adopt the view, in which case the original stack must not delete the newly owned widget.
+- `MobileNativeViewStack::adoptView()` document-destruction observer now schedules deferred canvas deletion only if the registration was actually removed, the stack/view survived, the view is still parented to that stack, and its widget is no longer registered there. Existing orphan cleanup remains in effect for genuinely unowned canvases.
+- Added Qt lightweight-host regression that transfers the removed canvas to an external QWidget from `currentChanged`, destroys the original document, processes deferred deletions, and verifies the moved canvas survives while the original stack retains only its unaffected document.
+- **Verification:** prior WSL Android build passed exact commit `e071e04dee348cdcb32332f4667eb0d5872a7ad8`. The new ownership guard and Qt regression await exact-SHA Android compilation and standalone Qt test execution. No APK uploaded.
+
 ## November 14 — prevent recursive native canvas closes during tab removal
 
 - `MobileNativeViewStack::closeImpl()` previously reset `m_closing` immediately after an accepted native close callback, **before** calling `forgetToken()`. Removing the selected widget can emit `QStackedWidget::currentChanged`, which reaches Krita view activation and other Qt observers synchronously. A reentrant close could therefore target the newly selected, still-open canvas while the first transaction was being torn down.
