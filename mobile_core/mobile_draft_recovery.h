@@ -7,6 +7,9 @@
 #pragma once
 
 #include <QDir>
+#include <QDirIterator>
+#include <QMutex>
+#include <memory>
 #include <QFileInfo>
 #include <QFile>
 #include <QSaveFile>
@@ -109,22 +112,36 @@ public:
         // gallery's UI thread. Process only a small batch per listing;
         // subsequent refreshes continue rescuing the remaining files.
         constexpr int maxOrphanChecksPerScan=2;
-        // Most pending files may be recent, so limiting only expensive
-        // archive checks is not enough: each gallery visit could still
-        // traverse thousands of filenames on its UI thread.
+        // Do not materialize every pending file into an entryInfoList:
+        // that defeats the per-visit limit on a storage directory with
+        // thousands of interrupted exports. Preserve a cursor between
+        // visits and keep only the next bounded batch in memory.
         constexpr int maxOrphanCandidatesPerScan=128;
-        const auto candidates=QDir(folder).entryInfoList(
-                {QStringLiteral("*.pending.kra")},
-                QDir::Files|QDir::Readable|QDir::NoSymLinks);
-        // Rotate in bounded windows; successive refreshes eventually
-        // reach older entries without walking the entire pending list.
-        static std::atomic_uint nextStart{0};
-        const unsigned start=nextStart.fetch_add(maxOrphanCandidatesPerScan);
+        QFileInfoList candidates;
+        candidates.reserve(maxOrphanCandidatesPerScan);
+        {
+            static QMutex cursorLock;
+            static std::unique_ptr<QDirIterator> cursor;
+            static QString cursorFolder;
+            QMutexLocker guard(&cursorLock);
+            if(folder!=cursorFolder) {
+                cursor.reset();
+                cursorFolder=folder;
+            }
+            for(int i=0;i<maxOrphanCandidatesPerScan;++i) {
+                if(!cursor || !cursor->hasNext()) {
+                    cursor.reset(new QDirIterator(folder,
+                        {QStringLiteral("*.pending.kra")},
+                        QDir::Files|QDir::Readable|QDir::NoSymLinks));
+                    // A missing/empty directory has no candidates.
+                    if(!cursor->hasNext())break;
+                }
+                cursor->next();
+                candidates.append(cursor->fileInfo());
+            }
+        }
         int orphanChecks=0;
-        const int inspectCount=qMin(maxOrphanCandidatesPerScan,candidates.size());
-        for(int offset=0;offset<inspectCount;++offset) {
-            const QFileInfo &pending=candidates.at(
-                (start+unsigned(offset))%unsigned(candidates.size()));
+        for(const QFileInfo &pending:candidates) {
             const qint64 age=pending.lastModified().toUTC().secsTo(now);
             if(age<300)continue;
             const QString path=pending.absoluteFilePath();
