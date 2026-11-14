@@ -264,8 +264,9 @@ public:
         const QString titlePath=path+QStringLiteral(".title");
         if(isDraftPath(path) && !QFileInfo(titlePath).isSymLink()) {
             QFile titleFile(titlePath);
-            if(titleFile.open(QIODevice::ReadOnly) && titleFile.size()<=384) {
-                const QString saved=QString::fromUtf8(titleFile.readAll()).trimmed();
+            if(titleFile.open(QIODevice::ReadOnly) &&
+               titleFile.size()>0 && titleFile.size()<=384) {
+                const QString saved=QString::fromUtf8(titleFile.read(385)).trimmed();
                 if(!saved.isEmpty())return saved;
             }
         }
