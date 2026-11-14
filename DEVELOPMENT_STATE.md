@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — retain KRA version when checksum sidecar fails
+
+- A completed saved-version KRA is no longer deleted if writing the separate SHA-256 metadata fails. The archive remains available as a legacy recovery entry; a later identical snapshot verifies the bytes and repairs the missing digest.
+- Expanded Qt regression to verify recovery from an orphaned completed archive before a subsequent save repairs its checksum.
+- **Verification:** latest source and regression committed; exact-SHA local WSL and desktop Qt test results pending. No APK published.
+
+
 ## November 14 — retain incomplete export data and draft titles
 
 - A native exporter that fails before producing a readable KRA no longer removes partial staging bytes in the failure path. Successful exports with invalid staging retain their existing cleanup semantics; the previous completed private draft remains untouched.
