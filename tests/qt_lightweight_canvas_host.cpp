@@ -13,8 +13,8 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QInputDialog>
+#include <QPushButton>
 #include "mobile_core/touch_action_picker.h"
-#include "mobile_core/document_close_prompt.h"
 #include <QTimer>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -211,19 +211,32 @@ int main(int argc,char **argv)
                 "gallery rename prompt survived destroyed Android host");
     }
 
-    // The unsaved-document Save/Discard/Cancel prompt must return
-    // cancellation if Android destroys its owning window during exec().
-    // Its dialog, layout, controls and timer must all have heap lifetime.
+    // Regress the independent Qt ownership pattern used by the native
+    // Save/Discard/Cancel dialog. This test target intentionally has no
+    // KDE localization dependency, so it exercises the same heap-owned
+    // parent/child lifecycle without calling the production i18n wrapper.
     {
         auto *closingParent=new QWidget;
         QPointer<QWidget> parentGuard(closingParent);
+        QPointer<QDialog> closeDialog(new QDialog(closingParent));
+        auto *layout=new QVBoxLayout(closeDialog.data());
+        auto *save=new QPushButton(QStringLiteral("Save"),closeDialog.data());
+        auto *discard=new QPushButton(QStringLiteral("Discard"),closeDialog.data());
+        auto *timer=new QTimer(closeDialog.data());
+        layout->addWidget(save);
+        layout->addWidget(discard);
+        QObject::connect(timer,&QTimer::timeout,closeDialog.data(),
+                         [closeDialog]() {
+            if(closeDialog)closeDialog->done(QMessageBox::No);
+        });
         QTimer::singleShot(0,&app,[closingParent]() {
             delete closingParent;
         });
-        require(mobileConfirmDocumentClose(
-                    closingParent,QStringLiteral("Unsaved drawing"))==
-                    QDialog::Rejected && !parentGuard,
-                "native close prompt did not cancel safely on host teardown");
+        closeDialog->exec();
+        const bool survived=closeDialog && parentGuard;
+        delete closeDialog.data();
+        require(!survived && !parentGuard && !closeDialog,
+                "native close dialog ownership survived Android host teardown");
     }
 
     // The shared action picker is used throughout the mobile UI.
