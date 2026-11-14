@@ -206,5 +206,37 @@ int main(int argc,char **argv)
                                     QDir::Files).size()!=0)
         return 28;
 
+    // Nonempty corrupt files also used to occupy the newest 512 slots,
+    // pushing old valid thumbnails out before they could be decoded.
+    // A PNG signature check must reject those files during pruning.
+    const QString corruptFolder=directory.filePath(QStringLiteral("corrupt-backlog"));
+    if(!QDir().mkpath(corruptFolder))return 29;
+    const MobileProjectPreviewCache corruptCache(corruptFolder);
+    corruptCache.store(source,42,newImage);
+    const QByteArray preservedKey=QCryptographicHash::hash(
+        source.toUtf8()+'\n'+QByteArray::number(42),
+        QCryptographicHash::Sha256).toHex();
+    const QString preservedPath=QDir(corruptFolder).filePath(
+        QString::fromLatin1(preservedKey)+QStringLiteral(".png"));
+    {
+        QFile preserved(preservedPath);
+        if(!preserved.open(QIODevice::ReadWrite) ||
+           !preserved.setFileTime(QDateTime::currentDateTime().addDays(-7),
+                                  QFileDevice::FileModificationTime))
+            return 30;
+    }
+    for(int i=0;i<520;++i) {
+        QFile broken(QDir(corruptFolder).filePath(
+            QStringLiteral("broken-%1.png").arg(i,4,10,QLatin1Char('0'))));
+        if(!broken.open(QIODevice::WriteOnly) ||
+           broken.write("not-a-png",9)!=9)return 31;
+    }
+    corruptCache.prune();
+    if(!QFileInfo::exists(preservedPath) ||
+       corruptCache.load(source,42).isNull() ||
+       !QDir(corruptFolder).entryList({QStringLiteral("broken-*.png")},
+                                     QDir::Files).isEmpty())
+        return 32;
+
     qInfo("PASS: thumbnail revisions, cancellation, retention, clock skew and invalid images");
 }
