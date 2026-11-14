@@ -66,7 +66,15 @@ public:
         // Avoid decoding legacy large PNGs if a gallery refresh or
         // Android window teardown superseded this thumbnail request.
         if(cancelled && cancelled->load())return {};
-        return reader.read();
+        QImage decoded=reader.read();
+        if(decoded.isNull() || (cancelled && cancelled->load()))return {};
+        // Some image plugins may ignore the requested scaled decode.
+        // Never retain a full-size legacy PNG as an Android gallery
+        // icon even if the decoder returned an unexpectedly large image.
+        if(decoded.width()>124 || decoded.height()>124)
+            decoded=decoded.scaled(124,124,Qt::KeepAspectRatio,
+                                   Qt::SmoothTransformation);
+        return decoded;
     }
 
     // An abrupt process kill can leave a legacy or over-quota thumbnail
