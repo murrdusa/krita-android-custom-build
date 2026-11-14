@@ -1447,10 +1447,19 @@ private:
         if(!isVisible())return;
         const QRect region=m_list->viewport()->rect().adjusted(0,-170,0,170);
         int budget=qMin(10,12-m_pending.size());
-        for(int i=0;i<m_list->count() && budget>0;++i) {
+        // At the end of a 20k-project list, walking every preceding
+        // QListWidgetItem on every scroll/completion can stall Android's
+        // UI thread. Start near the first visible row and stop once the
+        // following rows are below the overscan region.
+        int firstRow=0;
+        if(auto *first=m_list->itemAt(QPoint(8,8)))
+            firstRow=qMax(0,m_list->row(first)-8);
+        for(int i=firstRow;i<m_list->count() && budget>0;++i) {
             auto *item=m_list->item(i);
-            if(item->isHidden() ||
-               !m_list->visualItemRect(item).intersects(region))continue;
+            if(item->isHidden())continue;
+            const QRect bounds=m_list->visualItemRect(item);
+            if(bounds.isValid() && bounds.top()>region.bottom())break;
+            if(!bounds.intersects(region))continue;
             const QString project=item->data(Qt::UserRole).toString();
             const QString path=item->data(Qt::UserRole+4).toString();
             const qint64 modified=item->data(Qt::UserRole+5).toLongLong();
