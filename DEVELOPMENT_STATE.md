@@ -3,7 +3,8 @@
 ## November 14 — one version history for symlinked Save As parents
 
 - Local saved-version identity now resolves the closest existing ancestor for a not-yet-created project destination. Save As to `real-folder/future.kra`, a symlinked folder alias, or its local `file://` URL therefore shares one version-history identity before the new file exists.
-- Added a Qt regression for canonical and symlinked parent paths, including a file URL alias.
+- Recovery-copy identification also resolves local file URLs, so a URL alias of a private restored KRA still requires Save As rather than risking an overwrite.
+- Added Qt regressions for canonical/symlinked future Save As parents and for URL aliases of private recovery copies.
 - **Verification:** these commits await exact-SHA local WSL build and desktop Qt regression results. No APK upload.
 
 
