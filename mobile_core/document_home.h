@@ -56,6 +56,7 @@
 #include <QStandardPaths>
 #include <QSettings>
 #include <QThreadPool>
+#include <QThread>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <KoStore.h>
@@ -1074,7 +1075,11 @@ private:
         m_scanDiscoveredCount=0;
         QPointer<MobileDocumentHome> home(this);
         const bool broadAccess=m_lastAccess;
-        m_scanner.start([home,cancel,generation,fullScan,broadAccess]() {
+        // The scanner can outrun a busy UI by thousands of 32-item
+        // batches. Bound outstanding queued deliveries to avoid an
+        // unbounded event-queue/memory backlog on large storage trees.
+        const auto queued=std::make_shared<std::atomic_int>(0);
+        m_scanner.start([home,cancel,queued,generation,fullScan,broadAccess]() {
             // Prioritize common directories during a timed background scan.
             // Refresh walks all accessible shared directories.
             QElapsedTimer timer;
@@ -1099,14 +1104,23 @@ private:
             QSet<QString> seen,visited;
             QVector<Project> batch;
             const auto deliverBatch=[&]() {
-                if(batch.isEmpty())return;
+                if(batch.isEmpty() || cancel->load())return;
+                constexpr int maxQueuedBatches=8;
+                while(queued->load(std::memory_order_acquire)>=maxQueuedBatches) {
+                    if(cancel->load())return;
+                    QThread::msleep(10);
+                }
+                if(cancel->load())return;
                 auto deliver=std::move(batch);
                 batch.clear();
-                QMetaObject::invokeMethod(qApp,
-                    [home,cancel,generation,deliver]() {
+                queued->fetch_add(1,std::memory_order_release);
+                if(!QMetaObject::invokeMethod(qApp,
+                    [home,cancel,queued,generation,deliver]() {
+                        queued->fetch_sub(1,std::memory_order_acq_rel);
                         if(home && !cancel->load())
                             home->appendBatch(generation,deliver);
-                    },Qt::QueuedConnection);
+                    },Qt::QueuedConnection))
+                    queued->fetch_sub(1,std::memory_order_acq_rel);
             };
             while(!roots.isEmpty() && !cancel->load()) {
                 if(!fullScan && timer.elapsed()>automaticLimitMs) {
