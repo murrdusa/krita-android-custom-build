@@ -326,6 +326,34 @@ int main(int argc,char **argv)
             !MobileDraftRecovery::hasKraHeader(
                 draft+QStringLiteral(".pending.kra")),
             "only completed ZIP-header drafts qualify for automatic restore");
+    // Startup recovery must not parse oversized, empty, or linked
+    // archive inputs. A sparse oversized test file uses no 8 GiB
+    // allocation on filesystems supporting sparse resize.
+    const QString invalidDraft=temp.filePath(QStringLiteral("zero-size.kra"));
+    save(invalidDraft,{});
+    require(!MobileDraftRecovery::hasKraHeader(invalidDraft),
+            "empty project is not recoverable");
+    const QString linkedDraft=temp.filePath(QStringLiteral("linked-draft.kra"));
+    if(QFile::link(draft,linkedDraft)) {
+        require(!MobileDraftRecovery::hasKraHeader(linkedDraft),
+                "linked archive must not be parsed for recovery");
+        require(QFile::remove(linkedDraft),"remove linked test archive");
+    }
+    const QString hugeDraft=temp.filePath(QStringLiteral("sparse-oversized.kra"));
+    {
+        QFile huge(hugeDraft);
+        if(huge.open(QIODevice::WriteOnly)) {
+            require(huge.write(QByteArray::fromHex("504b0304"))==4,
+                    "write sparse test ZIP signature");
+            if(huge.resize(8LL*1024*1024*1024+1)) {
+                huge.close();
+                require(!MobileDraftRecovery::hasKraHeader(hugeDraft),
+                        "oversized archive must be refused before ZIP parsing");
+            } else huge.close();
+        }
+    }
+    QFile::remove(hugeDraft);
+    QFile::remove(invalidDraft);
     const auto drafts=MobileDraftRecovery::list();
     require(drafts.size()==1 && drafts.first().absoluteFilePath()==draft &&
             MobileDraftRecovery::title(drafts.first())==QStringLiteral("a_b") &&
