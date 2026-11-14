@@ -11,6 +11,7 @@
 #include <QSharedPointer>
 #include <QVector>
 #include "view_host_port.h"
+#include "view_identity_guard.h"
 
 class MobileDocumentNavigation final
 {
@@ -24,6 +25,7 @@ public:
     {
         if((step!=1 && step!=-1) || !currentDocument)return {};
         QVector<QPointer<QObject>> live;
+        QVector<QPointer<QObject>> documents;
         int activeIndex=-1;
         int activeCount=0;
         for(const Snapshot &view:views) {
@@ -34,10 +36,13 @@ public:
                     return {};
             }
             if(!view.nativeView || !view.document)continue;
-            // Duplicate view identities make the navigation ambiguous.
-            if(live.contains(view.nativeView))return {};
+            // The app owns one native view per document. Duplicate views
+            // or documents make a neighboring close/save target ambiguous.
+            if(live.contains(view.nativeView) ||
+               documents.contains(view.document))return {};
             if(view.active)activeIndex=live.size();
             live.append(view.nativeView);
+            documents.append(view.document);
         }
         if(activeCount!=1 || activeIndex<0 || live.size()<2)return {};
         const int next=(activeIndex+step+live.size())%live.size();
@@ -54,6 +59,12 @@ public:
         // Revalidate the selected document before activating the target:
         // callers may be invoked from a menu after a document was closed.
         if(!target || host->currentDocument()!=current)return false;
+        // A window/menu callback may have closed, opened or switched a
+        // canvas while currentDocument() was queried. In that case a
+        // previously computed neighbor must not activate a stale view.
+        if(!MobileViewIdentityGuard::sameRecoveryWorkspace(
+                snapshot,host->openViews()))return false;
+        if(host->currentDocument()!=current)return false;
         return host->activateView(target);
     }
 };
