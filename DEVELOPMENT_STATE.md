@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — fail closed on missing thumbnail cache directory
+
+- Audited Android gallery thumbnail-cache filesystem handling. If `AppDataLocation` failed to resolve, `MobileProjectPreviewCache` could be constructed with an empty root. `pruneLocked()` would then enumerate relative `*.png` entries, risking deletion of unrelated images in the process working directory. `load()` could likewise resolve a relative hashed cache filename.
+- `load()`, `store()`, and `pruneLocked()` now short-circuit when the configured directory is empty. The cache is disabled until an explicit storage root is available; no artwork or external files are touched by cache maintenance.
+- Extended `qt_project_preview_cache.cpp` to change into a disposable temporary working directory, create an unrelated PNG, invoke empty-root prune/store/load, and confirm that PNG remains intact. The test restores its original working directory before continuing.
+- **Verification:** latest reported Android build SUCCESS at `59f209cb115117af4e29ad2c7b3285f363ff1eb9`. The empty-root guard and Qt regression await exact-revision compilation and test execution. No APK uploaded.
+
+
 ## November 14 — bound all decoded gallery preview sources
 
 - The on-disk thumbnail-cache decoder had a 124 px post-decode limit, but direct PNG/JPEG imports and embedded KRA/SAF PNG previews used `QImageReader::setScaledSize()` without bounding the actual returned `QImage`. Image plugins that ignore the scaled-size request could leave oversized bitmaps retained in gallery worker results and image icon caches.
