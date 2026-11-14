@@ -112,6 +112,26 @@ int main(int argc,char **argv)
                     "first-tab document teardown must reject adoption"))
             return 1;
     }
+    // Initial activation may synchronously delete the newly inserted
+    // QWidget. The factory must not delete that raw pointer a second
+    // time when adoption reports failure.
+    {
+        MobileNativeViewStack destroyedOnAttach;
+        QObject document;
+        auto *candidate=new QWidget;
+        const QPointer<QWidget> live(candidate);
+        QObject::connect(&destroyedOnAttach,&QStackedWidget::currentChanged,
+                         &destroyedOnAttach,[&](int) {
+            delete candidate;
+            candidate=nullptr;
+        });
+        if(!require(!destroyedOnAttach.adoptView(
+                        candidate,&document,QStringLiteral("Destroyed"),
+                        [](){return true;}) &&
+                    !live && destroyedOnAttach.openViews().isEmpty(),
+                    "synchronous canvas destruction during adoption"))
+            return 1;
+    }
     // Recovery is asynchronous. Both native view AND backing document
     // identities must be unchanged; a host can reuse a view widget.
     using Identity=MobileViewIdentityGuard;
