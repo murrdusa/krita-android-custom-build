@@ -33,7 +33,7 @@ jobs:
           set -euo pipefail
           python3 -m compileall -q tools
           test -f mobile_studio/include/mobile_studio/tablet_compact_skin.h
-          bash -n build-in-krita-container.sh local-build.sh
+          bash -n tools/build/build-in-krita-container.sh tools/build/local-build.sh local-build.sh
 
       - name: Reclaim disk space
         if: ${{ inputs.mode == 'build' || inputs.mode == 'compile' || inputs.mode == 'preflight' || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[android-build]') || contains(github.event.head_commit.message, '[android-compile]') || contains(github.event.head_commit.message, '[android-preflight]'))) }}
@@ -56,7 +56,7 @@ jobs:
           python3 -c 'import hashlib, pathlib; p=pathlib.Path.home()/"krita-custom-android-build/persistent/krita"; xml=(p/"krita/krita5.xmlgui").read_text(); cmake=(p/"krita/CMakeLists.txt").read_text(); actual=hashlib.md5("".join(xml.split()).encode()).hexdigest(); expected=next(s.split(chr(34))[1] for s in cmake.splitlines() if "set(krita5_xmlgui_hash_expected" in s); assert actual==expected, f"XMLGUI checksum mismatch: {actual} != {expected}"; print(f"XMLGUI checksum validated: {actual}")'
           git -C "$ROOT/persistent/krita" diff --check
           git -C "$ROOT/persistent/krita" diff --stat
-          cp build-in-krita-container.sh "$ROOT/persistent/krita/build-in-krita-container.sh"
+          cp tools/build/build-in-krita-container.sh "$ROOT/persistent/krita/build-in-krita-container.sh"
           touch "$ROOT/persistent/krita/.krita_android_custom_patch_applied"
 
       - name: Validation result (NOT an APK build)
