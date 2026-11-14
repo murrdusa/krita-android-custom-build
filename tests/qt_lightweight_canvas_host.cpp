@@ -438,6 +438,45 @@ int main(int argc,char **argv)
         require(!guard,"accepted native close retained its canvas allocation");
     }
 
+    // Removing a successfully closed tab emits currentChanged. Its
+    // observers can synchronously attempt to close the next drawing.
+    // Never allow that nested close until the first transaction ends.
+    {
+        MobileLightweightCanvasHost transitionHost;
+        auto *root=transitionHost.createNativeDocumentRoot();
+        require(root,"could not create reentrant-close test root");
+        QObject firstDocument,secondDocument;
+        auto *firstView=new QWidget;
+        auto *secondView=new QWidget;
+        int firstCloses=0,secondCloses=0,nestedAttempts=0;
+        require(root->adoptView(firstView,&firstDocument,
+                                QStringLiteral("First"),[&]() {
+            ++firstCloses;
+            return true;
+        }),"could not attach first reentrant-close view");
+        require(root->adoptView(secondView,&secondDocument,
+                                QStringLiteral("Second"),[&]() {
+            ++secondCloses;
+            return true;
+        }),"could not attach second reentrant-close view");
+        root->setCurrentWidget(secondView);
+        QObject::connect(root,&QStackedWidget::currentChanged,root,
+                         [root,&nestedAttempts](int) {
+            const auto current=root->openViews();
+            if(current.size()!=1)return;
+            ++nestedAttempts;
+            require(!root->closeView(current.first().nativeView),
+                    "tab transition recursively closed another drawing");
+        });
+        require(root->closeView(QPointer<QObject>(secondView)),
+                "could not close active reentrant-close view");
+        require(nestedAttempts==1 && secondCloses==1 && firstCloses==0 &&
+                root->openViews().size()==1 &&
+                root->currentWidget()==firstView,
+                "tab teardown disturbed surviving document");
+        QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+    }
+
     MobileLightweightCanvasHost multi;
     auto *stack=multi.createNativeDocumentRoot();
     require(stack,"could not create the multi-canvas root");
