@@ -136,11 +136,24 @@ private:
             }
             m_colorSpace=m_source->colorSpace();
             m_pixels.resize(bytes);
-            m_source->readBytes(reinterpret_cast<quint8*>(m_pixels.data()),m_window);
+            if(m_pixels.size()!=bytes) {
+                // A failed resize must never be passed to readBytes().
+                m_pixels.clear();
+                m_image->unlock();
+                return;
+            }
             if(needsSelection) {
                 m_selectionPixels.resize(selectionBytes);
-                m_selection->readBytes(reinterpret_cast<quint8*>(m_selectionPixels.data()),m_window);
+                if(m_selectionPixels.size()!=selectionBytes) {
+                    m_pixels.clear();
+                    m_selectionPixels.clear();
+                    m_image->unlock();
+                    return;
+                }
             }
+            m_source->readBytes(reinterpret_cast<quint8*>(m_pixels.data()),m_window);
+            if(needsSelection)
+                m_selection->readBytes(reinterpret_cast<quint8*>(m_selectionPixels.data()),m_window);
             m_image->unlock();
         }
         const auto pixels=m_pixels;
@@ -227,7 +240,22 @@ private:
                 },Qt::QueuedConnection);
                 return;
             }
-            QByteArray coverage(size.width()*size.height(),Qt::Uninitialized);
+            const int coverageBytes=mobileFillPreviewSelectionBytes(size,mask->pixelSize());
+            QByteArray coverage(coverageBytes,Qt::Uninitialized);
+            if(coverage.size()!=coverageBytes) {
+                if(application) {
+                    QMetaObject::invokeMethod(application.data(),
+                        [preview,threshold,generation,request]() {
+                            if(!preview)return;
+                            preview->m_running=false;
+                            if(!mobileFillPreviewResultCurrent(
+                                   threshold,preview->m_threshold,request,
+                                   generation->load(std::memory_order_relaxed)))
+                                preview->m_delay.start();
+                        },Qt::QueuedConnection);
+                }
+                return;
+            }
             mask->readBytes(reinterpret_cast<quint8*>(coverage.data()),rect);
             QImage overlay(size,QImage::Format_ARGB32_Premultiplied);
             // Under Android memory pressure a QImage allocation can
