@@ -835,6 +835,40 @@ int main(int argc,char **argv)
         require(!MobileSavedVersionArchive::materializeRecovery(version,recover).isEmpty(),
                 "streaming migration detached a version from its checksum");
 
+    // Save As must not copy an oversized or symlinked SHA sidecar, nor
+    // detach a source KRA from that sidecar when migration rejects it.
+    const QString unsafeStore=temp.filePath(QStringLiteral("unsafe-sidecars"));
+    const QString unsafeDraft=temp.filePath(QStringLiteral("unsafe-draft.kra"));
+    const QString unsafeSaved=temp.filePath(QStringLiteral("unsafe-saved.kra"));
+    const QString unsafeFrom=MobileSavedVersionArchive::folderFor(
+        unsafeDraft,unsafeStore);
+    const QString unsafeTo=MobileSavedVersionArchive::folderFor(
+        unsafeSaved,unsafeStore);
+    require(QDir().mkpath(unsafeFrom) && QDir().mkpath(unsafeTo),
+            "create checksum migration fixture folders");
+    const QString largeArchive=QDir(unsafeFrom).filePath(
+        QStringLiteral("20261114T000000000-oversized.kra"));
+    save(largeArchive,initial);
+    save(largeArchive+QStringLiteral(".sha256"),QByteArray(4096,'a'));
+    MobileSavedVersionArchive::adoptHistory(unsafeDraft,unsafeSaved,unsafeStore);
+    require(QFile::exists(largeArchive) &&
+            QFile::exists(largeArchive+QStringLiteral(".sha256")) &&
+            MobileSavedVersionArchive::list(unsafeSaved,unsafeStore).isEmpty(),
+            "oversized checksum was migrated or original archive lost");
+    const QString linkedArchive=QDir(unsafeFrom).filePath(
+        QStringLiteral("20261114T000000001-linked.kra"));
+    save(linkedArchive,initial);
+    const QString digestTarget=temp.filePath(QStringLiteral("external-digest"));
+    save(digestTarget,QCryptographicHash::hash(
+        initial,QCryptographicHash::Sha256).toHex());
+    if(QFile::link(digestTarget,linkedArchive+QStringLiteral(".sha256"))) {
+        MobileSavedVersionArchive::adoptHistory(unsafeDraft,unsafeSaved,unsafeStore);
+        require(QFile::exists(linkedArchive) &&
+                QFileInfo(linkedArchive+QStringLiteral(".sha256")).isSymLink() &&
+                MobileSavedVersionArchive::list(unsafeSaved,unsafeStore).isEmpty(),
+                "linked checksum was followed or detached during migration");
+    }
+
     // A corrupt sparse checkpoint can claim to be a multi-gigabyte KRA.
     // The recent-checkpoint validator must refuse it before hashing the
     // entire file or considering it sufficient to suppress a new save.
