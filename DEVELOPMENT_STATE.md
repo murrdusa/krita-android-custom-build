@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — deferred document action revalidation
+
+- Deferred Save/Close dispatch now compares live view/document ownership on both sides of the native selected-document lookup. A reentrant Qt callback that replaces any canvas during that lookup invalidates the pending action rather than allowing it to run against a stale workspace.
+- Qt regression simulates a replacement of an inactive document during the callback and checks that the original pending action is cancelled. Existing owner destruction, selection switching and view teardown tests remain.
+- **Verification:** previous main commit `1ffe097bc1b5f32b976eae39d4917b94c40a78f2` had no exact local WSL status at session start; these new changes await their own watcher status and host Qt test execution. No phone test or APK upload.
+
+
 ## November 14 — enforce unique native document ownership
 
 - Native Save/Close target validation now rejects cases where an inactive row shares the active row's document or view identity. Index lookup and active view selection also reject rows whose backing document has been destroyed.
