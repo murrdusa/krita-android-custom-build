@@ -309,14 +309,15 @@ public:
         }
         if(!output.commit())return false;
         QSaveFile digestFile(target+QStringLiteral(".sha256"));
-        // A freshly published version must carry its checksum. Otherwise
-        // a disk-full/permission failure silently leaves an unverifiable
-        // entry that recovery may later treat as a legacy archive.
+        // Do not delete a fully committed archive if publication of
+        // its tiny checksum sidecar fails. The KRA may be the only
+        // remaining copy of edits after a background draft is closed.
+        // A later identical snapshot can verify the archive's bytes and
+        // repair the missing checksum; legacy recovery can also use it.
         if(!digestFile.open(QIODevice::WriteOnly) ||
            digestFile.write(sha)!=sha.size() ||
            !digestFile.commit()) {
             digestFile.cancelWriting();
-            QFile::remove(target);
             return false;
         }
         prune(folder);
