@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — reject corrupt nonempty PNGs before thumbnail retention selection
+
+- Audited the new size-filtered 512-entry thumbnail retention heap. Nonempty corrupt files smaller than the 32 MiB per-file limit could still occupy the newest candidates, evicting older valid thumbnails during startup cleanup. `MobileProjectPreviewCache::pruneLocked()` now performs a bounded eight-byte PNG signature check for candidates before admitting them to the top-512 heap. The second streaming pass removes the rejected cache PNGs. No image decode is performed during pruning; 128 MiB quota remains unchanged.
+- Added a Qt regression with 520 newer nonempty invalid-signature PNG files and an older valid preview. The valid preview must remain loadable and the corrupt files must be removed. The earlier zero-length/oversized file tests remain intact.
+- **Verification:** previous reported local WSL Android build succeeded for `d88f8ffe39700c4298639f3b24e4f8a969b29e56`; the PNG-signature change and regression await their exact-SHA build and test. No APK uploaded.
+
 ## November 14 — bound queued Version History image previews
 
 - `MobileDocumentHome::showSavedVersions()` streamed archive previews sequentially from a worker but queued a separate decoded `QImage` for every historical version. An interrupted archive-retention pass can leave far more entries than the usual 12-version quota, and if the Android dialog's event loop stops draining, the queued images could accumulate memory before cancellation propagates.
