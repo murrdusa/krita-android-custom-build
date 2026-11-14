@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — native attachment and manager teardown safety
+
+- Standalone runtime now retains QPointer identities for itself and the imported KisDocument across the real Krita view factory's synchronous loading/selection callbacks. If attachment destroys its owner or document, callback connections are not installed into dead objects and the attach reports failure.
+- Native view Close now checks that its KisViewManager survived after switching to the view and again after calling KisView::close(). It does not explicitly destroy a still-live view when its manager has already been destroyed; failed adoption follows the same rule. This avoids KisView destructor callbacks into freed manager memory.
+- **Verification:** preceding native import/GL activation revision `6cdcbd168bf8058bb6ed9874ce9d6fda0721fe26` passed exact-SHA local WSL Android compilation. Latest native ownership changes await exact-SHA WSL compilation; no direct Krita-native runtime test performed. No APK uploaded.
+
+
 ## November 14 — native view activation and document import lifetime
 
 - Native view-close routing now rechecks its QPointer view manager after switching the current canvas and before invoking `KisView::close()`. Canvas repaint activation revalidates the selected view, manager and stack after `updateCanvas()` callbacks before using the GL surface, preventing access to a destroyed canvas.
