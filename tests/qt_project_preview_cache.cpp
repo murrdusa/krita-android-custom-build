@@ -30,7 +30,7 @@ int main(int argc,char **argv)
     const MobileProjectPreviewCache edgeCache(directory.filePath(QStringLiteral("edge")));
     edgeCache.store(source,0,newImage);
     const QByteArray key=QCryptographicHash::hash(
-        source.toUtf8()+'\\n'+QByteArray::number(0),QCryptographicHash::Sha256).toHex();
+        source.toUtf8()+'\n'+QByteArray::number(0),QCryptographicHash::Sha256).toHex();
     const QString cached=QDir(directory.filePath(QStringLiteral("edge"))).filePath(
         QString::fromLatin1(key)+QStringLiteral(".png"));
     QFile future(cached);
@@ -47,7 +47,7 @@ int main(int argc,char **argv)
 
     edgeCache.store(source,8,newImage);
     const QByteArray corruptKey=QCryptographicHash::hash(
-        source.toUtf8()+'\\n'+QByteArray::number(8),QCryptographicHash::Sha256).toHex();
+        source.toUtf8()+'\n'+QByteArray::number(8),QCryptographicHash::Sha256).toHex();
     QFile corrupt(QDir(directory.filePath(QStringLiteral("edge"))).filePath(
         QString::fromLatin1(corruptKey)+QStringLiteral(".png")));
     if(!corrupt.open(QIODevice::WriteOnly|QIODevice::Truncate) ||
