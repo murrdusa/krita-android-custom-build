@@ -32,11 +32,21 @@ public:
             return nullptr;
 
         auto *runtime=MobileKritaStandaloneRuntime::create(host);
-        if(!runtime)return nullptr;
+        if(!runtime) {
+            host->discardEmptyNativeDocumentRoot();
+            return nullptr;
+        }
 
         const MobileHostServices ports=
             MobileKritaStandaloneDocumentsBootstrap::create(runtime);
-        if(!ports.ready())return nullptr;
+        if(!ports.ready()) {
+            // Partial bootstrap owns a manager, action collection and
+            // empty canvas root. Release them now rather than leaking
+            // them for the lifetime of the failed Android window.
+            delete runtime;
+            host->discardEmptyNativeDocumentRoot();
+            return nullptr;
+        }
 
         // The session belongs to the host; runtime and its native views
         // are also host-owned, with the host enforcing teardown order.
