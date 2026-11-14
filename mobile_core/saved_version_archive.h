@@ -678,13 +678,10 @@ private:
         const QDir fromDir(from);
         if(!fromDir.exists())return;
 
-        if(!QDir(to).exists()) {
-            if(QDir().rename(from,to)) {
-                prune(to);
-                return;
-            }
-        }
-
+        // Even when the destination is absent, moving the entire source
+        // directory would bypass per-KRA checksum verification below.
+        // Always migrate archive/checksum pairs individually: a damaged
+        // historical version must remain at its original recovery path.
         if(!QDir().mkpath(to))return;
         // Move complete KRA/sidecar pairs first. Legacy and canonical
         // folders may contain the same checkpoint name; never delete a
