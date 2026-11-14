@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — stream version archive directory metadata instead of copying a sorted snapshot
+
+- `MobileSavedVersionArchive::scan()` now uses a `QDirIterator` rather than Qt's full sorted `QFileInfoList` plus a second `QVector<Version>`. Sorting the retained small metadata records preserves descending generated filename order, including the existing rate-limit, deduplication, recovery and retention semantics. Compare full paths directly since the entries all share one directory; no new `QFileInfo` allocations during sorting.
+- Added a Qt version-archive regression with 80 synthetic historical KRA files, checking that every entry remains discoverable and in descending name order after streaming.
+- **Verification:** prior WSL Android build is confirmed for `9246dca9bed1ce291fce35b099f5eb15a7f5de9e`. New changes await exact-SHA build and Qt regression execution. No APK uploaded.
+
 ## November 14 — make draft discard notices safe during Android window teardown
 
 - The gallery's `discardDraft()` branch still used stack-backed static Qt information/warning dialogs for both an open drawing and a failed private-draft deletion. These nested modal event loops can outlive their Android parent window. Both messages now use heap-owned `QMessageBox` instances with `QPointer` post-exec cleanup, matching the existing guarded confirmation dialog.
