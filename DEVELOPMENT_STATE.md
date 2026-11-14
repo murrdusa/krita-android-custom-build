@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — guard fill-preview byte-array allocations before pixel reads
+
+- A further audit of interactive Fill/Select preview sampling found unchecked `QByteArray::resize()` outcomes for the source pixels and optional selection coverage. Passing an undersized buffer to Krita's `readBytes()` under Android low-memory conditions could corrupt memory. The generated flood-coverage byte array had the same assumption.
+- Source and selection buffers are now sized and checked **before** either engine read; failed allocations clear any partial cached buffers and release the image barrier lock before returning. The worker validates its generated coverage allocation, reports completion safely, and retries only when a newer tolerance request supersedes it.
+- Existing bounded dimension/stride regressions remain in place. Allocation failure is not directly reproduced by the lightweight Qt tests; exact-SHA Android compilation and device-level low-memory behavior remain unverified.
+- **Verification:** last reported WSL Android build: `unknown`; this patch awaits its own build report. No APK uploaded.
+
+
 ## November 14 — validate computed flood-selection mask stride
 
 - The interactive Fill/Select preview already rejected unsupported *input selection* pixel strides, but its generated flood mask was still read unconditionally into a one-byte-per-pixel `QByteArray`. Unexpected engine mask formats could write beyond the allocation.
