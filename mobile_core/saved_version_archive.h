@@ -212,12 +212,16 @@ public:
     // before pruning can leave thousands of versions; do not allocate
     // a row or metadata entry for every old archive just to show the
     // most recent 256. No historical files are removed by this query.
-    static QVector<Version> listForBrowser(const QString &source,
-                                          const QString &rootOverride=QString())
+    static QVector<Version> listForBrowser(
+        const QString &source,const QString &rootOverride=QString(),
+        const std::atomic_bool *cancelled=nullptr)
     {
+        if(cancelled && cancelled->load(std::memory_order_relaxed))return {};
         QMutexLocker guard(&lock());
         const QString folder=folderFor(source,rootOverride);
         QVector<Version> recent;
+        if(folder.isEmpty() ||
+           (cancelled && cancelled->load(std::memory_order_relaxed)))return recent;
         constexpr int displayLimit=256;
         recent.reserve(displayLimit);
         const auto newer=[](const Version &a,const Version &b) {
@@ -226,6 +230,10 @@ public:
         QDirIterator files(folder,{QStringLiteral("*.kra")},
                            QDir::Files|QDir::Readable|QDir::NoSymLinks);
         while(files.hasNext()) {
+            // Closing the modal dialog must not keep scanning a huge
+            // damaged history folder or holding the archive I/O lock.
+            if(cancelled && cancelled->load(std::memory_order_relaxed))
+                return {};
             files.next();
             const QFileInfo info=files.fileInfo();
             if(info.size()<=0)continue;
@@ -240,6 +248,7 @@ public:
                 std::push_heap(recent.begin(),recent.end(),newer);
             }
         }
+        if(cancelled && cancelled->load(std::memory_order_relaxed))return {};
         std::sort(recent.begin(),recent.end(),newer);
         return recent;
     }
