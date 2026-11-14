@@ -24,6 +24,14 @@ int main()
        mobileFillPreviewBufferBytes(QSize(384,384),0)!=0 ||
        mobileFillPreviewBufferBytes(QSize(384,384),1000000)!=0)
         return 8;
+    // Coverage buffers are indexed as 8-bit alpha. Reject future
+    // changes to the selection pixel stride rather than overflowing.
+    if(mobileFillPreviewSelectionBytes(QSize(384,384),1)!=147456 ||
+       mobileFillPreviewSelectionBytes(QSize(384,384),2)!=0 ||
+       mobileFillPreviewSelectionBytes(QSize(384,384),4)!=0 ||
+       mobileFillPreviewSelectionBytes(QSize(0,384),1)!=0 ||
+       mobileFillPreviewSelectionBytes(QSize(385,384),1)!=0)
+        return 9;
     const QRect canvas(0,0,2000,1600);
     if(mobileFillPreviewWindow(canvas,QPoint(500,500))!=QRect(308,308,384,384) ||
        mobileFillPreviewWindow(canvas,QPoint(0,0))!=QRect(0,0,384,384) ||
