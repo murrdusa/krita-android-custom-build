@@ -11,6 +11,7 @@
 #include <QFileInfo>
 #include <QTemporaryDir>
 #include <QThread>
+#include <QUrl>
 #include <QDebug>
 #include "mobile_core/saved_version_archive.h"
 #include "mobile_core/mobile_draft_recovery.h"
@@ -56,8 +57,21 @@ int main(int argc,char **argv)
     require(!MobileSavedVersionArchive::snapshot(uri,store) &&
             MobileSavedVersionArchive::list(uri,store).isEmpty(),
             "unreadable provider must not produce a version");
+    const QString localUrl=QUrl::fromLocalFile(source).toString();
+    require(MobileSavedVersionArchive::canonicalIdentity(localUrl)==
+                MobileSavedVersionArchive::canonicalIdentity(source) &&
+            MobileSavedVersionArchive::folderFor(localUrl,store)==
+                MobileSavedVersionArchive::folderFor(source,store) &&
+            MobileSavedVersionArchive::projectName(localUrl)==
+                QFileInfo(source).fileName() &&
+            MobileSavedVersionArchive::projectModified(localUrl)==
+                MobileSavedVersionArchive::projectModified(source),
+            "file URL and local path must share saved-version identity");
     require(MobileSavedVersionArchive::snapshot(source,store),
             "first completed save snapshot failed");
+    require(MobileSavedVersionArchive::snapshot(localUrl,store) &&
+            MobileSavedVersionArchive::list(localUrl,store).size()==1,
+            "saving through a file URL forked the local version history");
     auto versions=MobileSavedVersionArchive::list(source,store);
     require(versions.size()==1,"missing first snapshot");
     require(load(versions.first().path)==initial,
