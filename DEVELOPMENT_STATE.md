@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — revalidate document ownership after native tool activation/repaint
+
+- Audited `MobileKritaNativeViewFactory::scheduleActivation()` during Android resume and tab switching. `initializeCurrentToolForCanvas()` and `canvas->updateCanvas()` can dispatch engine/Qt callbacks that close a document or change the active native document registration while retaining a live QWidget.
+- After each call, activation now requires the selected `KisView` to have a live document that still matches the current document registered in `MobileNativeViewStack`, in addition to the existing manager/root/view and canvas identity guards. This prevents continuing to repaint a view that no longer owns the active document.
+- **Verification:** prior WSL build reported `79319e5693b954dc730607f36e472ad3a6ec4ef6` SUCCESS; this engine-only change awaits its exact-SHA Android compile and runtime exercising of close/switch/resume reentrancy. No APK uploaded or phone test requested.
+
+
 ## November 14 — guard version-history root when app storage is unavailable
 
 - `MobileSavedVersionArchive::folderFor()` previously constructed the default history root with `QDir(QStandardPaths::writableLocation(AppDataLocation))`. If Android returned an empty application-data path, Qt could interpret it relative to the current working directory, causing snapshots or history migrations to target an unintended location.
