@@ -228,6 +228,7 @@ private:
         // Close callbacks may prompt for Save/Discard. A queued tap
         // targeting an old tab must not close that background painting.
         const quint64 token=row->token;
+        const QPointer<QWidget> closingView=row->view;
         const CloseRequest close=row->closeRequest;
         // The native callback can delete the active view, its document,
         // or the entire containing host while a prompt is open. Do not
@@ -238,8 +239,16 @@ private:
         if(!host)return accepted;
         m_closing=false;
         if(!accepted)return false;
-        // Native callback may already have destroyed the widget.
-        forgetToken(token);
+        // Native callback usually destroys its KisView. A host adapter
+        // can also report an accepted close without doing so: after
+        // removing the row, retire only a still-owned, unregistered
+        // widget. A reparented canvas belongs to its new host.
+        const bool removed=forgetToken(token);
+        if(!host)return accepted;
+        if(removed && closingView &&
+           closingView->parentWidget()==host.data() &&
+           host->indexOf(closingView.data())<0)
+            closingView->deleteLater();
         return true;
     }
 
