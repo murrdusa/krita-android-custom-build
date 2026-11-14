@@ -195,6 +195,18 @@ public:
                 ex.source=e.source;
             }
         }
+        // Scans may merge a full persisted index with thousands of new
+        // projects. Never hand save() more entries than it can persist:
+        // otherwise the write is rejected and every new discovery is lost.
+        constexpr int maxIndexEntries=20000;
+        if(existing.size()>maxIndexEntries) {
+            std::stable_sort(existing.begin(),existing.end(),
+                [](const MobileProjectIndexEntry &a,
+                   const MobileProjectIndexEntry &b) {
+                    return a.modified>b.modified;
+                });
+            existing.resize(maxIndexEntries);
+        }
         return existing;
     }
 
@@ -907,6 +919,7 @@ private:
         m_access->setVisible(mode==AllProjects && !m_lastAccess);
         m_sort->setVisible(mode==AllProjects);
         m_projectItems.clear();
+        m_displayLimitReached=false;
         m_list->clear();
         resetThumbnailRequests();
         m_attempted.clear();
@@ -1058,6 +1071,13 @@ private:
                 filterItem(item,m_search->text().trimmed());
                 scheduleThumbnails();
             }
+            return;
+        }
+        // Combining a full saved index with a fresh scan must not
+        // allocate an unbounded number of QWidget list entries/icons.
+        // Existing entries are still updated by the branch above.
+        if(m_mode==AllProjects && m_projectItems.size()>=20000) {
+            m_displayLimitReached=true;
             return;
         }
         auto *item=new QListWidgetItem(m_placeholder,project.title,m_list);
@@ -1282,7 +1302,7 @@ private:
         m_scanCancel.reset();
         sortProjects();
         const int count=m_list->count();
-        if(limitReached) {
+        if(limitReached || m_displayLimitReached) {
             m_message->setText(i18n(
                 "%1 indexed projects. Storage scan reached its safety limit; "
                 "use Browse Files to open any missing projects.",count));
@@ -1465,6 +1485,7 @@ private:
     std::shared_ptr<std::atomic_bool> m_scanCancel;
     QThreadPool m_scanner,m_thumbnails;
     QHash<QString,QListWidgetItem*> m_projectItems;
+    bool m_displayLimitReached=false;
     QHash<QString,QFileInfo> m_latestDrafts;
     QVariantMap m_savedPreviewRevisions;
     QSet<QPair<QString,qint64>> m_pending,m_attempted;
