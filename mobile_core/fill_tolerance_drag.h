@@ -19,6 +19,18 @@ inline bool mobileFillPreviewResultCurrent(int value,int currentValue,
     return value==currentValue && request==currentRequest;
 }
 
+// Only sample a bounded amount of pixel data into a transient worker.
+// Use 64-bit arithmetic before converting the byte count to QByteArray's
+// integer size, even if an engine colorspace reports an unexpected stride.
+inline int mobileFillPreviewBufferBytes(const QSize &size,int pixelSize)
+{
+    constexpr qint64 budget=16LL*1024*1024;
+    if(size.isEmpty() || size.width()>384 || size.height()>384 ||
+       pixelSize<=0)return 0;
+    const qint64 bytes=qint64(size.width())*size.height()*pixelSize;
+    return bytes>0 && bytes<=budget?int(bytes):0;
+}
+
 inline QRect mobileFillPreviewWindow(const QRect &bounds,const QPoint &seed)
 {
     constexpr int side=384;
