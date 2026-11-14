@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — preserve transferred canvas visibility during native tab removal
+
+- Inspected the recently added reparenting safety guards after exact-SHA Android compilation. `MobileNativeViewStack::forgetToken()` removed a widget and then unconditionally called `view->hide()`. `removeWidget()` emits `currentChanged` synchronously; a listener can reparent and show the detached widget before the old stack resumes. The unconditional hide then incorrectly hides the newly owned canvas, potentially presenting a blank drawing even though no document was closed.
+- `forgetToken()` now hides only a still-live widget that is still parented to the old stack and is no longer registered there. Views transferred to a different owner or synchronously re-registered retain their new owner's visibility.
+- Strengthened the standalone Qt two-owner lifecycle regression: during `currentChanged`, the listener reparents and explicitly shows the transferred canvas; after document teardown the canvas must still exist and remain unhidden.
+- **Verification:** local WSL Android build SUCCESS for `c38816694302edd488b862fb4efd7ab3bcc335e4` (2026-11-14 16:31:46 UTC). Current visibility fix and enhanced Qt regression await exact-SHA Android compilation and standalone Qt execution. No APK uploaded.
+
 ## November 14 — prevent external document teardown from deleting transferred canvases
 
 - During engine-owned document destruction, the native stack's `documentDestroyed` callback deregistered the associated view and scheduled `deleteLater()` if it was still alive. That path lacked the ownership checks already present after accepted explicit closes. `removeWidget()` emits `currentChanged` synchronously; one of its observers can reparent or re-adopt the view, in which case the original stack must not delete the newly owned widget.
