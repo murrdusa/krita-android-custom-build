@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — coalesce repeated All Projects scans
+
+- Audited the single-threaded `MobileDocumentHome::m_scanner` queue. Repeated Refresh taps could enqueue multiple already-obsolete full scans behind an active scan, retaining runnable captures and delaying the latest requested results. Cancellation tokens alone stopped old work once it began but did not remove queued runnables.
+- `startScan()` now cancels the previous scan token and calls `m_scanner.clear()` before enqueuing the new scan. The active scan observes cancellation; older pending scans are discarded, so only the newest refresh remains scheduled. The gallery index and saved artwork remain unchanged.
+- **Verification:** prior reported WSL Android SUCCESS at `00fb668e07d233fd49a969f9c448dd9cf11c36b3`. This queue change awaits exact-SHA compilation and refresh-under-load testing. No APK uploaded.
+
+
 ## November 14 — reject incomplete Android provider thumbnail transfers
 
 - Audited the Android SAF thumbnail path in `MobileDocumentHome::preview()`. It receives a Java byte array of compressed KRA preview data and copies it with JNI `GetByteArrayRegion()` before decoding. A failed JNI transfer left an exception pending and the decoder could proceed with incomplete data.
