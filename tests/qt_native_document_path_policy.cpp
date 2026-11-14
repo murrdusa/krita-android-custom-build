@@ -2,7 +2,9 @@
 #include <QDebug>
 #include <QFile>
 #include <QTemporaryDir>
+#include <QUrl>
 #include "mobile_core/native_document_path_policy.h"
+#include "mobile_core/open_document_destination_policy.h"
 
 static void require(bool ok,const char *reason)
 {
@@ -50,6 +52,25 @@ int main(int argc,char **argv)
             "untitled document lacked a Save As directory");
     require(P::saveDialogStartPath(realFile,pictures)==realFile,
             "local Save As failed to retain its suggested file path");
+    // The file picker may return a local file URL while an open canvas
+    // is registered under its filesystem path. Both are the same backing
+    // file, including percent-escaped names and a not-yet-existing
+    // Save As destination.
+    using Guard=MobileOpenDocumentDestinationPolicy;
+    const QString fileUrl=QUrl::fromLocalFile(realFile).toString();
+    require(Guard::sameFile(realFile,fileUrl) &&
+            Guard::sameFile(fileUrl,realFile) &&
+            Guard::conflictsWithBackingFile(fileUrl,realFile,QString()),
+            "file URL alias bypassed open document Save As protection");
+    const QString spaced=tmp.filePath(QStringLiteral("new drawing.kra"));
+    const QString spacedUrl=QUrl::fromLocalFile(spaced).toString();
+    require(Guard::sameFile(spacedUrl,spaced) &&
+            Guard::conflictsWithOwnBackingFile(
+                spacedUrl,QString(),spaced,true,false),
+            "escaped URL of new draft destination bypassed collision guard");
+    require(!Guard::sameFile(fileUrl,missing) &&
+            !Guard::sameFile(fileUrl,provider),
+            "file URL alias collided with unrelated backing document");
     qInfo()<<"PASS: provider URI open/save, local path existence,"
             <<"explicit Save As, recovery and MIME guards";
     return 0;
