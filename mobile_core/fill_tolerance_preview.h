@@ -170,7 +170,12 @@ private:
         // dereference qApp from a worker after the QObject has died.
         const QPointer<QCoreApplication> application(QCoreApplication::instance());
         m_running=true;
-        QThreadPool::globalInstance()->start([preview,application,pixels,selectionPixels,colorSpace,size,seed,options,threshold,generation,request]() {
+        // Do not enqueue a full pixel snapshot when the global pool is
+        // saturated by gallery scans or other expensive Krita work.
+        // A queued closure would retain its sampled buffers even after
+        // a tool switch; retry from the live widget when a slot frees.
+        const bool started=QThreadPool::globalInstance()->tryStart(
+            [preview,application,pixels,selectionPixels,colorSpace,size,seed,options,threshold,generation,request]() {
             // With a busy global pool, rapid pen movement can supersede
             // this request before it even begins. Avoid spending a flood
             // fill on an obsolete tolerance; the GUI callback schedules
@@ -306,6 +311,13 @@ private:
                 }
             },Qt::QueuedConnection);
         });
+        if(!started) {
+            // tryStart() never queues a refused task, and its captured
+            // pixel arrays are released on return. Keep the latest
+            // threshold pending without pinning another worker closure.
+            m_running=false;
+            m_delay.start();
+        }
     }
 
     QPointer<KisCanvas2> m_canvas;
