@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — harden Android storage-permission dialog lifecycle
+
+- The All Projects storage-access prompt now uses a QPointer-guarded heap-owned QMessageBox. The Android activity can destroy its parent window during the nested confirmation event loop; the permission request is only dispatched if the owning gallery survives and remains visible. The existing default Yes choice and optional access behavior are preserved.
+- Extended the Krita-independent Qt host regression with destruction during QMessageBox and QInputDialog nested event loops to verify the guarded child/parent ownership pattern used by gallery deletion and rename.
+- **Verification:** exact-SHA local WSL Android compile reported SUCCESS for preceding gallery dialog revision `9b5fbc19a79dcc463090568d4498de592b55b573`; newer permission prompt and regression source await exact-SHA build/test validation. No APK uploaded.
+
 ## November 14 — protect destructive gallery prompts during Android window teardown
 
 - Gallery Delete Drawing and Discard Draft confirmation prompts now use heap-owned, QPointer-guarded QMessageBox instances instead of parented stack helpers. The owning gallery is revalidated after the nested dialog returns before touching files, preventing callbacks from continuing against a destroyed host.
