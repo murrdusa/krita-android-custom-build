@@ -112,6 +112,14 @@ public:
             const QString path=pending.absoluteFilePath();
             const QString draft=path.left(path.size()-suffix.size());
             if(!isDraftPath(draft) || !hasReadableProject(path))continue;
+            // Opening the KRA with KoStore may take time. An exporter
+            // that resumed writing meanwhile must retain ownership of
+            // its staging file; never rescue a file whose size or mtime
+            // changed during validation.
+            const QFileInfo current(path);
+            if(!current.isFile() || current.isSymLink() ||
+               current.size()!=pending.size() ||
+               current.lastModified()!=pending.lastModified())continue;
             // False explicitly prevents replacing the previous published
             // draft; publish() moves the orphan to a separate recovery ID.
             publish(draft,false);
