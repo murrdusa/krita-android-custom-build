@@ -125,18 +125,20 @@ public:
         if(!isDraftPath(draft))return false;
         const QString staging=draft+QStringLiteral(".pending.kra");
         if(QFileInfo(staging).isSymLink())return false;
-        if(!exportSucceeded || !hasReadableProject(staging)) {
+        // The exporter can report failure after writing an otherwise
+        // complete KRA (for example if its final flush failed). Never
+        // replace the last published draft when exportSucceeded is false.
+        // A readable staging file may still be the only recoverable copy.
+        if(!hasReadableProject(staging)) {
             QFile::remove(staging);
             return false;
         }
-        // A completed staging KRA may contain the only copy of the
-        // newest edits. Never delete it merely because replacement fails.
-        if(std::rename(QFile::encodeName(staging).constData(),
+        if(exportSucceeded &&
+           std::rename(QFile::encodeName(staging).constData(),
                        QFile::encodeName(draft).constData())==0)return true;
-        // A .pending.kra is intentionally excluded from the recovery
-        // browser. Move the completed export to its own private draft
-        // identity so the edits remain discoverable after a restart.
-        // Keep staging intact if even the rescue rename fails.
+        // A .pending.kra is excluded from the recovery browser. Rescue
+        // any readable but unpublished result under a separate UUID, so
+        // failure does not erase previously published edits or this copy.
         const QString rescue=allocate(title(QFileInfo(draft)));
         if(!rescue.isEmpty() && !QFileInfo(rescue).exists() &&
            std::rename(QFile::encodeName(staging).constData(),
