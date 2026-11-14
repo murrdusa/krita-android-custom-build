@@ -14,13 +14,14 @@
 class MobileProjectPreviewCache
 {
 public:
+    static constexpr qint64 maxEncodedBytes() {return 32LL*1024*1024;}
     explicit MobileProjectPreviewCache(const QString &directory) : m_directory(directory) {}
 
     QImage load(const QString &source,qint64 revision) const
     {
         const QFileInfo entry(fileName(source,revision));
         if(!entry.isFile() || entry.isSymLink() || !entry.isReadable() ||
-           entry.size()>32*1024*1024)
+           entry.size()<=0 || entry.size()>maxEncodedBytes())
             return {};
         if(revision==0) {
             const qint64 age=entry.lastModified().secsTo(QDateTime::currentDateTime());
@@ -48,7 +49,15 @@ public:
            qint64(image.width())*image.height()>4096*4096 ||
            !QDir().mkpath(m_directory))return;
         QSaveFile output(fileName(source,revision));
-        if(!output.open(QIODevice::WriteOnly) || !image.save(&output,"PNG"))return;
+        if(!output.open(QIODevice::WriteOnly) || !image.save(&output,"PNG"))
+            return;
+        // Keep writer and reader in agreement: large incompressible
+        // thumbnails should not consume disk only to be rejected on
+        // every subsequent gallery refresh.
+        if(output.size()<=0 || output.size()>maxEncodedBytes()) {
+            output.cancelWriting();
+            return;
+        }
         static QMutex publication;
         QMutexLocker guard(&publication);
         if((cancelled && cancelled->load()) || !output.commit())return;
