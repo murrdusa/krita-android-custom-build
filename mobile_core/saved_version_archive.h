@@ -54,7 +54,10 @@ public:
         if(!source.startsWith(QStringLiteral("file:"),Qt::CaseInsensitive))
             return source;
         const QUrl url(source);
-        return url.isValid() && url.isLocalFile()?url.toLocalFile():QString();
+        return url.isValid() && url.isLocalFile() &&
+               (url.host().isEmpty() ||
+                url.host().compare(QStringLiteral("localhost"),Qt::CaseInsensitive)==0)?
+            url.toLocalFile():QString();
     }
 
     static bool isKritaProjectName(const QString &name)
