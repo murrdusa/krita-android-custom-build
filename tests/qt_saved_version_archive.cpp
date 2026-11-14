@@ -855,6 +855,18 @@ int main(int argc,char **argv)
             QFile::exists(largeArchive+QStringLiteral(".sha256")) &&
             MobileSavedVersionArchive::list(unsafeSaved,unsafeStore).isEmpty(),
             "oversized checksum was migrated or original archive lost");
+    // A short regular sidecar is not necessarily a valid SHA-256.
+    // Keep its KRA beside it instead of migrating unusable metadata.
+    const QString malformedArchive=QDir(unsafeFrom).filePath(
+        QStringLiteral("20261114T000000002-malformed.kra"));
+    save(malformedArchive,initial);
+    save(malformedArchive+QStringLiteral(".sha256"),QByteArray("not-a-sha256"));
+    MobileSavedVersionArchive::adoptHistory(unsafeDraft,unsafeSaved,unsafeStore);
+    require(QFile::exists(malformedArchive) &&
+            load(malformedArchive+QStringLiteral(".sha256"))==
+                QByteArray("not-a-sha256") &&
+            MobileSavedVersionArchive::list(unsafeSaved,unsafeStore).isEmpty(),
+            "malformed checksum was migrated or separated from its KRA");
     const QString linkedArchive=QDir(unsafeFrom).filePath(
         QStringLiteral("20261114T000000001-linked.kra"));
     save(linkedArchive,initial);
