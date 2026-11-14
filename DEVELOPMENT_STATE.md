@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — native canvas callback lifetime hardening
+
+- Native view adoption now verifies the registered view and document after synchronous Qt activation callbacks; it will not report success if those callbacks already detached the new canvas.
+- Canvas activation revalidates the host, view, and row after Qt emits selection signals. Close handling no longer holds a member rollback guard across callbacks that may destroy the entire host, while still rejecting reentrant Save/Discard prompts. A desktop Qt regression checks host destruction and nested close.
+- Thumbnail cache now rejects malformed, symlinked, oversized, and future-dated stale entries; superseded jobs skip encoding. Desktop regression coverage added.
+- **Verification:** source and tests committed; local watcher has not yet posted an exact-SHA build status for these changes. Host Qt tests not executed in this session. APK publishing remains paused.
+
+
 The first canvas is registered before Qt publishes its activation. Tab switching rechecks the selected document after native activation and avoids holding a row pointer across Qt callbacks. Deferred draft checkpoints tolerate document closure or queue changes during a save. Desktop view-stack regressions cover first-tab registration and synchronous tab removal.
 
 New Canvas focuses the name and requests the Android keyboard on open. Numeric edits commit before validation. The form is destroyed before native canvas creation, repeated creation is blocked, and the first canvas uses the native exposure observer without cycling the Android window. This addresses source-level crash risks. A device crash trace was unavailable.
