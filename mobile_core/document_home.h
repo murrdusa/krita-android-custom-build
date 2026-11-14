@@ -543,6 +543,7 @@ protected:
     void hideEvent(QHideEvent *event) override
     {
         m_recoveryCopyCancelled->store(true);
+        m_restoringVersion=false;
         ++m_recoveryGeneration;
         ++m_homeListGeneration;
         if(m_scanCancel && !m_scanCancel->exchange(true) && m_mode==AllProjects)
@@ -711,8 +712,11 @@ private:
     {
         if(m_restoringVersion || !isVisible())return;
         m_restoringVersion=true;
+        // Never reactivate the cancellation token of an older worker
+        // still unwinding after a previous gallery close.
+        m_recoveryCopyCancelled->store(true);
+        m_recoveryCopyCancelled=std::make_shared<std::atomic_bool>(false);
         const auto cancellation=m_recoveryCopyCancelled;
-        cancellation->store(false);
         const auto generation=m_recoveryGeneration;
         const auto expected=m_engine.openDocuments();
         for(const auto &entry:expected) {
