@@ -1304,11 +1304,16 @@ private:
         const MobileProjectPreviewCache cache(QDir(QStandardPaths::writableLocation(
             QStandardPaths::AppDataLocation)).filePath(QStringLiteral("project-thumbs")));
         QImage image=refresh?QImage():cache.load(path,revision);
+        // A gallery dismissal or refresh may cancel this work while the
+        // previous cached PNG is being decoded. Do not start the much
+        // more expensive project/SAF preview extraction afterward.
+        if(cancelled->load())return {};
         if(image.isNull()) {
             image=preview(path);
+            if(cancelled->load())return {};
             cache.store(path,revision,image,cancelled);
         }
-        return image;
+        return cancelled->load()?QImage():image;
     }
 
     void scheduleThumbnails()
