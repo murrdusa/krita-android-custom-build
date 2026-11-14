@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — reduce legacy thumbnail decode memory
+
+- The gallery preview-cache loader now requests a 124 × 124 maximum decoded image instead of loading a potentially 4096 × 4096 legacy cache PNG into memory at full size. Aspect ratio is preserved and existing small icons stay unchanged.
+- Extended the Qt preview-cache test with a 2048 × 1536 stored image; the gallery loads a 124 × 93 icon while verifying its pixel contents and the unchanged 8 × 8 icon path.
+- **Verification:** earlier scan-backpressure revision `26e257a11e3f6aada8751a97183bf39afcbcc4ee` passed local WSL Android compilation. The new thumbnail change and Qt regression await an exact-SHA local build/test report. No APK published.
+
+
 ## November 14 — bound All Projects scan backlog and thumbnail memory
 
 - Background shared-storage scans now permit at most eight outstanding 32-project delivery batches on the UI event queue. If Qt cannot consume them promptly, the scanner briefly waits on its worker thread and continues when the backlog drains; cancellation interrupts this wait immediately. This avoids unbounded queued allocations when indexing huge folder trees while the home/gallery UI is busy.
