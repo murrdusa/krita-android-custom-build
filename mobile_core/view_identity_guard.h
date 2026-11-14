@@ -22,7 +22,7 @@ public:
         QPointer<QObject> found;
         for(const View &v:views) {
             if(v.nativeIndex!=index)continue;
-            if(!v.nativeView || found)return {};
+            if(!v.nativeView || !v.document || found)return {};
             found=v.nativeView;
         }
         return found;
@@ -33,7 +33,7 @@ public:
         QPointer<QObject> chosen;
         for(const View &v:views) {
             if(!v.active)continue;
-            if(!v.nativeView || chosen)return {};
+            if(!v.nativeView || !v.document || chosen)return {};
             chosen=v.nativeView;
         }
         return chosen;
@@ -78,12 +78,20 @@ public:
         if(!view || !document)return false;
         int count=0;
         bool selected=false;
+        int ownership=0;
         for(const View &v:views) {
+            // A second row for the same document or view makes a
+            // destructive Save target ambiguous, even if only one of
+            // those rows currently has the active flag.
+            if(v.nativeView==view || v.document==document) {
+                if(v.nativeView!=view || v.document!=document)return false;
+                ++ownership;
+            }
             if(!v.active)continue;
             ++count;
             selected=v.nativeView==view && v.document==document;
         }
-        return count==1 && selected;
+        return ownership==1 && count==1 && selected;
     }
 
     static QPointer<QObject> safeCloseTarget(
@@ -102,7 +110,8 @@ public:
             const auto active=uniqueActive(views);
             for(const View &v:views) {
                 if(v.active && v.nativeView==active &&
-                   v.document==currentDocument)return active;
+                   v.document==currentDocument &&
+                   maySave(views,active,currentDocument))return active;
             }
             return {};
         }
