@@ -188,6 +188,21 @@ int main(int argc,char **argv)
     require(copy!=source && copy!=firstSnapshot &&
             load(copy)==initial && load(source)==second,
             "recovery touched the original or historical copy");
+    // Cancellation before a large recovery starts must not publish a
+    // temporary copy or remove the historical source.
+    std::atomic_bool abortRecovery{true};
+    const QString cancelledCopy=MobileSavedVersionArchive::materializeRecovery(
+        versions.last(),recover,&abortRecovery);
+    require(cancelledCopy.isEmpty() &&
+            QFile::exists(firstSnapshot) &&
+            QFileInfo(copy).isFile(),
+            "cancelled historical recovery changed existing artwork");
+    abortRecovery.store(false);
+    const QString resumedCopy=MobileSavedVersionArchive::materializeRecovery(
+        versions.last(),recover,&abortRecovery);
+    require(!resumedCopy.isEmpty() && load(resumedCopy)==initial,
+            "noncancelled historical recovery failed");
+    QFile::remove(resumedCopy);
     auto staleVersion=versions.last();
     ++staleVersion.bytes;
     require(MobileSavedVersionArchive::materializeRecovery(
