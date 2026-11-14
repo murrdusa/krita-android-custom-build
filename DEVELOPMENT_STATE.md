@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — isolate archive snapshots from interactive Qt workers
+
+- Audited the background version-history tasks: both `enqueueDraftCheckpoint()` and `enqueueAfterSave()` dispatched work into `QThreadPool::globalInstance()`, but each then serialized all archive I/O under the same recursive archive mutex. Multiple document saves could occupy global-pool threads blocked on that lock, reducing the worker capacity available to fill-tolerance previews and other interactive operations.
+- Both archive queues now use a dedicated, function-local static `QThreadPool` with `maxThreadCount(1)`. Only one archive copy/adoption worker executes at once; queued distinct-project requests do not consume global thread-pool workers. Existing per-project generation/coalescing, archive mutex, atomic QSaveFile publication, and save-history behavior are unchanged.
+- **Verification:** most recent WSL Android SUCCESS reported at `d81b42421232e8b4057abd6f7d8af48320e1712e`. This change awaits an exact-SHA Android build and sustained multi-document save/resume runtime checks. No APK uploaded.
+
+
 ## November 14 — revalidate document ownership after native tool activation/repaint
 
 - Audited `MobileKritaNativeViewFactory::scheduleActivation()` during Android resume and tab switching. `initializeCurrentToolForCanvas()` and `canvas->updateCanvas()` can dispatch engine/Qt callbacks that close a document or change the active native document registration while retaining a live QWidget.
