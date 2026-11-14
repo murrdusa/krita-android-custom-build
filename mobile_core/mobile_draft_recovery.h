@@ -109,16 +109,20 @@ public:
         // gallery's UI thread. Process only a small batch per listing;
         // subsequent refreshes continue rescuing the remaining files.
         constexpr int maxOrphanChecksPerScan=2;
+        // Most pending files may be recent, so limiting only expensive
+        // archive checks is not enough: each gallery visit could still
+        // traverse thousands of filenames on its UI thread.
+        constexpr int maxOrphanCandidatesPerScan=128;
         const auto candidates=QDir(folder).entryInfoList(
                 {QStringLiteral("*.pending.kra")},
                 QDir::Files|QDir::Readable|QDir::NoSymLinks);
-        // A permanently invalid first entry must not starve every
-        // valid orphan that sorts after it. Rotate the starting point
-        // across refreshes; atomic for concurrent gallery lookups.
+        // Rotate in bounded windows; successive refreshes eventually
+        // reach older entries without walking the entire pending list.
         static std::atomic_uint nextStart{0};
-        const unsigned start=nextStart.fetch_add(maxOrphanChecksPerScan);
+        const unsigned start=nextStart.fetch_add(maxOrphanCandidatesPerScan);
         int orphanChecks=0;
-        for(int offset=0;offset<candidates.size();++offset) {
+        const int inspectCount=qMin(maxOrphanCandidatesPerScan,candidates.size());
+        for(int offset=0;offset<inspectCount;++offset) {
             const QFileInfo &pending=candidates.at(
                 (start+unsigned(offset))%unsigned(candidates.size()));
             const qint64 age=pending.lastModified().toUTC().secsTo(now);
