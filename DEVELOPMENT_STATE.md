@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — validate native view dependencies immediately after Krita createView
+
+- Native first-canvas and additional-canvas attachment now establishes guarded identities for the document, manager and native view stack **before** invoking `KisPart::createView()`. That factory may dispatch synchronous Qt callbacks that destroy its dependencies; the returned view is no longer configured or given to the input tracker until all three original objects are confirmed alive. An incomplete input manager or canvas also aborts attachment, releasing a still-live unparented view only while its manager survives.
+- Added Qt-only native-view-stack regression simulating manager/root destruction during a view factory call. It checks the same pre-initialization lifetime gate, not full Krita GL construction.
+- **Verification:** latest separately reported local Android build passed for the previous thumbnail-cache change `9e73b1538a68c3aa4be0d7aef52c5a3ac8fdf3e6`; these native view source changes await exact-SHA WSL compilation and runtime testing. No APK uploaded.
+
 ## November 14 — reclaim over-quota thumbnail cache after interrupted shutdown
 
 - The existing thumbnail PNG cache enforces a 512-entry/128 MiB quota during thumbnail publication. However, if Android terminates the process with an already-overquota cache, a later session that merely browses cached drawings might never trigger new writes and therefore never prune the excess. Factored the existing byte/count retention sweep into a lock-protected `MobileProjectPreviewCache::prune()` entrypoint.
