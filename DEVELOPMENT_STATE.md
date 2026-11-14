@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — retire native canvases after accepted close callbacks
+
+- An accepted `MobileNativeViewStack::closeImpl()` transaction removed the widget registration but delegated destruction entirely to the close callback. While the Krita view factory normally deletes its `KisView`, another adapter/callback may accept without deleting, leaving a detached native widget/GL surface parented to the root until app exit.
+- `closeImpl()` now captures the closing QWidget as a `QPointer`, completes the existing synchronous close contract, and after successful deregistration schedules `deleteLater()` only if the widget remains alive, still belongs to the original native stack, and is no longer registered. Already-destroyed/reparented widgets are left alone. Reentrant host destruction remains guarded.
+- Added standalone Qt lightweight-host regression where an approved close callback intentionally leaves its QWidget alive; the row must disappear and the widget must be deleted upon processing deferred deletes. Existing explicit save/discard cancellation and multi-document tests are unchanged.
+- **Verification:** the previous local WSL Android build was SUCCESS at exact source SHA `f7cab92d758da016bff49db6313b7dbdd3c57db9`. Current accepted-close cleanup and Qt regression require exact-SHA local compilation/tests. No APK uploaded.
+
 ## November 14 — isolate native orphan-canvas cleanup from other open tabs
 
 - Reviewed the previously committed native orphan-view cleanup after its exact-SHA Android build passed. `MobileNativeViewStack` could schedule `deleteLater()` on a guarded view even if its registration token had already been removed by a reentrant close. The document-destruction callback now schedules canvas deletion only when `forgetToken(token)` actually removed that registration and the stack still exists, preventing accidental deletion of a view under another owner.
