@@ -70,6 +70,12 @@ int main(int argc,char **argv)
     // before the optional checksum sidecar is published.
     require(QFile::remove(firstSnapshot+QStringLiteral(".sha256")),
             "cannot simulate a missing checksum sidecar");
+    // Simulate a crash or checksum write failure after the KRA itself
+    // committed. The archived bytes remain a usable recovery source
+    // without the optional SHA sidecar, then the next save repairs it.
+    require(!MobileSavedVersionArchive::materializeRecovery(
+                MobileSavedVersionArchive::list(source,store).first(),recover).isEmpty(),
+            "orphaned completed archive was not recoverable");
     require(MobileSavedVersionArchive::snapshot(source,store) &&
             MobileSavedVersionArchive::list(source,store).size()==1,
             "sidecar loss must not evict older history with duplicates");
