@@ -71,7 +71,7 @@ int main(int argc,char **argv)
     }
     edgeCache.store(source,9,noisy);
     const QByteArray noisyKey=QCryptographicHash::hash(
-        source.toUtf8()+'\\n'+QByteArray::number(9),
+        source.toUtf8()+'\n'+QByteArray::number(9),
         QCryptographicHash::Sha256).toHex();
     const QString noisyFile=QDir(directory.filePath(QStringLiteral("edge"))).filePath(
         QString::fromLatin1(noisyKey)+QStringLiteral(".png"));
