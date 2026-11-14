@@ -42,8 +42,10 @@ public:
         // destroy this adapter. Hold the backend alive independently and
         // never run a scoped rollback against a deleted QObject.
         const QSharedPointer<MobileDocumentHostPort> documents=m_documents;
-        if(!documents || !documents->available())return false;
-        QPointer<MobileKritaNativeSavePortAdapter> self(this);
+        if(!documents)return false;
+        const QPointer<MobileKritaNativeSavePortAdapter> self(this);
+        const bool ready=documents->available();
+        if(!self || !ready)return false;
         m_saving=true;
         const bool result=documents->save(document,saveAs);
         if(self)self->m_saving=false;
