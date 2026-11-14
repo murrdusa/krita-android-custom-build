@@ -164,7 +164,11 @@ public:
         // replace the last published draft when exportSucceeded is false.
         // A readable staging file may still be the only recoverable copy.
         if(!hasReadableProject(staging)) {
-            QFile::remove(staging);
+            // A failed export may have written partial user data before
+            // returning false. Retain its staging bytes for inspection or
+            // future recovery rather than deleting them in the error path.
+            // The next export owns replacing its own staging pathname.
+            if(exportSucceeded)QFile::remove(staging);
             return false;
         }
         if(exportSucceeded &&
@@ -179,6 +183,23 @@ public:
                        QFile::encodeName(rescue).constData())==0) {
             const QString originalProject=projectFor(draft);
             if(!originalProject.isEmpty())setProject(rescue,originalProject);
+            // Keep a user-supplied draft title with the recovered copy.
+            // Do not follow linked or unexpectedly large sidecars.
+            const QString titleSidecar=draft+QStringLiteral(".title");
+            const QFileInfo titleEntry(titleSidecar);
+            if(titleEntry.isFile() && !titleEntry.isSymLink() &&
+               titleEntry.size()>0 && titleEntry.size()<=384) {
+                QFile titleFile(titleSidecar);
+                if(titleFile.open(QIODevice::ReadOnly)) {
+                    const QByteArray titleData=titleFile.read(385);
+                    if(!titleData.isEmpty() && titleData.size()<=384) {
+                        QSaveFile output(rescue+QStringLiteral(".title"));
+                        if(output.open(QIODevice::WriteOnly) &&
+                           output.write(titleData)==titleData.size())
+                            output.commit();
+                    }
+                }
+            }
         }
         return false;
     }
