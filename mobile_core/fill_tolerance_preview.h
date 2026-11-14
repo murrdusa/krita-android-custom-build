@@ -223,9 +223,18 @@ private:
             // allocation immediately would create a busy failure loop.
             if(overlay.isNull()) {
                 if(application) {
-                    QMetaObject::invokeMethod(application.data(),[preview]() {
-                        if(preview)preview->m_running=false;
-                    },Qt::QueuedConnection);
+                    QMetaObject::invokeMethod(application.data(),
+                        [preview,threshold,generation,request]() {
+                            if(!preview)return;
+                            preview->m_running=false;
+                            // Only retry if the user has since selected a
+                            // different request; the failed allocation
+                            // itself must not spin indefinitely.
+                            if(!mobileFillPreviewResultCurrent(
+                                   threshold,preview->m_threshold,request,
+                                   generation->load(std::memory_order_relaxed)))
+                                preview->m_delay.start();
+                        },Qt::QueuedConnection);
                 }
                 return;
             }
