@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — bounded saved-version deduplication and source copy
+
+- The archive's unchanged-save deduplication no longer reads arbitrary-size SHA-256 sidecars or follows linked checksum files. It hashes at most the expected saved bytes from the previous version, so a corrupted/replaced archive cannot force unbounded disk reads before comparison. Tests exercise oversized and linked sidecar repair.
+- During snapshot copying, an input that grows after its initial length check aborts the atomic transaction as soon as the expected byte count is exceeded; it no longer fills storage copying extra data that must be rejected.
+- **Verification:** previous recovery batch `a7403cb8f3d828a46dc6f1bd816d764b4cbb4a53` has local WSL build SUCCESS. New changes await exact-SHA watcher status and desktop Qt execution. No Fold 6 runtime test or APK upload.
+
+
 ## November 14 — bounded startup recovery scanning
 
 - Draft KRA header checks reject symlinks, special or empty files and archives over 8 GiB before opening with Krita KoStore. Project-association metadata rejects invalid negative file lengths.
