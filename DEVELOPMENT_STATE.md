@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — preserve verified history over corrupted intermediate files
+
+- Version-history pruning now prioritizes SHA-verified older KRAs before retaining corrupted or legacy files whenever history exceeds quotas, including when the latest saved version itself is healthy. This prevents a series of corrupt intermediate snapshots from evicting all usable older recovery points.
+- Added Qt regression with a valid oldest checkpoint, a newer healthy save, and enough corrupted middle snapshots to trigger retention pruning. The oldest verified backup must survive.
+- **Verification:** previous revision `b2d2542593592a6bd9de0a6d786ee39aa099502b` passed the local Android WSL build; this batch awaits exact-SHA WSL and host Qt test results. No APK uploaded.
+
+
 ## November 14 — bound checkpoint verification of oversized archives
 
 - Published checkpoint validation rejects KRA archives outside the supported 8 GiB limit before hashing and stops if a file grows beyond the original scanned byte count during verification. This prevents an oversized/corrupted historical entry from forcing unbounded hashing or suppressing a new recoverable checkpoint during rate limiting.
