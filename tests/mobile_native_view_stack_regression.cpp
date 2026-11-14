@@ -27,8 +27,14 @@ int main(int argc,char **argv)
     auto *duplicate=new QWidget;
     bool allowClose=false;
     int closed=0;
+    bool firstChangeSawDocument=false;
+    const auto initialChange=QObject::connect(&stack,&QStackedWidget::currentChanged,&stack,
+        [&](int) {firstChangeSawDocument=stack.currentDocument()==&firstDocument;});
     const bool firstAdded=stack.adoptView(first,&firstDocument,
         QStringLiteral("Untitled"),[&]() {++closed;return allowClose;});
+    QObject::disconnect(initialChange);
+    if(!require(firstChangeSawDocument,"first activation sees the registered document"))
+        return 1;
     const bool secondAdded=stack.adoptView(second,&secondDocument,
         QStringLiteral("Second"),[&]() {++closed;return allowClose;});
     if(!require(firstAdded && secondAdded,"two distinct documents attached"))
@@ -44,6 +50,22 @@ int main(int argc,char **argv)
                 "both document identities retained"))return 1;
     const QPointer<QObject> firstIdentity(first);
     const QPointer<QObject> secondIdentity(second);
+    {
+        MobileNativeViewStack changing;
+        QObject anchorDocument,targetDocument;
+        auto *anchor=new QWidget;
+        auto *target=new QWidget;
+        const QPointer<QObject> targetIdentity(target);
+        if(!changing.adoptView(anchor,&anchorDocument,QStringLiteral("Anchor"),[](){return true;}) ||
+           !changing.adoptView(target,&targetDocument,QStringLiteral("Target"),[](){return true;}))
+            return 1;
+        QObject::connect(&changing,&QStackedWidget::currentChanged,&changing,[&](int) {
+            if(changing.currentWidget()==target)changing.forgetView(targetIdentity);
+        });
+        if(!require(!changing.activateView(targetIdentity) &&
+                    changing.currentDocument()==&anchorDocument,
+                    "activation safely handles a synchronous tab removal"))return 1;
+    }
     // Recovery is asynchronous. Both native view AND backing document
     // identities must be unchanged; a host can reuse a view widget.
     using Identity=MobileViewIdentityGuard;

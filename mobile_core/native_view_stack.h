@@ -48,7 +48,6 @@ public:
         for(const Row &row:m_rows)
             if(row.document==document && row.view)return false;
         const quint64 token=++m_nextToken;
-        if(addWidget(view)<0)return false;
         Row row;
         row.token=token;
         row.view=view;
@@ -62,7 +61,11 @@ public:
             document,&QObject::destroyed,this,
             [this,token]() {forgetToken(token);});
         m_rows.append(std::move(row));
-        return true;
+        // addWidget() can synchronously emit currentChanged for the
+        // first tab. Its observers need the registered document then.
+        if(addWidget(view)>=0)return true;
+        forgetToken(token);
+        return false;
     }
 
     bool updateViewState(const QPointer<QObject> &identity,
@@ -103,9 +106,10 @@ public:
         const Row *row=uniqueRow(identity);
         if(!row || !row->view || !row->document ||
            indexOf(row->view.data())<0)return false;
+        const auto target=row->view;
         auto *self=const_cast<MobileNativeViewStack*>(this);
-        self->setCurrentWidget(row->view.data());
-        return currentWidget()==row->view.data();
+        self->setCurrentWidget(target.data());
+        return target && currentWidget()==target.data();
     }
 
     bool closeView(const QPointer<QObject> &identity) const override
@@ -169,7 +173,7 @@ private:
                 // Qt retains ownership until the native engine's
                 // close callback has disposed of the view.
                 removeWidget(view.data());
-                view->hide();
+                if(view)view->hide();
             }
             return true;
         }

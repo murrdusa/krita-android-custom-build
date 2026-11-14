@@ -146,7 +146,9 @@ private:
         QTimer::singleShot(0,manager,[manager,root,selected]() {
             if(!manager || !root)return;
             if(selected && (root->currentWidget()!=selected ||
-                            !selected->isVisible()))
+                            !selected->isVisible() ||
+                            !selected->document() ||
+                            root->currentDocument()!=selected->document()))
                 return; // Switch was superseded before the GL show.
             if(!selected && root->currentWidget())return;
             // The canvas resource provider and active brush must first
@@ -155,6 +157,8 @@ private:
                 manager->canvasBase()!=(selected?selected->canvasBase():nullptr);
             if(changedView)manager->setCurrentView(selected);
             if(selected) {
+                if(!root || !manager || root->currentWidget()!=selected ||
+                   !selected->document() || root->currentDocument()!=selected->document())return;
                 // Native guiLoadingFinished() only fires once on
                 // desktop Krita. Never re-bootstrap on each tab switch.
                 const bool firstBootstrap=!selected->property(

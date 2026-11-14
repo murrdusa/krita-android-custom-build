@@ -243,14 +243,14 @@ private:
     {
         // Finish queued checkpoints independently: a busy document must
         // never block another open canvas from being protected.
-        for(int i=m_pendingDrafts.size()-1;i>=0;--i) {
-            const auto document=m_pendingDrafts.at(i);
+        const auto pending=m_pendingDrafts;
+        for(const auto &document:pending) {
             if(!document) {
-                m_pendingDrafts.removeAt(i);
+                m_pendingDrafts.removeAll(QPointer<KisDocument>());
                 continue;
             }
             if(document->isSaving())continue;
-            m_pendingDrafts.removeAt(i);
+            if(!m_pendingDrafts.removeAll(document))continue;
             if(ownsDocument(document) && document->isModified() &&
                !document->property("_mobileDraftPath").toString().isEmpty())
                 QMetaObject::invokeMethod(document,"slotAutoSave",Qt::DirectConnection);

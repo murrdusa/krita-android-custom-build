@@ -1,5 +1,7 @@
 # Krita Mobile Studio — current development state
 
+The first canvas is registered before Qt publishes its activation. Tab switching rechecks the selected document after native activation and avoids holding a row pointer across Qt callbacks. Deferred draft checkpoints tolerate document closure or queue changes during a save. Desktop view-stack regressions cover first-tab registration and synchronous tab removal.
+
 New Canvas focuses the name and requests the Android keyboard on open. Numeric edits commit before validation. The form is destroyed before native canvas creation, repeated creation is blocked, and the first canvas uses the native exposure observer without cycling the Android window. This addresses source-level crash risks. A device crash trace was unavailable.
 
 Home drops stale project menu actions after a list rebuild and cancels queued thumbnail work when hidden. A timed partial scan can retry after ten minutes instead of setting the full-scan daily timestamp. Starred sorting uses cached row state to avoid resolving project paths repeatedly.
