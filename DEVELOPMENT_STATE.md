@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — native Save completion callback lifetime
+
+- Native `writeDocument()` no longer connects `sigSavingFinished` with a lambda capturing stack-owned `completed` and `target` by reference. Qt can dispatch queued signals that were already posted even after a connection is disconnected. The callback now owns an atomic completion flag and a copied target path, so late delivery cannot access expired Save stack memory.
+- Extended the independent Qt document rollback test with a queued completion-style signal that is disconnected before the event queue is processed, matching the critical lifetime pattern. This is structural regression coverage rather than a real Krita asynchronous save test.
+- **Verification:** preceding autosave coalescing revision `d935d8c5ca29091d2a536323e150b5edf6395e77` passed exact-SHA local WSL Android compilation. The Save callback and Qt regression revisions await their own WSL build/test results. No APK uploaded.
+
+
 ## November 14 — preserve in-flight autosave requests and coalesce completion delivery
 
 - Native autosave no longer drops checkpoint triggers that arrive while `checkpointDrafts()` is already executing in a nested Krita event loop. It records one coalesced follow-up request and queues a new checkpoint pass only after the running pass unwinds, preserving changes made or background events received during that interval.
