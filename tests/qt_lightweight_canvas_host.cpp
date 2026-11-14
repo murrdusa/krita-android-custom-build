@@ -323,6 +323,23 @@ int main(int argc,char **argv)
                 "touch action picker survived destroyed Android host");
     }
 
+    // Fill tolerance worker responses use a guarded Qt receiver. If
+    // Android tears down that receiver before delivery, Qt discards
+    // its queued update rather than calling into freed UI state.
+    {
+        auto *receiver=new QObject;
+        QPointer<QObject> live(receiver);
+        bool delivered=false;
+        require(QMetaObject::invokeMethod(receiver,[&delivered]() {
+                    delivered=true;
+                },Qt::QueuedConnection),
+                "could not queue tolerance completion callback");
+        delete receiver;
+        app.processEvents();
+        require(!live && !delivered,
+                "stale tolerance callback executed after receiver destruction");
+    }
+
     // Version History temporary copies must be removed if Qt destroys\n    // the queued UI receiver before its opening callback runs.
     {
         QTemporaryDir recovery;
