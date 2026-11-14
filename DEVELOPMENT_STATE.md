@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — protect Fill tolerance worker completion during app teardown
+
+- The non-destructive Fill/Select tolerance preview launches background flood-fill work on the global Qt pool. Its stale-result and completed-result paths previously called `QMetaObject::invokeMethod(qApp,...)` from that worker. Android shutdown could destroy the application receiver before completion. The preview now captures a guarded `QPointer<QCoreApplication>` before submission and checks its lifetime before dispatching all three categories of results; callbacks continue to guard the preview itself.
+- Added a Qt host regression demonstrating that a queued UI completion targeting an already-destroyed receiver is discarded without executing the callback. It tests Qt's queued-receiver lifetime behavior, not the actual Krita flood-fill algorithm.
+- **Verification:** the latest separately reported local WSL Android build passed for `f5f405b50fafec6a29d3be77a1564ff750a3e22f`. New Fill worker code and Qt test are awaiting exact-SHA compilation and test execution. No APK uploaded.
+
 ## November 14 — preserve gallery object lifetime across native Open and recovery warnings
 
 - The All Projects/Recent gallery Open action now captures a `QPointer<MobileDocumentHome>` before entering `m_files->openFile()`. A native Open can synchronously dispatch window teardown; the callback no longer calls `hide()` or constructs a warning against the destroyed gallery. On a live gallery, the existing success/hide and failed-open messaging remain intact.
