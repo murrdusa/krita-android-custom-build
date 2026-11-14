@@ -280,6 +280,23 @@ int main(int argc,char **argv)
                 "recovery warning outlived its destroyed gallery");
     }
 
+    // Discard Draft displays information and error notices in nested
+    // modal loops. Losing the Android activity must destroy the dialog
+    // through its parent without Qt deleting a C++ stack child.
+    for(const auto severity:{QMessageBox::Information,QMessageBox::Warning}) {
+        auto *gallery=new QWidget;
+        const QPointer<QWidget> home(gallery);
+        QPointer<QMessageBox> dialog(new QMessageBox(
+            severity,QStringLiteral("Draft notice"),
+            QStringLiteral("Draft could not be discarded"),
+            QMessageBox::Ok,gallery));
+        QTimer::singleShot(0,&app,[gallery]() { delete gallery; });
+        dialog->exec();
+        delete dialog.data();
+        require(!home && !dialog,
+                "draft discard notice survived destroyed gallery");
+    }
+
     // Regress the independent Qt ownership pattern used by the native
     // Save/Discard/Cancel dialog. This test target intentionally has no
     // KDE localization dependency, so it exercises the same heap-owned
