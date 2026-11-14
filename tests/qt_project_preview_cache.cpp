@@ -147,5 +147,33 @@ int main(int argc,char **argv)
         startupBytes+=entry.size();
     if(startupBytes>MobileProjectPreviewCache::maxCacheBytes() ||
        !QFileInfo::exists(original.fileName()))return 21;
+    // A previously interrupted cache may have hundreds more files
+    // than the retention limit. The bounded heap must choose the 512
+    // newest by modification time, not filesystem traversal order.
+    const QString backlogFolder=directory.filePath(QStringLiteral("backlog"));
+    if(!QDir().mkpath(backlogFolder))return 22;
+    const QDateTime base=QDateTime::currentDateTime().addDays(-30);
+    for(int i=0;i<620;++i) {
+        const QString name=QDir(backlogFolder).filePath(
+            QStringLiteral("preview-%1.png").arg(i,4,10,QLatin1Char('0')));
+        QFile entry(name);
+        if(!entry.open(QIODevice::WriteOnly) ||
+           entry.write("png",3)!=3 ||
+           !entry.setFileTime(base.addSecs(i),
+                              QFileDevice::FileModificationTime))
+            return 23;
+        entry.close();
+    }
+    const MobileProjectPreviewCache backlogCache(backlogFolder);
+    backlogCache.prune();
+    const auto remaining=QDir(backlogFolder).entryList(
+        {QStringLiteral("*.png")},QDir::Files);
+    if(remaining.size()!=512 ||
+       QFile::exists(QDir(backlogFolder).filePath(
+           QStringLiteral("preview-0000.png"))) ||
+       !QFile::exists(QDir(backlogFolder).filePath(
+           QStringLiteral("preview-0619.png"))))
+        return 24;
+
     qInfo("PASS: thumbnail revisions, cancellation, retention, clock skew and invalid images");
 }
