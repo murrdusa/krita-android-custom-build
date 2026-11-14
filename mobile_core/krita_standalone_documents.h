@@ -146,9 +146,12 @@ public:
             document->setModified(true);
         }
 
+        const QPointer<KisDocument> guardedDocument(document);
         KisPart::instance()->addDocument(document);
-        QPointer<KisDocument> guardedDocument=document;
-        if(!attachCanvas(document)) {
+        // Registration notifies Krita observers. A callback can close
+        // the imported document before the native view is attached.
+        if(!guardedDocument)return false;
+        if(!attachCanvas(guardedDocument.data())) {
             MobileFailedDocumentAttach::rollback(
                 guardedDocument,
                 [](KisDocument *candidate) {
