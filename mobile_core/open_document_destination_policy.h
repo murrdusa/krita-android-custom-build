@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QString>
+#include <QUrl>
 #include "saved_version_archive.h"
 
 class MobileOpenDocumentDestinationPolicy final
@@ -44,14 +45,24 @@ public:
             return MobileSavedVersionArchive::canonicalIdentity(first)==
                    MobileSavedVersionArchive::canonicalIdentity(second);
         // Existing files may use symlinks, relative paths or dot segments.
-        // A not-yet-existing Save As target must still normalize correctly.
-        return resolvedLocalPath(first)==resolvedLocalPath(second);
+        // File picker results may also use file:// for the exact same
+        // local path. Never let that spelling bypass a Save As collision.
+        const QString firstPath=resolvedLocalPath(first);
+        const QString secondPath=resolvedLocalPath(second);
+        return !firstPath.isEmpty() && firstPath==secondPath;
     }
 
 private:
     static QString resolvedLocalPath(const QString &path)
     {
-        const QFileInfo file(path);
+        QString local=path;
+        if(path.startsWith(QStringLiteral("file:"),Qt::CaseInsensitive)) {
+            const QUrl uri(path);
+            if(!uri.isValid() || !uri.isLocalFile())return {};
+            local=uri.toLocalFile();
+            if(local.isEmpty())return {};
+        }
+        const QFileInfo file(local);
         const QString canonical=file.canonicalFilePath();
         if(!canonical.isEmpty())return QDir::cleanPath(canonical);
 
