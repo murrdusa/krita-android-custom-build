@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — bound gallery widget icon memory and viewport scan costs
+
+- Confirmed the gallery's separate `m_cache` icon cache was already capped at 96 entries. However, individual `QListWidgetItem` rows also retained decoded `QIcon` references after cache eviction; browsing many drawings could therefore accumulate thousands of resident icons. The gallery now keeps at most 128 decoded row icons, replacing the oldest visited rows with a placeholder and allowing their disk-cached thumbnails to reload when revisited. The residency ledger is cleared on gallery reconstruction and updated on project deletion/preview replacement.
+- Visible thumbnail discovery no longer walks all 20,000 gallery rows on every scroll or preview completion. It starts near the first on-screen list item, includes an overscan margin and stops when subsequent items have passed the viewport. This reduces UI-thread work during large-library scrolling.
+- **Verification:** previous native tab teardown revision `790b12f6532b03b224eefcd544113e11e725109b` passed exact-SHA local WSL Android compilation. Gallery memory and viewport changes await exact-SHA WSL compilation and device-level large-list profiling. No APK uploaded.
+
+
 ## November 14 — native tab removal teardown and Save callback regression
 
 - When `MobileNativeViewStack::forgetToken()` removes the active view, Qt emits `currentChanged` synchronously. A listener can destroy the entire stack and its child views. Cleanup now tracks its host through `QPointer` across `removeWidget()` and avoids touching a freed host/view afterward.
