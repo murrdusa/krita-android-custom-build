@@ -230,6 +230,10 @@ private:
             return false;
         const QScopedValueRollback<bool> transaction(m_saving,true);
         QPointer<KisDocument> guardedDocument(document);
+        // Save As and render-wait dialogs can reenter Qt event handling;
+        // the runtime may survive while its native view stack is replaced.
+        const QPointer<MobileNativeViewStack> originalRoot(
+            m_runtime->documentRoot());
 
         // Match Krita's native render-completion protection. Refuse
         // Ignore instead of allowing a potentially corrupt overwrite.
@@ -244,8 +248,9 @@ private:
             idle->result()==KisDelayedSaveDialog::Accepted;
         if(idle)delete idle.data();
         if(!renderReady || !guardedDocument || !m_runtime ||
+           !originalRoot || m_runtime->documentRoot()!=originalRoot.data() ||
            !m_runtime->ownsDocument(guardedDocument) ||
-           m_runtime->documentRoot()->currentDocument().data()!=guardedDocument.data())
+           originalRoot->currentDocument().data()!=guardedDocument.data())
             return false;
 
         const QString currentPath=guardedDocument->path();
@@ -281,8 +286,10 @@ private:
             target=MobileNativeDocumentPathPolicy::localFilePath(
                 dialog.filename());
             if(target.isEmpty() || !guardedDocument ||
-               !m_runtime || !m_runtime->ownsDocument(guardedDocument) ||
-               m_runtime->documentRoot()->currentDocument().data()!=guardedDocument.data())
+               !m_runtime || !originalRoot ||
+               m_runtime->documentRoot()!=originalRoot.data() ||
+               !m_runtime->ownsDocument(guardedDocument) ||
+               originalRoot->currentDocument().data()!=guardedDocument.data())
                 return false; // Cancel, closed canvas, or different active document.
             QString selected=KisMimeDatabase::mimeTypeForFile(target,false);
             if(!formats.contains(selected))
@@ -292,16 +299,17 @@ private:
             targetMime=selected.toLatin1();
         }
 
-        if(!guardedDocument || !m_runtime ||
+        if(!guardedDocument || !m_runtime || !originalRoot ||
+           m_runtime->documentRoot()!=originalRoot.data() ||
            !m_runtime->ownsDocument(guardedDocument) ||
-           m_runtime->documentRoot()->currentDocument().data()!=guardedDocument.data() ||
+           originalRoot->currentDocument().data()!=guardedDocument.data() ||
            target.isEmpty() || targetMime.isEmpty())return false;
         // With multiple native canvases, a Save As or Export Copy could
         // otherwise overwrite the on-disk project of a different open
         // tab while its dirty in-memory artwork remains unsaved.
         // Compare canonical KRA identities, including equivalent SAF
         // document URI forms, before initiating any native disk write.
-        const auto open=m_runtime->documentRoot()->openViews();
+        const auto open=originalRoot->openViews();
         int activeViews=0;
         int ownerViews=0;
         for(const auto &view:open) {
@@ -348,8 +356,9 @@ private:
         // A modeless picker or another UI callback may have activated a
         // different tab since collision scanning; refuse to write the
         // old canvas's data when it is no longer the active native view.
-        if(!m_runtime->documentRoot() ||
-           m_runtime->documentRoot()->currentDocument().data()!=guardedDocument.data())
+        if(!originalRoot || !m_runtime ||
+           m_runtime->documentRoot()!=originalRoot.data() ||
+           originalRoot->currentDocument().data()!=guardedDocument.data())
             return false;
         // Krita's return value only says whether background saving started.
         // A Close → Save must keep the canvas open if the write later fails.
