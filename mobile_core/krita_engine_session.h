@@ -31,20 +31,24 @@ public:
         if(!host->createNativeDocumentRoot())
             return nullptr;
 
+        const QPointer<MobileLightweightCanvasHost> window(host);
         auto *runtime=MobileKritaStandaloneRuntime::create(host);
+        if(!window)return nullptr;
         if(!runtime) {
-            host->discardEmptyNativeDocumentRoot();
+            window->discardEmptyNativeDocumentRoot();
             return nullptr;
         }
 
+        const QPointer<MobileKritaStandaloneRuntime> guardedRuntime(runtime);
         const MobileHostServices ports=
             MobileKritaStandaloneDocumentsBootstrap::create(runtime);
-        if(!ports.ready()) {
+        if(!window)return nullptr;
+        if(!ports.ready() || !guardedRuntime) {
             // Partial bootstrap owns a manager, action collection and
-            // empty canvas root. Release them now rather than leaking
-            // them for the lifetime of the failed Android window.
-            delete runtime;
-            host->discardEmptyNativeDocumentRoot();
+            // empty canvas root. Runtime teardown can itself close the
+            // host, so recheck its QObject identity before touching it.
+            if(guardedRuntime)delete guardedRuntime.data();
+            if(window)window->discardEmptyNativeDocumentRoot();
             return nullptr;
         }
 
