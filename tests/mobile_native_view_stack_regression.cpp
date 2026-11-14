@@ -66,6 +66,52 @@ int main(int argc,char **argv)
                     changing.currentDocument()==&anchorDocument,
                     "activation safely handles a synchronous tab removal"))return 1;
     }
+    // Activation can reenter Qt and detach a selected QWidget before
+    // re-registering that same pointer for a different document.
+    // The stale caller must not report that the original tab survived.
+    {
+        MobileNativeViewStack reused;
+        QObject anchorDocument,oldDocument,newDocument;
+        auto *anchor=new QWidget;
+        auto *candidate=new QWidget;
+        const QPointer<QObject> identity(candidate);
+        if(!require(reused.adoptView(anchor,&anchorDocument,
+                        QStringLiteral("Anchor"),[](){return true;}) &&
+                    reused.adoptView(candidate,&oldDocument,
+                        QStringLiteral("Original"),[](){return true;}),
+                    "setup reused-view activation"))return 1;
+        bool swapped=false;
+        QObject::connect(&reused,&QStackedWidget::currentChanged,&reused,[&](int) {
+            if(swapped || reused.currentWidget()!=candidate)return;
+            swapped=true;
+            if(!reused.forgetView(identity))return;
+            candidate->setParent(nullptr);
+            reused.adoptView(candidate,&newDocument,
+                             QStringLiteral("Replacement"),[](){return true;});
+        });
+        if(!require(!reused.activateView(identity) && swapped &&
+                    reused.openViews().size()==2 &&
+                    reused.openViews().last().document==&newDocument,
+                    "replaced canvas registration rejected after activation"))
+            return 1;
+    }
+    // A first-tab currentChanged callback can dispose of its document
+    // before addWidget() returns to adoptView().
+    {
+        MobileNativeViewStack firstTab;
+        auto *destroyedDocument=new QObject;
+        auto *candidate=new QWidget;
+        QObject::connect(&firstTab,&QStackedWidget::currentChanged,
+                         &firstTab,[&](int) {
+            delete destroyedDocument;
+            destroyedDocument=nullptr;
+        });
+        if(!require(!firstTab.adoptView(candidate,destroyedDocument,
+                        QStringLiteral("Rejected"),[](){return true;}) &&
+                    firstTab.openViews().isEmpty(),
+                    "first-tab document teardown must reject adoption"))
+            return 1;
+    }
     // Recovery is asynchronous. Both native view AND backing document
     // identities must be unchanged; a host can reuse a view widget.
     using Identity=MobileViewIdentityGuard;
