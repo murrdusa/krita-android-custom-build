@@ -2,8 +2,8 @@
 
 ## November 14 — bound abandoned-autosave recovery work per gallery refresh
 
-- The project library now verifies at most two aged pending KRA exports per recovery listing, instead of parsing an arbitrary number of large ZIP archives in one UI-thread pass. Further gallery refreshes continue recovery without deleting or overwriting remaining staged drafts.
-- Qt regression stages five abandoned KRA files, verifies recovery in batches of two/two/one, confirms saved-project associations survive, and checks that all staging paths are eventually cleared.
+- The project library now verifies at most two aged pending KRA exports per recovery listing, instead of parsing an arbitrary number of large ZIP archives in one UI-thread pass. A rotating scan offset ensures permanently malformed early files do not starve valid later recovery candidates. Further gallery refreshes continue recovery without deleting or overwriting remaining staged drafts.
+- Qt regression stages five abandoned KRAs and verifies recovery in batches of two/two/one with preserved project associations. A second regression verifies that three invalid staged files cannot permanently block a valid later KRA.
 - **Verification:** previous version-retention revision `f609ea9893d974942626e1afb3a0837bcf368f36` passed local Android WSL compilation. New source and Qt regression await their exact-SHA local verification. No APK upload.
 
 
