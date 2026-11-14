@@ -702,6 +702,37 @@ int main(int argc,char **argv)
     QFile::remove(oversizedVersion);
     QFile::remove(oversizedVersion+QStringLiteral(".sha256"));
 
+    // When the latest history version is healthy, corrupt intermediate
+    // entries still must not evict the last older, verified checkpoint.
+    const QString priorityRoot=temp.filePath(QStringLiteral("verified-priority"));
+    const QString priorityFolder=MobileSavedVersionArchive::folderFor(
+        source,priorityRoot);
+    require(QDir().mkpath(priorityFolder),
+            "create priority pruning fixture");
+    const QString olderGood=QDir(priorityFolder).filePath(
+        QStringLiteral("00000000-older-good.kra"));
+    save(olderGood,initial);
+    save(olderGood+QStringLiteral(".sha256"),
+         QCryptographicHash::hash(initial,QCryptographicHash::Sha256).toHex());
+    for(int i=0;i<MobileSavedVersionArchive::maxVersions();++i) {
+        const QString bad=QDir(priorityFolder).filePath(
+            QStringLiteral("20261112T000000%1-corrupt.kra")
+                .arg(i,3,10,QLatin1Char('0')));
+        save(bad,QByteArray::fromHex("504b0304")+
+                 QByteArray("damaged-intermediate")+QByteArray::number(i));
+        save(bad+QStringLiteral(".sha256"),QByteArray(64,'0'));
+    }
+    require(MobileSavedVersionArchive::snapshot(source,priorityRoot),
+            "create newest valid checkpoint for priority pruning");
+    const auto priorityVersions=MobileSavedVersionArchive::list(
+        source,priorityRoot);
+    bool oldSurvived=false;
+    for(const auto &entry:priorityVersions)
+        if(entry.path==olderGood)oldSurvived=true;
+    require(oldSurvived && priorityVersions.size()<=
+                MobileSavedVersionArchive::maxVersions(),
+            "corrupt intermediate history displaced the older valid KRA");
+
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
                " provider identity, SAF tree normalization and legacy migration";
     return 0;
