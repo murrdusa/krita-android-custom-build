@@ -10,6 +10,18 @@ int main(int argc,char **argv)
     QTemporaryDir directory;
     if(!directory.isValid())return 1;
     const MobileProjectPreviewCache cache(directory.path());
+    // A decoder that ignores setScaledSize() may hand the gallery a
+    // full-resolution image; constrain all decoded preview sources.
+    QImage unscaled(900,600,QImage::Format_RGB32);
+    unscaled.fill(Qt::cyan);
+    const QImage bounded=MobileProjectPreviewCache::boundedThumbnail(unscaled);
+    if(bounded.size()!=QSize(124,83) ||
+       bounded.pixelColor(0,0)!=QColor(Qt::cyan) ||
+       !MobileProjectPreviewCache::boundedThumbnail(QImage()).isNull())
+        return 44;
+    const QImage small=MobileProjectPreviewCache::boundedThumbnail(
+        QImage(90,60,QImage::Format_RGB32));
+    if(small.size()!=QSize(90,60))return 45;
     const QString source=QStringLiteral("drawing.kra");
     QImage oldImage(8,8,QImage::Format_RGB32),newImage(8,8,QImage::Format_RGB32);
     oldImage.fill(Qt::red);
