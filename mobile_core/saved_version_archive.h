@@ -123,8 +123,24 @@ public:
             const QFileInfo file(local);
             if(!isKritaProjectName(file.fileName()))return {};
             const QString canonical=file.canonicalFilePath();
-            return QDir::cleanPath(canonical.isEmpty()?
-                                    file.absoluteFilePath():canonical);
+            if(!canonical.isEmpty())return QDir::cleanPath(canonical);
+            // A not-yet-existing Save As target may reside below a
+            // symlinked folder. Resolve its closest existing ancestor
+            // before hashing the version-history identity, so the alias
+            // and real path do not split the history into two folders.
+            QFileInfo parent(file.absoluteFilePath());
+            QStringList tail;
+            while(!parent.exists()) {
+                tail.prepend(parent.fileName());
+                const QString next=parent.absolutePath();
+                if(next==parent.absoluteFilePath())break;
+                parent.setFile(next);
+            }
+            QString base=parent.canonicalFilePath();
+            if(base.isEmpty())base=parent.absoluteFilePath();
+            for(const QString &part:tail)
+                base=QDir(base).filePath(part);
+            return QDir::cleanPath(base);
         }
         // DocumentsContract identifies a document by its authority and
         // encoded document ID. Query parameters and URI fragments are
