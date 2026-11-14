@@ -717,10 +717,21 @@ private:
             // substituted symlink. Never copy it during Save As or
             // migrate the KRA without its existing checksum: leave the
             // complete source pair available for recovery or repair.
-            if(hasDigest && (!digestInfo.isFile() ||
-                             digestInfo.isSymLink() ||
-                             digestInfo.size()<0 || digestInfo.size()>128))
-                continue;
+            if(hasDigest) {
+                if(!digestInfo.isFile() || digestInfo.isSymLink() ||
+                   digestInfo.size()<0 || digestInfo.size()>128)
+                    continue;
+                QFile checksum(oldDigest);
+                if(!checksum.open(QIODevice::ReadOnly))continue;
+                const QByteArray expected=checksum.read(129).trimmed().toLower();
+                // A small but malformed digest would migrate beside an
+                // otherwise recoverable KRA and make it fail validation.
+                // Leave the source pair together for repair instead.
+                if(expected.size()!=64 ||
+                   !QRegularExpression(QStringLiteral("^[0-9a-f]{64}$"))
+                       .match(QString::fromLatin1(expected)).hasMatch())
+                    continue;
+            }
             // Install the tiny checksum sidecar first. If that copy
             // fails, leave the original KRA/digest pair untouched so
             // history migration can be retried. A failed KRA rename
