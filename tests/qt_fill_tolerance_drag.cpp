@@ -24,8 +24,9 @@ int main()
        mobileFillPreviewBufferBytes(QSize(384,384),0)!=0 ||
        mobileFillPreviewBufferBytes(QSize(384,384),1000000)!=0)
         return 8;
-    // Coverage buffers are indexed as 8-bit alpha. Reject future
-    // changes to the selection pixel stride rather than overflowing.
+    // Both the input selection and computed flood mask are read into
+    // one-byte-per-pixel buffers. Reject an unexpected engine stride
+    // before either readBytes() can overwrite its destination.
     if(mobileFillPreviewSelectionBytes(QSize(384,384),1)!=147456 ||
        mobileFillPreviewSelectionBytes(QSize(384,384),2)!=0 ||
        mobileFillPreviewSelectionBytes(QSize(384,384),4)!=0 ||
