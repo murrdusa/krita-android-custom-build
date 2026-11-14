@@ -976,6 +976,24 @@ int main(int argc,char **argv)
     for(const auto &path:orderedDrafts)
         QFile::remove(path);
 
+    // Interrupted history retention can leave many archive files.
+    // Streaming enumeration must keep every entry and match the old
+    // descending filename order, irrespective of mutable mtime.
+    const QString scanSource=temp.filePath(QStringLiteral("scan-history.kra"));
+    const QString scanFolder=MobileSavedVersionArchive::folderFor(scanSource,store);
+    require(QDir().mkpath(scanFolder),"create version enumeration folder");
+    for(int i=0;i<80;++i) {
+        const QString filename=QStringLiteral("20261114T%1-test.kra")
+                                   .arg(i,6,10,QLatin1Char('0'));
+        save(QDir(scanFolder).filePath(filename),initial);
+    }
+    const auto scanned=MobileSavedVersionArchive::list(scanSource,store);
+    require(scanned.size()==80,"streamed archive scan dropped saved versions");
+    for(int i=1;i<scanned.size();++i)
+        require(QFileInfo(scanned.at(i-1).path).fileName()>
+                    QFileInfo(scanned.at(i).path).fileName(),
+                "streamed archive scan changed newest-first filename order");
+
     // Gallery listing should inspect only a bounded window of pending
     // staging files per refresh, yet eventually reach a recoverable
     // orphan behind many recent (still actively written) candidates.
