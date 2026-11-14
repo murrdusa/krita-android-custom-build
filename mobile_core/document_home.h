@@ -631,8 +631,14 @@ private:
                        generation!=home->m_homeListGeneration)return;
                     if(result==QDialog::Accepted && !name.isEmpty()) {
                         if(MobileDraftRecovery::rename(path,name))showList(m_mode);
-                        else QMessageBox::warning(this,i18n("Could not rename draft"),
-                            i18n("The recovery file could not be updated."));
+                        else {
+                            QPointer<QMessageBox> warning(new QMessageBox(
+                                QMessageBox::Warning,i18n("Could not rename draft"),
+                                i18n("The recovery file could not be updated."),
+                                QMessageBox::Ok,this));
+                            warning->exec();
+                            delete warning.data();
+                        }
                     }
                     break;
                 }
@@ -643,9 +649,22 @@ private:
                         openCopy(source);
                         break;
                     }
-                    if(m_files && m_files->openFile(path))hide();
-                    else QMessageBox::warning(this,i18n("Drawing not opened"),
-                        i18n("Could not open this drawing. Browse Files can renew Android file access."));
+                    {
+                        // Native document loading may process Android window
+                        // teardown while this callback is still on the stack.
+                        const QPointer<MobileDocumentHome> home(this);
+                        const bool opened=m_files && m_files->openFile(path);
+                        if(!home)return;
+                        if(opened)home->hide();
+                        else {
+                            QPointer<QMessageBox> warning(new QMessageBox(
+                                QMessageBox::Warning,i18n("Drawing not opened"),
+                                i18n("Could not open this drawing. Browse Files can renew Android file access."),
+                                QMessageBox::Ok,home.data()));
+                            warning->exec();
+                            delete warning.data();
+                        }
+                    }
                     break;
                 case Duplicate: {
                     MobileSavedVersionArchive::Version source;
@@ -712,10 +731,16 @@ private:
                 if(!home)return;
                 home->m_restoringVersion=false;
                 if(opened)home->hide();
-                else if(sameCanvas)QMessageBox::warning(home->window(),i18n("Drawing not opened"),
-                    copy.isEmpty()?
-                        i18n("This copy could not be recovered. Its archive may be damaged or unreadable. The original drawing and other versions were not changed."):
-                        i18n("Could not open the project copy."));
+                else if(sameCanvas) {
+                    QPointer<QMessageBox> warning(new QMessageBox(
+                        QMessageBox::Warning,i18n("Drawing not opened"),
+                        copy.isEmpty()?
+                            i18n("This copy could not be recovered. Its archive may be damaged or unreadable. The original drawing and other versions were not changed."):
+                            i18n("Could not open the project copy."),
+                        QMessageBox::Ok,home.data()));
+                    warning->exec();
+                    delete warning.data();
+                }
             },Qt::QueuedConnection);
         });
     }
