@@ -104,6 +104,11 @@ public:
         // recent files may belong to an export still in progress.
         const QDateTime now=QDateTime::currentDateTimeUtc();
         const QString suffix=QStringLiteral(".pending.kra");
+        // Opening a large KRA to validate maindoc.xml can block the
+        // gallery's UI thread. Process only a small batch per listing;
+        // subsequent refreshes continue rescuing the remaining files.
+        constexpr int maxOrphanChecksPerScan=2;
+        int orphanChecks=0;
         for(const QFileInfo &pending:QDir(folder).entryInfoList(
                 {QStringLiteral("*.pending.kra")},
                 QDir::Files|QDir::Readable|QDir::NoSymLinks)) {
@@ -111,7 +116,9 @@ public:
             if(age<300)continue;
             const QString path=pending.absoluteFilePath();
             const QString draft=path.left(path.size()-suffix.size());
-            if(!isDraftPath(draft) || !hasReadableProject(path))continue;
+            if(!isDraftPath(draft))continue;
+            if(orphanChecks++>=maxOrphanChecksPerScan)break;
+            if(!hasReadableProject(path))continue;
             // Opening the KRA with KoStore may take time. An exporter
             // that resumed writing meanwhile must retain ownership of
             // its staging file; never rescue a file whose size or mtime
