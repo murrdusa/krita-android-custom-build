@@ -464,13 +464,17 @@ public:
         open->setEnabled(false);
         const auto versions=std::make_shared<QVector<MobileSavedVersionArchive::Version>>();
         const auto cancelled=std::make_shared<std::atomic_bool>(false);
+        // A damaged or unpruned history folder may contain many more
+        // entries than the normal retention quota. Bound decoded
+        // previews awaiting the dialog event loop to four images.
+        const auto queuedPreviews=std::make_shared<std::atomic_int>(0);
         const QPointer<QListWidget> target(list);
         const QPointer<QCoreApplication> application(qApp);
         const QPointer<QLabel> explanationGuard(explanation);
         const QPointer<QPushButton> openGuard(open);
         const QIcon placeholder=m_placeholder;
         QThreadPool::globalInstance()->start(
-            [path,target,application,explanationGuard,openGuard,placeholder,versions,cancelled]() {
+            [path,target,application,explanationGuard,openGuard,placeholder,versions,cancelled,queuedPreviews]() {
             if(cancelled->load() || !application)return;
             const auto found=MobileSavedVersionArchive::list(path);
             if(cancelled->load() || !application)return;
@@ -494,13 +498,24 @@ public:
                 const QImage image=cachedPreview(version.path,version.createdUtc.toMSecsSinceEpoch(),
                                                  false,cancelled.get());
                 if(image.isNull())continue;
+                constexpr int maxQueuedPreviews=4;
+                while(queuedPreviews->load(std::memory_order_acquire)>=maxQueuedPreviews) {
+                    // The modal event loop may have stopped draining
+                    // queued updates while closing. Cancellation must
+                    // release the background worker rather than hang it.
+                    if(cancelled->load() || !application)return;
+                    QThread::msleep(10);
+                }
                 if(cancelled->load() || !application)return;
-                QMetaObject::invokeMethod(application.data(),
-                    [target,image,row,cancelled]() {
+                queuedPreviews->fetch_add(1,std::memory_order_acq_rel);
+                if(!QMetaObject::invokeMethod(application.data(),
+                    [target,image,row,cancelled,queuedPreviews]() {
+                    queuedPreviews->fetch_sub(1,std::memory_order_acq_rel);
                     if(cancelled->load() || !target)return;
                     if(auto *item=target->item(row))
                         item->setIcon(QIcon(QPixmap::fromImage(image)));
-                },Qt::QueuedConnection);
+                },Qt::QueuedConnection))
+                    queuedPreviews->fetch_sub(1,std::memory_order_acq_rel);
             }
         });
         const int result=dialog->exec();
