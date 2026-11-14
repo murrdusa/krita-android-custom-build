@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — Android surface recreation and canvas resume
+
+- `MobileCanvasResumeObserver` now rebinds its exposure filter whenever the host widget's native window ID changes, including replacement of a still-live QWindow during Android surface recreation. It removes the old surface filter, installs the new one and requests guarded activation. This addresses a source-level scenario where the painting canvas could remain blank after a window recreation or fold transition.
+- Extended host Qt regression to exercise repeated WinIdChange notifications and a subsequent native Expose event, while retaining hidden/deleted-canvas guards.
+- **Verification:** previous archive batch `0c907d1f6abf4c215a2e9c52bab59cf198a632d1` did not yet have an exact watcher status when checked. These new commits also require their own WSL compile and desktop Qt test run. No device runtime pass claimed; APK publishing paused.
+
+
 ## November 14 — bounded saved-version deduplication and source copy
 
 - The archive's unchanged-save deduplication no longer reads arbitrary-size SHA-256 sidecars or follows linked checksum files. It hashes at most the expected saved bytes from the previous version, so a corrupted/replaced archive cannot force unbounded disk reads before comparison. Tests exercise oversized and linked sidecar repair.
