@@ -1210,7 +1210,6 @@ int main(int argc,char **argv)
     // of visits must eventually reach all six without overwriting
     // the completed drafts.
     QStringList pendingBatch;
-    QStringList recoveredBatch;
     for(int i=0;i<6;++i) {
         const QString draft=MobileDraftRecovery::allocate(
             QStringLiteral("orphan-batch-")+QString::number(i));
