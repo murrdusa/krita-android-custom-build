@@ -566,10 +566,19 @@ private:
     void requestSearchAccess()
     {
         if(hasAllFilesAccess())return;
-        if(QMessageBox::question(this,i18n("Search for projects?"),
+        // This permission prompt runs a nested event loop. Android can
+        // destroy the gallery/window while the user is deciding.
+        const QPointer<MobileDocumentHome> home(this);
+        QPointer<QMessageBox> confirm(new QMessageBox(
+            QMessageBox::Question,i18n("Search for projects?"),
             i18n("Allow Android file access to find Krita projects in shared storage. "
                  "You can also open individual documents with Browse Files."),
-            QMessageBox::Yes|QMessageBox::No,QMessageBox::Yes)!=QMessageBox::Yes)return;
+            QMessageBox::Yes|QMessageBox::No,this));
+        confirm->setDefaultButton(QMessageBox::Yes);
+        const int decision=confirm->exec();
+        delete confirm.data();
+        if(decision!=QMessageBox::Yes || !home || !home->isVisible() ||
+           hasAllFilesAccess())return;
         QAndroidJniObject::callStaticMethod<void>(
             "org/krita/android/MainActivity","tabletRequestAllFilesAccess","()V");
     }
