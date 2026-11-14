@@ -245,6 +245,41 @@ int main(int argc,char **argv)
                 "delete warning outlived its destroyed gallery parent");
     }
 
+    // Opening a native drawing can destroy the gallery synchronously.
+    // Never hide or display a failure dialog through a stale receiver.
+    {
+        auto *gallery=new QWidget;
+        const QPointer<QWidget> home(gallery);
+        bool touchedDestroyedGallery=false;
+        const auto openDocument=[gallery]() {
+            delete gallery;
+            return true;
+        };
+        const bool opened=openDocument();
+        if(home && opened) {
+            touchedDestroyedGallery=true;
+            home->hide();
+        }
+        require(opened && !home && !touchedDestroyedGallery,
+                "native document Open used a destroyed gallery widget");
+    }
+    // Failed Open and Version History recovery both display a warning
+    // using a parent-owned, heap-allocated dialog. Parent teardown
+    // during exec() must invalidate both QPointers without a double free.
+    {
+        auto *gallery=new QWidget;
+        const QPointer<QWidget> home(gallery);
+        QPointer<QMessageBox> warning(new QMessageBox(
+            QMessageBox::Warning,QStringLiteral("Drawing not opened"),
+            QStringLiteral("Recovery could not be opened"),
+            QMessageBox::Ok,gallery));
+        QTimer::singleShot(0,&app,[gallery]() { delete gallery; });
+        warning->exec();
+        delete warning.data();
+        require(!home && !warning,
+                "recovery warning outlived its destroyed gallery");
+    }
+
     // Regress the independent Qt ownership pattern used by the native
     // Save/Discard/Cancel dialog. This test target intentionally has no
     // KDE localization dependency, so it exercises the same heap-owned
