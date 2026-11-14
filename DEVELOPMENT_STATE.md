@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — coalesce large project-index writes during gallery refreshes
+
+- `MobileDocumentHome::persistIndex()` previously queued a separate captured `QVector<MobileProjectIndexEntry>` of up to 20,000 records for every gallery refresh/hide/scan finish. Since the single-thread scanner also performs storage traversal, repeated refreshes while scanning could retain many redundant snapshots in queued work items.
+- A mutex-protected shared pending state now holds only the newest not-yet-written snapshot. At most one background index writer is enqueued; if a refresh arrives during its file I/O, that same worker saves the next snapshot before exiting. The pre-existing disk merge preserves indexed documents omitted by a partial scan, and no UI thread waits for disk writes.
+- **Verification:** the preceding local WSL Android build passed exact commit `3f1b688cb6837f045c4bce2a18d2592e04977a65`. The index coalescing change is not yet compiled/tested at its own SHA. No APK upload or phone testing was initiated.
+
 ## November 14 — prevent invalid thumbnails evicting valid previews
 
 - Audited the bounded 512-entry preview-cache heap. Zero-byte and over-32-MiB PNG files counted among the newest 512 candidates despite being unopenable by `MobileProjectPreviewCache::load()`. An interrupted cache with hundreds of recent invalid entries could therefore evict an older valid thumbnail. `pruneLocked()` now discards entries outside the existing cache file-size limits before selecting newest candidates. Its second streaming pass removes invalid PNGs; 512 entries and 128 MiB remain the final quotas.
