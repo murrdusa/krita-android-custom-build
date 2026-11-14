@@ -86,7 +86,9 @@ public:
             // queued native activation runs. Save must use that same view.
             if(manager->canvasBase()!=guarded->canvasBase())
                 manager->setCurrentView(guarded);
-            if(!guarded || !guarded->close())return false;
+            // Activating another native canvas can synchronously close
+            // this view or destroy its manager during Qt signal delivery.
+            if(!guarded || !manager || !guarded->close())return false;
             // Close may be canceled. Once accepted, destroy the native
             // view synchronously while its Krita view manager is alive.
             // Deferring deletion could outlive the manager during quit.
@@ -224,7 +226,13 @@ private:
                 // including on first exposure. No background polling.
                 if(auto *canvas=selected->canvasBase()) {
                     canvas->updateCanvas();
-                    if(QWidget *surface=canvas->canvasWidget())
+                    // Projection updates can pump Krita/Qt callbacks and
+                    // close the canvas. Reacquire its live canvas identity
+                    // instead of dereferencing the old raw pointer.
+                    if(!selected || !manager || !root ||
+                       root->currentWidget()!=selected.data() ||
+                       selected->canvasBase()!=canvas)return;
+                    if(QWidget *surface=selected->canvasBase()->canvasWidget())
                         surface->update();
                 }
             }
