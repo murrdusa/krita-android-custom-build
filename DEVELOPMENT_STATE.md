@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — avoid queued fill-preview workers retaining image buffers
+
+- Audited `MobileFillTolerancePreview::requestMask()` after the latest memory-allocation safeguards. Each preview submission captured the sampled pixel and selection buffers into a `QThreadPool::globalInstance()->start()` closure. If Krita/gallery workers saturated the global pool, superseded previews could remain queued and retain buffers while their associated tool or canvas was already closing.
+- Switched this path to Qt 5.15 `QThreadPool::tryStart()`. If no worker slot is immediately available, Qt does not enqueue the closure; Studio clears the in-flight flag and schedules a single 55 ms widget-owned retry. A retry uses the current generation/threshold rather than holding a stale worker snapshot. Running workers still use the existing generation cancellation and guarded Qt callback.
+- **Verification:** the previous WSL Android build passed `ce636391f7a397650913deedcef38089bcd32207`. The non-queuing preview change awaits its own exact-SHA compilation; no device test or APK upload was performed. Check pool-saturation and rapid tool-switch behavior when a disposable device test batch is next available.
+
+
 ## November 14 — guard fill-preview byte-array allocations before pixel reads
 
 - A further audit of interactive Fill/Select preview sampling found unchecked `QByteArray::resize()` outcomes for the source pixels and optional selection coverage. Passing an undersized buffer to Krita's `readBytes()` under Android low-memory conditions could corrupt memory. The generated flood-coverage byte array had the same assumption.
