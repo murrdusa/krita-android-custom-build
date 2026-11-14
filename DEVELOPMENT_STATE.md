@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — native view activation and document import lifetime
+
+- Native view-close routing now rechecks its QPointer view manager after switching the current canvas and before invoking `KisView::close()`. Canvas repaint activation revalidates the selected view, manager and stack after `updateCanvas()` callbacks before using the GL surface, preventing access to a destroyed canvas.
+- Native project import (including recovered checkpoint retries) now guards newly created KisDocument objects across `openPath()` and only deletes a candidate that survived its failed open callback. This avoids potential duplicate destruction when Krita's import callbacks already released it.
+- The imported document identity is captured before `KisPart::addDocument()`; if registration observers synchronously close it, native attachment is abandoned without using a dangling document pointer.
+- **Verification:** prior independent-host bootstrap regression revision `f43501d5269e3a4f8931d4dd421f960e4f756883` passed local WSL Android compilation. Latest native changes await exact-SHA WSL verification; they do not have Krita-native unit coverage. No APK uploaded.
+
+
 ## November 14 — failed-startup compiler repair and teardown lifetime
 
 - Fixed the exact Android WSL compile failure at `762a0b0b9f44f4f139fb3b63e83f6ceb3e416c63` (Issue #90): `MobileNativeViewStack` does not declare Qt's `Q_OBJECT` macro, so the new failed-root rollback must use the project's existing RTTI `dynamic_cast` rather than `qobject_cast`. No engine interfaces were changed.
