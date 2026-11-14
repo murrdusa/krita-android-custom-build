@@ -32,6 +32,14 @@ inline int mobileFillPreviewBufferBytes(const QSize &size,int pixelSize)
     return bytes>0 && bytes<=budget?int(bytes):0;
 }
 
+// KisPixelSelection coverage is consumed as one unsigned byte per pixel.
+// Refuse an unexpected engine format before readBytes() can overrun that
+// buffer or the overlay loop can index incomplete coverage.
+inline int mobileFillPreviewSelectionBytes(const QSize &size,int pixelSize)
+{
+    return pixelSize==1?mobileFillPreviewBufferBytes(size,1):0;
+}
+
 inline QRect mobileFillPreviewWindow(const QRect &bounds,const QPoint &seed)
 {
     constexpr int side=384;
