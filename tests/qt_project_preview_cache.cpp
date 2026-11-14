@@ -123,5 +123,29 @@ int main(int argc,char **argv)
        !QFileInfo::exists(artwork.fileName()))
         return 16;
 
+    // A previously interrupted app may restart with an over-quota
+    // cache but no new preview writes. Startup pruning must reclaim it
+    // without touching artwork or waiting for 32 later publications.
+    const QString startupFolder=directory.filePath(QStringLiteral("startup"));
+    if(!QDir().mkpath(startupFolder))return 18;
+    QFile original(QDir(startupFolder).filePath(QStringLiteral("artwork.kra")));
+    if(!original.open(QIODevice::WriteOnly) || original.write("safe",4)!=4)
+        return 19;
+    original.close();
+    for(int i=0;i<6;++i) {
+        QFile stale(QDir(startupFolder).filePath(
+            QStringLiteral("oversize-%1.png").arg(i)));
+        if(!stale.open(QIODevice::WriteOnly) ||
+           !stale.resize(28LL*1024*1024))return 20;
+        stale.close();
+    }
+    const MobileProjectPreviewCache startupCache(startupFolder);
+    startupCache.prune();
+    qint64 startupBytes=0;
+    for(const auto &entry:QDir(startupFolder).entryInfoList(
+            {QStringLiteral("*.png")},QDir::Files|QDir::NoSymLinks))
+        startupBytes+=entry.size();
+    if(startupBytes>MobileProjectPreviewCache::maxCacheBytes() ||
+       !QFileInfo::exists(original.fileName()))return 21;
     qInfo("PASS: thumbnail revisions, cancellation, retention, clock skew and invalid images");
 }
