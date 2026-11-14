@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — clean up canceled Version History recovery copies
+
+- The gallery's `openCopy()` materializes an archive to a separate private KRA before posting its native-open callback to the GUI thread. Previously the temporary file was removed only inside that callback, so a receiver/app shutdown before delivery could leave full-sized KRA copies on disk indefinitely. A shared cleanup owner captured by the Qt event now removes the copy whether the callback runs, the app dies before it runs, or posting is impossible. A guarded Qt application identity also avoids dispatching to a destroyed `qApp`.
+- Added a Qt host regression that queues a cleanup-owning callback, destroys the receiver before dispatch, and checks the temporary KRA was deleted. This validates the lifetime pattern but not a real Krita archive restore.
+- **Verification:** previous shared touch action picker revision `acf5292c7c1b0e0dd1518caaf7e406c4909b863c` passed exact-SHA local WSL Android compilation. Latest recovery-copy cleanup and regression await exact-SHA WSL compilation and Qt test execution. No APK uploaded.
+
+
 ## November 14 — shared touch action picker survives host teardown
 
 - Replaced the stack-allocated, parented `QDialog` in `mobilePickAction()` with a `QPointer`-guarded heap child and scoped cleanup. Android may destroy the parent while the picker processes nested modal events; Qt would previously try to delete the picker from the parent's child list even though it was still allocated on the C++ caller's stack.
