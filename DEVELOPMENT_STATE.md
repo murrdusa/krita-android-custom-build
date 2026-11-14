@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — stream completed recovery drafts without duplicate directory arrays
+
+- `MobileDraftRecovery::list()` now enumerates finished `*.kra` files with `QDirIterator` rather than constructing a full `QDir::entryInfoList()` snapshot and copying the filtered entries into another list. Only canonical, valid published draft files are retained, reducing peak directory-listing memory for large app-private recovery folders. Completed drafts remain fully discoverable rather than being capped or silently omitted.
+- Sorted the retained completed drafts newest-first (with a deterministic filename tie-break), preserving `checkpointsFor()`'s early-stop assumption when comparing autosaves to project modification times.
+- Extended `qt_saved_version_archive` with three completed draft fixtures at distinct modification times, asserting each remains listed in the expected order. The previous 260 pending-file regression continues to cover the independent orphan cursor.
+- **Verification:** preceding exact-SHA local WSL Android build passed for `68af945462433e9ee8245b05afeeb7d74268123d`; newer streaming changes and the new regression await their own build/test result. No APK uploaded.
+
 ## November 14 — stream interrupted draft candidates instead of materializing a full file list
 
 - Followed up the per-visit orphan-recovery limit by replacing the unbounded `QDir::entryInfoList("*.pending.kra")` allocation with a mutex-protected, persistent `QDirIterator` cursor. Each `MobileDraftRecovery::list()` invocation now retains at most 128 pending `QFileInfo` candidates, and resumes at the next filesystem entry on subsequent gallery visits. At the end of a traversal, the cursor resets for the **next** visit, not in the middle of the same batch.
