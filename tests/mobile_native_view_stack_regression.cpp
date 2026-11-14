@@ -66,6 +66,34 @@ int main(int argc,char **argv)
                     changing.currentDocument()==&anchorDocument,
                     "activation safely handles a synchronous tab removal"))return 1;
     }
+    // A canvas can also be deleted outright by a synchronous native
+    // tab-switch callback. Activation must report failure and leave the
+    // remaining document selected rather than returning a stale view.
+    {
+        MobileNativeViewStack deleting;
+        QObject firstDocument,secondDocument;
+        auto *anchor=new QWidget;
+        auto *target=new QWidget;
+        const QPointer<QWidget> targetGuard(target);
+        const QPointer<QObject> targetId(target);
+        if(!require(deleting.adoptView(anchor,&firstDocument,
+                        QStringLiteral("Anchor"),[](){return true;}) &&
+                    deleting.adoptView(target,&secondDocument,
+                        QStringLiteral("Target"),[](){return true;}),
+                    "setup deletion-during-activation"))return 1;
+        QObject::connect(&deleting,&QStackedWidget::currentChanged,
+                         &deleting,[&](int) {
+            if(deleting.currentWidget()==target) {
+                delete target;
+                target=nullptr;
+            }
+        });
+        if(!require(!deleting.activateView(targetId) &&
+                    !targetGuard && deleting.openViews().size()==1 &&
+                    deleting.currentDocument()==&firstDocument,
+                    "activation returned a destroyed native canvas"))
+            return 1;
+    }
     // Activation can reenter Qt and detach a selected QWidget before
     // re-registering that same pointer for a different document.
     // The stale caller must not report that the original tab survived.
