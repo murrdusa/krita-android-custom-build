@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — native tab removal teardown and Save callback regression
+
+- When `MobileNativeViewStack::forgetToken()` removes the active view, Qt emits `currentChanged` synchronously. A listener can destroy the entire stack and its child views. Cleanup now tracks its host through `QPointer` across `removeWidget()` and avoids touching a freed host/view afterward.
+- Added a desktop Qt regression that destroys a native view stack from its view-removal selection-change signal. Strengthened the asynchronous Save regression to assert that a queued callback owns its state beyond the initiating stack frame, and that destroying its QObject context cancels pending delivery.
+- **Verification:** Save regression changes through `f4229a77aa1ffc273e347d01e3016e9cdc6d3901` passed the local WSL Android compilation. Native tab teardown fix and new Qt regression await exact-SHA build/test verification. No APK uploaded.
+
+
 ## November 14 — native Save completion callback lifetime
 
 - Native `writeDocument()` no longer connects `sigSavingFinished` with a lambda capturing stack-owned `completed` and `target` by reference. Qt can dispatch queued signals that were already posted even after a connection is disconnected. The callback now owns an atomic completion flag and a copied target path, so late delivery cannot access expired Save stack memory.
