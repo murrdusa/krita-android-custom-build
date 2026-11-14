@@ -239,5 +239,27 @@ int main(int argc,char **argv)
                                      QDir::Files).isEmpty())
         return 32;
 
+    // Gallery must decline malformed or unexpectedly large native KRA
+    // inputs before KoStore begins reading ZIP directory metadata.
+    const QString kraFixture=directory.filePath(QStringLiteral("preview-input.kra"));
+    QFile native(kraFixture);
+    if(!native.open(QIODevice::WriteOnly) ||
+       native.write(QByteArray::fromHex("504b0304"))!=4)return 33;
+    native.close();
+    if(!MobileProjectPreviewCache::safeLocalKraSource(kraFixture))return 34;
+    const QString linkedKra=directory.filePath(QStringLiteral("linked-input.kra"));
+    if(QFile::link(kraFixture,linkedKra) &&
+       MobileProjectPreviewCache::safeLocalKraSource(linkedKra))return 35;
+    const QString damagedKra=directory.filePath(QStringLiteral("damaged-input.kra"));
+    QFile damaged(damagedKra);
+    if(!damaged.open(QIODevice::WriteOnly) ||
+       damaged.write("not a zip",9)!=9)return 36;
+    damaged.close();
+    if(MobileProjectPreviewCache::safeLocalKraSource(damagedKra))return 37;
+    if(!native.open(QIODevice::ReadWrite) ||
+       !native.resize(8LL*1024*1024*1024+1))return 38;
+    native.close();
+    if(MobileProjectPreviewCache::safeLocalKraSource(kraFixture))return 39;
+
     qInfo("PASS: thumbnail revisions, cancellation, retention, clock skew and invalid images");
 }
