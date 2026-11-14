@@ -237,7 +237,15 @@ private:
         // and quit callbacks must not recursively start the same pass.
         // Reset only if its QObject survived the synchronous callback.
         const auto release=qScopeGuard([alive]() {
-            if(alive)alive->m_checkpointing=false;
+            if(!alive)return;
+            alive->m_checkpointing=false;
+            // A background save may have completed inside slotAutoSave's
+            // nested event loop. Drain its pending checkpoint after this
+            // pass, never recursively while it is traversing native views.
+            if(!alive->m_pendingDrafts.isEmpty())
+                QTimer::singleShot(0,alive.data(),[alive]() {
+                    if(alive)alive->continueDrafts();
+                });
         });
         // An inactive canvas can contain unsaved strokes too. Checkpoint
         // every distinct document hosted by this runtime, not just the
@@ -265,6 +273,7 @@ private:
 
     void continueDrafts()
     {
+        if(m_checkpointing)return;
         const QPointer<MobileKritaStandaloneRuntime> alive(this);
         // Finish queued checkpoints independently: a busy document must
         // never block another open canvas from being protected.
