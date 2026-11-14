@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — reclaim over-quota thumbnail cache after interrupted shutdown
+
+- The existing thumbnail PNG cache enforces a 512-entry/128 MiB quota during thumbnail publication. However, if Android terminates the process with an already-overquota cache, a later session that merely browses cached drawings might never trigger new writes and therefore never prune the excess. Factored the existing byte/count retention sweep into a lock-protected `MobileProjectPreviewCache::prune()` entrypoint.
+- Gallery startup now invokes that sweep once from its existing single-thread background scanner (after recovery-copy cleanup), avoiding any UI-thread directory walk and preserving cache correctness during concurrent thumbnail writes.
+- Extended the Qt preview-cache regression to stage six 28 MiB legacy PNGs, prune without generating any new thumbnails, and verify the 128 MiB limit while leaving an unrelated KRA untouched.
+- **Verification:** preceding KRA recovery revision `a6d1b2579725b7617850178621582bfea3a9bcbd` passed the local WSL Android compile; the new startup cleanup and regression await an exact-SHA build/test result. No APK uploaded.
+
 ## November 14 — validate native host ownership after Save completion and canvas attachment
 
 - Standalone Save/Save As/Export now revalidates the originally captured QPointer document stack **after** Krita's asynchronous disk write and `waitForSavingToComplete()`. A save completion signal alone is insufficient to report success or enqueue a new Version History snapshot if Android replaced the original native root during Qt event processing. A completed write itself is not reversed; only stale post-save publication is suppressed.
