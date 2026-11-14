@@ -208,6 +208,42 @@ public:
         return scan(folderFor(source,rootOverride));
     }
 
+    // Version History is a UI browser, not the retention owner. A crash
+    // before pruning can leave thousands of versions; do not allocate
+    // a row or metadata entry for every old archive just to show the
+    // most recent 256. No historical files are removed by this query.
+    static QVector<Version> listForBrowser(const QString &source,
+                                          const QString &rootOverride=QString())
+    {
+        QMutexLocker guard(&lock());
+        const QString folder=folderFor(source,rootOverride);
+        QVector<Version> recent;
+        constexpr int displayLimit=256;
+        recent.reserve(displayLimit);
+        const auto newer=[](const Version &a,const Version &b) {
+            return a.path>b.path;
+        };
+        QDirIterator files(folder,{QStringLiteral("*.kra")},
+                           QDir::Files|QDir::Readable|QDir::NoSymLinks);
+        while(files.hasNext()) {
+            files.next();
+            const QFileInfo info=files.fileInfo();
+            if(info.size()<=0)continue;
+            Version version{info.absoluteFilePath(),
+                            info.lastModified().toUTC(),info.size()};
+            if(recent.size()<displayLimit) {
+                recent.append(std::move(version));
+                std::push_heap(recent.begin(),recent.end(),newer);
+            } else if(newer(version,recent.front())) {
+                std::pop_heap(recent.begin(),recent.end(),newer);
+                recent.last()=std::move(version);
+                std::push_heap(recent.begin(),recent.end(),newer);
+            }
+        }
+        std::sort(recent.begin(),recent.end(),newer);
+        return recent;
+    }
+
     // Also archive the completed private KRA autosave under the original
     // project's identity (or under the private draft path if unsaved).
     // This does not modify the original project or its autosave file.
