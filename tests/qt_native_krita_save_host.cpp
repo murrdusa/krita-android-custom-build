@@ -63,6 +63,34 @@ int main(int argc,char **argv)
             "unavailable backend allowed close-time Save");
     delete adapter;
     require(!guarded,"destroyed save callback was not invalidated");
+    // The native document host can close its owning window during a
+    // Save callback. In that case a QScopedValueRollback of m_saving
+    // would write through a destroyed adapter on return.
+    auto teardownPort=QSharedPointer<FakeDocumentPort>::create();
+    auto *teardownAdapter=new MobileKritaNativeSavePortAdapter(teardownPort);
+    const QPointer<MobileKritaNativeSavePortAdapter> deadHost(teardownAdapter);
+    bool sawSavingDuringTeardown=false;
+    teardownPort->duringSave=[&]() {
+        sawSavingDuringTeardown=teardownAdapter->saving();
+        delete teardownAdapter;
+        teardownAdapter=nullptr;
+    };
+    require(teardownAdapter->save(&document,false) &&
+            sawSavingDuringTeardown && !deadHost &&
+            teardownPort->attempts==1,
+            "native Save accessed adapter destroyed by its document callback");
+    // The backend can also return failure after destroying its host.
+    auto failingPort=QSharedPointer<FakeDocumentPort>::create();
+    failingPort->result=false;
+    auto *failingAdapter=new MobileKritaNativeSavePortAdapter(failingPort);
+    const QPointer<MobileKritaNativeSavePortAdapter> failedHost(failingAdapter);
+    failingPort->duringSave=[&]() {
+        delete failingAdapter;
+        failingAdapter=nullptr;
+    };
+    require(!failingAdapter->save(&document,true) &&
+            !failedHost && failingPort->attempts==1,
+            "failed Save accessed a destroyed native host");
     qInfo() << "PASS: native close-save host, Save As delegation,"
             << "reentrant transaction guard, failure and invalidation";
     return 0;
