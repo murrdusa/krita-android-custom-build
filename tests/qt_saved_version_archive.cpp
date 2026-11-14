@@ -665,6 +665,43 @@ int main(int argc,char **argv)
     require(foundOld && foundNew && !QDir(oldFolder).exists(),
             "colliding migration lost a snapshot or left an incomplete folder");
 
+    // A corrupt sparse checkpoint can claim to be a multi-gigabyte KRA.
+    // The recent-checkpoint validator must refuse it before hashing the
+    // entire file or considering it sufficient to suppress a new save.
+    const QString oversizedStore=QDir(temp.path()).filePath(
+        QStringLiteral("oversized-history"));
+    const QString oversizedFolder=MobileSavedVersionArchive::folderFor(
+        source,oversizedStore);
+    require(QDir().mkpath(oversizedFolder),
+            "create oversized historical checkpoint folder");
+    const QString oversizedVersion=QDir(oversizedFolder).filePath(
+        QStringLiteral("zzzz-oversized.kra"));
+    {
+        QFile huge(oversizedVersion);
+        require(huge.open(QIODevice::WriteOnly) &&
+                huge.write(QByteArray::fromHex("504b0304"))==4,
+                "create sparse oversized history fixture");
+        if(huge.resize(8LL*1024*1024*1024+1)) {
+            huge.close();
+            save(oversizedVersion+QStringLiteral(".sha256"),
+                 QByteArray(64,'0'));
+            require(MobileSavedVersionArchive::snapshotFrom(
+                        source,source,oversizedStore,120000),
+                    "oversized checkpoint suppressed a valid version");
+            const auto versionsAfter=MobileSavedVersionArchive::list(
+                source,oversizedStore);
+            bool recoveredValid=false;
+            for(const auto &entry:versionsAfter) {
+                if(entry.bytes==initial.size() &&
+                   load(entry.path)==initial)recoveredValid=true;
+            }
+            require(recoveredValid,
+                    "valid version was not published past oversized checkpoint");
+        } else huge.close();
+    }
+    QFile::remove(oversizedVersion);
+    QFile::remove(oversizedVersion+QStringLiteral(".sha256"));
+
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
                " provider identity, SAF tree normalization and legacy migration";
     return 0;
