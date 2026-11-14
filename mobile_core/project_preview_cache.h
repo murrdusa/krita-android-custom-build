@@ -50,7 +50,7 @@ public:
     QImage load(const QString &source,qint64 revision,
                 const std::atomic_bool *cancelled=nullptr) const
     {
-        if(cancelled && cancelled->load())return {};
+        if(m_directory.isEmpty() || (cancelled && cancelled->load()))return {};
         const QFileInfo entry(fileName(source,revision));
         if(!entry.isFile() || entry.isSymLink() || !entry.isReadable() ||
            entry.size()<=0 || entry.size()>maxEncodedBytes())
@@ -99,7 +99,8 @@ public:
     {
         // A queued thumbnail may have been superseded while waiting for
         // its worker. Avoid expensive encoding and filesystem work then.
-        if((cancelled && cancelled->load()) || image.isNull() ||
+        if(m_directory.isEmpty() || (cancelled && cancelled->load()) ||
+           image.isNull() ||
            image.width()>4096 || image.height()>4096 ||
            qint64(image.width())*image.height()>4096*4096 ||
            !QDir().mkpath(m_directory))return;
@@ -141,6 +142,10 @@ private:
 
     void pruneLocked() const
     {
+        // An unavailable AppDataLocation must not turn a cache sweep
+        // into deletion of unrelated PNGs in the process working
+        // directory. Treat the cache as disabled until it has a root.
+        if(m_directory.isEmpty())return;
         // Keep only metadata for the newest 512 files. Materializing and
         // sorting every PNG in an interrupted/overfull cache can spike
         // gallery startup memory before a single thumbnail is loaded.
