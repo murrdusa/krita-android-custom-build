@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — guard version-history root when app storage is unavailable
+
+- `MobileSavedVersionArchive::folderFor()` previously constructed the default history root with `QDir(QStandardPaths::writableLocation(AppDataLocation))`. If Android returned an empty application-data path, Qt could interpret it relative to the current working directory, causing snapshots or history migrations to target an unintended location.
+- Added `privateVersionRoot()` to explicitly return empty for an unavailable app-data directory; default `folderFor()` now fails closed. Existing nonempty private roots and explicit test root overrides retain their behavior.
+- Extended the Qt saved-version archive regression to verify both empty-root rejection and valid private-root resolution. No existing archive or artwork files were deleted.
+- **Verification:** latest reported local Android build SUCCESS at `5b0590758b00e5a705c2f26b9171ea97ee38c71b`. The new source and test await exact-SHA build verification; no APK uploaded.
+
+
 ## November 14 — fail closed on missing thumbnail cache directory
 
 - Audited Android gallery thumbnail-cache filesystem handling. If `AppDataLocation` failed to resolve, `MobileProjectPreviewCache` could be constructed with an empty root. `pruneLocked()` would then enumerate relative `*.png` entries, risking deletion of unrelated images in the process working directory. `load()` could likewise resolve a relative hashed cache filename.
