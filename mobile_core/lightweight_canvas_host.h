@@ -121,7 +121,7 @@ public:
     // those may contain unsaved artwork and must follow normal Close.
     bool discardEmptyNativeDocumentRoot()
     {
-        auto *root=qobject_cast<MobileNativeViewStack*>(m_canvas.data());
+        auto *root=dynamic_cast<MobileNativeViewStack*>(m_canvas.data());
         if(!root || centralWidget()!=root || m_services.ready() ||
            m_uiInstalled || !root->openViews().isEmpty() ||
            !root->findChildren<QWidget*>(QString(),Qt::FindDirectChildrenOnly).isEmpty())
