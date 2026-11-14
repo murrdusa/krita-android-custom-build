@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — retain incomplete export data and draft titles
+
+- A native exporter that fails before producing a readable KRA no longer removes partial staging bytes in the failure path. Successful exports with invalid staging retain their existing cleanup semantics; the previous completed private draft remains untouched.
+- When a readable autosave is rescued under a new UUID after failed publication, its bounded, regular-file user title sidecar is copied alongside the recovered project association. Display title reads are length-bounded.
+- Qt regression covers retained partial export bytes and title propagation to a rescued draft.
+- **Verification:** source and regression committed; latest exact-SHA Android WSL build and desktop Qt test execution pending. No APK uploaded.
+
+
 ## November 14 — abandoned autosave staging freshness check
 
 - Restart recovery verifies that a pending KRA's size and modification timestamp remain unchanged while Krita reads its ZIP structure. Staging files modified by a resumed/exporting writer are left in place, instead of being moved to a new recovery ID mid-write.
