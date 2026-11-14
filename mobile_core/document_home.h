@@ -652,9 +652,23 @@ private:
             }
         }
         QPointer<MobileDocumentHome> home(this);
-        QThreadPool::globalInstance()->start([home,version,expected,generation]() {
+        const QPointer<QCoreApplication> application(qApp);
+        QThreadPool::globalInstance()->start([home,application,version,expected,generation]() {
+            if(!home || !application)return;
             const QString copy=MobileSavedVersionArchive::materializeRecovery(version);
-            QMetaObject::invokeMethod(qApp,[home,copy,expected,generation]() {
+            // The recovery result may be discarded with Qt's queued
+            // events during shutdown. Own the temporary file with the
+            // event's closure so that even an undelivered callback removes
+            // it when Qt destroys the event (or invokeMethod fails).
+            const auto ownedCopy=std::shared_ptr<QString>(
+                new QString(copy),[](QString *path) {
+                    if(!path->isEmpty())QFile::remove(*path);
+                    delete path;
+                });
+            if(!home || !application)return;
+            QMetaObject::invokeMethod(application.data(),
+                [home,ownedCopy,expected,generation]() {
+                const QString &copy=*ownedCopy;
                 const auto current=home?home->m_engine.openDocuments():
                     QVector<MobileEngineBridge::OpenDocument>{};
                 // A recovery may open beside multiple existing canvases,
@@ -665,7 +679,6 @@ private:
                         expected,current);
                 const bool opened=home && sameCanvas && !copy.isEmpty() && home->m_files &&
                     home->m_files->openFile(copy);
-                if(!copy.isEmpty())QFile::remove(copy);
                 if(!home)return;
                 home->m_restoringVersion=false;
                 if(opened)home->hide();
