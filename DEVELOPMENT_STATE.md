@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — unify file URL version-history identity
+
+- Saved-version history now decodes local `file://` URLs before calculating project identity, reading modified timestamps, and opening archive input. A picker URL and filesystem path for the same drawing therefore share one version folder, rather than silently splitting backup history or failing to copy the KRA.
+- Qt regression covers path-vs-URL history identity, checksum-backed deduplication across both forms, and percent-escaped filenames.
+- **Verification:** new commits await exact-SHA Android WSL build and desktop Qt regression execution. No APK publishing.
+
+
 ## November 14 — guard Save As against local file URL aliases
 
 - Open-document destination checks now normalize `file://` URLs to their canonical local filesystem path before collision comparisons. This prevents Save As / Export from treating a picker-provided URL as different from an already-open local document and also handles URL-escaped not-yet-existing draft targets.
