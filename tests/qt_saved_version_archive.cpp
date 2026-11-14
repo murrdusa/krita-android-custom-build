@@ -1204,6 +1204,42 @@ int main(int argc,char **argv)
             QFile::remove(entry.absoluteFilePath());
     }
 
+    // The scanner must not skip a block of old recovery candidates
+    // after accepting the first two from a larger iterator window.
+    // Every visit may validate at most two, but a bounded sequence
+    // of visits must eventually reach all six without overwriting
+    // the completed drafts.
+    QStringList pendingBatch;
+    QStringList recoveredBatch;
+    for(int i=0;i<6;++i) {
+        const QString draft=MobileDraftRecovery::allocate(
+            QStringLiteral("orphan-batch-")+QString::number(i));
+        require(!draft.isEmpty(),"could not allocate batched recovery fixture");
+        const QString pending=draft+QStringLiteral(".pending.kra");
+        save(pending,QByteArray::fromHex("504b0304")+"batch-recovery");
+        QFile entry(pending);
+        require(entry.open(QIODevice::ReadWrite) &&
+                entry.setFileTime(QDateTime::currentDateTime().addSecs(-600),
+                                  QFileDevice::FileModificationTime),
+                "could not age batched orphan staging");
+        entry.close();
+        pendingBatch.append(pending);
+    }
+    bool allRescued=false;
+    for(int visit=0;visit<10 && !allRescued;++visit) {
+        MobileDraftRecovery::list();
+        allRescued=true;
+        for(const QString &pending:pendingBatch)
+            if(QFile::exists(pending))allRescued=false;
+    }
+    require(allRescued,
+            "orphan cursor skipped eligible drafts after its validation limit");
+    // The rescue path creates unique final draft IDs, so clean up by
+    // the controlled test-only title rather than assuming a target ID.
+    for(const QFileInfo &entry:MobileDraftRecovery::list())
+        if(entry.completeBaseName().contains(QStringLiteral("_orphan-batch-")))
+            QFile::remove(entry.absoluteFilePath());
+
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
                " provider identity, SAF tree normalization and legacy migration";
     return 0;
