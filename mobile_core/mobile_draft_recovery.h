@@ -72,6 +72,12 @@ public:
     // retains damaged drafts so users can still inspect them.
     static bool hasKraHeader(const QString &path)
     {
+        // Do not feed an oversized, replaced, or special filesystem entry
+        // to KoStore during background recovery discovery.
+        const QFileInfo entry(path);
+        constexpr qint64 maxArchiveBytes=8LL*1024*1024*1024;
+        if(!entry.isFile() || entry.isSymLink() ||
+           entry.size()<4 || entry.size()>maxArchiveBytes)return false;
         QFile file(path);
         return file.open(QIODevice::ReadOnly) &&
             file.peek(4)==QByteArray::fromHex("504b0304");
@@ -134,7 +140,8 @@ public:
         const QString metadata=draft+QStringLiteral(".project");
         if(QFileInfo(metadata).isSymLink())return {};
         QFile file(metadata);
-        if(!file.open(QIODevice::ReadOnly) || file.size()>16384)return {};
+        if(!file.open(QIODevice::ReadOnly) || file.size()<0 ||
+           file.size()>16384)return {};
         return QString::fromUtf8(file.readAll());
     }
 
