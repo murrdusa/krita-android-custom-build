@@ -204,21 +204,39 @@ protected:
                 event->ignore();
                 return;
             }
-            const QScopedValueRollback<bool> closing(m_closing,true);
-            auto pending=m_nativeViewPort->openViews();
+            // A native close callback may synchronously delete this
+            // host (or replace its view adapter). Keep the original port
+            // alive and never unwind a scoped rollback into freed QWidget
+            // memory after that callback returns.
+            const QPointer<MobileLightweightCanvasHost> host(this);
+            const QSharedPointer<MobileViewHostPort> views=m_nativeViewPort;
+            m_closing=true;
+            auto pending=views->openViews();
+            if(!host)return;
             while(!pending.isEmpty()) {
                 const auto current=MobileViewIdentityGuard::uniqueActive(pending);
-                if(!current || !m_nativeViewPort->closeView(current)) {
+                if(!current) {
+                    m_closing=false;
                     event->ignore();
                     return;
                 }
-                const auto remaining=m_nativeViewPort->openViews();
+                const bool closed=views->closeView(current);
+                if(!host)return;
+                if(!closed) {
+                    m_closing=false;
+                    event->ignore();
+                    return;
+                }
+                const auto remaining=views->openViews();
+                if(!host)return;
                 if(remaining.size()>=pending.size()) {
+                    m_closing=false;
                     event->ignore();
                     return;
                 }
                 pending=remaining;
             }
+            m_closing=false;
         }
         QMainWindow::closeEvent(event);
     }
