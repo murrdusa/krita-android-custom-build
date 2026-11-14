@@ -178,11 +178,13 @@ public:
         const QVector<MobileProjectIndexEntry> &incoming)
     {
         QHash<QString,int> byId;
+        QSet<QString> refreshed;
         for(int i=0;i<existing.size();++i) {
             byId.insert(key(existing[i].path),i);
         }
         for(const auto &e:incoming) {
             const QString id=key(e.path);
+            refreshed.insert(id);
             auto it=byId.find(id);
             if(it==byId.end()) {
                 byId.insert(id,existing.size());
@@ -201,8 +203,14 @@ public:
         constexpr int maxIndexEntries=20000;
         if(existing.size()>maxIndexEntries) {
             std::stable_sort(existing.begin(),existing.end(),
-                [](const MobileProjectIndexEntry &a,
-                   const MobileProjectIndexEntry &b) {
+                [&refreshed](const MobileProjectIndexEntry &a,
+                             const MobileProjectIndexEntry &b) {
+                    const bool aFresh=refreshed.contains(key(a.path));
+                    const bool bFresh=refreshed.contains(key(b.path));
+                    // A newly opened SAF document may have no reliable
+                    // modified timestamp. Preserve it over an obsolete
+                    // indexed entry when the disk quota is saturated.
+                    if(aFresh!=bFresh)return aFresh;
                     return a.modified>b.modified;
                 });
             existing.resize(maxIndexEntries);
