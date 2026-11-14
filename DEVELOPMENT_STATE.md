@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — native Save adapter teardown safety
+
+- The standalone native Krita Save adapter no longer uses a scoped rollback that writes to its own `m_saving` flag after its document backend synchronously destroys the adapter during Save. A local shared backend reference keeps the port alive for the callback; the saving flag is reset only if the adapter survives.
+- The backend readiness probe also verifies that its adapter survived before starting a Save, preventing a teardown callback from leaving an invalid `this`.
+- Expanded desktop Qt regression for successful Save, failed Save, and readiness checks that delete their host synchronously.
+- **Verification:** previous document-history revision `4d4bd33194967aa20e2f71f06d74d178f9906c2c` passed exact-SHA local WSL Android compilation. New source/test changes await exact-SHA WSL and Qt test verification. No APK upload.
+
+
 ## November 14 — one version history for symlinked Save As parents
 
 - Local saved-version identity now resolves the closest existing ancestor for a not-yet-created project destination. Save As to `real-folder/future.kra`, a symlinked folder alias, or its local `file://` URL therefore shares one version-history identity before the new file exists.
