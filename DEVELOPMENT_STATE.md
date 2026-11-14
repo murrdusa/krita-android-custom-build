@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — stream Save As history migration without duplicate directory snapshots
+
+- Inspected the background archive request queues: repeated saves are already coalesced by canonical document identity, so no new queueing layer was added. Identified a narrower memory problem in `MobileSavedVersionArchive::migrateFolder()`: Save As and legacy-history migration previously used two complete `QFileInfoList` snapshots (KRA/checksum pairs and miscellaneous leftovers). Replaced both with `QDirIterator` passes that retain only each current file's metadata and keep the existing collision-safe rename/checksum logic.
+- Added a Qt archive regression with seven checked KRA versions plus unrelated metadata. It forces the existing-destination merge path and checks that all versions are recoverable, checksum sidecars remain paired, metadata is preserved, and the emptied source folder disappears.
+- **Verification:** last exact-SHA WSL Android compile result must be matched in Issue #1; the new code and Qt-only regression await separate exact-revision verification. No APK uploaded.
+
 ## November 14 — stream version archive directory metadata instead of copying a sorted snapshot
 
 - `MobileSavedVersionArchive::scan()` now uses a `QDirIterator` rather than Qt's full sorted `QFileInfoList` plus a second `QVector<Version>`. Sorting the retained small metadata records preserves descending generated filename order, including the existing rate-limit, deduplication, recovery and retention semantics. Compare full paths directly since the entries all share one directory; no new `QFileInfo` allocations during sorting.
