@@ -336,6 +336,28 @@ int main(int argc,char **argv)
                 "registration did not expose a stale manager after activation");
         delete document;
     }
+    // A native view can emit Show/Activate callbacks that close its
+    // document while keeping the QWidget and stack alive. Treat the
+    // original document identity as part of successful final attachment.
+    {
+        QWidget owner;
+        MobileNativeViewStack stack(&owner);
+        auto *document=new QObject;
+        QPointer<QObject> guardedDocument(document);
+        auto *view=new QWidget;
+        QPointer<QWidget> guardedView(view);
+        require(stack.adoptView(view,document,QStringLiteral("show"),
+                                [](){return true;}),
+                "failed to register show-time teardown canvas");
+        // This models a synchronous application callback dispatched by
+        // view->show(), not a real Krita event listener.
+        const auto showCallback=[document]() {delete document;};
+        showCallback();
+        const bool mayFinishAttach=guardedView && guardedDocument &&
+                                   stack.openViews().size()==1;
+        require(!mayFinishAttach && !guardedDocument,
+                "destroyed document remained eligible for final attachment");
+    }
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
