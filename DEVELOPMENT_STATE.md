@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — bounded startup recovery scanning
+
+- Draft KRA header checks reject symlinks, special or empty files and archives over 8 GiB before opening with Krita KoStore. Project-association metadata rejects invalid negative file lengths.
+- Host-side regression adds empty, linked and optionally sparse oversized archive checks without altering completed draft files.
+- **Verification:** preceding callback-lifetime revision `a1a66758126a62f16924a3482ce6cfb9a2e7e533` received exact local WSL Android SUCCESS. The new recovery source/test revision is committed but has no reported exact-SHA build status yet. Desktop Qt test execution and Fold 6 behavior remain unverified. APK publishing paused.
+
 ## November 14 — native canvas callback lifetime hardening
 
 - Native view adoption now verifies the registered view and document after synchronous Qt activation callbacks; it will not report success if those callbacks already detached the new canvas.
