@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — bound queued Version History image previews
+
+- `MobileDocumentHome::showSavedVersions()` streamed archive previews sequentially from a worker but queued a separate decoded `QImage` for every historical version. An interrupted archive-retention pass can leave far more entries than the usual 12-version quota, and if the Android dialog's event loop stops draining, the queued images could accumulate memory before cancellation propagates.
+- Version History now permits at most four queued preview-image updates at a time. The background worker waits briefly while the UI is processing them, checks the dialog cancellation and Qt application lifetime, and exits when the dialog closes rather than waiting indefinitely. The queued-count decrement occurs on delivery or invoke failure. Existing archive listing, checksums, and version-selection behavior are unchanged.
+- **Verification:** the last independently reported local Android WSL build succeeded for `184accd2f3dd6134ce9d872f60510fe2551a5015` (project-index coalescing). This preview-queue cap requires its own exact-SHA compilation and runtime verification. No APK upload requested in this task.
+
 ## November 14 — coalesce large project-index writes during gallery refreshes
 
 - `MobileDocumentHome::persistIndex()` previously queued a separate captured `QVector<MobileProjectIndexEntry>` of up to 20,000 records for every gallery refresh/hide/scan finish. Since the single-thread scanner also performs storage traversal, repeated refreshes while scanning could retain many redundant snapshots in queued work items.
