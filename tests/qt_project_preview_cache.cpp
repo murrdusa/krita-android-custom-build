@@ -88,5 +88,33 @@ int main(int argc,char **argv)
         QString::fromLatin1(noisyKey)+QStringLiteral(".png"));
     if(QFile::exists(noisyFile) || !edgeCache.load(source,9).isNull())
         return 11;
+    // The cache count limit alone could retain 512 large PNGs. Stage
+    // six sparse 28 MiB legacy cache entries, then trigger a routine
+    // publication sweep and verify the aggregate on-disk budget.
+    const QString quotaFolder=directory.filePath(QStringLiteral("quota"));
+    if(!QDir().mkpath(quotaFolder))return 14;
+    for(int i=0;i<6;++i) {
+        QFile large(QDir(quotaFolder).filePath(
+            QStringLiteral("legacy-%1.png").arg(i)));
+        if(!large.open(QIODevice::WriteOnly) ||
+           !large.resize(28LL*1024*1024))return 15;
+        large.close();
+    }
+    const MobileProjectPreviewCache quotaCache(quotaFolder);
+    for(int i=0;i<33;++i)
+        quotaCache.store(QStringLiteral("quota-project"),i,newImage);
+    qint64 retainedBytes=0;
+    int oldFiles=0;
+    const auto quotaEntries=QDir(quotaFolder).entryInfoList(
+        {QStringLiteral("*.png")},QDir::Files|QDir::NoSymLinks);
+    for(const auto &entry:quotaEntries) {
+        retainedBytes+=entry.size();
+        if(entry.fileName().startsWith(QStringLiteral("legacy-")))
+            ++oldFiles;
+    }
+    if(retainedBytes>MobileProjectPreviewCache::maxCacheBytes() ||
+       oldFiles>=6 || quotaCache.load(QStringLiteral("quota-project"),32).isNull())
+        return 16;
+
     qInfo("PASS: thumbnail revisions, cancellation, retention, clock skew and invalid images");
 }
