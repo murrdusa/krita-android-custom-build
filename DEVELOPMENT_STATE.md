@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — stop native factory initialization after synchronous manager teardown
+
+- `MobileKritaNativeViewFactory::attach()` now revalidates its original guarded view, document, manager, and stack immediately after `adoptView()`, and again after initial document-state refresh. Native `addWidget()` emits `currentChanged` synchronously; listeners can remove or destroy the Krita manager even when the registration itself returns success. Subsequent signal wiring/activation must not dereference that invalid manager.
+- Added a Qt-only native-view-stack regression that destroys the manager on first `currentChanged` while leaving the stack and view live, demonstrating why successful registration does not imply a surviving manager.
+- **Verification:** new code and regression pushed to `main`, but awaiting exact-SHA local WSL build/test result. No APK uploaded.
+
 ## November 14 — validate native view dependencies immediately after Krita createView
 
 - Native first-canvas and additional-canvas attachment now establishes guarded identities for the document, manager and native view stack **before** invoking `KisPart::createView()`. That factory may dispatch synchronous Qt callbacks that destroy its dependencies; the returned view is no longer configured or given to the input tracker until all three original objects are confirmed alive. An incomplete input manager or canvas also aborts attachment, releasing a still-live unparented view only while its manager survives.
