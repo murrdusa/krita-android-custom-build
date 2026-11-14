@@ -70,6 +70,46 @@ def install_phone_brush_editor(root: Path):
 
     paintop_box = root / "libs/ui/kis_paintop_box.cc"
     source = paintop_box.read_text(encoding="utf-8")
+    source = one(source, '#include "kis_paintop_box.h"',
+                 '#include "kis_paintop_box.h"\n#include <QScopedValueRollback>',
+                 "guard preset changes against re-entry")
+    source = one(source, "void KisPaintopBox::setCurrentPaintop(KisPaintOpPresetSP preset)\n{",
+                 """void KisPaintopBox::setCurrentPaintop(KisPaintOpPresetSP preset)
+{
+#ifdef Q_OS_ANDROID
+    if (m_mobileChangingPreset || !preset || !preset->settings()) return;
+    const QScopedValueRollback<bool> changing(m_mobileChangingPreset, true);
+#endif""", "reject reentrant or incomplete preset changes")
+    source = one(source, """    m_presetConnections.clear();
+
+    if (m_resourceProvider->currentPreset()) {""",
+                 """#ifdef Q_OS_ANDROID
+    auto *factory = KisPaintOpRegistry::instance()->get(paintop.id());
+    if (!factory) return;
+    if (!m_paintopOptionWidgets.value(paintop)) {
+        auto *widget = factory->createConfigWidget(this,
+            KisGlobalResourcesInterface::instance(),
+            m_resourceProvider->resourceManager()->canvasResourcesInterface());
+        if (!widget) return;
+        m_paintopOptionWidgets[paintop] = widget;
+    }
+#endif
+    m_presetConnections.clear();
+
+    if (m_resourceProvider->currentPreset()) {""", "validate brush engine before changing native state")
+    source = one(source, 'if (preset && m_resourceProvider->currentPreset()->name() != preset->name()) {',
+                 """if (preset && preset->settings() &&
+            (!m_resourceProvider->currentPreset() ||
+             m_resourceProvider->currentPreset()->name() != preset->name())) {""",
+                 "guard a missing foreground brush during resource notification")
+    header = paintop_box.with_suffix(".h")
+    header_source = header.read_text(encoding="utf-8")
+    header_source = one(header_source, "    KisPaintOpConfigWidget*             m_optionWidget {0};",
+                        """    KisPaintOpConfigWidget*             m_optionWidget {0};
+#ifdef Q_OS_ANDROID
+    bool m_mobileChangingPreset = false;
+#endif""", "track the native Android preset transaction")
+    header.write_text(header_source, encoding="utf-8")
     source = one(source, "    m_presetsEditor = new KisPaintOpPresetsEditor(",
                  """#ifdef Q_OS_ANDROID
     const bool mobileBrushEditor = !m_viewManager->mainWindow();

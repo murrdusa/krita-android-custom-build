@@ -309,10 +309,12 @@ public:
         if(auto *provider=resources()) {
             connect(provider,&KisCanvasResourceProvider::sigPaintOpPresetChanged,
                     this,[this](KisPaintOpPresetSP preset) {
-                if(!preset)return;
-                if(!m_internalChange && isActiveMode(m_slot))
-                    rememberPreset(m_slot,preset);
-                refresh();
+                if(!preset || m_internalChange || !isVisible())return;
+                QTimer::singleShot(0,this,[this,preset]() {
+                    if(!isVisible() || !resources() || resources()->currentPreset()!=preset)return;
+                    if(isActiveMode(m_slot))rememberPreset(m_slot,preset);
+                    refresh();
+                });
             });
         }
         m_refresh=new QTimer(this);
@@ -354,7 +356,7 @@ public:
             if(!preset)return false;
         }
         m_engine.freehandBrush();
-        if(provider->currentPreset()!=preset)setNativePreset(preset);
+        if(provider->currentPreset()!=preset && !setNativePreset(preset))return false;
         setEraser(false);
         m_slot=0;
         m_hasSelectedMode=true;
@@ -1050,11 +1052,11 @@ private:
     {
         m_engine.setEraser(enabled);
     }
-    void setNativePreset(KisPaintOpPresetSP preset)
+    bool setNativePreset(const KisPaintOpPresetSP &preset)
     {
-        if(!preset)return;
+        if(!preset || m_internalChange)return false;
         const QScopedValueRollback<bool> change(m_internalChange,true);
-        m_engine.selectBrushPreset(preset);
+        return m_engine.selectBrushPreset(preset);
     }
     void switchMode(int slot)
     {
@@ -1068,22 +1070,23 @@ private:
             preset=resources()->currentPreset();
         if(!preset)preset=firstPresetFor(slot);
         if(slot==2 && !preset)return;
-        if(preset)setNativePreset(preset);
+        if(preset && !setNativePreset(preset))return;
         setEraser(slot==1);
         m_slot=slot;
         m_hasSelectedMode=true;
         if(preset)rememberPreset(slot,preset);
         refresh();
     }
-    void usePreset(int slot,const KisPaintOpPresetSP &preset)
+    bool usePreset(int slot,const KisPaintOpPresetSP &preset)
     {
         m_engine.freehandBrush();
-        setNativePreset(preset);
+        if(!setNativePreset(preset))return false;
         setEraser(slot==1);
         m_slot=slot;
         m_hasSelectedMode=true;
         rememberPreset(slot,preset);
         refresh();
+        return true;
     }
 
     bool savePresetCopy(const KisPaintOpPresetSP &copy,const QString &name)
@@ -1526,9 +1529,10 @@ private:
         MobileTouchScroll::configureList(list);
         connect(categories,&QListWidget::itemClicked,panel,hideSearchHandle);
         connect(list,&QListView::clicked,panel,[=](const QModelIndex &index) {
+            const QPersistentModelIndex clicked(index);
             hideSearchHandle();
-            if(!valid() || list->property("_mobilePresetActionTap").toBool())return;
-            const auto selected=filter->mapToSource(index);
+            if(!clicked.isValid() || !valid() || list->property("_mobilePresetActionTap").toBool())return;
+            const auto selected=filter->mapToSource(clicked);
             const auto preset=source->resourceForIndex(selected.sibling(selected.row(),0))
                 .dynamicCast<KisPaintOpPreset>();
             if(!preset || !preset->valid())return;
@@ -1553,10 +1557,12 @@ private:
                 return;
             }
             clearExtras();
-            usePreset(slot,preset);
-            if(!panel->isVisible())return;
-            filter->reloadPersonalLists();
-            updateSelected();
+            QTimer::singleShot(0,panel,[=]() {
+                if(!panel->isVisible() || !valid() || !usePreset(slot,preset))return;
+                if(!panel->isVisible())return;
+                filter->reloadPersonalLists();
+                updateSelected();
+            });
         });
         connect(conversion,&QToolButton::clicked,panel,[=]() {
             if(!valid() || !*candidate)return;
@@ -1566,9 +1572,12 @@ private:
                 return;
             }
             clearExtras();
-            usePreset(2,result);
-            filter->reloadPersonalLists();
-            updateSelected();
+            QTimer::singleShot(0,panel,[=]() {
+                if(!panel->isVisible() || !valid() || !usePreset(2,result))return;
+                if(!panel->isVisible())return;
+                filter->reloadPersonalLists();
+                updateSelected();
+            });
         });
         const auto fit=[panel,categories]() {
             categories->setFixedWidth(qBound(82,panel->width()*28/100,134));

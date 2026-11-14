@@ -1,5 +1,7 @@
 # Krita Mobile Studio — current development state
 
+Brush preset changes from the picker run after the item-view event, with active-view and panel checks. Android's native preset switch rejects incomplete presets and reentrant changes, and brush UI observers refresh after native preset activation. This addresses crash risks found in source. No device crash trace was available. Brush-size drag defaults to **Tool Settings** and migrates the former Tools and Paint defaults once.
+
 ## November 13 follow-up — Color picker and lighting sphere
 
 Color opens a dismissible picker with Wheel, Values, Swatches and Lighting tabs plus recent stroke colors. Floating Color Wheel and Lighting Sphere are separate optional toolbar commands and can be positioned through Edit UI Layout. All three select Krita's native foreground color. The sphere shares its base color, light preset and contrast between the tab and floating widget.

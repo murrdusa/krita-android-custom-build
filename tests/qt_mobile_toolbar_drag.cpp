@@ -33,12 +33,12 @@ int main(int argc,char **argv)
     app.setApplicationName(QStringLiteral("KritaMobileToolbarDragTest"));
     QSettings().clear();
     require(MobileToolbarDrag::assignment("opacity")==QStringLiteral("color") &&
-            MobileToolbarDrag::assignment("size")==QStringLiteral("tools"),
+            MobileToolbarDrag::assignment("size")==QStringLiteral("tool-settings"),
             "new workspaces should enable distinct opacity and size drags");
-    QSettings().setValue(MobileToolbarDrag::preference("size"),QStringLiteral("paint"));
+    QSettings().setValue(MobileToolbarDrag::preference("size"),QStringLiteral("tools"));
     MobileToolbarDrag::migrateSizeDefault();
-    require(MobileToolbarDrag::assignment("size")==QStringLiteral("tools"),
-            "saved legacy default must move to Tools");
+    require(MobileToolbarDrag::assignment("size")==QStringLiteral("tool-settings"),
+            "saved legacy default must move to Tool Settings");
     QSettings().setValue(MobileToolbarDrag::preference("size"),QStringLiteral("paint"));
     MobileToolbarDrag::migrateSizeDefault();
     require(MobileToolbarDrag::assignment("size")==QStringLiteral("paint"),

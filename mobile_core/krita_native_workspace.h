@@ -218,7 +218,7 @@ public:
             connect(nativeErase,&QAction::toggled,this,[this]() {syncBrushModes();});
         if(auto *provider=m_engine.brushResources())
             connect(provider,&KisCanvasResourceProvider::sigPaintOpPresetChanged,
-                    this,[this]() {syncBrushModes();});
+                    this,[this]() {syncBrushModes();},Qt::QueuedConnection);
         syncBrushModes();
     }
 

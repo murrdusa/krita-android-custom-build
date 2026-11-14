@@ -25,17 +25,18 @@ inline QString preference(const char *parameter)
 }
 inline QString assignment(const char *parameter)
 {
-    const QString fallback=qstrcmp(parameter,"size")==0?QStringLiteral("tools"):
+    const QString fallback=qstrcmp(parameter,"size")==0?QStringLiteral("tool-settings"):
         qstrcmp(parameter,"opacity")==0?QStringLiteral("color"):QString();
     return QSettings().value(preference(parameter),fallback).toString();
 }
 inline void migrateSizeDefault()
 {
     QSettings settings;
-    const auto migrated=QStringLiteral("MobileStudio/toolbarDrag/toolsSizeDefault");
+    const auto migrated=QStringLiteral("MobileStudio/toolbarDrag/toolSettingsSizeDefault");
     if(settings.value(migrated,false).toBool())return;
     const auto key=preference("size");
-    if(settings.value(key).toString()==QStringLiteral("paint"))
+    const auto old=settings.value(key).toString();
+    if(old==QStringLiteral("paint") || old==QStringLiteral("tools"))
         settings.remove(key);
     settings.setValue(migrated,true);
 }

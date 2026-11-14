@@ -24,6 +24,7 @@
 #include "KisViewManager.h"
 #include "command_registry_port.h"
 #include "kis_paintop_box.h"
+#include "kis_canvas_resource_provider.h"
 
 class MobileCommandService final
 {
@@ -54,9 +55,11 @@ public:
         return a && a->isEnabled();
     }
     bool selectBrushPreset(const KisPaintOpPresetSP &preset) const {
-        if(!preset || !m_manager || !m_manager->paintOpBox())return false;
+        if(!preset || !preset->valid() || !preset->settings() ||
+           !hasDocument() || !m_manager->paintOpBox())return false;
         m_manager->paintOpBox()->resourceSelected(preset);
-        return true;
+        const auto *provider=m_manager->canvasResourceProvider();
+        return provider && provider->currentPreset()==preset;
     }
     void setEraser(bool enabled) const {
         if(QAction *eraser=action("erase_action"))
