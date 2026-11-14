@@ -997,9 +997,18 @@ private:
             const jsize size=env->GetArrayLength(array);
             if(size<=0 || size>8*1024*1024 ||
                (cancelled && cancelled->load()))return {};
-            QByteArray bytes(size,'\0');
+            QByteArray bytes;
+            bytes.resize(size);
+            if(bytes.size()!=size || (cancelled && cancelled->load()))return {};
             env->GetByteArrayRegion(array,0,size,
                                     reinterpret_cast<jbyte*>(bytes.data()));
+            // A provider/JVM failure can leave part of the buffer
+            // unreadable. Never decode incomplete or undefined bytes
+            // while a JNI exception is pending on this worker thread.
+            if(env->ExceptionCheck()) {
+                env->ExceptionClear();
+                return {};
+            }
             return decodePreview(bytes,cancelled);
         }
         const QFileInfo entry(path);
