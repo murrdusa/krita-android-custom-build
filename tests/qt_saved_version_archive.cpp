@@ -733,6 +733,37 @@ int main(int argc,char **argv)
                 MobileSavedVersionArchive::maxVersions(),
             "corrupt intermediate history displaced the older valid KRA");
 
+    // An oversized sparse archive must not consume an arithmetic quota
+    // slot or cause cleanup to discard newer verified saved content.
+    const QString quotaRoot=temp.filePath(QStringLiteral("sparse-quota"));
+    const QString quotaFolder=MobileSavedVersionArchive::folderFor(
+        source,quotaRoot);
+    require(QDir().mkpath(quotaFolder),
+            "create sparse quota fixture");
+    const QString sparseOld=QDir(quotaFolder).filePath(
+        QStringLiteral("20000101T000000000-oversized.kra"));
+    {
+        QFile large(sparseOld);
+        require(large.open(QIODevice::WriteOnly) &&
+                large.write(QByteArray::fromHex("504b0304"))==4,
+                "create sparse quota archive");
+        if(large.resize(MobileSavedVersionArchive::maxBytes()+1)) {
+            large.close();
+            require(MobileSavedVersionArchive::snapshot(source,quotaRoot),
+                    "oversized historical entry prevented new checkpoint");
+            const auto quotaEntries=MobileSavedVersionArchive::list(
+                source,quotaRoot);
+            bool validSaved=false;
+            for(const auto &item:quotaEntries) {
+                if(item.bytes==initial.size() &&
+                   load(item.path)==initial)validSaved=true;
+            }
+            require(validSaved && !QFile::exists(sparseOld),
+                    "retention failed to evict oversized older archive");
+        } else large.close();
+    }
+    QFile::remove(sparseOld);
+
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
                " provider identity, SAF tree normalization and legacy migration";
     return 0;
