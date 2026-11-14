@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — retain completed drafts after failed atomic publication
+
+- A completed autosave export no longer gets deleted when the final rename into its private draft path fails. Instead it is renamed to a fresh private draft identity, keeping it visible in the recovery browser after app restart; its saved-project association is copied when available. If both renames fail, the completed staging file is retained rather than deleted.
+- The Qt saved-version regression simulates a blocked destination directory and verifies the rescued KRA data and project association survive with an independently discoverable draft.
+- **Verification:** earlier recovery revision `4c7fef2d10d9d2c24ed63127ef9d5fb7bb8bbb34` has an exact local WSL SUCCESS. This new batch awaits exact-SHA WSL/Qt regression verification. No APK upload.
+
+
 ## November 14 — native canvas registration identity after reentrant activation
 
 - Canvas adoption now verifies the original registration token and document identity after Qt's synchronous first-tab activation; re-registering the same QWidget under a new document cannot falsely satisfy the earlier adopt request.
