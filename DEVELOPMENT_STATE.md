@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — repair thumbnail-cache retention regression fixture
+
+- The new early PNG-signature filter correctly rejects three-byte fake files. The existing 620-entry newest-first cache retention regression, however, populated its fixture with precisely these fake `"png"` bytes, so that test no longer exercised the bounded 512-entry heap after the signature change.
+- Updated the historical retention fixture to write the eight-byte PNG signature into each file. The test continues to verify that a 620-file backlog retains the newest 512 entries, while separate tests cover empty, oversized, and invalid-signature files being evicted. The fixture intentionally tests cache retention, not full PNG decoding.
+- **Verification:** the local WSL Android watcher reported SUCCESS for exact commit `4cb252212cf7c23d755d102c6ee0edddcba7c6e9` at 2026-11-14 15:47:22 UTC. The watcher reports Android compilation, not standalone Qt regression execution. No APK upload requested in this development turn.
+
 ## November 14 — reject corrupt nonempty PNGs before thumbnail retention selection
 
 - Audited the new size-filtered 512-entry thumbnail retention heap. Nonempty corrupt files smaller than the 32 MiB per-file limit could still occupy the newest candidates, evicting older valid thumbnails during startup cleanup. `MobileProjectPreviewCache::pruneLocked()` now performs a bounded eight-byte PNG signature check for candidates before admitting them to the top-512 heap. The second streaming pass removes the rejected cache PNGs. No image decode is performed during pruning; 128 MiB quota remains unchanged.
