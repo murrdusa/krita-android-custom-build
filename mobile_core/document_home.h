@@ -705,10 +705,11 @@ private:
     void deleteProject(const QString &path,const QString &title)
     {
         const QString key=projectKey(path);
+        const QPointer<MobileDocumentHome> home(this);
         if(QMessageBox::question(this,i18n("Delete drawing?"),
             i18n("Permanently delete %1 from storage?",title),
             QMessageBox::Yes|QMessageBox::Cancel,QMessageBox::Cancel)!=QMessageBox::Yes ||
-            !isVisible())return;
+            !home || !home->isVisible())return;
         for(const auto &entry:m_engine.openDocuments()) {
             const auto *document=qobject_cast<KisDocument*>(entry.document.data());
             if(!document)continue;
@@ -787,11 +788,12 @@ private:
                 i18n("Close the drawing without saving to discard its draft."));
             return;
         }
+        const QPointer<MobileDocumentHome> home(this);
         if(QMessageBox::question(this,i18n("Discard draft?"),
             i18n("Discard the unsaved changes in %1?",
                  MobileDraftRecovery::title(QFileInfo(path))),
             QMessageBox::Discard|QMessageBox::Cancel,QMessageBox::Cancel)
-                !=QMessageBox::Discard)return;
+                !=QMessageBox::Discard || !home || !home->isVisible())return;
         if(draftIsOpen(path) || !MobileDraftRecovery::isDraft(path))return;
         if(!QFile::remove(path)) {
             QMessageBox::warning(this,i18n("Could not discard draft"),
