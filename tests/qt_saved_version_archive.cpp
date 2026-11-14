@@ -40,6 +40,11 @@ int main(int argc,char **argv)
     QCoreApplication app(argc,argv);
     QTemporaryDir temp;
     require(temp.isValid(),"temporary test directory unavailable");
+    require(MobileSavedVersionArchive::privateVersionRoot(QString()).isEmpty(),
+            "empty Android app-data root resolved to a relative archive directory");
+    require(MobileSavedVersionArchive::privateVersionRoot(temp.path())==
+            QDir(temp.path()).filePath(QStringLiteral("saved-versions")),
+            "valid private archive root was not preserved");
     const QString source=QDir(temp.path()).filePath(
         QStringLiteral("My Drawing.kra"));
     const QString store=QDir(temp.path()).filePath(
