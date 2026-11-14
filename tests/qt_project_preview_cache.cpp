@@ -54,5 +54,28 @@ int main(int argc,char **argv)
        corrupt.write("not a png")!=9)return 8;
     corrupt.close();
     if(!edgeCache.load(source,8).isNull())return 9;
+    // A high-entropy PNG can exceed the decoder's 32 MiB disk limit
+    // even when its pixel dimensions are otherwise allowed. Avoid
+    // publishing a cache entry that load() will always reject.
+    QImage noisy(3500,3500,QImage::Format_RGB32);
+    if(noisy.isNull())return 10;
+    quint32 seed=0x12345678u;
+    for(int y=0;y<noisy.height();++y) {
+        auto *line=reinterpret_cast<QRgb*>(noisy.scanLine(y));
+        for(int x=0;x<noisy.width();++x) {
+            seed^=seed<<13;
+            seed^=seed>>17;
+            seed^=seed<<5;
+            line[x]=qRgb(seed&255,(seed>>8)&255,(seed>>16)&255);
+        }
+    }
+    edgeCache.store(source,9,noisy);
+    const QByteArray noisyKey=QCryptographicHash::hash(
+        source.toUtf8()+'\\n'+QByteArray::number(9),
+        QCryptographicHash::Sha256).toHex();
+    const QString noisyFile=QDir(directory.filePath(QStringLiteral("edge"))).filePath(
+        QString::fromLatin1(noisyKey)+QStringLiteral(".png"));
+    if(QFile::exists(noisyFile) || !edgeCache.load(source,9).isNull())
+        return 11;
     qInfo("PASS: thumbnail revisions, cancellation, retention, clock skew and invalid images");
 }
