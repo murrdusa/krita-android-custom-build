@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — prevent invalid thumbnails evicting valid previews
+
+- Audited the bounded 512-entry preview-cache heap. Zero-byte and over-32-MiB PNG files counted among the newest 512 candidates despite being unopenable by `MobileProjectPreviewCache::load()`. An interrupted cache with hundreds of recent invalid entries could therefore evict an older valid thumbnail. `pruneLocked()` now discards entries outside the existing cache file-size limits before selecting newest candidates. Its second streaming pass removes invalid PNGs; 512 entries and 128 MiB remain the final quotas.
+- Added a Qt regression with 520 newer zero-byte PNGs and an older valid stored preview. A startup prune must remove all invalid files and retain/decode the older usable preview.
+- **Verification:** last reported local WSL build was SUCCESS for `c08a296ebbfd918df64db50c9c2086e9ccaa8c45`. Latest preview-cache optimization and tests await exact-SHA local WSL compilation/regression result. No APK uploaded as part of this development task.
+
 ## November 14 — bound thumbnail-cache retention memory independently of folder size
 
 - `MobileProjectPreviewCache::pruneLocked()` previously called `QDir::entryInfoList("*.png", QDir::Time)`, allocating and sorting metadata for every file in the cache during gallery startup and periodic publications. The cache retains no more than 512 entries and 128 MiB, so very large interrupted cache directories need not consume unbounded metadata RAM.
