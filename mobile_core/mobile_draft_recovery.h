@@ -128,13 +128,16 @@ public:
                 cursor.reset();
                 cursorFolder=folder;
             }
+            if(!cursor)
+                cursor.reset(new QDirIterator(folder,
+                    {QStringLiteral("*.pending.kra")},
+                    QDir::Files|QDir::Readable|QDir::NoSymLinks));
             for(int i=0;i<maxOrphanCandidatesPerScan;++i) {
-                if(!cursor || !cursor->hasNext()) {
-                    cursor.reset(new QDirIterator(folder,
-                        {QStringLiteral("*.pending.kra")},
-                        QDir::Files|QDir::Readable|QDir::NoSymLinks));
-                    // A missing/empty directory has no candidates.
-                    if(!cursor->hasNext())break;
+                if(!cursor->hasNext()) {
+                    // Restart only on a later gallery visit. Otherwise
+                    // a small directory is repeatedly validated 128 times.
+                    cursor.reset();
+                    break;
                 }
                 cursor->next();
                 candidates.append(cursor->fileInfo());
