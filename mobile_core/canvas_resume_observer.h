@@ -33,10 +33,7 @@ public:
         // On Android the first QWidget::Show can precede exposure of
         // the native surface. That first exposure must activate and
         // repaint the real OpenGL canvas just like a resume does.
-        if(QWindow *surface=window->windowHandle()) {
-            observer->m_surface=surface;
-            surface->installEventFilter(observer);
-        }
+        observer->syncSurface();
         observer->request();
         return observer;
     }
@@ -68,16 +65,26 @@ protected:
             request();
         }
         if(watched==m_window.data() &&
-           event->type()==QEvent::WinIdChange && !m_surface) {
-            if(QWindow *surface=m_window->windowHandle()) {
-                m_surface=surface;
-                surface->installEventFilter(this);
-            }
+           event->type()==QEvent::WinIdChange) {
+            // Android surface recreation can replace a still-live
+            // QWindow, not merely a destroyed/null previous handle.
+            // Stop observing the old surface and resume on the new one.
+            syncSurface();
+            request();
         }
         return QObject::eventFilter(watched,event);
     }
 
 private:
+    void syncSurface()
+    {
+        QWindow *next=m_window?m_window->windowHandle():nullptr;
+        if(next==m_surface.data())return;
+        if(m_surface)m_surface->removeEventFilter(this);
+        m_surface=next;
+        if(m_surface)m_surface->installEventFilter(this);
+    }
+
     MobileCanvasResumeObserver(
         QWidget *window,QWidget *root,QObject *owner,
         std::function<void()> activate)
