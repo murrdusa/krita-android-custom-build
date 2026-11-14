@@ -509,9 +509,6 @@ private:
         auto *panel=new MobileTransientPanel(parentWidget());
         panel->setAccessibleName(i18n("Brush blending mode"));
         panel->setObjectName(QStringLiteral("mobileBrushComposite"));
-        panel->setStyleSheet(QStringLiteral(
-            "QFrame#mobileBrushComposite,QTreeWidget{background:#252529;color:#f4f4f5;}"
-            "QTreeWidget::item{min-height:40px;}"));
         auto *layout=new QVBoxLayout(panel);
         auto *tree=new QTreeWidget(panel);
         tree->setHeaderHidden(true);
@@ -1219,6 +1216,7 @@ private:
                 QSettings settings;
                 const QString key=presetCategoryKey(id);
                 QDialog dialog(parentWidget());
+                MobileTouchScroll::styleMenuDialog(dialog,QSize(380,300));
                 dialog.setWindowTitle(i18n("Move brush"));
                 auto *layout=new QVBoxLayout(&dialog);
                 auto *choices=new QListWidget(&dialog);
@@ -1367,15 +1365,9 @@ private:
         panel->setFocusPolicy(Qt::StrongFocus);
         panel->setObjectName(QStringLiteral("mobilePresetBrowser"));
         panel->setAccessibleName(slot==1?i18n("Eraser presets"):slot==2?i18n("Blend presets"):i18n("Brush presets"));
-        panel->setStyleSheet(QStringLiteral(
-            "QFrame#mobilePresetBrowser{background:#25262b;border:1px solid #44464f;border-radius:12px;}"
-            "QListWidget#brushCategories{background:#202126;color:#bfc3ce;border:0;border-radius:8px;outline:0;}"
-            "QListWidget#brushCategories::item{min-height:40px;padding:0 8px;border-radius:6px;}"
-            "QListWidget#brushCategories::item:selected{background:#353b4b;color:#e0e7fb;}"
-            "QListView#brushRows{background:#25262b;color:#f1f2f5;border:0;outline:0;}"
-            "QLineEdit,QToolButton{background:#30323b;color:#f1f2f5;border:0;border-radius:6px;"
-            "min-height:36px;padding:2px 8px;}"
-            "QToolButton:disabled{color:#a0a1aa;}QLabel{color:#f1f2f5;}"));
+        panel->setStyleSheet(MobileMenuStyle::panel()+QStringLiteral(
+            "QListWidget#brushCategories{background:#202126;color:#bfc3ce;border-radius:8px;}"
+            "QListWidget#brushCategories::item:selected{background:#394459;color:#e0e7fb;}"));
         auto *layout=new QHBoxLayout(panel);
         layout->setContentsMargins(7,7,7,7);
         layout->setSpacing(6);

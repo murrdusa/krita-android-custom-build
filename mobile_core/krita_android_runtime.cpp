@@ -84,8 +84,7 @@ protected:
         m_last=global;
         if(start) {
             m_target=textEditor(qobject_cast<QWidget*>(object));
-            if(!m_target && event->type()!=QEvent::MouseButtonPress)
-                m_target=textEditor(QApplication::widgetAt(global));
+            if(!m_target)m_target=textEditor(QApplication::widgetAt(global));
             m_start=global;
         } else {
             if((global-m_start).manhattanLength()>=QApplication::startDragDistance())
@@ -94,13 +93,14 @@ protected:
                 if(m_target && m_target->rect().contains(m_target->mapFromGlobal(global))) {
                     auto *editor=m_target.data();
                     QTimer::singleShot(0,editor,[editor]() {
-                        if(!editor->isVisible() || !editor->isEnabled() ||
-                           !textEditor(editor))return;
+                        if(!editor->isVisible() || !textEditor(editor))return;
                         editor->setFocus(Qt::MouseFocusReason);
-                        if(!editor->hasFocus())return;
-                        auto *input=QGuiApplication::inputMethod();
-                        input->update(Qt::ImQueryAll);
-                        input->show();
+                        QTimer::singleShot(0,editor,[editor]() {
+                            if(!editor->isVisible() || !editor->hasFocus() || !textEditor(editor))return;
+                            auto *input=QGuiApplication::inputMethod();
+                            input->update(Qt::ImEnabled|Qt::ImHints|Qt::ImCursorRectangle);
+                            input->show();
+                        });
                     });
                 }
                 m_target.clear();

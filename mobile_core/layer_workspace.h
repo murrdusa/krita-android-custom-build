@@ -1129,6 +1129,7 @@ private:
             const auto &registry=KoCompositeOpRegistry::instance();
             const auto modes=registry.getCompositeOps(colorSpace);
             QDialog dialog(this);
+            MobileTouchScroll::styleMenuDialog(dialog,QSize(420,360));
             dialog.setWindowTitle(i18n("Layer blending mode"));
             auto *layout=new QVBoxLayout(&dialog);
             auto *tree=new QTreeWidget(&dialog);
@@ -2615,6 +2616,7 @@ private:
         // never pass nodes from different parents to one grouping command.
         const KisNodeSP parent=origin->parent();
         QDialog dialog(window());
+        MobileTouchScroll::styleMenuDialog(dialog,QSize(440,540));
         dialog.setWindowTitle(i18n("Group layers"));
         auto *layout=new QVBoxLayout(&dialog);
         layout->addWidget(new QLabel(i18n("Tap the layers to put in the group."),&dialog));

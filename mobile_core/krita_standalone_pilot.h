@@ -37,6 +37,7 @@
 #include "krita_engine_session.h"
 #include "krita_native_workspace.h"
 #include "native_command_layout.h"
+#include "kis_config.h"
 #include <filter/kis_filter.h>
 #include <filter/kis_filter_registry.h>
 
@@ -50,6 +51,15 @@ public:
            window->nativeViewPort())return false;
 
         QSettings gestureSettings;
+        const QString cursorMigration=QStringLiteral("MobileStudio/hiddenBrushCursor");
+        if(!gestureSettings.value(cursorMigration,false).toBool()) {
+            KisConfig config(false);
+            config.setNewOutlineStyle(OUTLINE_NONE);
+            config.setEraserOutlineStyle(OUTLINE_NONE);
+            config.setNewCursorStyle(CURSOR_STYLE_NO_CURSOR);
+            config.setEraserCursorStyle(CURSOR_STYLE_NO_CURSOR);
+            gestureSettings.setValue(cursorMigration,true);
+        }
         const QString tapKey=QStringLiteral("TabletUi/doubleTapMs");
         const QString migration=QStringLiteral("TabletUi/doubleTapDefaultV4");
         if(!gestureSettings.value(migration,false).toBool()) {

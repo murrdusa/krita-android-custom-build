@@ -19,12 +19,7 @@ inline QAction *mobilePickAction(QWidget *parent,const QMenu &menu)
     QPointer<QDialog> dialog(new QDialog(parent));
     const auto cleanup=qScopeGuard([&dialog]() {delete dialog.data();});
     dialog->setWindowTitle(menu.title());
-    dialog->setStyleSheet(QStringLiteral(
-        "QDialog,QListWidget{background:#252529;color:#f4f4f5;}"
-        "QListWidget::item{min-height:44px;padding:0 9px;}"
-        "QListWidget::item:disabled{color:#909097;}"
-        "QListWidget::item:selected{background:#3b586f;color:white;}"
-        "QPushButton{background:#34343a;color:#f4f4f5;min-height:44px;}"));
+    MobileTouchScroll::styleMenuDialog(*dialog,QSize(320,440));
     auto *layout=new QVBoxLayout(dialog.data());
     auto *list=new QListWidget(dialog.data());
     MobileTouchScroll::configureList(list);
@@ -70,16 +65,11 @@ inline QAction *mobilePickAction(QWidget *parent,const QMenu &menu)
 inline MobileTransientPanel *mobileShowActionList(QWidget *host,QWidget *anchor,const QMenu &menu,
                                  QObject *receiver,std::function<void(const QVariant &)> picked)
 {
-    if(MobileTransientPanel::closeForAnchor(host,anchor))return nullptr;
+    if(!host || !receiver || !picked ||
+       MobileTransientPanel::closeForAnchor(host,anchor))return nullptr;
     auto *panel=new MobileTransientPanel(host);
     panel->setObjectName(QStringLiteral("mobileContextOptionList"));
     panel->setAccessibleName(menu.title());
-    panel->setStyleSheet(QStringLiteral(
-        "QFrame#mobileContextOptionList,QListWidget{background:#252529;color:#f4f4f5;"
-        "border:1px solid #55555c;border-radius:8px;}"
-        "QListWidget::item{min-height:40px;padding:0 9px;}"
-        "QListWidget::item:disabled{color:#909097;}"
-        "QListWidget::item:selected{background:#3b586f;color:white;}"));
     auto *layout=new QVBoxLayout(panel);
     layout->setContentsMargins(4,4,4,4);
     auto *list=new QListWidget(panel);
@@ -96,7 +86,8 @@ inline MobileTransientPanel *mobileShowActionList(QWidget *host,QWidget *anchor,
         }
         auto *item=new QListWidgetItem(action->icon(),
             (action->isCheckable() && action->isChecked()?QStringLiteral("✓  "):QString())+
-            action->text(),list);
+            QString(action->text()).remove(QLatin1Char('&'))+
+            (action->menu()?QStringLiteral("  ›"):QString()),list);
         item->setData(Qt::UserRole,action->data());
         if(!action->isEnabled())item->setFlags(Qt::NoItemFlags);
     }
@@ -108,9 +99,54 @@ inline MobileTransientPanel *mobileShowActionList(QWidget *host,QWidget *anchor,
         if(!alive || !item || !(item->flags()&Qt::ItemIsEnabled))return;
         const QVariant value=item->data(Qt::UserRole);
         panel->close();
-        QTimer::singleShot(0,alive,[picked,value]() {picked(value);});
+        if(alive)QTimer::singleShot(0,alive.data(),[picked,value]() {picked(value);});
     });
-    panel->anchorTo(anchor,QSize(245,qMin(330,10+41*list->count())));
+    panel->anchorTo(anchor,QSize(300,qMin(430,12+42*list->count())),true);
     panel->present();
     return panel;
+}
+
+// Expose native QAction trees through the same touch list as contextual menus.
+inline void mobileShowMenu(QWidget *host,QWidget *anchor,QMenu *source,QVector<QPointer<QMenu>> history={})
+{
+    if(!host || !source || MobileTransientPanel::closeForAnchor(host,anchor))return;
+    const QPointer<QWidget> root(host),opener(anchor);
+    const QPointer<QMenu> menu(source);
+    // Dynamic native menus populate their actions before presentation.
+    Q_EMIT menu->aboutToShow();
+    if(!root || !menu)return;
+    QMenu rows(menu->title());
+    if(!menu->title().isEmpty()) {
+        auto *heading=rows.addAction(menu->title());
+        heading->setProperty("mobileSectionHeading",true);
+    }
+    if(!history.isEmpty())rows.addAction(QObject::tr("‹ Back"))->setData(-1);
+    QVector<QPointer<QAction>> actions;
+    for(auto *action:menu->actions()) {
+        if(!action || !action->isVisible() || action->isSeparator())continue;
+        auto *row=rows.addAction(action->icon(),action->text());
+        row->setData(actions.size());
+        row->setEnabled(action->isEnabled());
+        row->setCheckable(action->isCheckable());
+        row->setChecked(action->isChecked());
+        if(action->menu())row->setText(row->text()+QStringLiteral("  ›"));
+        actions.append(action);
+    }
+    if(actions.isEmpty() && history.isEmpty())return;
+    mobileShowActionList(root,opener,rows,menu,[root,opener,menu,history,actions](const QVariant &value) mutable {
+        if(!root || !root->isVisible())return;
+        if(value.toInt()==-1) {
+            if(!history.isEmpty()) {
+                const auto previous=history.takeLast();
+                if(previous)mobileShowMenu(root,opener,previous,history);
+            }
+            return;
+        }
+        const auto chosen=actions.value(value.toInt());
+        if(!chosen || !chosen->isEnabled() || !chosen->isVisible())return;
+        if(auto *submenu=chosen->menu()) {
+            history.append(menu);
+            mobileShowMenu(root,opener,submenu,history);
+        } else chosen->trigger();
+    });
 }

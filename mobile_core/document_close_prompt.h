@@ -2,6 +2,7 @@
 #pragma once
 
 #include <QDialog>
+#include "touch_scroll.h"
 #include <QElapsedTimer>
 #include <QLabel>
 #include <QMessageBox>
@@ -21,6 +22,7 @@ inline int mobileConfirmDocumentClose(QWidget *parent,const QString &name)
     // frames unwind, potentially corrupting memory.
     const QPointer<QWidget> host(parent);
     QPointer<QDialog> dialog(new QDialog(parent));
+    MobileTouchScroll::styleMenuDialog(*dialog,QSize(420,240));
     dialog->setWindowTitle(i18n("Unsaved changes"));
     auto *layout=new QVBoxLayout(dialog.data());
     auto *explanation=new QLabel(i18n("Save changes to %1 before closing?",name),

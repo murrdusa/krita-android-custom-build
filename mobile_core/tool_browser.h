@@ -230,13 +230,9 @@ public:
         panel->setObjectName(QStringLiteral("mobileToolBrowser"));
         panel->setOpener(opener,action);
         panel->setAccessibleName(i18n("Tools"));
-        panel->setStyleSheet(QStringLiteral(
-            "QFrame#mobileToolBrowser{background:#272729;border:1px solid #55555c;border-radius:9px;}"
-            "QLabel{color:#efeff0;}"
-            "QScrollArea,QWidget#toolTiles{background:#272729;border:0;}"
-            "QToolButton{background:#303035;color:#efeff0;border:0;border-radius:5px;padding:0;}"
-            "QToolButton:checked,QToolButton:pressed{background:#45454c;}"
-            "QToolButton:disabled,QLabel:disabled{color:#929299;}"
+        panel->setStyleSheet(MobileMenuStyle::panel()+QStringLiteral(
+            "QWidget#toolTiles{background:#25262b;border:0;}"
+            "QToolButton{padding:0;min-height:0;}"
             "QToolButton#toolFavorite{font-size:18px;}"
             "QToolButton#toolFavorite:checked{color:#ffd26a;}"));
         auto *layout=new QVBoxLayout(panel);

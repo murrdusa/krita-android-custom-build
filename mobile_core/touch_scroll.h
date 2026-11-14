@@ -12,6 +12,7 @@
 #include <QMouseEvent>
 #include <QPersistentModelIndex>
 #include <QScrollBar>
+#include <QScopeGuard>
 #include <QSlider>
 #include <QStyleOptionSlider>
 #include <QStylePainter>
@@ -24,6 +25,7 @@
 #include <QTimer>
 #include <QTouchEvent>
 #include <QTabletEvent>
+#include "menu_style.h"
 
 namespace MobileTouchScroll
 {
@@ -416,17 +418,7 @@ inline void configure(QAbstractScrollArea *area)
 inline void styleMenuDialog(QDialog &dialog,const QSize &preferred)
 {
     dialog.setWindowFlag(Qt::FramelessWindowHint,true);
-    dialog.setStyleSheet(QStringLiteral(
-        "QDialog{background:#25262b;color:#f1f2f5;}"
-        "QScrollArea,QListWidget,QListView{background:#25262b;color:#f1f2f5;border:0;}"
-        "QLabel,QCheckBox{color:#f1f2f5;}"
-        "QComboBox,QSpinBox,QDoubleSpinBox,QLineEdit,QPushButton{background:#30323b;color:#f1f2f5;"
-        "border:1px solid #44464f;border-radius:7px;padding:4px 8px;min-height:36px;}"
-        "QSpinBox QLineEdit,QDoubleSpinBox QLineEdit{border:0;padding:0;min-height:0;}"
-        "QPushButton:pressed,QListView::item:selected{background:#394459;}"
-        "QPushButton:disabled{color:#989da9;}"
-        "QTabBar::tab{background:#30323b;color:#bfc3ce;padding:0 10px;min-height:40px;}"
-        "QTabBar::tab:selected{background:#394459;color:#f1f2f5;}"));
+    dialog.setStyleSheet(MobileMenuStyle::dialog());
     if(auto *parent=dialog.parentWidget()) {
         const QSize room=parent->window()->size()-QSize(20,20);
         dialog.resize(preferred.boundedTo(room.expandedTo(QSize(1,1))));
@@ -462,7 +454,10 @@ public:
     void showPopup() override
     {
         if(count()==0)return;
-        QDialog choices(this);
+        const QPointer<MobileTouchComboBox> self(this);
+        QPointer<QDialog> dialog(new QDialog(this));
+        const auto cleanup=qScopeGuard([&dialog]() {delete dialog.data();});
+        auto &choices=*dialog;
         MobileTouchScroll::styleMenuDialog(choices,QSize(qMax(width(),240),360));
         if(m_anchored)choices.setWindowFlags(Qt::Popup|Qt::FramelessWindowHint);
         auto *layout=new QVBoxLayout(&choices);
@@ -508,12 +503,13 @@ public:
             choices.move(qBound(bounds.left(),top.x(),bounds.right()+1-choices.width()),
                          qBound(bounds.top(),y,bounds.bottom()+1-choices.height()));
         }
-        if(choices.exec()==QDialog::Accepted && selected>=0 && selected<count()) {
+        const int result=choices.exec();
+        if(dialog && self && result==QDialog::Accepted && selected>=0 && selected<count()) {
             // A user selection on a regular QComboBox emits activated()
             // even if the choice was already current. Setting the index
             // alone only emits currentIndexChanged().
             setCurrentIndex(selected);
-            Q_EMIT activated(selected);
+            if(self)Q_EMIT activated(selected);
         }
     }
 

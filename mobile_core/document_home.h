@@ -295,8 +295,7 @@ public:
             QStringLiteral("MobileStudio/projectSortOrder"),previousSort).toInt(),int(Starred)));
         const auto favorites=settings.value(QStringLiteral("MobileStudio/starredProjects")).toStringList();
         for(const auto &identity:favorites)m_starred.insert(identity);
-        auto *sortMenu=new QMenu(m_sort);
-        sortMenu->setStyleSheet(QStringLiteral("QMenu::item{min-height:32px;padding:8px 14px;}"));
+        auto *sortMenu=new QMenu(i18n("Sort projects"),m_sort);
         for(const auto order:{Newest,Name,Starred}) {
             auto *choice=sortMenu->addAction(sortLabel(order));
             connect(choice,&QAction::triggered,this,[this,order]() {
@@ -306,7 +305,9 @@ public:
                 sortProjects();
             });
         }
-        m_sort->setMenu(sortMenu);
+        connect(m_sort,&QPushButton::clicked,this,[this,sortMenu]() {
+            mobileShowMenu(this,m_sort,sortMenu);
+        });
         m_sort->setText(sortLabel(m_sortOrder));
         tools->addWidget(m_sort);
         layout->addLayout(tools);
@@ -451,6 +452,7 @@ public:
         // A stack-allocated QObject child would then be deleted by Qt's
         // parent destructor, corrupting the enclosing stack frame.
         QPointer<QDialog> dialog(new QDialog(window()));
+        MobileTouchScroll::styleMenuDialog(*dialog,QSize(440,560));
         dialog->setWindowTitle(i18n("Saved versions"));
         dialog->setMinimumWidth(qMin(300,qMax(1,window()->width()-24)));
         auto *layout=new QVBoxLayout(dialog.data());

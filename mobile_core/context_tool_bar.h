@@ -736,7 +736,6 @@ private:
         auto *control=button(QObject::tr("Mode"));
         connect(control,&QToolButton::clicked,this,[this,control,choices]() {
             QMenu menu;
-            styleMenu(menu);
             const quint64 generation=m_generation;
             const QPointer<QObject> invokedTool=m_nativeTool;
             for(int i=0;i<choices.size();++i) {
@@ -997,9 +996,6 @@ private:
             if(MobileTransientPanel::closeForAnchor(parentWidget(),control))return;
             auto *panel=new MobileTransientPanel(parentWidget());
             panel->setObjectName(QStringLiteral("mobileNumericOption"));
-            panel->setStyleSheet(QStringLiteral(
-                "QFrame#mobileNumericOption{background:#252529;border:1px solid #55555c;border-radius:8px;}"
-                "QLabel{color:#f4f4f5;}"));
             auto *layout=new QVBoxLayout(panel);
             auto *value=new QLabel(panel);
             auto *slider=new MobileTouchSlider(panel);
@@ -1105,15 +1101,6 @@ private:
         const QString shown=metrics.elidedText(text,Qt::ElideRight,limit);
         control->setText(shown);
         control->setFixedWidth(qMax(43,metrics.horizontalAdvance(shown)+12));
-    }
-
-    static void styleMenu(QMenu &menu)
-    {
-        menu.setStyleSheet(QStringLiteral(
-            "QMenu{background:#252529;color:#f4f4f5;border:1px solid #55555c;}"
-            "QMenu::item{min-height:32px;padding:7px 14px;}"
-            "QMenu::item:selected{background:#45454f;}"
-            "QMenu::item:disabled{color:#98989f;}"));
     }
 
     QString m_id;

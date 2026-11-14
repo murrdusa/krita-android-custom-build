@@ -93,23 +93,10 @@ public:
         more->setObjectName(QStringLiteral("_mobileNativeMoreButton"));
         row->addWidget(more);
         auto *menu=new QMenu(more);
-        menu->setObjectName(QStringLiteral("_mobileNativeSettingsMenu"));
-        const QString popupStyle=QStringLiteral(
-            "QMenu{background:#252529;color:#f4f4f5;border:1px solid #55555c;padding:3px;}"
-            "QMenu::item{color:#f4f4f5;padding:8px 14px;min-height:28px;}"
-            "QMenu::item:selected{background:#45454f;}"
-            "QMenu::item:disabled{color:#9a9aa2;}");
-        menu->setStyleSheet(popupStyle);
-        menu->setNoReplayFor(more);
-        // Open the real menu directly. Associating its menuAction with the
-        // tool button can make Qt wrap it in a second, unstyled menu.
-        QObject::connect(settings,&QAction::triggered,menu,[more,menu]() {
-            if(menu->isVisible()) {menu->close();return;}
-            const int x=more->width()-menu->sizeHint().width();
-            menu->popup(more->mapToGlobal(QPoint(x,more->height())));
+        menu->setTitle(QObject::tr("Settings and commands"));
+        QObject::connect(settings,&QAction::triggered,menu,[canvas,more,menu]() {
+            mobileShowMenu(canvas,more,menu);
         });
-        QObject::connect(menu,&QMenu::aboutToShow,more,[more]() {more->setDown(true);});
-        QObject::connect(menu,&QMenu::aboutToHide,more,[more]() {more->setDown(false);});
 
         auto *edit=menu->addAction(QObject::tr("Edit UI Layout…"));
         QObject::connect(edit,&QAction::triggered,layout,[layout]() {
@@ -117,7 +104,6 @@ public:
         });
         auto *toolbars=menu->addMenu(QObject::tr("Toolbars"));
         layout->m_toolbarsMenu=toolbars;
-        toolbars->setStyleSheet(popupStyle);
         auto *commandsAction=toolbars->addAction(QObject::tr("Customize toolbar commands…"));
         QObject::connect(commandsAction,&QAction::triggered,layout,[layout]() {
             QTimer::singleShot(0,layout,[layout]() {layout->editToolbar();});
@@ -133,13 +119,11 @@ public:
             });
         }
         auto *drawing=toolbars->addMenu(QObject::tr("Drawing commands"));
-        drawing->setStyleSheet(popupStyle);
         for(const auto &id:defaults)
             if(auto action=commands.value(id))drawing->addAction(action);
         drawing->menuAction()->setVisible(!drawing->isEmpty());
         for(QAction *action:moreActions) {
             if(!action)continue;
-            if(QMenu *submenu=action->menu())submenu->setStyleSheet(popupStyle);
             menu->addAction(action);
         }
 
@@ -944,12 +928,7 @@ private:
         auto *cancel=new QDialogButtonBox(QDialogButtonBox::Cancel,&dialog);
         layout->addWidget(cancel);
         QObject::connect(cancel,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
-        search->setFocus(Qt::OtherFocusReason);
-#ifdef Q_OS_ANDROID
-        QTimer::singleShot(0,search,[search]() {
-            if(search->hasFocus())QGuiApplication::inputMethod()->show();
-        });
-#endif
+        cancel->button(QDialogButtonBox::Cancel)->setFocus(Qt::OtherFocusReason);
         return dialog.exec()==QDialog::Accepted?selected:QString();
     }
 

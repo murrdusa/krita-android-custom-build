@@ -58,6 +58,14 @@ public:
         heading->setStyleSheet(
             QStringLiteral("font-size:19px;font-weight:600;"));
         layout->addWidget(heading);
+        // Keep the primary text field outside the kinetic scroll viewport
+        // so a name tap goes to the editor even while the options are scrolling.
+        auto *name=new QLineEdit(&dialog);
+        name->setAccessibleName(i18n("Canvas name"));
+        name->setText(i18n("Untitled"));
+        auto *nameRow=new QFormLayout;
+        nameRow->addRow(i18n("Name"),name);
+        layout->addLayout(nameRow);
         auto *scroll=new QScrollArea(&dialog);
         scroll->setWidgetResizable(true);
         scroll->setFrameShape(QFrame::NoFrame);
@@ -72,9 +80,6 @@ public:
         form->setSpacing(8);
         form->setRowWrapPolicy(QFormLayout::WrapAllRows);
         form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-        auto *name=new QLineEdit(&dialog);
-        name->setText(i18n("Untitled"));
-        form->addRow(i18n("Name"),name);
         auto *preset=new MobileTouchComboBox(&dialog);
         preset->setAnchoredPopup(true);
         preset->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
@@ -177,12 +182,7 @@ public:
                                           owner->window()->height())-16);
         dialog.resize(qMin(525,usableWidth),qMin(600,usableHeight));
         dialog.setMaximumSize(usableWidth,usableHeight);
-        name->setFocus(Qt::OtherFocusReason);
-        name->selectAll();
-        QTimer::singleShot(0,name,[name]() {
-            if(name->isVisible() && name->hasFocus())
-                QGuiApplication::inputMethod()->show();
-        });
+        actions->button(QDialogButtonBox::Ok)->setFocus(Qt::OtherFocusReason);
         const int result=dialog.exec();
         QGuiApplication::inputMethod()->hide();
         if(result!=QDialog::Accepted || !formDialog || !host || !host->isVisible())return false;

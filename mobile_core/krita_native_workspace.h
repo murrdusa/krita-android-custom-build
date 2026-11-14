@@ -431,12 +431,6 @@ public:
         auto *panel=new MobileTransientPanel(canvas);
         m_colorPopup=panel;
         panel->setObjectName(QStringLiteral("mobileColorPicker"));
-        panel->setStyleSheet(QStringLiteral(
-            "QFrame#mobileColorPicker{background:#25262b;border:1px solid #55555c;border-radius:10px;}"
-            "QLabel{color:#f1f2f5;}"
-            "QPushButton,QComboBox,QLineEdit{background:#30323b;color:#f1f2f5;"
-            "border:1px solid #44464f;border-radius:6px;padding:2px 6px;}"
-            "QPushButton:checked{background:#394459;border-color:#8195b8;}"));
         auto *layout=new QVBoxLayout(panel);
         layout->setContentsMargins(2,2,2,2);
         m_colorPicker=new MobileColorPicker(panel,provider,m_lighting,m_sphere);
@@ -543,11 +537,6 @@ public:
             auto *panel=new MobileTransientPanel(m_host);
             panel->setObjectName(QStringLiteral("mobileFillResources"));
             panel->setAccessibleName(gradient?tr("Gradients"):tr("Patterns"));
-            panel->setStyleSheet(QStringLiteral(
-                "QFrame#mobileFillResources{background:#252529;border:1px solid #55555c;"
-                "border-radius:8px;}"
-                "QDialogButtonBox QPushButton{min-height:40px;padding:0 14px;}"
-                "QTabBar::tab{min-height:36px;padding:0 10px;}"));
             auto *layout=new QVBoxLayout(panel);
             const auto applyResource=[this,panel,provider,document,gradient](const KoResourceSP &resource) {
                 if(!resource || !provider || !document || !m_engine.manager() ||
@@ -688,7 +677,7 @@ public:
                     combo->setCurrentIndex(*previous);
                     QDialog picker(combo);
                     picker.setWindowTitle(label);
-                    picker.resize(qMax(260,combo->width()),400);
+                    MobileTouchScroll::styleMenuDialog(picker,QSize(qMax(260,combo->width()),400));
                     auto *pickerLayout=new QVBoxLayout(&picker);
                     auto *list=new QListWidget(&picker);
                     list->setStyleSheet(QStringLiteral("QListWidget::item{min-height:44px;padding:5px;}"));

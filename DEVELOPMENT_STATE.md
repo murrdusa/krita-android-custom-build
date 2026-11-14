@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — shared touch menu presentation and canvas name entry
+
+- Tool, brush and contextual popovers share a palette and control styling with command lists and mobile dialogs. The canvas More menu and project sort use the same transient touch list, including nested commands and outside dismissal.
+- The canvas name editor is outside the kinetic scroll viewport. Editable fields request Android input after Qt commits focus on a stationary tap. Brush and eraser hover outlines and cursors are hidden on the first launch with this change.
+- Android keyboard, cursor, and menu behavior await device verification.
+
 ## November 14 — copy crash reports and initialize the first canvas frame
 
 - **Copy crash report** is available on Home and in the canvas More menu. It copies the previous launch checkpoint and Android's recent exit reasons, with a bounded native crash or ANR trace when the OS supplies one. Capture and copy are local.

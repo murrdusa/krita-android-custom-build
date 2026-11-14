@@ -1525,6 +1525,8 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
         pressure_settings.read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/touch_action_picker.h").write_text(
         (own/"mobile_core/touch_action_picker.h").read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/menu_style.h").write_text(
+        (own/"mobile_core/menu_style.h").read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/touch_scroll.h").write_text(
         (own/"mobile_core/touch_scroll.h").read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/workspace_profiles.h").write_text(

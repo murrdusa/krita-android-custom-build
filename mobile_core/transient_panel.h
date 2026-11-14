@@ -12,6 +12,7 @@
 #include <QTouchEvent>
 #include <QWindow>
 #include <functional>
+#include "menu_style.h"
 
 class MobileTransientPanel final : public QFrame
 {
@@ -20,6 +21,8 @@ public:
     {
         setAttribute(Qt::WA_DeleteOnClose);
         setAttribute(Qt::WA_NoMousePropagation);
+        setProperty("_mobileMenuPanel",true);
+        setStyleSheet(MobileMenuStyle::panel());
         qApp->installEventFilter(this);
     }
 
