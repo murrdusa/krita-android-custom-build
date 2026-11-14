@@ -65,8 +65,11 @@ public:
                 // Otherwise the hidden GL canvas remains a child of the
                 // window until the whole application is closed.
                 const QPointer<MobileNativeViewStack> host(this);
-                forgetToken(token);
-                if(host && orphan)orphan->deleteLater();
+                const bool removed=forgetToken(token);
+                // An explicit close may already have consumed this
+                // registration. Never delete a widget that another
+                // owner could have adopted in the meantime.
+                if(removed && host && orphan)orphan->deleteLater();
             });
         m_rows.append(std::move(row));
         // addWidget() can synchronously emit currentChanged for the
