@@ -294,6 +294,29 @@ int main(int argc,char **argv)
                 currentRoot->openViews().isEmpty(),
                 "autosave traversed stale canvases after root replacement");
     }
+    // Krita's createView() can synchronously invoke destruction callbacks
+    // before its caller registers input tracking. The caller must check
+    // its original manager/document/root identities first.
+    {
+        auto *owner=new QWidget;
+        QPointer<QWidget> manager(owner);
+        auto *document=new QObject;
+        QPointer<QObject> guardedDocument(document);
+        QPointer<MobileNativeViewStack> root(new MobileNativeViewStack(owner));
+        QWidget *created=nullptr;
+        const auto createView=[&]() {
+            created=new QWidget; // A native view that was never adopted.
+            delete owner; // Reentrant Android host/manager teardown.
+            return created;
+        };
+        QPointer<QWidget> view(createView());
+        const bool mayInitialize=view && manager &&
+            guardedDocument && root;
+        require(!mayInitialize && !manager && !root && view,
+                "native view creation did not invalidate destroyed dependencies");
+        delete view.data();
+        delete document;
+    }
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
