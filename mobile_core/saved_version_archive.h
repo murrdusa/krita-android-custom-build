@@ -726,10 +726,14 @@ private:
                 const QByteArray expected=checksum.read(129).trimmed().toLower();
                 // A small but malformed digest would migrate beside an
                 // otherwise recoverable KRA and make it fail validation.
-                // Leave the source pair together for repair instead.
+                // A correctly shaped SHA can also refer to corrupt KRA
+                // bytes. Verify the complete source pair before moving it.
                 if(expected.size()!=64 ||
                    !QRegularExpression(QStringLiteral("^[0-9a-f]{64}$"))
-                       .match(QString::fromLatin1(expected)).hasMatch())
+                       .match(QString::fromLatin1(expected)).hasMatch() ||
+                   !hasPublishedCheckpoint({entry.absoluteFilePath(),
+                                            entry.lastModified().toUTC(),
+                                            entry.size()}))
                     continue;
             }
             // Install the tiny checksum sidecar first. If that copy
