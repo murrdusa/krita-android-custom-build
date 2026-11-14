@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — cascading native shutdown and autosave lifetime guards
+
+- Standalone native runtime teardown captures Qt-guarded KisView identities rather than raw pointers before destroying child views. Krita can synchronously close multiple views when one is removed; sibling entries that have already been deleted are skipped instead of accessed after free.
+- The periodic/background autosave pass and queued completion pass now stop immediately if a direct `slotAutoSave` callback destroys the runtime or its view root, instead of continuing through stale runtime memory.
+- Expanded Qt native-view regression to simulate deletion of one tab triggering synchronous destruction of its sibling while a shutdown list remains active.
+- **Verification:** the previous native view lifecycle revision `efc47233ea5be190354ea232fb2dfd3bf2dbaf8e` passed the local WSL Android compilation. Exact-SHA WSL and desktop Qt regression testing for this new batch remain pending. No APK upload.
+
+
 ## November 14 — native canvas lifetime hardening
 
 - Guarded real KisView, KisDocument, view manager and native stack pointers across synchronous Krita view-manager hooks, document loading, first-show/currentChanged callbacks, and native GL/tool activation. A callback that closes a canvas must no longer lead to raw KisView dereferences in the factory.
