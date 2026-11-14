@@ -1156,6 +1156,15 @@ int main(int argc,char **argv)
     require(QFile::exists(QDir(browserFolder).filePath(
                 QStringLiteral("20261114T000000-browser.kra"))),
             "browser listing must not delete older recovery files");
+    std::atomic_bool stopBrowser{true};
+    require(MobileSavedVersionArchive::listForBrowser(
+                browserSource,store,&stopBrowser).isEmpty() &&
+            MobileSavedVersionArchive::list(browserSource,store).size()==300,
+            "cancelled Version History scan must keep every KRA");
+    stopBrowser.store(false);
+    require(MobileSavedVersionArchive::listForBrowser(
+                browserSource,store,&stopBrowser).size()==256,
+            "Version History must recover after canceled scan");
 
     // Gallery listing should inspect only a bounded window of pending
     // staging files per refresh, yet eventually reach a recoverable
