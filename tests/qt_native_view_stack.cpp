@@ -221,6 +221,27 @@ int main(int argc,char **argv)
                 replacement->openViews().isEmpty(),
                 "stale import leaked document into a replacement root");
     }
+    // Recovery Open may try several checkpoints before the original
+    // project. A failed first load which tears down the native root
+    // must abort retries rather than construct a second stale document.
+    {
+        QWidget owner;
+        QPointer<MobileNativeViewStack> original(new MobileNativeViewStack(&owner));
+        MobileNativeViewStack *replacement=nullptr;
+        int attempts=0;
+        for(int checkpoint=0;checkpoint<3;++checkpoint) {
+            if(!original || replacement)break;
+            ++attempts;
+            if(checkpoint==0) {
+                delete original.data(); // Reentrant failed openPath callback.
+                replacement=new MobileNativeViewStack(&owner);
+            }
+            if(!original || replacement)break;
+        }
+        require(attempts==1 && !original && replacement &&
+                replacement->openViews().isEmpty(),
+                "failed KRA recovery retried after native root replacement");
+    }
     // Autosave iterates a snapshot of native canvases. A reentrant
     // checkpoint callback can replace the root while that snapshot
     // still contains another document; do not visit that stale canvas.
