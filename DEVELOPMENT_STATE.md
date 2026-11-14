@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — preflight local KRA previews before native ZIP decoding
+
+- The gallery's background `preview()` path previously passed any readable local `*.kra` to `KoStore::createStore()`, including symlinks, truncated files, and unexpectedly large archives. This can cause unnecessary archive parsing, memory pressure, or long worker stalls when shared storage includes damaged documents. Introduced the Qt-only `MobileProjectPreviewCache::safeLocalKraSource()` preflight (regular non-linked file, 4 bytes–8 GiB, ZIP local-file header) and call it before opening a local KRA with KoStore. Non-KRA image preview dimensional bounds remain unchanged.
+- Added `qt_project_preview_cache.cpp` checks accepting a normal ZIP header and rejecting invalid header, symlink, and an oversized sparse input file; this is a cheap safety preflight, not full ZIP validation.
+- **Verification:** the last exact-SHA WSL Android build passed for `eec46dada594268c13ce7608820adb4bf7a88be4`. The new preview checks and tests await their own Android compile and standalone Qt test result. No APK uploaded.
+
 ## November 14 — release gallery lists and thumbnail icons when hidden
 
 - `MobileDocumentHome::hideEvent()` previously canceled pending thumbnails but kept all `QListWidgetItem` project rows (up to 20,000), the per-row icon pixmaps, the decoded preview icon cache, draft metadata, and saved preview revision maps alive while the user painted. `showHome()` already rebuilds the gallery with `showList()`, so holding these hidden UI allocations has no functional benefit.
