@@ -689,9 +689,14 @@ private:
         // Move complete KRA/sidecar pairs first. Legacy and canonical
         // folders may contain the same checkpoint name; never delete a
         // source version merely because a destination entry exists.
-        const auto versions=fromDir.entryInfoList({QStringLiteral("*.kra")},
-            QDir::Files|QDir::Readable|QDir::NoSymLinks);
-        for(const QFileInfo &entry:versions) {
+        // The source may contain a large backlog after interrupted saves.
+        // Stream files instead of holding a duplicate QFileInfoList while
+        // migrating completed archive/checksum pairs.
+        QDirIterator versions(from,{QStringLiteral("*.kra")},
+                              QDir::Files|QDir::Readable|QDir::NoSymLinks);
+        while(versions.hasNext()) {
+            versions.next();
+            const QFileInfo entry=versions.fileInfo();
             QString targetPath=QDir(to).filePath(entry.fileName());
             const QString oldDigest=entry.absoluteFilePath()+
                                     QStringLiteral(".sha256");
@@ -721,9 +726,11 @@ private:
         }
         // Preserve any other metadata files; never overwrite unrelated
         // destination content, even if migration is retried.
-        const auto leftovers=fromDir.entryInfoList(
-            QDir::Files|QDir::Readable|QDir::Hidden|QDir::NoSymLinks);
-        for(const QFileInfo &entry:leftovers) {
+        QDirIterator leftovers(from,QStringList(),
+                               QDir::Files|QDir::Readable|QDir::Hidden|QDir::NoSymLinks);
+        while(leftovers.hasNext()) {
+            leftovers.next();
+            const QFileInfo entry=leftovers.fileInfo();
             // A checksum must only travel with its corresponding KRA.
             // Moving an orphaned digest under its old name could attach
             // it to a *different* canonical snapshot after a collision.
