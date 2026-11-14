@@ -48,11 +48,20 @@ public:
         QPointer<KisView> guarded=view;
         view->setAttribute(Qt::WA_DeleteOnClose,false);
         view->setMobileNativeSaveHost(saver);
+        // Krita's view-manager and loading hooks can run synchronous
+        // callbacks that close the document or its native view.
+        const QPointer<KisViewManager> guardedManager(manager);
+        const QPointer<MobileNativeViewStack> guardedStack(stack);
         manager->inputManager()->addTrackedCanvas(view->canvasBase());
+        if(!guarded || !guardedManager || !guardedStack)return nullptr;
         view->setViewManager(manager);
+        if(!guarded || !guardedManager || !guardedStack)return nullptr;
+        if(!view->canvasBase() || !manager->paintOpBox())return nullptr;
         view->canvasBase()->setFavoriteResourceManager(
             manager->paintOpBox()->favoriteResourcesManager());
+        if(!guarded || !guardedManager || !guardedStack)return nullptr;
         view->slotLoadingFinished();
+        if(!guarded || !guardedManager || !guardedStack)return nullptr;
 
         const QString title=document->path().isEmpty()?
             QStringLiteral("Untitled"):
@@ -71,7 +80,9 @@ public:
             if(guarded)delete guarded.data();
             return true;
         })) {
-            delete view; // KisPart unregisters via KisView destructor.
+            // currentChanged handlers inside adoptView may already have
+            // destroyed the candidate. Never delete a dangling pointer.
+            if(guarded)delete guarded.data();
             return nullptr;
         }
 
@@ -126,14 +137,17 @@ public:
             stack->setProperty("_mobileStudioKritaSelectionWired",true);
         }
 
+        if(!guarded || !guardedStack || !guardedManager)return nullptr;
         view->show();
+        if(!guarded || !guardedStack || !guardedManager)return nullptr;
         stack->setCurrentWidget(view);
+        if(!guarded || !guardedStack || !guardedManager)return nullptr;
         // First addWidget() emits currentChanged before the router is
         // wired. Only that first canvas needs explicit activation.
         // Later changes are already routed through currentChanged.
         if(!selectionAlreadyWired)
             scheduleActivation(manager,stack,guarded);
-        return view;
+        return guarded.data();
     }
 
 private:
@@ -182,6 +196,10 @@ private:
                     qInfo() << "Mobile canvas tool initialization"
                             << selected.data() << "changed view" << changedView;
                     KoToolManager::instance()->initializeCurrentToolForCanvas();
+                    // Tool setup can synchronously tear down the active
+                    // canvas; do not dereference a deleted selected view.
+                    if(!selected || !root || !manager ||
+                       root->currentWidget()!=selected.data())return;
                 }
                 // Android can show the native QWidget before its
                 // QWindow/GL surface receives the first Expose event.
