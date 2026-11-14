@@ -981,7 +981,9 @@ private:
            qint64(original.width())*original.height()>40000000LL)
             return {};
         reader.setScaledSize(original.scaled(124,124,Qt::KeepAspectRatio));
-        return cancelled && cancelled->load()?QImage():reader.read();
+        if(cancelled && cancelled->load())return {};
+        const QImage result=MobileProjectPreviewCache::boundedThumbnail(reader.read());
+        return cancelled && cancelled->load()?QImage():result;
     }
 
     static QImage preview(const QString &path,
@@ -1029,7 +1031,9 @@ private:
                qint64(size.width())*size.height()>40000000LL)
                 return {};
             reader.setScaledSize(size.scaled(124,124,Qt::KeepAspectRatio));
-            return cancelled && cancelled->load()?QImage():reader.read();
+            if(cancelled && cancelled->load())return {};
+            const QImage result=MobileProjectPreviewCache::boundedThumbnail(reader.read());
+            return cancelled && cancelled->load()?QImage():result;
         }
         if((cancelled && cancelled->load()) ||
            !MobileProjectPreviewCache::safeLocalKraSource(path))return {};
