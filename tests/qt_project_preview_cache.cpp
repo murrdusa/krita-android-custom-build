@@ -17,7 +17,7 @@ int main(int argc,char **argv)
     QImage unrelated(4,4,QImage::Format_RGB32);
     unrelated.fill(Qt::green);
     if(!unrelated.save(QStringLiteral("unrelated.png"),"PNG"))return 47;
-    MobileProjectPreviewCache emptyRoot(QString());
+    MobileProjectPreviewCache emptyRoot{QString()};
     emptyRoot.prune();
     emptyRoot.store(QStringLiteral("drawing.kra"),1,unrelated);
     const bool emptyRootSafe=QFile::exists(QStringLiteral("unrelated.png")) &&
