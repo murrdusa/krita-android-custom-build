@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — enforce unique native document ownership
+
+- Native Save/Close target validation now rejects cases where an inactive row shares the active row's document or view identity. Index lookup and active view selection also reject rows whose backing document has been destroyed.
+- Fixed stale Qt host-port regression assertions that previously expected closing an unselected canvas to succeed; added duplicate-document and duplicate-view ownership cases.
+- **Verification:** source and Qt regressions committed. Latest exact-SHA WSL build and host test results pending; no Fold 6 runtime testing or APK publication.
+
+
 ## November 14 — reject stale document-cycle targets
 
 - Native previous/next canvas cycling now rejects duplicate document ownership and revalidates the full live view/document/selection snapshot before activating the neighboring canvas. This avoids cycling into a different or detached painting if Qt callbacks change the native tab list during a command.
