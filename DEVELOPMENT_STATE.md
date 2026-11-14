@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — preserve in-flight autosave requests and coalesce completion delivery
+
+- Native autosave no longer drops checkpoint triggers that arrive while `checkpointDrafts()` is already executing in a nested Krita event loop. It records one coalesced follow-up request and queues a new checkpoint pass only after the running pass unwinds, preserving changes made or background events received during that interval.
+- A single `scheduleDraftContinuation()` now coalesces background-save completion signals and pending-pass cleanup into one queued Qt callback. This prevents many canvases completing background saves simultaneously from generating duplicate event-queue work; if delivery happens inside a nested checkpoint, exit handling reschedules remaining work.
+- **Verification:** the first single-flight checkpoint commit `c4de377edc142ee5ab6724aa04c8c3310cb52249` passed exact-SHA WSL Android compilation. Follow-up coalescing revisions await exact-SHA verification. No native runtime test or APK upload.
+
+
 ## November 14 — serialize independent runtime autosave passes
 
 - The native standalone runtime now treats each `checkpointDrafts()` invocation as a single-flight operation. The periodic 15-second timer, foreground-to-background transition and about-to-quit handler can all fire while Krita's synchronous `slotAutoSave` processes nested Qt events; without a guard they could recursively launch overlapping canvas checkpoints and consume extra memory/IO.
