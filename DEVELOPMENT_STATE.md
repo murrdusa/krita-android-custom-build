@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — validate fill-preview selection coverage before reading
+
+- Audited the asynchronous Fill/Select tolerance overlay after its source sampling buffer limit was added. Selection coverage was allocated as width × height bytes, but `KisPixelSelection::readBytes()` was called without checking its pixel stride. An unexpected non-alpha8 source format could write beyond that buffer during tool/canvas transitions.
+- Added a Qt-only `mobileFillPreviewSelectionBytes()` guard requiring exactly one byte per pixel and the existing 384×384/16 MiB preview limits. The sampling path refuses unsupported selection formats or missing source color spaces before acquiring its engine read barrier and copying bytes.
+- Extended `qt_fill_tolerance_drag.cpp` regression cases for alpha8, 2-/4-byte unexpected strides, empty and oversized selection windows. No drawing or persistent project data is modified.
+- **Verification:** exact-SHA local Android build and standalone Qt regression for these commits are pending. Last reported build: `unknown`. No APK uploaded.
+
+
 ## November 14 — reduce gallery thumbnail encoding memory
 
 - `MobileProjectPreviewCache::store()` previously PNG-encoded full-size gallery source images (up to 4096×4096) before applying a disk-size cap. Large noisy previews could consume substantial temporary encoder memory on Android even though the UI displays at most 124×124 pixels.
