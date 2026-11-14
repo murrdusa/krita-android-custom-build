@@ -749,15 +749,23 @@ private:
             const QString associated=MobileDraftRecovery::projectFor(backing);
             if(projectKey(document->path())==key ||
                (!associated.isEmpty() && projectKey(associated)==key)) {
-                QMessageBox::information(this,i18n("Drawing is open"),
-                    i18n("Close the drawing before deleting its project."));
+                QPointer<QMessageBox> notice(new QMessageBox(
+                    QMessageBox::Information,i18n("Drawing is open"),
+                    i18n("Close the drawing before deleting its project."),
+                    QMessageBox::Ok,this));
+                notice->exec();
+                delete notice.data();
                 return;
             }
         }
         if(MobileDraftRecovery::hasProjectDraft(path)) {
-            QMessageBox::information(this,i18n("Recovery edits exist"),
+            QPointer<QMessageBox> notice(new QMessageBox(
+                QMessageBox::Information,i18n("Recovery edits exist"),
                 i18n("This project has a recovery draft. Recover or discard "
-                     "that draft before deleting the original drawing."));
+                     "that draft before deleting the original drawing."),
+                QMessageBox::Ok,this));
+            notice->exec();
+            delete notice.data();
             return;
         }
         const bool provider=path.startsWith(QStringLiteral("content://"));
@@ -765,9 +773,16 @@ private:
         const bool removed=provider?QAndroidJniObject::callStaticMethod<jboolean>(
             "org/krita/android/MainActivity","tabletDeleteProject","(Ljava/lang/String;)Z",
             uri.object<jstring>()):QFile::remove(path);
+        // Android's file provider may dispatch activity/window events
+        // during deletion. Do not mutate a gallery destroyed by that call.
+        if(!home)return;
         if(!removed) {
-            QMessageBox::warning(this,i18n("Could not delete drawing"),
-                i18n("Android or the file provider did not allow deletion."));
+            QPointer<QMessageBox> notice(new QMessageBox(
+                QMessageBox::Warning,i18n("Could not delete drawing"),
+                i18n("Android or the file provider did not allow deletion."),
+                QMessageBox::Ok,this));
+            notice->exec();
+            delete notice.data();
             return;
         }
         auto *recent=KisRecentFilesManager::instance();
