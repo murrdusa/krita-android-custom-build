@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — prevent stale autosave traversal across native host replacement
+
+- Native periodic, background, and shutdown autosave passes now capture the original QPointer document-stack identity before iterating open canvases. If a synchronous Krita `slotAutoSave` callback destroys or replaces the stack while Qt processes nested events, the pass stops instead of continuing through a stale list of other drawings. The pending background-save continuation loop applies the same rule.
+- Added a Qt-only native view-stack regression with two open canvases: replacing the stack during the first checkpoint must prevent processing the second stale document. This exercises the guard pattern, not real Krita autosave/Android lifecycle callbacks.
+- **Verification:** preceding interrupted-Open code revision `7e6edfce56d764d85cfc052b727ecf500d679010` passed its exact-SHA local WSL Android compilation. New autosave code and Qt regression await their own build/test result. No APK uploaded.
+
 ## November 14 — reject interrupted Open into a replacement native document stack
 
 - Native project Open now captures the original QPointer view-stack identity. A nested Krita `openPath()` call may process close/activity callbacks, destroying or replacing the root even if the runtime service survives. Before mutating a recovered document or registering an imported canvas, the Open path rejects a missing/replaced root and releases the not-yet-registered import. Already-open project activation also uses the guarded original root.
