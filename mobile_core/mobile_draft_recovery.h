@@ -15,6 +15,7 @@
 #include <QSaveFile>
 #include <cstdio>
 #include <atomic>
+#include <algorithm>
 #include "saved_version_archive.h"
 #include <QStandardPaths>
 #include <QUuid>
@@ -161,11 +162,25 @@ public:
             // draft; publish() moves the orphan to a separate recovery ID.
             publish(draft,false);
         }
+        // Avoid holding Qt's full sorted directory snapshot *and* a
+        // second filtered list of completed KRAs in memory. Enumerate
+        // once and sort only the valid published draft entries.
         QFileInfoList drafts;
-        for(const auto &file:QDir(folder).entryInfoList({QStringLiteral("*.kra")},
-                    QDir::Files|QDir::Readable|QDir::NoSymLinks,QDir::Time)) {
+        QDirIterator completed(folder,{QStringLiteral("*.kra")},
+                               QDir::Files|QDir::Readable|QDir::NoSymLinks);
+        while(completed.hasNext()) {
+            completed.next();
+            const QFileInfo file=completed.fileInfo();
             if(isDraft(file.absoluteFilePath()))drafts.append(file);
         }
+        // checkpointsFor() relies on newest-first order to stop once
+        // entries are older than the saved project's modification time.
+        std::sort(drafts.begin(),drafts.end(),
+                  [](const QFileInfo &a,const QFileInfo &b) {
+            if(a.lastModified()!=b.lastModified())
+                return a.lastModified()>b.lastModified();
+            return a.fileName()>b.fileName();
+        });
         return drafts;
     }
 
