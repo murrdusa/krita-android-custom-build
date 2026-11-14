@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — preserve KRA/checksum atomic ownership on failed history migration
+
+- Audited `MobileSavedVersionArchive::migrateFolder()` after the streamed Save As migration change. Checksum sidecars were copied without checking for replaced symlinks or excessive size, allowing a corrupt/unexpectedly large sidecar to be propagated. The paired-archive pass now rejects a linked/non-file sidecar or one larger than 128 bytes, keeping the source KRA and checksum untouched for manual recovery/repair.
+- Found a more serious fallback path: when the archive migration failed or was rejected, the "miscellaneous metadata" pass could still move that `*.kra` file alone and leave its `*.kra.sha256` behind. The fallback pass now skips both KRAs and their sidecars so only the paired-archive pass can move them. This preserves failed migrations for retry instead of splitting a recoverable pair.
+- Extended the Qt archive tests with oversized and linked sidecar fixtures; a rejected migration must leave both original files intact and must not publish that archive to the destination.
+- **Verification:** source and regression tests pushed; awaiting exact-SHA WSL compile/Qt test verification. No APK uploaded.
+
 ## November 14 — stream Save As history migration without duplicate directory snapshots
 
 - Inspected the background archive request queues: repeated saves are already coalesced by canonical document identity, so no new queueing layer was added. Identified a narrower memory problem in `MobileSavedVersionArchive::migrateFolder()`: Save As and legacy-history migration previously used two complete `QFileInfoList` snapshots (KRA/checksum pairs and miscellaneous leftovers). Replaced both with `QDirIterator` passes that retain only each current file's metadata and keep the existing collision-safe rename/checksum logic.
