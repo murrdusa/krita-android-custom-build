@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — release orphan native painting widgets on engine document destruction
+
+- Audited the independent native canvas/document lifecycle. `MobileNativeViewStack::adoptView()` connected document destruction to `forgetToken(token)`, which removes the Qt stacked-widget registration and hides a still-existing view, but does not delete it. If Krita destroys a document before its painting QWidget, that detached, hidden view and its GL/canvas resources could remain parented to the root until the entire window is destroyed, progressively retaining memory across repeated document closes.
+- The document-destruction observer now captures a guarded canvas widget. After forgetting its registration, it calls `deleteLater()` for a still-live orphan only if the view stack survived synchronous `currentChanged` callbacks. The normal explicit close callback remains responsible for native view teardown; the view-destruction observer still only removes registration.
+- Added a Qt lightweight-host regression that destroys a registered document while its view remains alive, verifies the native row is removed, processes deferred deletion, and verifies the orphaned QWidget is freed.
+- **Verification:** last WSL Android success was for `9d054eac82be590f991e58d585eac1562761394c`; these new native-view fixes and tests still require their exact-SHA compilation/test results. No APK uploaded.
+
 ## November 14 — cancel gallery image decoding before allocating thumbnail buffers
 
 - Audited native canvas teardown paths and the gallery thumbnail workers. The thumbnail pool cancellation was checked before and after `preview(path)`, but `preview()` itself could continue JNI byte-array transfer, KoStore embedded-preview extraction, and PNG decoding after the gallery had been dismissed. These are potentially substantial CPU and memory allocations on a foldable device while another drawing is being painted.
