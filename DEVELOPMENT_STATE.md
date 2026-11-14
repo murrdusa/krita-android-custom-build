@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — preview cache writer/reader size consistency
+
+- Cached project previews now reject an encoded PNG larger than the reader's existing 32 MiB maximum before publishing the QSaveFile. This avoids creating permanent on-disk thumbnails that the gallery can never open.
+- Desktop Qt regression generates a high-entropy 3500 × 3500 image that exceeds the encoded byte budget and confirms the cache does not publish a rejected file. The existing revision, cancellation, clock-skew and malformed-image regressions remain.
+- **Verification:** previous project-index revision `30fff273ccac432e63a7c8c818a8002592e53986` passed WSL Android compilation. Latest source and regression await exact-SHA build/test verification; no APK upload.
+
+
 ## November 14 — bounded persistent project index loading
 
 - The All Projects index cache now rejects JSON files larger than 16 MiB and arrays over 20,000 records before parsing or allocating the gallery list. Reads are byte-limited and substituted/symlinked index files are ignored, avoiding unbounded startup memory use from a malformed or damaged cache.
