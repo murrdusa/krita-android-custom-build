@@ -28,6 +28,21 @@ int main(int argc,char **argv)
     const QImage scaled=cache.load(source,20);
     if(scaled.isNull() || scaled.size()!=QSize(124,93) ||
        scaled.pixelColor(0,0)!=QColor(Qt::yellow))return 12;
+    // Reproduce a *legacy* cache entry directly: older versions
+    // stored full-resolution PNGs, unlike the current store() path.
+    QImage legacy(640,480,QImage::Format_RGB32);
+    legacy.fill(Qt::magenta);
+    const QByteArray legacyKey=QCryptographicHash::hash(
+        source.toUtf8()+'\n'+QByteArray::number(21),
+        QCryptographicHash::Sha256).toHex();
+    const QString legacyPath=QDir(directory.path()).filePath(
+        QString::fromLatin1(legacyKey)+QStringLiteral(".png"));
+    if(!legacy.save(legacyPath,"PNG"))return 42;
+    const QImage legacyThumbnail=cache.load(source,21);
+    if(legacyThumbnail.isNull() ||
+       legacyThumbnail.size()!=QSize(124,93) ||
+       legacyThumbnail.pixelColor(0,0)!=QColor(Qt::magenta))
+        return 43;
     // Small previews must retain their actual dimensions and colors.
     if(cache.load(source,2).size()!=QSize(8,8))return 13;
 
