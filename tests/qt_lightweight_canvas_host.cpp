@@ -137,6 +137,22 @@ int main(int argc,char **argv)
                 retry->openViews().size()==1,
                 "rollback destroyed a live native drawing");
     }
+    // A host with configured engine services is no longer a failed
+    // bootstrap even before its first native view is created.
+    {
+        MobileLightweightCanvasHost configured;
+        auto *root=configured.createNativeDocumentRoot();
+        require(root,"could not create configured native root");
+        MobileHostServices ready;
+        ready.documents=QSharedPointer<FakeDocumentHost>::create();
+        ready.views=configured.nativeViewPort();
+        ready.commands=QSharedPointer<FakeActions>::create();
+        ready.documentRoot=root;
+        require(configured.attachServices(ready) && configured.ready() &&
+                !configured.discardEmptyNativeDocumentRoot() &&
+                configured.centralWidget()==root,
+                "failed startup rollback removed an initialized host");
+    }
 
     MobileLightweightCanvasHost multi;
     auto *stack=multi.createNativeDocumentRoot();
