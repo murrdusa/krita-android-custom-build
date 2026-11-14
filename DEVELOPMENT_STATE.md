@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — reject interrupted Open into a replacement native document stack
+
+- Native project Open now captures the original QPointer view-stack identity. A nested Krita `openPath()` call may process close/activity callbacks, destroying or replacing the root even if the runtime service survives. Before mutating a recovered document or registering an imported canvas, the Open path rejects a missing/replaced root and releases the not-yet-registered import. Already-open project activation also uses the guarded original root.
+- A Qt-only native stack regression stages a pending imported QObject, replaces the root during a modal event loop, and checks that the stale document is discarded rather than adopted into the replacement host. This is lifetime-pattern coverage; actual Android/KRA import remains untested.
+- **Verification:** exact-SHA WSL Android compile passed for earlier Save guard `33f9f49273567740141802872c1a9ee4526d99e9`. The new Open code and Qt regression await their own exact-SHA build/test results. No APK uploaded.
+
 ## November 14 — reject native Save after document-stack replacement
 
 - The standalone Krita Save/Save As/Export transaction now captures the native view-stack QObject identity with QPointer. After the render-wait modal and again after the Android Save As file picker, it checks that the original stack remains alive and is still the runtime's active root before querying current document or proceeding with disk writes. This prevents null dereferences and stale-canvas writes if the activity destroys/replaces the stack during nested Qt events.
