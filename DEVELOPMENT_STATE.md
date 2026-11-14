@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — validate document lifetime through final native canvas presentation
+
+- The native view factory now validates the original document identity, in addition to the view/manager/stack, after installing the Android window/surface resume observer, after `view->show()`, and after setting the active native canvas. Qt Show and WindowActivate callbacks can synchronously close a document without destroying its QWidget, so final attachment must not return a superficially live but documentless view.
+- Extended the independent Qt native-view-stack regression to simulate a destroyed document while its former view widget remains live. The original document identity must be invalid, and the stack must not report the detached painting view as open.
+- **Verification:** the local WSL Android build last reported SUCCESS for `1f8f2a83126e94dee32570bd007a50ab3b762171`. New changes await exact-SHA build/test verification; no APK uploaded.
+
 ## November 14 — stop native factory initialization after synchronous manager teardown
 
 - `MobileKritaNativeViewFactory::attach()` now revalidates its original guarded view, document, manager, and stack immediately after `adoptView()`, and again after initial document-state refresh. Native `addWidget()` emits `currentChanged` synchronously; listeners can remove or destroy the Krita manager even when the registration itself returns success. Subsequent signal wiring/activation must not dereference that invalid manager.
