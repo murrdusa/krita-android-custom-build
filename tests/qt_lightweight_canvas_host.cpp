@@ -14,6 +14,7 @@
 #include <QMessageBox>
 #include <QInputDialog>
 #include "mobile_core/touch_action_picker.h"
+#include "mobile_core/document_close_prompt.h"
 #include <QTimer>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -208,6 +209,21 @@ int main(int argc,char **argv)
         delete prompt.data();
         require(!parentGuard && !prompt,
                 "gallery rename prompt survived destroyed Android host");
+    }
+
+    // The unsaved-document Save/Discard/Cancel prompt must return
+    // cancellation if Android destroys its owning window during exec().
+    // Its dialog, layout, controls and timer must all have heap lifetime.
+    {
+        auto *closingParent=new QWidget;
+        QPointer<QWidget> parentGuard(closingParent);
+        QTimer::singleShot(0,&app,[closingParent]() {
+            delete closingParent;
+        });
+        require(mobileConfirmDocumentClose(
+                    closingParent,QStringLiteral("Unsaved drawing"))==
+                    QDialog::Rejected && !parentGuard,
+                "native close prompt did not cancel safely on host teardown");
     }
 
     // The shared action picker is used throughout the mobile UI.
