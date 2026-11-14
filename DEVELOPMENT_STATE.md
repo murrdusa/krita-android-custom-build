@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — retire canvas resume observers after watched root/window destruction
+
+- A native canvas resume observer is owned by the longer-lived view manager, not necessarily by its watched document stack or Android top-level QWidget. When a native root/window is replaced while its manager remains alive, the old observer (including its surface event filter and activation closure) could survive until manager teardown.
+- `MobileCanvasResumeObserver::attach()` now schedules observer deletion when **either** watched canvas root or top-level window emits `destroyed`. Qt's normal QObject event-filter teardown and guarded timer receiver semantics remain in use; future replacement creates a fresh observer for the new root.
+- Extended `qt_canvas_resume_observer.cpp` to check prompt deferred destruction both when the original root is deleted and when a separate owner/manager survives that deletion.
+- **Verification:** last reported local Android build SUCCESS `2c35f8f7e419c47e7621f34c3a559902e27d5f5b`. This lifetime change and standalone Qt regression await exact-SHA build/test verification. No APK uploaded.
+
+
 ## November 14 — coalesce repeated All Projects scans
 
 - Audited the single-threaded `MobileDocumentHome::m_scanner` queue. Repeated Refresh taps could enqueue multiple already-obsolete full scans behind an active scan, retaining runnable captures and delaying the latest requested results. Cancellation tokens alone stopped old work once it began but did not remove queued runnables.
