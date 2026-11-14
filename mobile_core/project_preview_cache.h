@@ -36,6 +36,12 @@ public:
         if(!size.isValid() || size.width()>4096 || size.height()>4096 ||
            qint64(size.width())*size.height()>4096*4096)
             return {};
+        // Thumbnails are only displayed at 124 px. A cache entry may
+        // still contain a much larger legacy or damaged-but-decodable
+        // PNG; decoding the full image can allocate tens of MiB per
+        // queued worker. Ask the decoder to downscale before allocation.
+        const QSize displaySize=size.scaled(124,124,Qt::KeepAspectRatio);
+        if(displaySize!=size)reader.setScaledSize(displaySize);
         return reader.read();
     }
 
