@@ -64,6 +64,14 @@ int main(int argc,char **argv)
             "file URL alias bypassed open document Save As protection");
     const QString spaced=tmp.filePath(QStringLiteral("new drawing.kra"));
     const QString spacedUrl=QUrl::fromLocalFile(spaced).toString();
+    require(P::localFilePath(fileUrl)==realFile &&
+            P::recentFileUrl(fileUrl)==QUrl::fromLocalFile(realFile) &&
+            P::recentFileUrl(realFile)==QUrl::fromLocalFile(realFile) &&
+            P::recentFileUrl(provider)==QUrl(provider),
+            "native open/recent paths differ for the same drawing");
+    require(P::recentFileUrl(QStringLiteral("file://remote-host/drawing.kra"))
+                .isEmpty(),
+            "nonlocal file URL was registered as a recent project");
     require(P::mayAttemptOpen(fileUrl) &&
             !P::needsSaveAs(fileUrl,false,false,false) &&
             P::saveDialogStartPath(fileUrl,pictures)==realFile,
