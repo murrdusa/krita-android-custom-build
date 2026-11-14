@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — preserve gallery object lifetime across native Open and recovery warnings
+
+- The All Projects/Recent gallery Open action now captures a `QPointer<MobileDocumentHome>` before entering `m_files->openFile()`. A native Open can synchronously dispatch window teardown; the callback no longer calls `hide()` or constructs a warning against the destroyed gallery. On a live gallery, the existing success/hide and failed-open messaging remain intact.
+- Converted three remaining gallery Open/Rename/Version History failure warnings to guarded, heap-owned `QMessageBox` objects. Parent destruction during a nested modal event loop can safely invalidate the warning without Qt deleting a stack-allocated QObject.
+- Extended Krita-independent lightweight Qt host coverage to simulate a successful Open destroying the gallery and to destroy a gallery while its recovery warning is running.
+- **Verification:** most recent independently reported WSL Android build passed for `a17f5d01df6d439831c3cc08d20feb10f6deb698`. New changes and regressions await exact-SHA build and test execution. No APK uploaded.
+
 ## November 14 — safely handle Android file-provider teardown during drawing deletion
 
 - Reviewed gallery background index and recovery-copy paths. Identified a concrete native lifecycle gap in `MobileDocumentHome::deleteProject()`: Android's `tabletDeleteProject` provider operation may dispatch activity/window teardown. The gallery now checks its original `QPointer<MobileDocumentHome>` after that call and stops before touching the recent-files registry, star list, index queue, thumbnail widgets or status text if the gallery was destroyed.
