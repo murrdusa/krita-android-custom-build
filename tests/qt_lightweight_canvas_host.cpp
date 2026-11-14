@@ -112,6 +112,32 @@ int main(int argc,char **argv)
     require(!window.ready() && !window.setMobileVisible(true),
             "offline engine document port allowed unsafe host activation");
 
+    // A failed engine startup must not strand an empty native root
+    // (or its view adapter) and permanently block the next attempt.
+    {
+        MobileLightweightCanvasHost failedStartup;
+        auto *empty=failedStartup.createNativeDocumentRoot();
+        require(empty && failedStartup.nativeViewPort(),
+                "failed-bootstrap setup could not create native root");
+        const QPointer<MobileNativeViewStack> abandoned(empty);
+        require(failedStartup.discardEmptyNativeDocumentRoot() &&
+                !abandoned && !failedStartup.nativeViewPort() &&
+                !failedStartup.centralWidget(),
+                "failed startup leaked its empty canvas root or view adapter");
+        auto *retry=failedStartup.createNativeDocumentRoot();
+        require(retry && failedStartup.nativeViewPort(),
+                "failed startup prevented native engine retry");
+        QObject drawing;
+        auto *view=new QWidget;
+        require(retry->adoptView(view,&drawing,QStringLiteral("Dirty"),
+                                 [](){return false;}),
+                "failed-bootstrap test could not attach a drawing");
+        require(!failedStartup.discardEmptyNativeDocumentRoot() &&
+                failedStartup.centralWidget()==retry &&
+                retry->openViews().size()==1,
+                "rollback destroyed a live native drawing");
+    }
+
     MobileLightweightCanvasHost multi;
     auto *stack=multi.createNativeDocumentRoot();
     require(stack,"could not create the multi-canvas root");
