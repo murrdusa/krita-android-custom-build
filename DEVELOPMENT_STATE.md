@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — enforce gallery decoded-thumbnail memory bounds
+
+- `MobileProjectPreviewCache::load()` requested a 124×124 scaled PNG decode, but returned `QImageReader::read()` without verifying the decoded dimensions. A plugin that ignored the requested size could allow a large legacy cache PNG to persist in the gallery's in-memory icon cache.
+- Post-decode validation now rejects failed/cancelled reads and downsizes any returned image whose width or height exceeds 124 px. This preserves the scaled-decoder fast path while bounding the retained icon dimensions.
+- Expanded `qt_project_preview_cache.cpp` with a genuine legacy full-resolution PNG written directly to the cache path. The regression verifies its 124×93 decoded preview and pixel content; the existing small thumbnail and cache-retention tests remain unchanged.
+- **Verification:** most recent local Android build reported SUCCESS at `a5cfe6725c87940fe7d97b3f5d2016a5bba5f284`. These two changes await exact-SHA Android compilation and standalone Qt regression execution; no APK was uploaded.
+
+
 ## November 14 — retire canvas resume observers after watched root/window destruction
 
 - A native canvas resume observer is owned by the longer-lived view manager, not necessarily by its watched document stack or Android top-level QWidget. When a native root/window is replaced while its manager remains alive, the old observer (including its surface event filter and activation closure) could survive until manager teardown.
