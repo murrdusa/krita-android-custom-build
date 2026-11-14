@@ -87,8 +87,16 @@ public:
            image.width()>4096 || image.height()>4096 ||
            qint64(image.width())*image.height()>4096*4096 ||
            !QDir().mkpath(m_directory))return;
+        // The gallery displays only 124 px previews. Encode the
+        // downscaled image instead of a potentially 4096x4096 source:
+        // full-resolution PNG compression can temporarily retain large
+        // buffers and trigger Android low-memory kills during browsing.
+        const QImage thumbnail=(image.width()>124 || image.height()>124)?
+            image.scaled(124,124,Qt::KeepAspectRatio,Qt::SmoothTransformation):
+            image;
+        if(thumbnail.isNull() || (cancelled && cancelled->load()))return;
         QSaveFile output(fileName(source,revision));
-        if(!output.open(QIODevice::WriteOnly) || !image.save(&output,"PNG"))
+        if(!output.open(QIODevice::WriteOnly) || !thumbnail.save(&output,"PNG"))
             return;
         // Keep writer and reader in agreement: large incompressible
         // thumbnails should not consume disk only to be rejected on
