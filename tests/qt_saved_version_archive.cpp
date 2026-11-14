@@ -68,6 +68,27 @@ int main(int argc,char **argv)
             load(MobileSavedVersionArchive::list(encodedProject,store)
                      .first().path)==encodedBytes,
             "escaped local file URL could not publish a usable backup");
+    // An uncreated Save As destination under a symlinked directory
+    // must map to the same version history as its real parent path.
+    const QString realParent=temp.filePath(QStringLiteral("real-drawings"));
+    const QString linkedParent=temp.filePath(QStringLiteral("linked-drawings"));
+    require(QDir().mkpath(realParent),"create real Save As parent");
+    if(QFile::link(realParent,linkedParent)) {
+        const QString canonicalFuture=QDir(realParent).filePath(
+            QStringLiteral("future project.kra"));
+        const QString aliasFuture=QDir(linkedParent).filePath(
+            QStringLiteral("future project.kra"));
+        require(MobileSavedVersionArchive::canonicalIdentity(canonicalFuture)==
+                    MobileSavedVersionArchive::canonicalIdentity(aliasFuture) &&
+                MobileSavedVersionArchive::folderFor(canonicalFuture,store)==
+                    MobileSavedVersionArchive::folderFor(aliasFuture,store) &&
+                MobileSavedVersionArchive::canonicalIdentity(
+                    QUrl::fromLocalFile(aliasFuture).toString())==
+                    MobileSavedVersionArchive::canonicalIdentity(canonicalFuture),
+                "symlinked Save As parent forked future project history");
+        require(QFile::remove(linkedParent),
+                "remove symlinked Save As test directory");
+    }
     const QString localUrl=QUrl::fromLocalFile(source).toString();
     require(MobileSavedVersionArchive::canonicalIdentity(localUrl)==
                 MobileSavedVersionArchive::canonicalIdentity(source) &&
