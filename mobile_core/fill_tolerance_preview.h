@@ -208,7 +208,12 @@ private:
                 notifyStale();
                 return;
             }
-            if(!mask) {
+            // The generated flood mask is also read as one alpha byte
+            // per pixel. Guard its actual stride independently of the
+            // input selection; otherwise a changed engine mask format
+            // could overwrite the compact coverage allocation.
+            if(!mask || !mobileFillPreviewSelectionBytes(
+                              size,mask->pixelSize())) {
                 if(!application)return;
                 QMetaObject::invokeMethod(application.data(),[preview,threshold,generation,request]() {
                     if(!preview)return;
