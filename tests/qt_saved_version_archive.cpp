@@ -341,6 +341,8 @@ int main(int argc,char **argv)
     const QByteArray failedExport=QByteArray::fromHex("504b0304")+
         "failed-export-but-readable";
     save(staging,failedExport);
+    require(MobileDraftRecovery::setProject(draft,source),
+            "associate original autosave before failed exporter test");
     require(!MobileDraftRecovery::publish(draft,false) &&
             !QFile::exists(staging) && QFileInfo(draft).size()==9,
             "failed export must not overwrite published draft");
@@ -351,9 +353,13 @@ int main(int argc,char **argv)
             failedExportRescue=candidate.absoluteFilePath();
     }
     require(!failedExportRescue.isEmpty() &&
-            MobileDraftRecovery::isDraft(failedExportRescue),
-            "readable but failed export was lost instead of rescued");
+            MobileDraftRecovery::isDraft(failedExportRescue) &&
+            MobileDraftRecovery::projectFor(failedExportRescue)==source,
+            "failed export lost readable edits or saved-project association");
     QFile::remove(failedExportRescue);
+    QFile::remove(failedExportRescue+QStringLiteral(".project"));
+    require(MobileDraftRecovery::setProject(draft,QString()),
+            "clear failed exporter fixture association");
     save(staging,QByteArray::fromHex("504b0304")+"replacement");
     require(MobileDraftRecovery::publish(draft,true) &&
             !QFile::exists(staging) && QFileInfo(draft).size()==15,
