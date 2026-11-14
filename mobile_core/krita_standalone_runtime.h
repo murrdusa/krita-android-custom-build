@@ -12,6 +12,7 @@
 #include <QGuiApplication>
 #include <QMenu>
 #include <QPointer>
+#include <QScopeGuard>
 #include <QSharedPointer>
 #include <QToolButton>
 #include <QTimer>
@@ -229,8 +230,15 @@ public:
 private:
     void checkpointDrafts()
     {
-        if(!m_root)return;
+        if(!m_root || m_checkpointing)return;
+        m_checkpointing=true;
         const QPointer<MobileKritaStandaloneRuntime> alive(this);
+        // slotAutoSave can enter a nested Qt event loop: app background
+        // and quit callbacks must not recursively start the same pass.
+        // Reset only if its QObject survived the synchronous callback.
+        const auto release=qScopeGuard([alive]() {
+            if(alive)alive->m_checkpointing=false;
+        });
         // An inactive canvas can contain unsaved strokes too. Checkpoint
         // every distinct document hosted by this runtime, not just the
         // currently selected tab. Never activate a view to save it.
@@ -287,6 +295,7 @@ private:
     QPointer<KisKActionCollection> m_actions;
     QPointer<KisViewManager> m_manager;
     QList<QPointer<KisDocument>> m_pendingDrafts;
+    bool m_checkpointing=false;
     QSharedPointer<MobileCommandRegistryPort> m_commands;
 };
 #endif
