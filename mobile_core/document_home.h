@@ -393,6 +393,11 @@ public:
         // Run conservative orphan pruning off the touch UI thread.
         m_scanner.start([]() {
             MobileSavedVersionArchive::cleanupStaleRecoveryCopies();
+            const QString data=QStandardPaths::writableLocation(
+                QStandardPaths::AppDataLocation);
+            if(!data.isEmpty())
+                MobileProjectPreviewCache(
+                    QDir(data).filePath(QStringLiteral("project-thumbs"))).prune();
         });
     }
 
