@@ -1133,6 +1133,30 @@ int main(int argc,char **argv)
                     QFileInfo(scanned.at(i).path).fileName(),
                 "streamed archive scan changed newest-first filename order");
 
+    // An interrupted pruning pass may leave hundreds of completed
+    // versions. The Version History UI must not retain or render every
+    // old entry, while ordinary list() and source files remain intact.
+    const QString browserSource=temp.filePath(QStringLiteral("browser-test.kra"));
+    const QString browserFolder=MobileSavedVersionArchive::folderFor(browserSource,store);
+    require(QDir().mkpath(browserFolder),"could not create browser-history fixture");
+    for(int i=0;i<300;++i) {
+        save(QDir(browserFolder).filePath(
+                 QStringLiteral("20261114T%1-browser.kra")
+                     .arg(i,6,10,QLatin1Char('0'))),initial);
+    }
+    const auto browserVersions=MobileSavedVersionArchive::listForBrowser(
+        browserSource,store);
+    require(browserVersions.size()==256 &&
+            QFileInfo(browserVersions.first().path).fileName()==
+                QStringLiteral("20261114T000299-browser.kra") &&
+            QFileInfo(browserVersions.last().path).fileName()==
+                QStringLiteral("20261114T000044-browser.kra") &&
+            MobileSavedVersionArchive::list(browserSource,store).size()==300,
+            "Version History browser did not bound newest-first results");
+    require(QFile::exists(QDir(browserFolder).filePath(
+                QStringLiteral("20261114T000000-browser.kra"))),
+            "browser listing must not delete older recovery files");
+
     // Gallery listing should inspect only a bounded window of pending
     // staging files per refresh, yet eventually reach a recoverable
     // orphan behind many recent (still actively written) candidates.
