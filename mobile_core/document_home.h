@@ -232,6 +232,9 @@ public:
         : QFrame(parent),m_engine(engine),m_files(std::move(files))
     {
         m_scanner.setMaxThreadCount(1);
+        // A scan refresh cancels queued scan jobs. Never share that
+        // cancellable queue with durable index updates or startup cleanup.
+        m_indexWorkers.setMaxThreadCount(1);
         m_thumbnails.setMaxThreadCount(2);
         setObjectName(QStringLiteral("mobileDocumentHome"));
         setAttribute(Qt::WA_StyledBackground);
@@ -350,7 +353,7 @@ public:
             const auto path=url.isLocalFile()?url.toLocalFile():url.toString();
             if(url.isLocalFile() && (!isKra(path) || MobileDraftRecovery::isDraft(path)))return;
             // Persist new locations even if the user never visits All Projects.
-            m_scanner.start([path]() {
+            m_indexWorkers.start([path]() {
                 const MobileProjectIndexEntry entry{
                     path,MobileSavedVersionArchive::projectName(path),
                     MobileSavedVersionArchive::projectModified(path),
@@ -393,7 +396,7 @@ public:
         hide();
         // Hard Android kills skip Qt's queued recovery-copy cleanup.
         // Run conservative orphan pruning off the touch UI thread.
-        m_scanner.start([]() {
+        m_indexWorkers.start([]() {
             MobileSavedVersionArchive::cleanupStaleRecoveryCopies();
             const QString data=QStandardPaths::writableLocation(
                 QStandardPaths::AppDataLocation);
@@ -410,6 +413,7 @@ public:
         m_previewCancelled->store(true);
         m_thumbnails.clear();
         m_scanner.waitForDone();
+        m_indexWorkers.waitForDone();
         m_thumbnails.waitForDone();
     }
 
@@ -866,7 +870,7 @@ private:
         m_previewIconOrder.removeAll(key);
         if(auto *item=m_projectItems.take(key))delete item;
         // Serialize removal after any queued index save.
-        m_scanner.start([key]() {
+        m_indexWorkers.start([key]() {
             auto entries=MobileProjectIndex::load();
             entries.erase(std::remove_if(entries.begin(),entries.end(),[&](const auto &entry) {
                 return projectKey(entry.path)==key;
@@ -1514,7 +1518,7 @@ private:
             }
         }
         if(!schedule)return;
-        m_scanner.start([state]() {
+        m_indexWorkers.start([state]() {
             for(;;) {
                 QVector<MobileProjectIndexEntry> latest;
                 {
@@ -1738,7 +1742,9 @@ private:
     };
     std::shared_ptr<IndexWriteState> m_indexWriteState=
         std::make_shared<IndexWriteState>();
-    QThreadPool m_scanner,m_thumbnails;
+    // Only m_scanner is cleared on refresh. Durable index writes and
+    // maintenance stay queued in the separate single-threaded pool.
+    QThreadPool m_scanner,m_indexWorkers,m_thumbnails;
     QHash<QString,QListWidgetItem*> m_projectItems;
     bool m_displayLimitReached=false;
     QHash<QString,QFileInfo> m_latestDrafts;
