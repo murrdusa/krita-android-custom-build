@@ -601,9 +601,14 @@ private:
                 if(!current || current->data(Qt::UserRole).toString()!=path)return;
                 switch(chosen.toInt()) {
                 case Rename: {
+                    // A modal text prompt processes Android lifecycle events.
+                    // The owning gallery may be destroyed before it returns.
+                    const QPointer<MobileDocumentHome> home(this);
                     bool accepted=false;
                     const QString name=QInputDialog::getText(this,i18n("Rename draft"),
                         i18n("Name"),QLineEdit::Normal,title,&accepted).trimmed();
+                    if(!home || !home->isVisible() ||
+                       generation!=home->m_homeListGeneration)return;
                     if(accepted && !name.isEmpty()) {
                         if(MobileDraftRecovery::rename(path,name))showList(m_mode);
                         else QMessageBox::warning(this,i18n("Could not rename draft"),
