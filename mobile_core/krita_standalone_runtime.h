@@ -230,7 +230,14 @@ public:
 private:
     void checkpointDrafts()
     {
-        if(!m_root || m_checkpointing)return;
+        if(!m_root)return;
+        if(m_checkpointing) {
+            // A foreground-loss or quit request can arrive from inside
+            // Krita's nested save event loop. Do not discard that later
+            // checkpoint; coalesce it into one follow-up pass.
+            m_checkpointAgain=true;
+            return;
+        }
         m_checkpointing=true;
         const QPointer<MobileKritaStandaloneRuntime> alive(this);
         // slotAutoSave can enter a nested Qt event loop: app background
@@ -239,6 +246,14 @@ private:
         const auto release=qScopeGuard([alive]() {
             if(!alive)return;
             alive->m_checkpointing=false;
+            const bool again=alive->m_checkpointAgain;
+            alive->m_checkpointAgain=false;
+            // Preserve a background/exit request received during a save,
+            // but schedule only one additional pass outside this stack.
+            if(again)
+                QTimer::singleShot(0,alive.data(),[alive]() {
+                    if(alive)alive->checkpointDrafts();
+                });
             // A background save may have completed inside slotAutoSave's
             // nested event loop. Drain its pending checkpoint after this
             // pass, never recursively while it is traversing native views.
@@ -305,6 +320,7 @@ private:
     QPointer<KisViewManager> m_manager;
     QList<QPointer<KisDocument>> m_pendingDrafts;
     bool m_checkpointing=false;
+    bool m_checkpointAgain=false;
     QSharedPointer<MobileCommandRegistryPort> m_commands;
 };
 #endif
