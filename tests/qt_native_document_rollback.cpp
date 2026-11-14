@@ -93,6 +93,17 @@ int main(int argc,char **argv)
     app.processEvents();
     require(posted->load(),"queued completion lost captured Save state");
 
+    // A Save whose KisDocument is destroyed before queued delivery
+    // must not invoke its completion callback against stale state.
+    auto canceled=std::make_shared<std::atomic_bool>(false);
+    auto *vanishingContext=new QObject;
+    QMetaObject::invokeMethod(vanishingContext,[canceled]() {
+        canceled->store(true);
+    },Qt::QueuedConnection);
+    delete vanishingContext;
+    app.processEvents();
+    require(!canceled->load(),"queued completion survived destroyed document");
+
     qInfo()<<"PASS: attach failure rollback, duplicate prevention and"
               "ownership isolation";
     return 0;
