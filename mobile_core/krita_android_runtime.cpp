@@ -51,7 +51,6 @@ protected:
         case QEvent::MouseButtonRelease: {
             const auto *mouse=static_cast<QMouseEvent*>(event);
             if(mouse->button()!=Qt::LeftButton)return false;
-            if(m_touch && mouse->source()!=Qt::MouseEventNotSynthesized)return false;
             start=event->type()==QEvent::MouseButtonPress;
             end=!start;
             global=mouse->globalPos();
@@ -67,20 +66,22 @@ protected:
         case QEvent::TouchUpdate:
         case QEvent::TouchEnd: {
             const auto &points=static_cast<QTouchEvent*>(event)->touchPoints();
-            if(points.size()!=1) {m_target.clear();m_touch=false;return false;}
-            global=points.first().screenPos().toPoint();
+            if(points.size()>1 || (points.isEmpty() && event->type()!=QEvent::TouchEnd)) {
+                m_target.clear();
+                return false;
+            }
+            global=points.isEmpty()?m_last:points.first().screenPos().toPoint();
             start=event->type()==QEvent::TouchBegin;
             end=event->type()==QEvent::TouchEnd;
-            if(start)m_touch=true;
             break;
         }
         case QEvent::TouchCancel:
-            m_touch=false;
             m_target.clear();
             return false;
         default:
             return false;
         }
+        m_last=global;
         if(start) {
             m_target=textEditor(qobject_cast<QWidget*>(object));
             if(!m_target && event->type()!=QEvent::MouseButtonPress)
@@ -94,14 +95,14 @@ protected:
                     auto *editor=m_target.data();
                     QTimer::singleShot(0,editor,[editor]() {
                         if(!editor->isVisible() || !editor->isEnabled() ||
-                           !editor->window()->isActiveWindow() || !textEditor(editor))return;
+                           !textEditor(editor))return;
                         editor->setFocus(Qt::MouseFocusReason);
+                        if(!editor->hasFocus())return;
                         auto *input=QGuiApplication::inputMethod();
                         input->update(Qt::ImQueryAll);
                         input->show();
                     });
                 }
-                m_touch=false;
                 m_target.clear();
             }
         }
@@ -124,8 +125,7 @@ private:
     }
 
     QPointer<QWidget> m_target;
-    QPoint m_start;
-    bool m_touch=false;
+    QPoint m_start,m_last;
 };
 
 void applyStudioWidgetColors(QApplication &app)

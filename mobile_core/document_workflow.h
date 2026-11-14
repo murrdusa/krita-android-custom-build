@@ -12,6 +12,9 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QGuiApplication>
+#include <QInputMethod>
+#include <QScopeGuard>
+#include <QScopedValueRollback>
 #include <QScreen>
 #include <QWindow>
 #include <QScrollArea>
@@ -20,10 +23,12 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QPointer>
 #include <QPushButton>
 #include <QSettings>
 #include <QSize>
 #include <QSpinBox>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
 #include <klocalizedstring.h>
@@ -34,8 +39,13 @@ class MobileDocumentWorkflow final
 public:
     static bool create(const MobileEngineBridge &engine,QWidget *owner)
     {
-        if(!owner)return false;
-        QDialog dialog(owner);
+        static bool creating=false;
+        if(!owner || creating)return false;
+        const QScopedValueRollback<bool> transaction(creating,true);
+        const QPointer<QWidget> host=owner;
+        QPointer<QDialog> formDialog=new QDialog(owner);
+        const auto cleanup=qScopeGuard([&]() {delete formDialog.data();});
+        auto &dialog=*formDialog;
         dialog.setWindowTitle(i18n("New canvas"));
         MobileTouchScroll::styleMenuDialog(dialog,QSize(460,570));
         // Keep actions visible even on short portrait phones and with
@@ -142,11 +152,11 @@ public:
         auto *actions=new QDialogButtonBox(
             QDialogButtonBox::Cancel|QDialogButtonBox::Ok,&dialog);
         actions->button(QDialogButtonBox::Ok)->setText(i18n("Create"));
-        actions->button(QDialogButtonBox::Ok)->setFocus();
         layout->addWidget(actions);
         QObject::connect(actions,&QDialogButtonBox::rejected,
                          &dialog,&QDialog::reject);
         QObject::connect(actions,&QDialogButtonBox::accepted,&dialog,[&]() {
+            for(auto *field:{width,height,dpi})field->interpretText();
             if(qint64(width->value())*height->value()>40000000LL) {
                 QMessageBox::warning(&dialog,i18n("Canvas too large"),
                     i18n("This preview currently limits new canvases to "
@@ -166,22 +176,34 @@ public:
                                           owner->window()->height())-16);
         dialog.resize(qMin(525,usableWidth),qMin(600,usableHeight));
         dialog.setMaximumSize(usableWidth,usableHeight);
-        if(dialog.exec()!=QDialog::Accepted)return false;
-        settings.setValue(QStringLiteral("MobileStudio/newWidth"),
-                          width->value());
-        settings.setValue(QStringLiteral("MobileStudio/newHeight"),
-                          height->value());
-        settings.setValue(QStringLiteral("MobileStudio/newDPI"),
-                          dpi->value());
+        name->setFocus(Qt::OtherFocusReason);
+        name->selectAll();
+        QTimer::singleShot(0,name,[name]() {
+            if(name->isVisible() && name->hasFocus())
+                QGuiApplication::inputMethod()->show();
+        });
+        const int result=dialog.exec();
+        QGuiApplication::inputMethod()->hide();
+        if(result!=QDialog::Accepted || !formDialog || !host || !host->isVisible())return false;
+        const QString canvasName=name->text();
+        const QSize canvasSize(width->value(),height->value());
+        const int resolution=dpi->value();
         const QColor color=background->currentData().value<QColor>();
-        settings.setValue(QStringLiteral("MobileStudio/newBackground"),color);
-        if(!engine.createCanvas(name->text(),width->value(),height->value(),
-                                dpi->value(),color)) {
-            QMessageBox::warning(owner,i18n("Canvas not created"),
-                i18n("Krita could not allocate this document. "
-                     "Try smaller canvas dimensions."));
+        delete formDialog.data();
+        if(!host || !host->isVisible())return false;
+        if(!engine.createCanvas(canvasName,canvasSize.width(),canvasSize.height(),
+                                resolution,color)) {
+            if(host)QMessageBox::warning(host,i18n("Canvas not created"),
+                i18n("Krita could not create this document. Try smaller canvas dimensions."));
             return false;
         }
+        settings.setValue(QStringLiteral("MobileStudio/newWidth"),
+                          canvasSize.width());
+        settings.setValue(QStringLiteral("MobileStudio/newHeight"),
+                          canvasSize.height());
+        settings.setValue(QStringLiteral("MobileStudio/newDPI"),
+                          resolution);
+        settings.setValue(QStringLiteral("MobileStudio/newBackground"),color);
         return true;
     }
     static bool open(const MobileEngineBridge &engine,QWidget *owner)

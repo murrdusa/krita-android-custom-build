@@ -635,27 +635,14 @@ public:
             });
         });
 
-        // Re-expose the first real canvas only after Krita has attached
-        // and activated it. Home can precede that by any amount of time.
+        // Native activation already repaints on first exposure. Keep
+        // the Android window alive during the Home-to-canvas transition.
         const auto firstCanvas=[alive,stage]() {
             if(!alive || !alive->nativeViewPort()->currentDocument() ||
                alive->property("_mobileFirstCanvasAttached").toBool())return;
             alive->setProperty("_mobileFirstCanvasAttached",true);
             alive->suppressNativeStatusChrome();
             stage("First native Krita canvas ready",false);
-            if(!alive->property("_mobileNativeEngineOnlyRoot").toBool())return;
-            QTimer::singleShot(0,alive.data(),[alive]() {
-                if(!alive || !alive->isVisible() ||
-                   !alive->nativeViewPort()->currentDocument())return;
-                alive->hide();
-                QTimer::singleShot(50,alive.data(),[alive]() {
-                    if(!alive)return;
-                    alive->show();
-                    alive->raise();
-                    alive->suppressNativeStatusChrome();
-                    if(QWidget *canvas=alive->nativeCanvas())canvas->update();
-                });
-            });
         };
         if(auto *stack=qobject_cast<QStackedWidget*>(window->nativeCanvas())) {
             QObject::connect(stack,&QStackedWidget::currentChanged,window,
