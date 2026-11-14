@@ -88,6 +88,30 @@ int main(int argc,char **argv)
             !MobileSavedVersionArchive::materializeRecovery(
                 MobileSavedVersionArchive::list(source,store).first(),recover).isEmpty(),
             "intact archive with bad metadata should recover after repair");
+    // Deduplication must treat a large replaced digest as missing and
+    // repair it from the verified archive rather than reading it all.
+    save(firstSnapshot+QStringLiteral(".sha256"),QByteArray(1024*1024,'x'));
+    require(MobileSavedVersionArchive::snapshot(source,store) &&
+            MobileSavedVersionArchive::list(source,store).size()==1 &&
+            load(firstSnapshot+QStringLiteral(".sha256"))==
+                QCryptographicHash::hash(initial,QCryptographicHash::Sha256).toHex(),
+            "oversized dedup checksum is repaired without forking history");
+    // A linked sidecar must not be trusted or read from outside history.
+    const QString foreignDigest=temp.filePath(QStringLiteral("foreign-digest.txt"));
+    save(foreignDigest,QByteArray(256,'f'));
+    require(QFile::remove(firstSnapshot+QStringLiteral(".sha256")),
+            "clear checksum before symlink test");
+    if(QFile::link(foreignDigest,firstSnapshot+QStringLiteral(".sha256"))) {
+        require(MobileSavedVersionArchive::snapshot(source,store) &&
+                MobileSavedVersionArchive::list(source,store).size()==1 &&
+                load(foreignDigest)==QByteArray(256,'f') &&
+                load(firstSnapshot+QStringLiteral(".sha256"))==
+                    QCryptographicHash::hash(initial,QCryptographicHash::Sha256).toHex(),
+                "linked checksum must not be read or modify its original");
+    } else {
+        save(firstSnapshot+QStringLiteral(".sha256"),
+             QCryptographicHash::hash(initial,QCryptographicHash::Sha256).toHex());
+    }
     // An oversized or malformed sidecar must be rejected without
     // replacing the immutable checkpoint or opening a recovered copy.
     save(firstSnapshot+QStringLiteral(".sha256"),QByteArray(129,'0'));
