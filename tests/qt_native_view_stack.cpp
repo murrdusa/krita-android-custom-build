@@ -159,6 +159,25 @@ int main(int argc,char **argv)
             !retainedPort->activateView(expiredView) &&
             !retainedPort->closeView(expiredView),
             "view port accessed freed native host after destruction");
+    // Removing the active view emits currentChanged, and listeners may
+    // synchronously destroy the stack (e.g. closing the last window).
+    // Its forgetToken cleanup must not touch the now-destroyed host.
+    {
+        QPointer<MobileNativeViewStack> closingStack=new MobileNativeViewStack;
+        auto *closingDoc=new QObject;
+        auto *closingWidget=new QWidget;
+        require(closingStack->adoptView(closingWidget,closingDoc,
+                    QStringLiteral("last tab"),[](){return true;}),
+                "could not set up last-view teardown test");
+        const QPointer<QObject> closingIdentity(closingWidget);
+        QObject::connect(closingStack.data(),&QStackedWidget::currentChanged,
+                         closingStack.data(),[&closingStack](int) {
+            if(closingStack)delete closingStack.data();
+        });
+        require(closingStack->forgetView(closingIdentity) && !closingStack,
+                "native stack removal used destroyed host after selection signal");
+        delete closingDoc;
+    }
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
