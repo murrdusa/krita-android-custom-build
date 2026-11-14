@@ -6,6 +6,7 @@
 - Added an optional cancellation token checked before the copy, during each 256 KiB read/write chunk and again before `QSaveFile::commit()`. On cancellation, the staged recovery copy is discarded and the historical archive remains untouched.
 - `MobileDocumentHome::openCopy()` passes a **per-request** cancellation token; gallery hide/destruction invalidates it. Per-request allocation prevents a later recovery from accidentally reactivating an older canceled worker. Closing the gallery also clears its restoration-in-progress flag, so reopening it does not remain blocked. Existing same-workspace validation still prevents a canceled copy opening in a replaced canvas.
 - Added Qt archive regression for cancellation before copying and successful retry with a fresh/uncancelled request.
+- Fixed a follow-up stale-completion race: an older canceled worker's queued completion no longer clears `m_restoringVersion` for a newer recovery after the gallery is reopened. Only the active cancellation token can change that state.
 - **Verification:** await exact-SHA WSL Android compilation and standalone Qt archive regression execution; no APK uploaded.
 
 ## November 14 — repair thumbnail-cache retention regression fixture
