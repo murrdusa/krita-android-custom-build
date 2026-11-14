@@ -1595,7 +1595,7 @@ private:
         if(cancelled->load())return {};
         const MobileProjectPreviewCache cache(QDir(QStandardPaths::writableLocation(
             QStandardPaths::AppDataLocation)).filePath(QStringLiteral("project-thumbs")));
-        QImage image=refresh?QImage():cache.load(path,revision);
+        QImage image=refresh?QImage():cache.load(path,revision,cancelled);
         // A gallery dismissal or refresh may cancel this work while the
         // previous cached PNG is being decoded. Do not start the much
         // more expensive project/SAF preview extraction afterward.
