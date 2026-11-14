@@ -100,22 +100,24 @@ int main(int argc,char **argv)
             "duplicated index was allowed to select an arbitrary view");
     host.snapshots[1].nativeIndex=1;
 
-    // No selected MDI tab: it is safe to close only a *unique* view
-    // for the active document. Two views of the same KRA are ambiguous.
+    // Closing with no active native tab is unsafe even if the engine
+    // still exposes a unique selected document from the previous tab.
     host.snapshots[0].active=false;
     host.snapshots[1].active=false;
     host.snapshots[1].document=&doc1;
-    require(Guard::safeCloseTarget(host.openViews(),&doc2)==&viewB,
-            "unique current Krita document view not recovered");
-    // Two views of doc2 without an active tab must be rejected rather
-    // than closing a randomly chosen view of that drawing.
+    require(!Guard::safeCloseTarget(host.openViews(),&doc2),
+            "inactive view unexpectedly became closable");
     host.snapshots[1].document=&doc2;
     require(!Guard::safeCloseTarget(host.openViews(),&doc2),
-            "two views of current document were treated as unique");
+            "inactive document was closed without native selection");
+    // A duplicate backing document or view must also disallow Save and
+    // Close when one of the conflicting rows is active.
+    host.snapshots[0].active=true;
     host.snapshots[1].document=&doc1;
     host.snapshots[0].document=&doc1;
-    require(!Guard::safeCloseTarget(host.openViews(),&doc1),
-            "two views for one KRA were treated as one closable view");
+    require(!Guard::safeCloseTarget(host.openViews(),&doc1) &&
+            !Guard::maySave(host.openViews(),&viewB,&doc1),
+            "duplicate document ownership allowed destructive action");
 
     host.snapshots[0].active=true;
     host.snapshots[1].active=true;
