@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — guard Save As against local file URL aliases
+
+- Open-document destination checks now normalize `file://` URLs to their canonical local filesystem path before collision comparisons. This prevents Save As / Export from treating a picker-provided URL as different from an already-open local document and also handles URL-escaped not-yet-existing draft targets.
+- Extended the Qt native path-policy regression with existing-file URL aliases, percent-escaped new paths, and unrelated local/provider destinations.
+- **Verification:** latest exact Android WSL compile and Qt regression status pending. No APK publication or phone testing.
+
+
 ## November 14 — bound abandoned-autosave recovery work per gallery refresh
 
 - The project library now verifies at most two aged pending KRA exports per recovery listing, instead of parsing an arbitrary number of large ZIP archives in one UI-thread pass. A rotating scan offset ensures permanently malformed early files do not starve valid later recovery candidates. Further gallery refreshes continue recovery without deleting or overwriting remaining staged drafts.
