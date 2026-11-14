@@ -1484,7 +1484,7 @@ private:
             const auto request=qMakePair(path,modified);
             const auto cached=m_cache.constFind(path);
             if(path.isEmpty() || m_pending.contains(request) ||
-               m_attempted.value(path,-1)==modified ||
+               (m_attempted.contains(path) && m_attempted.value(path)==modified) ||
                (cached!=m_cache.cend() && cached->modified==modified))continue;
             m_pending.insert(request);
             --budget;
