@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — isolate native orphan-canvas cleanup from other open tabs
+
+- Reviewed the previously committed native orphan-view cleanup after its exact-SHA Android build passed. `MobileNativeViewStack` could schedule `deleteLater()` on a guarded view even if its registration token had already been removed by a reentrant close. The document-destruction callback now schedules canvas deletion only when `forgetToken(token)` actually removed that registration and the stack still exists, preventing accidental deletion of a view under another owner.
+- Expanded `qt_lightweight_canvas_host.cpp` lifecycle regression to attach two independent documents, destroy one externally, verify only its orphaned canvas is deleted after deferred events, ensure the surviving document remains active and registered, then destroy the second document and check its canvas is released.
+- **Verification:** exact-SHA local WSL Android build SUCCESS for `a4ce0952fdd0f940e0353812734bff9d908769d6` at 16:19:36 UTC. Current narrow guard and expanded regression await their own exact-SHA WSL compilation and standalone Qt test result. No APK upload requested.
+
 ## November 14 — release orphan native painting widgets on engine document destruction
 
 - Audited the independent native canvas/document lifecycle. `MobileNativeViewStack::adoptView()` connected document destruction to `forgetToken(token)`, which removes the Qt stacked-widget registration and hides a still-existing view, but does not delete it. If Krita destroys a document before its painting QWidget, that detached, hidden view and its GL/canvas resources could remain parented to the root until the entire window is destroyed, progressively retaining memory across repeated document closes.
