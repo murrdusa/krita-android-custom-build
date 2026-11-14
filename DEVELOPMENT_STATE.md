@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — bound checkpoint verification of oversized archives
+
+- Published checkpoint validation rejects KRA archives outside the supported 8 GiB limit before hashing and stops if a file grows beyond the original scanned byte count during verification. This prevents an oversized/corrupted historical entry from forcing unbounded hashing or suppressing a new recoverable checkpoint during rate limiting.
+- Added sparse oversized archive regression: a forged recent version must not prevent a valid saved-version snapshot.
+- **Verification:** exact Android WSL build and host Qt test results for these changes pending; no APK published.
+
+
 ## November 14 — retain KRA version when checksum sidecar fails
 
 - A completed saved-version KRA is no longer deleted if writing the separate SHA-256 metadata fails. The archive remains available as a legacy recovery entry; a later identical snapshot verifies the bytes and repairs the missing digest.
