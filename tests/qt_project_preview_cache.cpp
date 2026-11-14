@@ -20,6 +20,17 @@ int main(int argc,char **argv)
        cache.load(source,1).pixelColor(0,0)!=QColor(Qt::red) ||
        !cache.load(source,3).isNull())return 2;
 
+    // A legacy cache may contain full-sized image data. Loading it for
+    // a 124 px gallery icon must not allocate the full decoded bitmap.
+    QImage largePreview(2048,1536,QImage::Format_RGB32);
+    largePreview.fill(Qt::yellow);
+    cache.store(source,20,largePreview);
+    const QImage scaled=cache.load(source,20);
+    if(scaled.isNull() || scaled.size()!=QSize(124,93) ||
+       scaled.pixelColor(0,0)!=QColor(Qt::yellow))return 12;
+    // Small previews must retain their actual dimensions and colors.
+    if(cache.load(source,2).size()!=QSize(8,8))return 13;
+
     const std::atomic_bool cancelled{true};
     cache.store(source,2,oldImage,&cancelled);
     if(cache.load(source,2).pixelColor(0,0)!=QColor(Qt::blue))return 3;
