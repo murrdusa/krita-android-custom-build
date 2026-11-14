@@ -57,6 +57,17 @@ int main(int argc,char **argv)
     require(!MobileSavedVersionArchive::snapshot(uri,store) &&
             MobileSavedVersionArchive::list(uri,store).isEmpty(),
             "unreadable provider must not produce a version");
+    const QString encodedProject=temp.filePath(
+        QStringLiteral("a drawing with spaces.kra"));
+    const QByteArray encodedBytes=QByteArray::fromHex("504b0304")+"url-encoded";
+    save(encodedProject,encodedBytes);
+    const QString encodedUrl=QUrl::fromLocalFile(encodedProject).toString();
+    require(MobileSavedVersionArchive::snapshot(encodedUrl,store) &&
+            MobileSavedVersionArchive::folderFor(encodedUrl,store)==
+                MobileSavedVersionArchive::folderFor(encodedProject,store) &&
+            load(MobileSavedVersionArchive::list(encodedProject,store)
+                     .first().path)==encodedBytes,
+            "escaped local file URL could not publish a usable backup");
     const QString localUrl=QUrl::fromLocalFile(source).toString();
     require(MobileSavedVersionArchive::canonicalIdentity(localUrl)==
                 MobileSavedVersionArchive::canonicalIdentity(source) &&
