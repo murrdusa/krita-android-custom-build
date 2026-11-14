@@ -67,6 +67,10 @@ public:
         // callbacks that close the document or its native view.
         if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
             return abortAttach();
+        // A partially initialized native manager/canvas must not be
+        // handed to Krita's input tracker after a reentrant teardown.
+        if(!manager->inputManager() || !view->canvasBase())
+            return abortAttach();
         manager->inputManager()->addTrackedCanvas(view->canvasBase());
         if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
             return abortAttach();
