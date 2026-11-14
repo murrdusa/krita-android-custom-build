@@ -36,8 +36,10 @@ public:
     }
     explicit MobileProjectPreviewCache(const QString &directory) : m_directory(directory) {}
 
-    QImage load(const QString &source,qint64 revision) const
+    QImage load(const QString &source,qint64 revision,
+                const std::atomic_bool *cancelled=nullptr) const
     {
+        if(cancelled && cancelled->load())return {};
         const QFileInfo entry(fileName(source,revision));
         if(!entry.isFile() || entry.isSymLink() || !entry.isReadable() ||
            entry.size()<=0 || entry.size()>maxEncodedBytes())
@@ -61,6 +63,9 @@ public:
         // queued worker. Ask the decoder to downscale before allocation.
         const QSize displaySize=size.scaled(124,124,Qt::KeepAspectRatio);
         if(displaySize!=size)reader.setScaledSize(displaySize);
+        // Avoid decoding legacy large PNGs if a gallery refresh or
+        // Android window teardown superseded this thumbnail request.
+        if(cancelled && cancelled->load())return {};
         return reader.read();
     }
 
