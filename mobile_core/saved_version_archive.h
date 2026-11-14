@@ -728,7 +728,16 @@ private:
         // Routine snapshots should not rehash an entire KRA merely to
         // discover that history is still below both retention quotas.
         qint64 totalBytes=0;
-        for(const auto &entry:versions)totalBytes+=entry.bytes;
+        for(const auto &entry:versions) {
+            // The only decision here is whether history exceeds quota.
+            // Saturate at quota+1 instead of overflowing qint64 on a
+            // directory full of sparse or otherwise malformed archives.
+            if(entry.bytes<0 || entry.bytes>maxBytes()-totalBytes) {
+                totalBytes=maxBytes()+1;
+                break;
+            }
+            totalBytes+=entry.bytes;
+        }
         if(versions.size()<=maxVersions() && totalBytes<=maxBytes())return;
         // Preserve the newest entry for diagnosis, but do not let a
         // corrupt latest archive consume the only guaranteed retention
@@ -763,7 +772,8 @@ private:
         for(int i=1;i<versions.size() && retained.size()<maxVersions();++i) {
             const auto &entry=versions.at(i);
             if(entry.path==fallback || !hasPublishedCheckpoint(entry))continue;
-            if(keptBytes+entry.bytes<=maxBytes()) {
+            if(entry.bytes>=0 && keptBytes<=maxBytes() &&
+               entry.bytes<=maxBytes()-keptBytes) {
                 retained.append(entry.path);
                 keptBytes+=entry.bytes;
             }
@@ -774,7 +784,8 @@ private:
         for(int i=1;i<versions.size() && retained.size()<maxVersions();++i) {
             const auto &entry=versions.at(i);
             if(!retained.contains(entry.path) &&
-               keptBytes+entry.bytes<=maxBytes()) {
+               entry.bytes>=0 && keptBytes<=maxBytes() &&
+               entry.bytes<=maxBytes()-keptBytes) {
                 retained.append(entry.path);
                 keptBytes+=entry.bytes;
             }
