@@ -9,12 +9,14 @@
 #include <QSettings>
 #include "engine_only_startup_policy.h"
 #include "engine_only_bootstrap.h"
+#include "crash_report.h"
 
 bool MobileKritaApplicationEntry::start()
 {
     // Preserve crash diagnostics without providing or selecting another
     // application interface. Canvas success is reported asynchronously.
     QSettings settings;
+    MobileCrashReport::rememberPreviousSession(settings);
     const QString pending=MobileEngineOnlyStartupPolicy::pendingKey();
     if(settings.value(pending,false).toBool())
         settings.setValue(

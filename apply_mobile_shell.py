@@ -2356,7 +2356,46 @@ install(FILES org.kde.krita.desktop''',
         activity=one(activity,"import android.net.Uri;",
             "import android.net.Uri;\nimport android.provider.DocumentsContract;",
             "Android document tree import")
+    activity=one(activity, "    public static long studioCutoutInsets() {",
+        """    public static String studioProcessExitReport() {
+        MainActivity activity = tabletPermissionActivity;
+        return activity == null ? null : StudioProcessExitReport.collect(activity);
+    }
+
+    public static long studioCutoutInsets() {""","expose Android process exit diagnostics to the Studio")
     activityfile.write_text(activity,encoding="utf-8")
+    activityfile.with_name("StudioProcessExitReport.java").write_text(
+        (own/"mobile_core/StudioProcessExitReport.java").read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/crash_report.h").write_text(
+        (own/"mobile_core/crash_report.h").read_text(encoding="utf-8"),encoding="utf-8")
+
+    viewport_header=root/"libs/ui/canvas/KoCanvasControllerWidgetViewport_p.h"
+    viewport_source=root/"libs/ui/canvas/KoCanvasControllerWidgetViewport_p.cpp"
+    viewport_header.write_text(one(viewport_header.read_text(encoding="utf-8"),
+        """private:
+
+    QPointF correctPosition""",
+        """#ifdef Q_OS_ANDROID
+protected:
+    void resizeEvent(QResizeEvent *event) override;
+#endif
+
+private:
+
+    QPointF correctPosition""","observe the actual Android canvas viewport size"),encoding="utf-8")
+    viewport_source.write_text(one(viewport_source.read_text(encoding="utf-8"),
+        "void Viewport::resetLayout()",
+        """#ifdef Q_OS_ANDROID
+void Viewport::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    // QAbstractScrollArea can resize the viewport after its controller
+    // has already handled resizeEvent (scroll bars, IME, first show).
+    QMetaObject::invokeMethod(this, [this]() { resetLayout(); }, Qt::QueuedConnection);
+}
+#endif
+
+void Viewport::resetLayout()""","relayout the drawing surface when the viewport changes"),encoding="utf-8")
 
     debugManifest=root/"packaging/android/apk/flavors/debug/AndroidManifest.xml"
     debugXml=debugManifest.read_text(encoding="utf-8")

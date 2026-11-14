@@ -448,6 +448,9 @@ public:
         preferences->addActions({settingsAction,colorWheelAction,lightingSphereAction,
                                  colorOptionsAction,inputAction,keyboardAction});
         moreActions.append(preferences->menuAction());
+        auto *crashReport=new QAction(QObject::tr("Copy crash report"),window);
+        QObject::connect(crashReport,&QAction::triggered,window,&MobileCrashReport::copy);
+        moreActions.append(crashReport);
         moreActions.append(exitAction);
         MobileNativeCommandLayout::Commands toolbarCommands;
         for(auto *action:nativeBridge.availableActions()) {

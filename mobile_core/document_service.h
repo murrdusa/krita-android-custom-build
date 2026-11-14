@@ -105,12 +105,14 @@ public:
             delete document;
             return false;
         }
+        const QPointer<KisDocument> guardedDocument(document);
         KisPart::instance()->addDocument(document);
+        // Document registration notifies observers synchronously.
+        if(!guardedDocument)return false;
         // A failed host attach must not leave an orphaned, registered
         // Krita document with no view. The host port's false result
         // explicitly guarantees that it did not retain a native view.
-        QPointer<KisDocument> guardedDocument=document;
-        if(!m_host->attachNewDocument(document)) {
+        if(!m_host->attachNewDocument(guardedDocument.data())) {
             // The last native view may destroy its document when
             // adoption fails. Do not remove that document twice.
             MobileFailedDocumentAttach::rollback(

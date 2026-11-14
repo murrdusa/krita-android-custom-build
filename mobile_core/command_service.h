@@ -23,6 +23,7 @@
 
 #include "KisViewManager.h"
 #include "command_registry_port.h"
+#include "crash_report.h"
 #include "kis_paintop_box.h"
 #include "kis_canvas2.h"
 #include <KoCanvasController.h>
@@ -123,6 +124,7 @@ public:
         const auto actions=manager->toolActionList();
         for(KoToolAction *action:actions) {
             if(action && action->id()==id) {
+                MobileCrashReport::checkpoint(QStringLiteral("Activate tool: ")+id);
                 action->trigger();
                 return true;
             }

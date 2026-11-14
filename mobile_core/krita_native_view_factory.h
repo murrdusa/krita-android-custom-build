@@ -8,6 +8,8 @@
 #ifdef Q_OS_ANDROID
 #include <QDebug>
 #include <QFileInfo>
+#include <QLayout>
+#include <QOpenGLWidget>
 #include <QPointer>
 #include <QTimer>
 #include <QMetaObject>
@@ -19,6 +21,9 @@
 #include <KoToolManager.h>
 #include <KoCanvasSupervisor.h>
 #include "kis_canvas2.h"
+#include "kis_coordinates_converter.h"
+#include "kis_zoom_manager.h"
+#include "crash_report.h"
 #include "kis_paintop_box.h"
 #include "input/kis_input_manager.h"
 #include "native_view_stack.h"
@@ -34,13 +39,7 @@ public:
     {
         if(!manager || !root)return;
         const QPointer<KisView> selected=qobject_cast<KisView*>(root->currentWidget());
-        if(!selected)return;
-        scheduleActivation(manager,root,selected);
-        // Android can finish the create dialog/IME surface transition
-        // after Qt has already queued the first canvas paint.
-        QTimer::singleShot(180,root.data(),[manager,root,selected]() {
-            if(selected)scheduleActivation(manager,root,selected);
-        });
+        if(selected)scheduleActivation(manager,root,selected);
     }
 
     static KisView *attach(KisDocument *document,KisViewManager *manager,
@@ -267,23 +266,59 @@ private:
                        !selected->document() ||
                        root->currentDocument()!=selected->document())return;
                 }
-                // Android can show the native QWidget before its
-                // QWindow/GL surface receives the first Expose event.
-                // Force a real engine projection/GL paint when activated,
-                // including on first exposure. No background polling.
-                if(auto *canvas=selected->canvasBase()) {
-                    canvas->updateCanvas();
-                    // Projection updates can pump Krita/Qt callbacks and
-                    // close the canvas. Reacquire its live canvas identity
-                    // instead of dereferencing the old raw pointer.
-                    if(!selected || !manager || !root ||
-                       root->currentWidget()!=selected.data() ||
-                       !selected->document() ||
-                       root->currentDocument()!=selected->document() ||
-                       selected->canvasBase()!=canvas)return;
-                    if(QWidget *surface=selected->canvasBase()->canvasWidget())
-                        surface->update();
+                const auto isCurrent=[manager,root,selected]() {
+                    return manager && root && selected && selected->isVisible() &&
+                        root->currentWidget()==selected && selected->document() &&
+                        root->currentDocument()==selected->document() &&
+                        selected->canvasBase()==manager->canvasBase();
+                };
+                if(!isCurrent())return;
+                QPointer<KisCanvas2> canvas=selected->canvasBase();
+                if(!canvas)return;
+                // Home/IME transitions can leave a paint queued against the
+                // pre-layout viewport. On the first visible pass, lay out the
+                // real view and repopulate the projection, then paint it.
+                const bool firstProjection=!selected->property("_mobileInitialProjectionReady").toBool();
+                if(firstProjection) {
+                    if(auto *layout=root->layout())layout->activate();
+                    if(!isCurrent() || !canvas)return;
+                    if(auto *layout=selected->layout())layout->activate();
+                    if(!isCurrent() || !canvas)return;
+                    QPointer<QWidget> surface=canvas->canvasWidget();
+                    if(!surface || surface->size().isEmpty() || !surface->isVisible())return;
+                    if(auto *gl=qobject_cast<QOpenGLWidget*>(surface.data())) {
+                        if(!gl->isValid()) {
+                            // A first swap can arrive after Qt has made the
+                            // surface visible and initialized its GL context.
+                            if(!surface->property("_mobileWaitingForFirstSwap").toBool()) {
+                                surface->setProperty("_mobileWaitingForFirstSwap",true);
+                                QObject::connect(gl,&QOpenGLWidget::frameSwapped,selected,
+                                    [manager,root,selected]() {
+                                        if(selected && !selected->property(
+                                                "_mobileInitialProjectionReady").toBool())
+                                            scheduleActivation(manager,root,selected);
+                                    });
+                            }
+                            surface->update();
+                            return;
+                        }
+                    }
+                    const QRectF viewport(surface->rect());
+                    const QRectF image=selected->viewConverter()->imageRectInWidgetPixels();
+                    if(!viewport.intersects(image))selected->zoomManager()->slotZoomToFit();
+                    if(!isCurrent() || !canvas || canvas->canvasWidget()!=surface)return;
+                    selected->setProperty("_mobileInitialProjectionReady",true);
+                    MobileCrashReport::checkpoint(QStringLiteral("Populate initial canvas projection"));
+                    canvas->refetchDataFromImage();
+                    if(!isCurrent() || !canvas || canvas->canvasWidget()!=surface)return;
+                    MobileCrashReport::checkpoint(QStringLiteral("Initial canvas projection queued"));
                 }
+                canvas->updateCanvas();
+                if(!isCurrent() || !canvas)return;
+                if(auto *surface=canvas->canvasWidget())surface->update();
+                if(firstProjection)
+                    if(auto *window=root->window()->windowHandle())
+                        if(window->isExposed())window->requestUpdate();
             }
         });
     }

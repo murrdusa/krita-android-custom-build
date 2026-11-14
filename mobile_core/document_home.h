@@ -19,6 +19,7 @@
 #include <QDialogButtonBox>
 #include <QMenu>
 #include "touch_action_picker.h"
+#include "crash_report.h"
 #include <QMargins>
 #include <QMutex>
 #include <QMutexLocker>
@@ -255,7 +256,12 @@ public:
         layout->setSpacing(7);
         auto *title=new QLabel(i18n("Krita Mobile Studio"),this);
         title->setStyleSheet(QStringLiteral("font-size:20px;font-weight:600;"));
-        layout->addWidget(title);
+        auto *heading=new QHBoxLayout;
+        heading->addWidget(title,1);
+        auto *crashReport=new QPushButton(i18n("Copy crash report"),this);
+        heading->addWidget(crashReport);
+        layout->addLayout(heading);
+        connect(crashReport,&QPushButton::clicked,this,&MobileCrashReport::copy);
 
         auto *fileRow=new QHBoxLayout;
         auto *create=new QPushButton(i18n("New Canvas"),this);

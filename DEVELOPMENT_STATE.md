@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — copy crash reports and initialize the first canvas frame
+
+- **Copy crash report** is available on Home and in the canvas More menu. It copies the previous launch checkpoint and Android's recent exit reasons, with a bounded native crash or ANR trace when the OS supplies one. Capture and copy are local.
+- The first visible native view now activates its layout and refreshes Krita's image projection instead of retrying an ordinary repaint on a timer. The Android viewport updates the canvas geometry on viewport-only resizes. Fold behavior and reported random crashes remain unverified.
+
 ## November 14 — canvas entry, picker responsiveness, and tool stability
 
 - New canvases request a repaint as Home closes, with one guarded follow-up for Android surface transitions. Tool lookup and option handling now validate the active canvas and document before applying controls.

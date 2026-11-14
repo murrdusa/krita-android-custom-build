@@ -33,6 +33,7 @@
 #include <QWidget>
 #include <klocalizedstring.h>
 #include "engine_bridge.h"
+#include "crash_report.h"
 
 class MobileDocumentWorkflow final
 {
@@ -191,6 +192,8 @@ public:
         const QColor color=background->currentData().value<QColor>();
         delete formDialog.data();
         if(!host || !host->isVisible())return false;
+        MobileCrashReport::checkpoint(QStringLiteral("Create canvas %1 x %2")
+            .arg(canvasSize.width()).arg(canvasSize.height()));
         if(!engine.createCanvas(canvasName,canvasSize.width(),canvasSize.height(),
                                 resolution,color)) {
             if(host)QMessageBox::warning(host,i18n("Canvas not created"),
