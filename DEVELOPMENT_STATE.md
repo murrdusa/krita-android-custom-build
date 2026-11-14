@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — validate native host ownership after Save completion and canvas attachment
+
+- Standalone Save/Save As/Export now revalidates the originally captured QPointer document stack **after** Krita's asynchronous disk write and `waitForSavingToComplete()`. A save completion signal alone is insufficient to report success or enqueue a new Version History snapshot if Android replaced the original native root during Qt event processing. A completed write itself is not reversed; only stale post-save publication is suppressed.
+- After successful native Open/attach, confirm the opened document still belongs to the original active stack before adding it to Recent or remembering Android SAF permission. This prevents stale project bookkeeping after reentrant host replacement.
+- Added a Krita-independent Qt view-stack regression simulating a successful I/O completion delivered after host replacement. This covers the late-completion identity gate, not actual Android SAF saving.
+- **Verification:** most recent WSL build result must be matched to the exact commit SHA in Issue #1; the new code and regression await their own compile/test result. No APK published.
+
 ## November 14 — abort checkpoint recovery retry after failed Open destroys native host
 
 - The KRA recovery Open path now rechecks the initiating native view-stack identity and Krita part registry before each checkpoint attempt and after each `openPath()` call. A failed or successful import can dispatch lifecycle callbacks; if those callbacks destroy/replace the original stack, the operation stops instead of attempting the next checkpoint or original file on a stale host. A still-live, not-yet-registered document is released. Ordinary unreadable checkpoints continue falling back normally while the original host remains valid.
