@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — preserve readable draft after failed export
+
+- Failed native autosave export no longer blindly deletes a readable KRA staging file. It preserves the last published draft and moves the readable staging archive to a new independently recoverable private draft, retaining the associated original project. Incomplete or invalid staging files are still cleaned up.
+- Extended Qt regression to verify data and project association survive when export reports failure, without overwriting the previous published draft.
+- **Verification:** preceding atomic-publication rescue revision `c3e54db38bc2b52bbb64001aadeb8a2b40cd576c` passed the exact local WSL Android build. Latest source/tests await exact-SHA WSL and Qt regression verification. No APK upload.
+
+
 ## November 14 — retain completed drafts after failed atomic publication
 
 - A completed autosave export no longer gets deleted when the final rename into its private draft path fails. Instead it is renamed to a fresh private draft identity, keeping it visible in the recovery browser after app restart; its saved-project association is copied when available. If both renames fail, the completed staging file is retained rather than deleted.
