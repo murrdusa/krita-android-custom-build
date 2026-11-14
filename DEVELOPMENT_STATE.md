@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — abort checkpoint recovery retry after failed Open destroys native host
+
+- The KRA recovery Open path now rechecks the initiating native view-stack identity and Krita part registry before each checkpoint attempt and after each `openPath()` call. A failed or successful import can dispatch lifecycle callbacks; if those callbacks destroy/replace the original stack, the operation stops instead of attempting the next checkpoint or original file on a stale host. A still-live, not-yet-registered document is released. Ordinary unreadable checkpoints continue falling back normally while the original host remains valid.
+- Extended the independent Qt native-view-stack regression with a failed-first-checkpoint simulation that destroys the original root, ensuring no later checkpoint attempt proceeds. This is a lifecycle-pattern test, not an Android/KRA recovery test.
+- **Verification:** source committed to main; the latest reported Android WSL build result is recorded separately under Issue #1. These new changes require exact-SHA compilation and runtime testing. No APK uploaded.
+
 ## November 14 — prevent stale autosave traversal across native host replacement
 
 - Native periodic, background, and shutdown autosave passes now capture the original QPointer document-stack identity before iterating open canvases. If a synchronous Krita `slotAutoSave` callback destroys or replaces the stack while Qt processes nested events, the pass stops instead of continuing through a stale list of other drawings. The pending background-save continuation loop applies the same rule.
