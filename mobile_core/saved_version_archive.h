@@ -449,7 +449,7 @@ public:
             request.background=backgroundCheckpoint;
             pending.insert(requestKey,request);
         }
-        QThreadPool::globalInstance()->start([draft,identity,requestKey]() {
+        archivePool().start([draft,identity,requestKey]() {
             for(;;) {
                 quint64 generation=0;
                 bool background=false;
@@ -520,7 +520,7 @@ public:
             if(!previousDraft.isEmpty())request.drafts.append(previousDraft);
             pending.insert(key,request);
         }
-        QThreadPool::globalInstance()->start([key]() {
+        archivePool().start([key]() {
             for(;;) {
                 quint64 generation=0;
                 QString source;
@@ -687,6 +687,20 @@ public:
     }
 
 private:
+    // Archive snapshots already serialize on lock(), so launching a
+    // worker per requested document in Qt's global pool leaves many
+    // threads blocked on that mutex. Keep archive copies off the
+    // global pool (used by interactive fill previews) and run only
+    // one archive job at a time. Per-document request coalescing above
+    // still preserves the latest save/background checkpoint.
+    static QThreadPool &archivePool()
+    {
+        static QThreadPool pool;
+        static const int configured=(pool.setMaxThreadCount(1),1);
+        (void)configured;
+        return pool;
+    }
+
     static QString recoveryDirectory()
     {
         const QString base=QStandardPaths::writableLocation(
