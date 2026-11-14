@@ -21,6 +21,19 @@ class MobileProjectPreviewCache
 public:
     static constexpr qint64 maxEncodedBytes() {return 32LL*1024*1024;}
     static constexpr qint64 maxCacheBytes() {return 128LL*1024*1024;}
+    // Gallery preview extraction must reject unsuitable local KRAs
+    // before invoking Krita's ZIP parser. Keep this check Qt-only so
+    // malformed files can be covered by host-side regression tests.
+    static bool safeLocalKraSource(const QString &path)
+    {
+        const QFileInfo entry(path);
+        constexpr qint64 maxKraBytes=8LL*1024*1024*1024;
+        if(!entry.isFile() || entry.isSymLink() || !entry.isReadable() ||
+           entry.size()<4 || entry.size()>maxKraBytes)return false;
+        QFile file(path);
+        return file.open(QIODevice::ReadOnly) &&
+            file.peek(4)==QByteArray::fromHex("504b0304");
+    }
     explicit MobileProjectPreviewCache(const QString &directory) : m_directory(directory) {}
 
     QImage load(const QString &source,qint64 revision) const
