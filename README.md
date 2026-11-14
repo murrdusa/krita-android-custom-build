@@ -1,8 +1,27 @@
 # Krita Android tablet customization (experimental)
 
-> **Continuing development or starting a new chat?** First read [AGENTS.md](AGENTS.md) (working rules), [DEVELOPMENT_STATE.md](DEVELOPMENT_STATE.md) (current handoff), and [local PC build status](https://github.com/murrdusa/krita-android-custom-build/issues/1). Source commits are automatically compiled by the existing WSL watcher. Prefer the PC; do not run GitHub-hosted builds/tests for normal iterations.
+> **Continuing development or starting a new chat?** First read [AGENTS.md](AGENTS.md) (working rules), [docs/DEVELOPMENT_STATE.md](docs/DEVELOPMENT_STATE.md) (current handoff), and [local PC build status](https://github.com/murrdusa/krita-android-custom-build/issues/1). Source commits are automatically compiled by the existing WSL watcher. Prefer the PC; do not run GitHub-hosted builds/tests for normal iterations.
 
 Custom Krita 5.3.4 ARM64 for Android, patched from KDE tag `v6.0.4`. Rebuild locally using WSL2 and Docker with `git pull --ff-only && bash local-build.sh build`.
+
+## Repository layout
+
+```
+mobile_studio/     C++ overlay copied into Krita
+  include/mobile_studio/   headers (the app UI, engine adapters, policies)
+  src/                     implementation files
+tools/
+  build/           local build, APK reporting, cache, size audit
+  patches/         source patch scripts and apply_all.py
+tests/
+  cpp/             Qt and host-only C++ regressions
+  python/          standard-library Python tests
+docs/              design notes and project handoff
+```
+
+`local-build.sh` and the three `krita_build_*.py` files at the root are
+compatibility shims for the PC build watcher. The real implementations live
+under `tools/`.
 
 ## Current release status
 
@@ -39,7 +58,7 @@ Run `git pull --ff-only` and `bash local-build.sh build` in Ubuntu to compile th
 
 ## v7 Compact UI phone layout — source validated, not yet compiled
 
-This experimental layer uses the new `tablet_compact_skin.h` and `apply_compact_skin.py`. All new controls appear **only when Compact UI is enabled**; on exit, Krita's QMainWindow docker state is restored.
+This experimental layer uses the new `mobile_studio/include/mobile_studio/tablet_compact_skin.h` and `tools/patches/apply_compact_skin.py`. All new controls appear **only when Compact UI is enabled**; on exit, Krita's QMainWindow docker state is restored.
 
 - **Paint / Erase / Blend slots** (bottom-left): first tap switches to the last-used native Krita brush preset for that category; second tap opens a touch-oriented icon grid of presets. Each category remembers its last preset independently, including after restarts. Paint disables eraser mode; Erase enables it; Blend selects a normal Krita smudge/blender preset with eraser mode off. This is *not* a universal conversion of all paint engines into smear engines.
 - Presets are initially grouped by names (erase/eraser, blend/smudge/blur; others Paint), with user overrides stored privately in `TabletUi/presetGroup`. In the preset grid, enable **Show all Krita brushes** and choose a brush to put it in a different group; **Assign current brush to this category** is another option. Built-in Krita preset tags and the native brush selector remain unchanged.
@@ -53,13 +72,14 @@ Build: `cd ~/krita-tablet-customizations && git pull --ff-only && bash local-bui
 
 ## Patch/build workflow
 
-1. `apply_customizations.py`: v1 base changes.
-2. `apply_tablet_update.py`: v2 changes.
-3. `apply_tablet_refinements.py`: v3 changes.
-4. `local-build.sh`: fetch source, apply all three patches, incrementally compile APK inside KDE Docker container. **Keep its persistent working directories** to avoid recompiling everything.
-5. GitHub Actions `validate` mode checks that source edits apply and the XMLGUI checksum matches; it does **not** compile C++ or Java.
+1. `tools/patches/apply_customizations.py`: v1 base changes.
+2. `tools/patches/apply_tablet_update.py`: v2 changes.
+3. `tools/patches/apply_tablet_refinements.py`: v3 changes.
+4. `tools/patches/apply_all.py`: applies every patch in build order.
+5. `local-build.sh`: fetch source, run the patch sequence, incrementally compile APK inside KDE Docker container. **Keep its persistent working directories** to avoid recompiling everything.
+6. GitHub Actions `validate` mode checks that source edits apply and the XMLGUI checksum matches; it does **not** compile C++ or Java.
 
-Detailed Windows setup instructions: [LOCAL-BUILD.md](LOCAL-BUILD.md).
+Detailed Windows setup instructions: [docs/LOCAL-BUILD.md](docs/LOCAL-BUILD.md).
 
 ## Installation and permissions
 
@@ -95,8 +115,7 @@ To manually build, visit GitHub Actions → Krita Android custom build → Run w
 A special tagged repository push may also start a build automatically.
 
 1. Clone Krita at tag `v6.0.4`.
-2. Run `python3 apply_customizations.py /path/to/krita`.
-3. Run `python3 apply_tablet_update.py /path/to/krita`.
+2. Run `python3 tools/patches/apply_all.py /path/to/krita`.
 4. The GitHub workflow provisions KDE Android build tools and produces an ARM64 debug APK artifact when successful.
 
 ## Safety and limitations

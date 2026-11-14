@@ -1,6 +1,6 @@
 # Development instructions — Krita Mobile Studio
 
-**Read this file at the start of every development session, including a new ChatGPT chat.** Then read [DEVELOPMENT_STATE.md](DEVELOPMENT_STATE.md), the latest GitHub commits, and [local build Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1). These are the project handoff, not earlier chat transcripts. Before changing code, check the latest branch state.
+**Read this file at the start of every development session, including a new ChatGPT chat.** Then read [docs/DEVELOPMENT_STATE.md](docs/DEVELOPMENT_STATE.md), the latest GitHub commits, and [local build Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1). These are the project handoff, not earlier chat transcripts. Before changing code, check the latest branch state.
 
 ## Highest priority: time and iteration speed
 
@@ -11,7 +11,7 @@
 - **Batch related changes** into useful compilable increments. Avoid repeated source-only check cycles, long speculative testing plans, reimplementing existing Krita engine behavior, gratuitous abstractions, and large tool-call/commentary overhead. Fix actionable compiler errors from local logs first.
 - **Avoid layered crash fallback and redundant safeguards** for this low-stakes early prototype. Retain enough Qt/logcat logging, clear compiler diagnostics and a usable failure report to fix faults. Don't create elaborate user-facing logging menus. Do not compromise essential document/save correctness or silently lose user content.
 - **Do not polish or redesign the UI now.** First finish independent startup/application architecture, then fill in core functionality; design the final interface when functional foundations stop moving. Preserve currently working controls rather than rewriting them for aesthetics.
-- **Do not upload/release APKs** unless the user explicitly asks. `APK-UPLOAD-REQUEST.md` has intentionally paused automatic publishing.
+- **Do not upload/release APKs** unless the user explicitly asks. `docs/APK-UPLOAD-REQUEST.md` has intentionally paused automatic publishing.
 
 ## Mobile interaction requirements
 
@@ -19,14 +19,37 @@
 
 The target is a **phone, especially a Galaxy Z Fold**, not a mouse/keyboard desktop. Every normal action must be discoverable and operable with finger touch, and should behave consistently with a pen. Use comfortably sized tap targets, touch scrolling and drag interactions; never require hover, right-click, keyboard shortcuts or microscopic scrollbars. When scrollbars are necessary make their grab area wide. Avoid wasted screen area, large headers, redundant text, permanent controls that can be contextual, and desktop-style docks. These requirements are for later UI decisions; do not spend time building a complex UI before the engine is stable.
 
-- Use `MobileTouchScroll::configure` or `configureList` from `mobile_core/touch_scroll.h` for scrollable mobile menus. Use `MobileTouchComboBox` for custom touch selectors. The shared handler distinguishes taps from swipes starting on controls. Keep canvas, layer drag and slider input in their specialized handlers.
-- **Toolbar gesture contract:** Toolbar button drag behavior belongs in `mobile_core/toolbar_drag_gesture.h`, not one-off mouse handlers. A short tap must still trigger the original QAction. The initial movement locks either the **inline axis** (adjust a user-configured brush parameter) or the **perpendicular axis** (Color button samples the canvas/reference on release). The inline axis is determined from each toolbar's edge/orientation, never hard-coded to horizontal. Settings keys under `MobileStudio/toolbarDrag/` control both assignments and enablement. Do not send these gestures through generic menu-click replay or accidentally paint on the canvas.
+- Use `MobileTouchScroll::configure` or `configureList` from `mobile_studio/include/mobile_studio/touch_scroll.h` for scrollable mobile menus. Use `MobileTouchComboBox` for custom touch selectors. The shared handler distinguishes taps from swipes starting on controls. Keep canvas, layer drag and slider input in their specialized handlers.
+- **Toolbar gesture contract:** Toolbar button drag behavior belongs in `mobile_studio/include/mobile_studio/toolbar_drag_gesture.h`, not one-off mouse handlers. A short tap must still trigger the original QAction. The initial movement locks either the **inline axis** (adjust a user-configured brush parameter) or the **perpendicular axis** (Color button samples the canvas/reference on release). The inline axis is determined from each toolbar's edge/orientation, never hard-coded to horizontal. Settings keys under `MobileStudio/toolbarDrag/` control both assignments and enablement. Do not send these gestures through generic menu-click replay or accidentally paint on the canvas.
+
+## Repository layout and tooling
+
+- `mobile_studio/include/mobile_studio/` — headers copied into Krita's `libs/ui/`.
+- `mobile_studio/src/` — implementation units copied into Krita.
+- `tools/patches/` — ordered source patches; `apply_all.py` defines the only order. Add new patches there.
+- `tools/build/` — local build, container build, reporter, APK cache and size audit.
+- `tests/cpp/`, `tests/python/`, `docs/`.
+
+Patch scripts resolve overlay inputs through `tools/patches/patch_paths.py` (`CORE`, `SRC`), never relative to the script. `tests/python/test_patch_sources.py` fails when a reference is missing or a patch is absent from `apply_all.ORDER`.
+
+Root `local-build.sh` and the three `krita_build_*.py` files exist because the installed WSL watcher calls those names. Change the implementation under `tools/build/`, not the shim.
+
+Tests:
+
+- `python -m unittest discover -s tests/python`
+- Qt tests compile with `-I mobile_studio/include`. `run_mobile_layer_identity_regression.sh` and `run_mobile_layer_reorder_regression.sh` need only a host compiler; the other runners need Qt5.
+
+The manual `Mobile Studio source checks` workflow contains assertions that predate the layout reorg and were already failing. Compare a failed check with the previous commit before treating it as a regression.
+
+The watcher builds pushed `main` only. An unmerged branch is built either in WSL with `bash local-build.sh build` or with the manual `build-krita-android.yml` workflow; do not trigger the latter while the PC is available.
+
+Use Conventional Commits, one line, no body.
 
 ## Project state and next work
 
-- [PRODUCT-ROADMAP.md](PRODUCT-ROADMAP.md) records **user-approved feature priorities** and the automatic version-history semantics. Read it before adding painting functionality; do not implement deferred extras merely because they are documented.
-- [DEVELOPMENT_STATE.md](DEVELOPMENT_STATE.md) is the **concise persistent handoff**: current working architecture, latest locally compiled revision, known limitations, next actionable milestone, and how to read the watcher. Update it when meaningful development progress changes these facts; do not continually append a historical essay.
-- `apply_mobile_shell.py` installs the current native engine/Android bootstrap patch into the KDE Krita `v6.0.4` source used by the local builder. `mobile_core/` contains the app's independent host, engine session and UI components. Keep license notices.
+- [docs/PRODUCT-ROADMAP.md](docs/PRODUCT-ROADMAP.md) records **user-approved feature priorities** and the automatic version-history semantics. Read it before adding painting functionality; do not implement deferred extras merely because they are documented.
+- [docs/DEVELOPMENT_STATE.md](docs/DEVELOPMENT_STATE.md) is the **concise persistent handoff**: current working architecture, latest locally compiled revision, known limitations, next actionable milestone, and how to read the watcher. Update it when meaningful development progress changes these facts; do not continually append a historical essay.
+- `tools/patches/apply_mobile_shell.py` installs the current native engine/Android bootstrap patch into the KDE Krita `v6.0.4` source used by the local builder. `mobile_studio/` contains the app's independent host, engine session and UI components. Keep license notices.
 - On each new session, first inspect current code and latest local result; **continue implementation**, not just produce a plan or ask the user to rerun already-running tools. Avoid spawning cloud test jobs.
 
 ## Reporting to the user

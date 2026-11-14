@@ -1,0 +1,264 @@
+/*
+ * Qt5-only test for Android finger-contact pressure.
+ * Compiles on Linux without Krita or Android. Synthetic single-finger
+ * TouchPoints only; actual device contact-area support must be verified.
+ */
+#include <QCoreApplication>
+#include <QDebug>
+#include <QSettings>
+#include <QTemporaryDir>
+#include <QTouchDevice>
+#include <QTouchEvent>
+#include <QtGlobal>
+#include <cmath>
+
+#include "mobile_studio/finger_contact_pressure.h"
+
+static void require(bool cond,const char *reason)
+{
+    if(!cond)qFatal("Finger pressure test failed: %s",reason);
+}
+
+static qreal touch(QTouchDevice &device,QEvent::Type type,
+                   qreal diameter,ulong timestamp,
+                   Qt::TouchPointState state=Qt::TouchPointMoved,
+                   int id=1, int count=1,
+                   qreal nativePressure=1.0,bool pen=false,qreal speed=0.35)
+{
+    QTouchEvent::TouchPoint p(id);
+    p.setState(state);
+    p.setScreenPos(QPointF(timestamp*speed,0.0));
+    if(pen)p.setFlags(QTouchEvent::TouchPoint::Pen);
+    p.setEllipseDiameters(QSizeF(diameter,diameter));
+    p.setPressure(nativePressure);
+    QList<QTouchEvent::TouchPoint> points{p};
+    if(count>1) {
+        QTouchEvent::TouchPoint second(2);
+        second.setState(Qt::TouchPointMoved);
+        second.setEllipseDiameters(QSizeF(12,12));
+        points.append(second);
+    }
+    QTouchEvent event(type,&device,Qt::NoModifier,state,points);
+    event.setTimestamp(timestamp);
+    return MobileFingerContactPressure::pressure(&event,nativePressure);
+}
+
+int main(int argc,char **argv)
+{
+    QCoreApplication app(argc,argv);
+    QCoreApplication::setOrganizationName(QStringLiteral("KritaMobileTesting"));
+    QCoreApplication::setApplicationName(QStringLiteral("FingerArea"));
+    QTemporaryDir temporary;
+    require(temporary.isValid(),"failed to create isolated settings store");
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,
+                       temporary.path());
+    QSettings setting;
+    const QString key=QString::fromLatin1(
+        MobileFingerContactPressure::settingKey());
+    QTouchDevice device;
+    device.setType(QTouchDevice::TouchScreen);
+
+    require(qAbs(touch(device,QEvent::TouchBegin,5.5,10,
+                       Qt::TouchPointPressed)-0.5)<0.0001,
+            "fresh install should map 5.5 px to half pressure");
+    touch(device,QEvent::TouchEnd,5.5,20,Qt::TouchPointReleased);
+
+    // Explicit opt-out preserves Krita's normal pressure behavior.
+    setting.setValue(key,false);
+    const qreal native=0.83;
+    require(qAbs(touch(device,QEvent::TouchBegin,15,100,
+                       Qt::TouchPointPressed,1,1,native)-native)<0.0001,
+            "disabled proxy changed original pressure");
+    require(qAbs(touch(device,QEvent::TouchEnd,15,130,
+                       Qt::TouchPointReleased,1,1,native)-native)<0.0001,
+            "disabled proxy changed release pressure");
+
+    setting.setValue(key,true);
+    const QString minKey=QString::fromLatin1(
+        MobileFingerPressureSettings::minKey());
+    const QString maxKey=QString::fromLatin1(
+        MobileFingerPressureSettings::maxKey());
+    setting.setValue(minKey,8.0);
+    setting.setValue(maxKey,24.0);
+    const qreal pinky=touch(device,QEvent::TouchBegin,8,600,
+                            Qt::TouchPointPressed);
+    require(qAbs(pinky-0.0)<0.0001,
+            "calibrated minimum did not set initial small-finger pressure to 0");
+    touch(device,QEvent::TouchEnd,8,620,Qt::TouchPointReleased);
+    const qreal thumb=touch(device,QEvent::TouchBegin,24,700,
+                            Qt::TouchPointPressed);
+    require(qAbs(thumb-1.0)<0.0001,
+            "calibrated maximum did not set initial large-finger pressure to 100%");
+    require(thumb>pinky+0.99,
+            "thumb and pinky incorrectly share the same initial pressure");
+    touch(device,QEvent::TouchEnd,24,720,Qt::TouchPointReleased);
+
+    // With absolute 0-100% mapping, sustained contact at either end must
+    // eventually reach the exact endpoint, not stall just short of it
+    // because a low-pass filter approaches its target asymptotically.
+    const qreal minStart=touch(device,QEvent::TouchBegin,8,740,
+                                Qt::TouchPointPressed);
+    require(qAbs(minStart)<0.00001,"small finger did not start at 0%");
+    qreal expanded=minStart;
+    for(int i=0;i<70;++i)
+        expanded=touch(device,QEvent::TouchUpdate,24,750+10*i);
+    require(qAbs(expanded-1.0)<0.00001,
+            "sustained maximum contact did not reach exact 100%");
+    qreal contracted=expanded;
+    for(int i=0;i<70;++i)
+        contracted=touch(device,QEvent::TouchUpdate,8,1460+10*i);
+    require(qAbs(contracted)<0.00001,
+            "sustained minimum contact did not return to exact 0%");
+    touch(device,QEvent::TouchEnd,8,2170,Qt::TouchPointReleased);
+
+    // A new calibration changes the mapping for the next stroke.
+    setting.setValue(minKey,10.0);
+    setting.setValue(maxKey,30.0);
+    require(qAbs(touch(device,QEvent::TouchBegin,15,800,
+                       Qt::TouchPointPressed)-0.25)<0.0001,
+            "saved custom range not applied to initial dab");
+    setting.setValue(minKey,1.0);
+    setting.setValue(maxKey,2.0);
+    const qreal sameStroke=touch(
+        device,QEvent::TouchUpdate,15,810,Qt::TouchPointMoved);
+    require(qAbs(sameStroke-0.25)<0.001,
+            "changing calibration mid-stroke changed pressure unexpectedly");
+    touch(device,QEvent::TouchEnd,15,820,Qt::TouchPointReleased);
+
+    // A curved response changes real intermediate pressures while
+    // keeping calibrated 0% and 100% endpoints exact.
+    const QString curveKey=QString::fromLatin1(
+        MobileFingerPressureSettings::curveKey());
+    const QString stabilityKey=QString::fromLatin1(
+        MobileFingerPressureSettings::smoothingKey());
+    setting.setValue(curveKey,0.5);
+    setting.setValue(stabilityKey,0.75);
+    setting.setValue(minKey,8.0);
+    setting.setValue(maxKey,24.0);
+    const qreal lightCurve=touch(device,QEvent::TouchBegin,16,900,
+                                  Qt::TouchPointPressed);
+    require(qAbs(lightCurve-std::sqrt(0.5))<0.0001,
+            "sensitive gamma 0.5 did not emphasize smaller contacts");
+    setting.setValue(curveKey,2.0);
+    const qreal lockedCurve=touch(device,QEvent::TouchUpdate,16,910);
+    require(qAbs(lockedCurve-lightCurve)<0.001,
+            "mid-stroke response curve change was not isolated");
+    touch(device,QEvent::TouchEnd,16,920,Qt::TouchPointReleased);
+    const qreal firmCurve=touch(device,QEvent::TouchBegin,16,940,
+                                 Qt::TouchPointPressed);
+    require(qAbs(firmCurve-0.25)<0.0001,
+            "firm gamma 2.0 did not emphasize large contacts");
+    touch(device,QEvent::TouchEnd,16,960,Qt::TouchPointReleased);
+    setting.setValue(curveKey,1.0);
+    setting.setValue(stabilityKey,0.5);
+
+    const qreal steady=touch(device,QEvent::TouchBegin,16,970,
+                             Qt::TouchPointPressed);
+    require(qAbs(touch(device,QEvent::TouchUpdate,24,978)-steady)<0.0001 &&
+            qAbs(touch(device,QEvent::TouchUpdate,16,986)-steady)<0.0001,
+            "one-frame contact spike changed brush pressure");
+    touch(device,QEvent::TouchEnd,16,994,Qt::TouchPointReleased);
+
+    const auto slowSample=[&](QEvent::Type type,qreal diameter,ulong time,
+                              Qt::TouchPointState state=Qt::TouchPointMoved) {
+        return touch(device,type,diameter,time,state,1,1,1.0,false,0.02);
+    };
+    const qreal slowStart=slowSample(QEvent::TouchBegin,16,3000,Qt::TouchPointPressed);
+    for(int i=1;i<=60;++i) {
+        const qreal width=slowSample(QEvent::TouchUpdate,i%2?12:20,3000+8*i);
+        require(qAbs(width-slowStart)<0.035,
+                "slow stroke follows alternating contact-size steps");
+    }
+    const qreal afterPause=slowSample(QEvent::TouchUpdate,24,4200);
+    require(qAbs(afterPause-slowStart)<0.04,"pause reset pressure mid-stroke");
+    qreal held=afterPause;
+    for(int i=1;i<=60;++i)
+        held=slowSample(QEvent::TouchUpdate,24,4200+10*i);
+    require(held>slowStart+0.35,"slow stroke ignored a sustained pressure change");
+    slowSample(QEvent::TouchEnd,24,4810,Qt::TouchPointReleased);
+
+    // Restore the normal test range.
+    setting.setValue(minKey,8.0);
+    setting.setValue(maxKey,24.0);
+    const qreal start=touch(device,QEvent::TouchBegin,15,1000,
+                            Qt::TouchPointPressed);
+    require(start>=0.0 && start<=1.0,"initial pressure outside 0–100% bounds");
+    qreal last=start;
+    for(int i=0;i<12;++i) {
+        qreal current=touch(device,QEvent::TouchUpdate,23,1010+10*i);
+        require(current>=last && current<=last+0.50,
+                "adaptive response jumped outside the permitted range");
+        last=current;
+    }
+    require(last>start+0.25,"adaptive response ignored real expansion");
+    // Identical event samples may be queried more than once by the brush.
+    const qreal repeated=touch(device,QEvent::TouchUpdate,23,1120);
+    require(qAbs(repeated-last)<0.00001,
+            "duplicate sample applied smoothing twice");
+    for(int i=0;i<12;++i)last=touch(
+        device,QEvent::TouchUpdate,10,1140+10*i);
+    require(last<start-0.05,"smaller contact area did not reduce pressure");
+    touch(device,QEvent::TouchEnd,10,1280,Qt::TouchPointReleased);
+    require(app.property("_mobileFingerAreaLastSampleCount").toInt()>=10,
+            "completed stroke did not record valid contact samples");
+    require(app.property("_mobileFingerAreaLastUniqueSteps").toInt()>=3,
+            "diagnostics did not count distinct touch contact levels");
+    require(app.property("_mobileFingerAreaLastQtSamples").toInt()>10 &&
+            app.property("_mobileFingerAreaLastRawSamples").toInt()==0 &&
+            app.property("_mobileFingerAreaLastAlignedFallbacks").toInt()==0,
+            "Qt-only test incorrectly reported Android raw source usage");
+    require(app.property("_mobileFingerAreaLastMinDiameter").toDouble()<=10,
+            "contact diagnostic did not track smallest size");
+    require(app.property("_mobileFingerAreaLastMaxDiameter").toDouble()>=23,
+            "contact diagnostic did not track largest size");
+
+    // Invalid user settings safely revert to bounded calibration.
+    setting.setValue(minKey,25.0);
+    setting.setValue(maxKey,15.0);
+    const auto fallback=MobileFingerPressureSettings::read(setting);
+    require(MobileFingerPressureSettings::validRange(
+                fallback.minimum,fallback.maximum),
+            "invalid calibration was accepted");
+    require(qAbs(fallback.minimum-1.0)<0.001 &&
+            qAbs(fallback.maximum-10.0)<0.001,
+            "invalid calibration did not use safe defaults");
+    setting.setValue(minKey,8.0);
+    setting.setValue(maxKey,24.0);
+
+    // Disabling after a stroke must restore the exact native input.
+    setting.setValue(key,false);
+    require(qAbs(touch(device,QEvent::TouchBegin,15,2000,
+                       Qt::TouchPointPressed,1,1,native)-native)<0.00001,
+            "toggle OFF did not restore original pressure");
+    touch(device,QEvent::TouchEnd,15,2010,Qt::TouchPointReleased);
+
+    // Missing dimensions preserve Krita's native touch pressure.
+    setting.setValue(key,true);
+    require(qAbs(touch(device,QEvent::TouchBegin,0,3000,
+                       Qt::TouchPointPressed,1,1,native)-native)<0.00001,
+            "unavailable contact size did not fall back");
+    touch(device,QEvent::TouchEnd,0,3010,Qt::TouchPointReleased);
+    require(app.property("_mobileFingerAreaLastSampleCount").toInt()==0,
+            "unsupported touch dimensions were reported as usable");
+
+    // Even if a device reports a pen through its TouchScreen events,
+    // the Qt Pen designation always preserves its original pressure.
+    require(qAbs(touch(device,QEvent::TouchBegin,25,3070,
+                       Qt::TouchPointPressed,1,1,native,true)-native)<0.00001,
+            "pen-type touch was assigned simulated finger pressure");
+    touch(device,QEvent::TouchEnd,25,3090,
+          Qt::TouchPointReleased,1,1,native,true);
+
+    // Multitouch gestures are never assigned simulated pressure.
+    require(qAbs(touch(device,QEvent::TouchUpdate,25,3100,
+                       Qt::TouchPointMoved,1,2,native)-native)<0.00001,
+            "multitouch gesture pressure was overridden");
+
+    qInfo() << "PASS: absolute contact response gamma, adaptive smoothing,"
+            << "session-frozen settings, full-range endpoints, custom min/max,"
+            << "mid-stroke calibration stability, disabled fallback,"
+            << "area growth/shrink, smoothing, duplicate idempotence,"
+            << "missing size, pen and multitouch safety";
+    return 0;
+}
