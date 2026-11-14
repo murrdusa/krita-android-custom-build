@@ -406,23 +406,27 @@ public:
     void showSavedVersions(const QString &path)
     {
         if(m_restoringVersion || !m_files)return;
-        QDialog dialog(window());
-        dialog.setWindowTitle(i18n("Saved versions"));
-        dialog.setMinimumWidth(qMin(300,qMax(1,window()->width()-24)));
-        auto *layout=new QVBoxLayout(&dialog);
-        auto *explanation=new QLabel(i18n("Loading saved versions…"),&dialog);
+        const QPointer<MobileDocumentHome> home(this);
+        // The owning Android window can be destroyed while exec() runs.
+        // A stack-allocated QObject child would then be deleted by Qt's
+        // parent destructor, corrupting the enclosing stack frame.
+        QPointer<QDialog> dialog(new QDialog(window()));
+        dialog->setWindowTitle(i18n("Saved versions"));
+        dialog->setMinimumWidth(qMin(300,qMax(1,window()->width()-24)));
+        auto *layout=new QVBoxLayout(dialog.data());
+        auto *explanation=new QLabel(i18n("Loading saved versions…"),dialog.data());
         explanation->setWordWrap(true);
         layout->addWidget(explanation);
-        auto *list=new QListWidget(&dialog);
+        auto *list=new QListWidget(dialog.data());
         list->setIconSize(QSize(64,54));
         list->setStyleSheet(QStringLiteral("QListWidget::item{min-height:54px;padding:5px;}"));
         MobileTouchScroll::configureList(list);
         layout->addWidget(list,1);
         auto *buttons=new QDialogButtonBox(
-            QDialogButtonBox::Open|QDialogButtonBox::Cancel,&dialog);
+            QDialogButtonBox::Open|QDialogButtonBox::Cancel,dialog.data());
         buttons->setStyleSheet(QStringLiteral("QPushButton{min-height:44px;}"));
-        connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);
-        connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
+        connect(buttons,&QDialogButtonBox::accepted,dialog.data(),&QDialog::accept);
+        connect(buttons,&QDialogButtonBox::rejected,dialog.data(),&QDialog::reject);
         layout->addWidget(buttons);
         auto *open=buttons->button(QDialogButtonBox::Open);
         open->setEnabled(false);
@@ -467,11 +471,18 @@ public:
                 },Qt::QueuedConnection);
             }
         });
-        const int result=dialog.exec();
+        const int result=dialog->exec();
         cancelled->store(true);
+        if(!dialog || !home)return;
         const int row=list->currentRow();
-        if(result==QDialog::Accepted && row>=0 && row<versions->size())
-            openCopy(versions->at(row));
+        const bool selected=result==QDialog::Accepted &&
+            row>=0 && row<versions->size();
+        const MobileSavedVersionArchive::Version selectedVersion=
+            selected?versions->at(row):MobileSavedVersionArchive::Version{};
+        // Delete the completed dialog before opening another canvas.
+        // That operation can synchronously tear down the home window.
+        delete dialog.data();
+        if(selected && home)home->openCopy(selectedVersion);
     }
 
 protected:
