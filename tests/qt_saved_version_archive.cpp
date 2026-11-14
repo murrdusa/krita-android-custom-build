@@ -915,20 +915,30 @@ int main(int argc,char **argv)
         QStringLiteral("notes.kra"));
     const QString badName=QDir(orphanFolder).filePath(
         QStringLiteral("Recovered-not-a-uuid.kra"));
+    const QString extendedName=QDir(orphanFolder).filePath(
+        QStringLiteral("Recovered-33333333-3333-4333-8333-333333333333-extra.kra"));
     save(expired,initial);
     save(fresh,initial);
     save(unrelated,initial);
     save(badName,initial);
+    save(extendedName,initial);
     QFile oldFile(expired);
     require(oldFile.open(QIODevice::ReadWrite) &&
             oldFile.setFileTime(QDateTime::currentDateTime().addDays(-3),
                                 QFileDevice::FileModificationTime),
             "stage old orphan recovery file");
     oldFile.close();
+    QFile malformedOld(extendedName);
+    require(malformedOld.open(QIODevice::ReadWrite) &&
+            malformedOld.setFileTime(QDateTime::currentDateTime().addDays(-3),
+                                     QFileDevice::FileModificationTime),
+            "stage old noncanonical recovery-name fixture");
+    malformedOld.close();
     require(MobileSavedVersionArchive::cleanupStaleRecoveryCopies(
                 orphanFolder)==1 &&
             !QFile::exists(expired) && QFile::exists(fresh) &&
-            QFile::exists(unrelated) && QFile::exists(badName),
+            QFile::exists(unrelated) && QFile::exists(badName) &&
+            QFile::exists(extendedName),
             "orphan recovery pruning removed a live or unrelated file");
     require(MobileSavedVersionArchive::cleanupStaleRecoveryCopies(
                 orphanFolder)==0,"orphan pruning was not idempotent");
