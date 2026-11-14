@@ -1118,6 +1118,7 @@ private:
             timer.start();
             const qint64 automaticLimitMs=12000;
             bool truncated=false;
+            bool limitReached=false;
             const auto androidList=[](const char *method) {
                 const auto result=QAndroidJniObject::callStaticObjectMethod(
                     "org/krita/android/MainActivity",method,"()Ljava/lang/String;");
@@ -1167,6 +1168,7 @@ private:
                 if(discovered>=maxScannedProjects ||
                    visited.size()>=maxVisitedDirectories) {
                     truncated=true;
+                    limitReached=true;
                     break;
                 }
                 if(!fullScan && timer.elapsed()>automaticLimitMs) {
@@ -1183,6 +1185,7 @@ private:
                        visited.size()>=maxVisitedDirectories ||
                        roots.size()>=maxVisitedDirectories) {
                         truncated=true;
+                        limitReached=true;
                         break;
                     }
                     if(!fullScan && timer.elapsed()>automaticLimitMs) {
@@ -1215,6 +1218,7 @@ private:
                 if(cancel->load() || !application)return;
                 if(discovered>=maxScannedProjects) {
                     truncated=true;
+                    limitReached=true;
                     break;
                 }
                 const auto entry=project.toObject();
@@ -1230,9 +1234,9 @@ private:
             deliverBatch();
             if(!application)return;
             QMetaObject::invokeMethod(application.data(),
-                [home,cancel,generation,truncated]() {
+                [home,cancel,generation,truncated,limitReached]() {
                 if(home && !cancel->load())
-                    home->finishScan(generation,truncated);
+                    home->finishScan(generation,truncated,limitReached);
             },Qt::QueuedConnection);
         });
     }
@@ -1271,13 +1275,17 @@ private:
         });
     }
 
-    void finishScan(int generation,bool truncated)
+    void finishScan(int generation,bool truncated,bool limitReached)
     {
         if(generation!=m_scanGeneration || m_mode!=AllProjects)return;
         m_scanCancel.reset();
         sortProjects();
         const int count=m_list->count();
-        if(truncated) {
+        if(limitReached) {
+            m_message->setText(i18n(
+                "%1 indexed projects. Storage scan reached its safety limit; "
+                "use Browse Files to open any missing projects.",count));
+        } else if(truncated) {
             m_message->setText(
                 i18n("%1 indexed projects. Tap Refresh to finish searching shared storage.",count));
         } else {
