@@ -95,10 +95,18 @@ public:
     static QVector<MobileProjectIndexEntry> load() {
         QVector<MobileProjectIndexEntry> entries;
         QFile f(indexPath());
-        if(!f.open(QIODevice::ReadOnly))return entries;
-        const auto doc=QJsonDocument::fromJson(f.readAll());
+        constexpr qint64 maxIndexBytes=16LL*1024*1024;
+        constexpr int maxIndexEntries=20000;
+        if(!f.open(QIODevice::ReadOnly) || f.size()<0 ||
+           f.size()>maxIndexBytes)return entries;
+        // The index is a cache, not artwork. An unexpectedly large or
+        // changing JSON file must never exhaust memory at gallery startup.
+        const QByteArray bytes=f.read(maxIndexBytes+1);
+        if(bytes.size()>maxIndexBytes)return entries;
+        const auto doc=QJsonDocument::fromJson(bytes);
         if(doc.isNull()||!doc.isObject())return entries;
         const auto arr=doc.object().value(QStringLiteral("entries")).toArray();
+        if(arr.size()>maxIndexEntries)return entries;
         entries.reserve(arr.size());
         for(const auto &v:arr) {
             const auto o=v.toObject();
