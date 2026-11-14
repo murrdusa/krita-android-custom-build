@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — validate checksum contents before migrating saved history
+
+- `MobileSavedVersionArchive::migrateFolder()` now validates that any existing checksum sidecar contains a properly formatted SHA-256 hexadecimal digest (64 characters, optional surrounding whitespace, at most 128 bytes), not merely that it is a small regular file. A malformed sidecar causes the paired KRA to stay in the source history folder rather than being published as an unusable destination version. Archive files with no sidecar retain legacy migration behavior.
+- Added a Qt archive regression with a short malformed sidecar in the source migration folder. The failed migration must preserve the original KRA and digest unchanged and leave destination history empty. Prior oversized and symlink checks remain covered.
+- **Verification:** previous exact-SHA local WSL Android build passed for `1168f39446f2ace6122f34e01cad7a6543f561d4`. The malformed-digest change and regression await their own exact-SHA compile/Qt test result. No APK uploaded.
+
 ## November 14 — preserve KRA/checksum atomic ownership on failed history migration
 
 - Audited `MobileSavedVersionArchive::migrateFolder()` after the streamed Save As migration change. Checksum sidecars were copied without checking for replaced symlinks or excessive size, allowing a corrupt/unexpectedly large sidecar to be propagated. The paired-archive pass now rejects a linked/non-file sidecar or one larger than 128 bytes, keeping the source KRA and checksum untouched for manual recovery/repair.
