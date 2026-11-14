@@ -232,7 +232,7 @@ public:
         panel->setAccessibleName(i18n("Tools"));
         panel->setStyleSheet(MobileMenuStyle::panel()+QStringLiteral(
             "QWidget#toolTiles{background:#25262b;border:0;}"
-            "QToolButton{padding:0;min-height:0;}"
+            "QToolButton{padding:0;}"
             "QToolButton#toolFavorite{font-size:18px;}"
             "QToolButton#toolFavorite:checked{color:#ffd26a;}"));
         auto *layout=new QVBoxLayout(panel);
@@ -251,6 +251,7 @@ public:
             auto *sections=new QVBoxLayout(content);
             sections->setContentsMargins(0,0,0,0);
             sections->setSpacing(3);
+            sections->setSizeConstraint(QLayout::SetMinimumSize);
             const int columns=panel->width()<295?1:2;
             const int textSpace=qMax(40,(panel->width()-16)/columns-67);
             const auto addTiles=[&](const Group &group,bool pinned) {
@@ -261,14 +262,14 @@ public:
                     const QString id=tile.favoriteId();
                     if(pinned!=favorites.contains(id))continue;
                     auto *cell=new QWidget(content);
+                    cell->setFixedHeight(40);
                     auto *row=new QHBoxLayout(cell);
                     row->setContentsMargins(0,0,0,0);
                     row->setSpacing(2);
                     auto *button=new QToolButton(cell);
                     button->setAccessibleName(tile.label);
                     button->setToolTip(tile.description.isEmpty()?tile.label:tile.description);
-                    button->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
-                    button->setFixedHeight(40);
+                    button->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Expanding);
                     auto *tileLayout=new QHBoxLayout(button);
                     tileLayout->setContentsMargins(4,1,2,1);
                     tileLayout->setSpacing(4);
@@ -305,7 +306,7 @@ public:
                     star->setText(pinned?QStringLiteral("★"):QStringLiteral("☆"));
                     star->setAccessibleName(pinned?i18n("Remove %1 from favorites",tile.label):
                                                    i18n("Favorite %1",tile.label));
-                    star->setFixedSize(32,40);
+                    star->setFixedWidth(32);
                     QObject::connect(star,&QToolButton::clicked,panel,[panel,id,settingsKey](bool checked) {
                         QSettings settings;
                         auto saved=settings.value(settingsKey).toStringList();

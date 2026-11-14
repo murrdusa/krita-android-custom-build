@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — restore tool tile height and fit Color to its preview
+
+- Tool grid cells own their 40 px row height, independent of the shared button stylesheet. The scroll content retains the full grid height.
+- The Color popup trims its width to the active wheel or lighting sphere and the controls below it. Color comparison swatches sit in the wheel's corner, and the popup still avoids toolbar strips.
+
 ## November 14 — shared touch menu presentation and canvas name entry
 
 - Tool, brush and contextual popovers share a palette and control styling with command lists and mobile dialogs. The canvas More menu and project sort use the same transient touch list, including nested commands and outside dismissal.

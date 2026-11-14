@@ -369,13 +369,17 @@ public:
             "QTabBar::tab{background:#30323b;color:#c3c6d1;min-height:30px;padding:0 7px;}"
             "QTabBar::tab:selected{background:#394459;color:#fff;}"));
         root->addWidget(tabs);
-        auto *pages=new QStackedWidget(this);
+        m_pages=new QStackedWidget(this);
+        auto *pages=m_pages;
         root->addWidget(pages,1);
         const auto addPage=[tabs,pages](QWidget *page,const QString &name) {
             pages->addWidget(page);
             tabs->addTab(name);
         };
         connect(tabs,&QTabBar::currentChanged,pages,&QStackedWidget::setCurrentIndex);
+        connect(pages,&QStackedWidget::currentChanged,this,[this]() {
+            if(onPreviewLayoutChanged)onPreviewLayoutChanged();
+        });
 
         auto *wheelPage=new QWidget(pages);
         auto *wheelLayout=new QVBoxLayout(wheelPage);
@@ -383,24 +387,20 @@ public:
         wheelLayout->setSpacing(2);
         m_wheel=new MobileHueWheel(wheelPage);
         m_wheel->setMinimumSize(0,0);
-        auto *wheelArea=new QHBoxLayout;
-        wheelArea->addWidget(m_wheel,1);
-        auto *comparison=new QVBoxLayout;
-        m_previous=new QLabel(wheelPage);
-        m_current=new QLabel(wheelPage);
+        wheelLayout->addWidget(m_wheel,1);
+        auto *comparison=new QVBoxLayout(m_wheel);
+        comparison->setContentsMargins(0,0,0,0);
+        comparison->setAlignment(Qt::AlignTop|Qt::AlignRight);
+        comparison->setSizeConstraint(QLayout::SetNoConstraint);
+        m_previous=new QLabel(m_wheel);
+        m_current=new QLabel(m_wheel);
         for(auto *chip:{m_previous,m_current}) {
             chip->setFixedSize(23,23);
-            auto policy=QSizePolicy(QSizePolicy::Fixed,QSizePolicy::Fixed);
-            policy.setRetainSizeWhenHidden(true);
-            chip->setSizePolicy(policy);
             comparison->addWidget(chip);
             chip->hide();
         }
         m_previous->setAccessibleName(tr("Previous color"));
         m_current->setAccessibleName(tr("Current color"));
-        comparison->addStretch(1);
-        wheelArea->addLayout(comparison);
-        wheelLayout->addLayout(wheelArea,1);
         m_wheel->onChosen=[this](const QColor &color,bool final) {
             if(!final && !m_previous->isVisible() && m_provider) {
                 paintChip(m_previous,m_provider->fgColor().toQColor());
@@ -475,6 +475,7 @@ public:
         roleButtons[0]->setChecked(true);
         lightingLayout->addLayout(lightingControls);
         auto *lightingForm=new QFormLayout;
+        lightingForm->setSpacing(2);
         std::array<MobileTouchSlider*,3> lightingSliders{};
         for(int i=0;i<3;++i) {
             auto *slider=new MobileTouchSlider(lightingPage);
@@ -504,6 +505,7 @@ public:
         for(int i=0;i<3;++i) {
             connect(roleButtons[i],&QPushButton::clicked,this,[this,i,refreshRole]() {
                 refreshRole(m_lightingHues[i]);
+                if(onPreviewLayoutChanged)onPreviewLayoutChanged();
             });
             connect(lightingSliders[i],&QSlider::valueChanged,this,
                     [this,group,roleColors,lightingSliders,refreshRole](int) {
@@ -542,6 +544,19 @@ public:
         connect(provider,&KisCanvasResourceProvider::sigFGColorChanged,this,
                 [this](const KoColor &color) {showColor(color.toQColor());});
         showColor(provider->fgColor().toQColor());
+    }
+
+    std::function<void()> onPreviewLayoutChanged;
+
+    int widthForPopupHeight(int height) const
+    {
+        const auto *page=m_pages->currentWidget();
+        const QSize controls=page->layout()->minimumSize();
+        const int otherRows=layout()->minimumSize().height()-m_pages->minimumSizeHint().height();
+        constexpr int horizontalPadding=16; // picker and popup margins
+        constexpr int frameHeight=4;
+        return horizontalPadding+qMax(controls.width(),
+            height-frameHeight-otherRows-controls.height());
     }
 
     void setFloatingSphere(MobileLightingSphere *sphere)
@@ -589,11 +604,11 @@ private:
     QPushButton *swatch(QWidget *parent,const QColor &color)
     {
         auto *button=new QPushButton(parent);
-        button->setMinimumHeight(24);
         button->setMinimumWidth(0);
         button->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Preferred);
         button->setAccessibleName(color.name());
-        button->setStyleSheet(QStringLiteral("QPushButton{background:%1;border:1px solid #767681;border-radius:6px;}")
+        button->setStyleSheet(QStringLiteral("QPushButton{background:%1;border:1px solid #767681;border-radius:6px;"
+                                              "min-height:24px;padding:0;}")
                               .arg(color.name()));
         connect(button,&QPushButton::clicked,this,[this,color]() {select(color);});
         return button;
@@ -633,6 +648,7 @@ private:
     QPointer<MobileLightingSphere> m_floating;
     MobileLightingSphere *m_sphere=nullptr;
     MobileHueWheel *m_wheel=nullptr;
+    QStackedWidget *m_pages=nullptr;
     QLineEdit *m_hex=nullptr;
     QLabel *m_previous=nullptr,*m_current=nullptr;
     std::array<int,3> m_lightingHues{};

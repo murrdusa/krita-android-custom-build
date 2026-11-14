@@ -447,15 +447,25 @@ public:
         }
         panel->setOpener(anchor,m_colorAction);
         panel->anchorTo(anchor,QSize(448,570),true);
-        panel->fitGeometry=[canvas](const QRect &preferred) {
+        const QPointer<QWidget> opener(anchor);
+        panel->fitGeometry=[canvas,opener,picker=m_colorPicker.data()](const QRect &preferred) {
             QList<QRect> occupied;
             for(auto *bar:canvas->findChildren<QFrame*>(QString(),Qt::FindDirectChildrenOnly)) {
                 if(bar->isVisible() && bar->property("mobileCommandToolbar").toBool())
                     occupied.append(bar->geometry());
             }
-            return MobileOverlayPlacement::nearest(
+            auto fitted=MobileOverlayPlacement::nearest(
                 preferred,MobileNativeCommandLayout::controlBounds(canvas),occupied,QSize(1,1));
+            if(!fitted.isValid())return fitted;
+            const int width=qBound(1,picker->widthForPopupHeight(fitted.height()),fitted.width());
+            const int right=fitted.right();
+            const bool alignRight=opener &&
+                canvas->mapFromGlobal(opener->mapToGlobal(opener->rect().center())).x()>fitted.center().x();
+            fitted.setWidth(width);
+            if(alignRight)fitted.moveRight(right);
+            return fitted;
         };
+        m_colorPicker->onPreviewLayoutChanged=[panel]() {panel->reposition();};
         panel->present();
         syncPanelActions();
     }

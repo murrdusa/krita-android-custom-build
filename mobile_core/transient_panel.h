@@ -65,6 +65,8 @@ public:
         return false;
     }
 
+    void reposition() {position();}
+
     void present()
     {
         position();
