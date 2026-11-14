@@ -429,14 +429,16 @@ public:
         const auto versions=std::make_shared<QVector<MobileSavedVersionArchive::Version>>();
         const auto cancelled=std::make_shared<std::atomic_bool>(false);
         const QPointer<QListWidget> target(list);
+        const QPointer<QCoreApplication> application(qApp);
         const QPointer<QLabel> explanationGuard(explanation);
         const QPointer<QPushButton> openGuard(open);
         const QIcon placeholder=m_placeholder;
         QThreadPool::globalInstance()->start(
-            [path,target,explanationGuard,openGuard,placeholder,versions,cancelled]() {
+            [path,target,application,explanationGuard,openGuard,placeholder,versions,cancelled]() {
+            if(cancelled->load() || !application)return;
             const auto found=MobileSavedVersionArchive::list(path);
-            if(cancelled->load())return;
-            QMetaObject::invokeMethod(qApp,
+            if(cancelled->load() || !application)return;
+            QMetaObject::invokeMethod(application.data(),
                 [target,explanationGuard,openGuard,placeholder,versions,found,cancelled]() {
                 if(cancelled->load() || !target || !explanationGuard || !openGuard)return;
                 *versions=found;
@@ -456,7 +458,9 @@ public:
                 const QImage image=cachedPreview(version.path,version.createdUtc.toMSecsSinceEpoch(),
                                                  false,cancelled.get());
                 if(image.isNull())continue;
-                QMetaObject::invokeMethod(qApp,[target,image,row,cancelled]() {
+                if(cancelled->load() || !application)return;
+                QMetaObject::invokeMethod(application.data(),
+                    [target,image,row,cancelled]() {
                     if(cancelled->load() || !target)return;
                     if(auto *item=target->item(row))
                         item->setIcon(QIcon(QPixmap::fromImage(image)));
@@ -1084,12 +1088,13 @@ private:
         const int generation=++m_scanGeneration;
         m_scanDiscoveredCount=0;
         QPointer<MobileDocumentHome> home(this);
+        const QPointer<QCoreApplication> application(qApp);
         const bool broadAccess=m_lastAccess;
         // The scanner can outrun a busy UI by thousands of 32-item
         // batches. Bound outstanding queued deliveries to avoid an
         // unbounded event-queue/memory backlog on large storage trees.
         const auto queued=std::make_shared<std::atomic_int>(0);
-        m_scanner.start([home,cancel,queued,generation,fullScan,broadAccess]() {
+        m_scanner.start([home,application,cancel,queued,generation,fullScan,broadAccess]() {
             // Prioritize common directories during a timed background scan.
             // Refresh walks all accessible shared directories.
             QElapsedTimer timer;
@@ -1123,8 +1128,9 @@ private:
                 if(cancel->load())return;
                 auto deliver=std::move(batch);
                 batch.clear();
+                if(!application || cancel->load())return;
                 queued->fetch_add(1,std::memory_order_release);
-                if(!QMetaObject::invokeMethod(qApp,
+                if(!QMetaObject::invokeMethod(application.data(),
                     [home,cancel,queued,generation,deliver]() {
                         queued->fetch_sub(1,std::memory_order_acq_rel);
                         if(home && !cancel->load())
@@ -1177,7 +1183,9 @@ private:
                 if(batch.size()>=32)deliverBatch();
             }
             deliverBatch();
-            QMetaObject::invokeMethod(qApp,[home,cancel,generation,truncated]() {
+            if(!application)return;
+            QMetaObject::invokeMethod(application.data(),
+                [home,cancel,generation,truncated]() {
                 if(home && !cancel->load())
                     home->finishScan(generation,truncated);
             },Qt::QueuedConnection);
@@ -1339,11 +1347,15 @@ private:
             m_pending.insert(request);
             --budget;
             const QPointer<MobileDocumentHome> home(this);
+            const QPointer<QCoreApplication> application(qApp);
             const auto cancelled=m_previewCancelled;
             const bool refresh=m_forceThumbnailRefresh;
-            m_thumbnails.start([home,project,request,cancelled,refresh]() {
+            m_thumbnails.start([home,application,project,request,cancelled,refresh]() {
+                if(cancelled->load() || !application)return;
                 const QImage image=cachedPreview(request.first,request.second,refresh,cancelled.get());
-                QMetaObject::invokeMethod(qApp,[home,project,request,image,cancelled]() {
+                if(cancelled->load() || !application)return;
+                QMetaObject::invokeMethod(application.data(),
+                    [home,project,request,image,cancelled]() {
                     if(cancelled->load() || !home)return;
                     home->m_pending.remove(request);
                     const auto &path=request.first;
