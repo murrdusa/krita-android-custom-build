@@ -10,6 +10,7 @@ inline int mobileFillTolerance(int initial,int delta)
 }
 
 #include <QRect>
+#include <QSize>
 
 // An older worker can finish after a drag returns to its earlier value.
 // Preview acceptance requires both tolerance and request identity.
