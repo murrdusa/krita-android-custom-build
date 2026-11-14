@@ -173,14 +173,21 @@ public:
                     scheduleActivation(vm,root,
                         qobject_cast<KisView*>(root->currentWidget()));
                 });
+            // Installing the window/surface observer can synchronously
+            // deliver Qt events; do not mark a destroyed root as wired.
+            if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
+                return nullptr;
             stack->setProperty("_mobileStudioKritaSelectionWired",true);
         }
 
-        if(!guarded || !guardedStack || !guardedManager)return nullptr;
+        if(!guarded || !guardedDocument || !guardedStack || !guardedManager)
+            return nullptr;
         view->show();
-        if(!guarded || !guardedStack || !guardedManager)return nullptr;
+        if(!guarded || !guardedDocument || !guardedStack || !guardedManager)
+            return nullptr;
         stack->setCurrentWidget(view);
-        if(!guarded || !guardedStack || !guardedManager)return nullptr;
+        if(!guarded || !guardedDocument || !guardedStack || !guardedManager)
+            return nullptr;
         // First addWidget() emits currentChanged before the router is
         // wired. Only that first canvas needs explicit activation.
         // Later changes are already routed through currentChanged.
