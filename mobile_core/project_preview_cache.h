@@ -4,6 +4,10 @@
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
+#include <QDirIterator>
+#include <QSet>
+#include <QVector>
+#include <algorithm>
 #include <QFileInfo>
 #include <QImage>
 #include <QImageReader>
@@ -94,24 +98,49 @@ private:
 
     void pruneLocked() const
     {
-        const auto entries=QDir(m_directory).entryInfoList({QStringLiteral("*.png")},
-            QDir::Files|QDir::NoSymLinks,QDir::Time);
-        // Count-only retention permits up to 512 * 32 MiB of PNGs.
-        // Enforce an aggregate byte budget as well as the existing
-        // count ceiling. The newest entries are considered first, so
-        // older previews are evicted before recent drawings.
-        qint64 retainedBytes=0;
-        for(int i=0;i<entries.size();++i) {
-            const auto &entry=entries.at(i);
-            const qint64 size=entry.size();
-            const bool fits=i<512 && size>0 &&
-                size<=maxEncodedBytes() &&
-                retainedBytes<=maxCacheBytes()-size;
-            if(fits) {
-                retainedBytes+=size;
-            } else {
-                QFile::remove(entry.absoluteFilePath());
+        // Keep only metadata for the newest 512 files. Materializing and
+        // sorting every PNG in an interrupted/overfull cache can spike
+        // gallery startup memory before a single thumbnail is loaded.
+        constexpr int maxEntries=512;
+        const auto newer=[](const QFileInfo &a,const QFileInfo &b) {
+            if(a.lastModified()!=b.lastModified())
+                return a.lastModified()>b.lastModified();
+            return a.fileName()>b.fileName();
+        };
+        QVector<QFileInfo> newest;
+        newest.reserve(maxEntries);
+        QDirIterator files(m_directory,{QStringLiteral("*.png")},
+                           QDir::Files|QDir::NoSymLinks);
+        while(files.hasNext()) {
+            files.next();
+            const QFileInfo entry=files.fileInfo();
+            if(newest.size()<maxEntries) {
+                newest.append(entry);
+                std::push_heap(newest.begin(),newest.end(),newer);
+            } else if(newer(entry,newest.front())) {
+                std::pop_heap(newest.begin(),newest.end(),newer);
+                newest.last()=entry;
+                std::push_heap(newest.begin(),newest.end(),newer);
             }
+        }
+        std::sort(newest.begin(),newest.end(),newer);
+        QSet<QString> retained;
+        qint64 retainedBytes=0;
+        for(const QFileInfo &entry:newest) {
+            const qint64 size=entry.size();
+            if(size>0 && size<=maxEncodedBytes() &&
+               retainedBytes<=maxCacheBytes()-size) {
+                retained.insert(entry.absoluteFilePath());
+                retainedBytes+=size;
+            }
+        }
+        // A second streaming pass removes older and over-budget files
+        // without retaining their names or decoded contents in RAM.
+        QDirIterator obsolete(m_directory,{QStringLiteral("*.png")},
+                              QDir::Files|QDir::NoSymLinks);
+        while(obsolete.hasNext()) {
+            const QString path=obsolete.next();
+            if(!retained.contains(path))QFile::remove(path);
         }
     }
 
