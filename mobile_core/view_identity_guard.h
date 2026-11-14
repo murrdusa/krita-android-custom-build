@@ -48,8 +48,11 @@ public:
         if(expected.size()!=current.size())return false;
         int expectedActive=0;
         int currentActive=0;
+        QVector<QPointer<QObject>> seenDocuments;
         for(const View &old:expected) {
-            if(!old.nativeView || !old.document)return false;
+            if(!old.nativeView || !old.document ||
+               seenDocuments.contains(old.document))return false;
+            seenDocuments.append(old.document);
             if(old.active)++expectedActive;
             int matches=0;
             for(const View &now:current) {
