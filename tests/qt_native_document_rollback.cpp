@@ -1,5 +1,8 @@
 #include <QCoreApplication>
 #include <QPointer>
+#include <QSharedPointer>
+#include <QEnableSharedFromThis>
+#include <functional>
 #include <QDebug>
 #include "mobile_core/native_document_rollback.h"
 
@@ -9,6 +12,22 @@ struct FakeDocument final : QObject {
     static int destroyed;
 };
 int FakeDocument::destroyed=0;
+
+// The native document backend uses this same shared-ownership contract:
+// synchronous Krita callbacks may release its owning window while an
+// Open/Save transaction still has rollback state on the call stack.
+struct ReentrantDocumentBackend final :
+    QEnableSharedFromThis<ReentrantDocumentBackend> {
+    explicit ReentrantDocumentBackend(int &destructions):m_destructions(destructions) {}
+    ~ReentrantDocumentBackend() {++m_destructions;}
+    bool run(const std::function<void()> &nested) const {
+        const auto keepAlive=sharedFromThis();
+        if(!keepAlive)return false;
+        nested();
+        return m_destructions==0;
+    }
+    int &m_destructions;
+};
 static void require(bool ok,const char *reason)
 {
     if(!ok)qFatal("Document rollback regression: %s",reason);
@@ -45,6 +64,14 @@ int main(int argc,char **argv)
             "registry guard removed another window's document");
     delete third;
     require(FakeDocument::destroyed==3,"lost or double destroyed document");
+    int backendDestructions=0;
+    auto backend=QSharedPointer<ReentrantDocumentBackend>::create(
+        backendDestructions);
+    const auto *running=backend.data();
+    require(running->run([&backend]() {backend.clear();}) &&
+            backend.isNull() && backendDestructions==1,
+            "reentrant owner release destroyed in-flight document backend");
+
     qInfo()<<"PASS: attach failure rollback, duplicate prevention and"
               "ownership isolation";
     return 0;
