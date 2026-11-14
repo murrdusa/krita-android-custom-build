@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — safely destroy unsaved-document close prompt on Android activity teardown
+
+- The native Save / Hold to discard / Cancel prompt no longer constructs a parented stack QDialog, QVBoxLayout, QLabel, buttons or progress bar. The modal and all its child controls now have heap ownership guarded by QPointer, and the hold timer is a dialog child so it is canceled along with the dialog. If the host vanishes while the modal loop is active, the result is forced to Cancel rather than Save or Discard. The existing two-second hold requirement and translated labels remain unchanged.
+- Added a Qt-only lightweight host regression covering parent destruction during an equivalent close-modal event loop. This is an ownership-pattern test, not an instrumented Android close-flow test.
+- **Verification:** source pushed to main; latest local WSL compiler SUCCESS report before these changes was for `c963b27e0ad080f5c8d8a85c7d123243ea8397f0`. The new close-modal changes and Qt regression await exact-SHA WSL build/test confirmation. No APK uploaded.
+
 ## November 14 — harden Android storage-permission dialog lifecycle
 
 - The All Projects storage-access prompt now uses a QPointer-guarded heap-owned QMessageBox. The Android activity can destroy its parent window during the nested confirmation event loop; the permission request is only dispatched if the owning gallery survives and remains visible. The existing default Yes choice and optional access behavior are preserved.
