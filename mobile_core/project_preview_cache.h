@@ -65,17 +65,21 @@ public:
             output.cancelWriting();
             return;
         }
+        const qint64 encodedBytes=output.size();
         static QMutex publication;
         QMutexLocker guard(&publication);
         if((cancelled && cancelled->load()) || !output.commit())return;
         static unsigned writes=0;
-        if(writes++%32!=0)return;
+        // A large, valid preview can fill the quota in just a few
+        // writes. Sweep immediately for those; small thumbnails still
+        // amortize their directory enumeration over 32 publications.
+        if(writes++%32!=0 && encodedBytes<=1024*1024)return;
         const auto entries=QDir(m_directory).entryInfoList({QStringLiteral("*.png")},
             QDir::Files|QDir::NoSymLinks,QDir::Time);
         // Count-only retention permits up to 512 * 32 MiB of PNGs.
         // Enforce an aggregate byte budget as well as the existing
-        // count ceiling. Keep the newest valid cache file even when
-        // its own size is unusually large.
+        // count ceiling. The newest entries are considered first, so
+        // older previews are evicted before recent drawings.
         qint64 retainedBytes=0;
         for(int i=0;i<entries.size();++i) {
             const auto &entry=entries.at(i);
