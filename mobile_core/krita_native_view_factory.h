@@ -43,16 +43,15 @@ public:
 
         // Create and register the REAL KisView in Krita's KisPart.
         // Its QWidget must be new, unattached and never borrowed from MDI.
+        // Creating the real Krita view can dispatch Qt callbacks before
+        // returning. Guard its dependencies *before* createView(), rather
+        // than accessing a manager/document that was destroyed inside it.
+        const QPointer<KisDocument> guardedDocument(document);
+        const QPointer<KisViewManager> guardedManager(manager);
+        const QPointer<MobileNativeViewStack> guardedStack(stack);
         KisView *view=KisPart::instance()->createView(document,manager,nullptr);
         if(!view)return nullptr;
         QPointer<KisView> guarded=view;
-        const QPointer<KisDocument> guardedDocument(document);
-        view->setAttribute(Qt::WA_DeleteOnClose,false);
-        view->setMobileNativeSaveHost(saver);
-        // Krita's view-manager and loading hooks can run synchronous
-        // callbacks that close the document or its native view.
-        const QPointer<KisViewManager> guardedManager(manager);
-        const QPointer<MobileNativeViewStack> guardedStack(stack);
         // If attachment fails after Krita created its view, release the
         // still-live unparented view while its manager is also alive.
         // Otherwise the failed first canvas leaks its GL surface.
@@ -60,6 +59,14 @@ public:
             if(guarded && guardedManager)delete guarded.data();
             return nullptr;
         };
+        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
+            return abortAttach();
+        view->setAttribute(Qt::WA_DeleteOnClose,false);
+        view->setMobileNativeSaveHost(saver);
+        // Krita's view-manager and loading hooks can run synchronous
+        // callbacks that close the document or its native view.
+        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
+            return abortAttach();
         manager->inputManager()->addTrackedCanvas(view->canvasBase());
         if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
             return abortAttach();
