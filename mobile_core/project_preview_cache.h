@@ -114,6 +114,10 @@ private:
         while(files.hasNext()) {
             files.next();
             const QFileInfo entry=files.fileInfo();
+            // Invalid legacy cache files must not crowd out readable
+            // older previews from the newest-512 retention window.
+            // The second pass deletes these invalid files as usual.
+            if(entry.size()<=0 || entry.size()>maxEncodedBytes())continue;
             if(newest.size()<maxEntries) {
                 newest.append(entry);
                 std::push_heap(newest.begin(),newest.end(),newer);
