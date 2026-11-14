@@ -221,6 +221,35 @@ int main(int argc,char **argv)
                 replacement->openViews().isEmpty(),
                 "stale import leaked document into a replacement root");
     }
+    // Autosave iterates a snapshot of native canvases. A reentrant
+    // checkpoint callback can replace the root while that snapshot
+    // still contains another document; do not visit that stale canvas.
+    {
+        QWidget owner;
+        QPointer<MobileNativeViewStack> original(new MobileNativeViewStack(&owner));
+        auto *firstDoc=new QObject(&owner);
+        auto *secondDoc=new QObject(&owner);
+        require(original->adoptView(new QWidget,firstDoc,
+                    QStringLiteral("first"),[](){return true;}) &&
+                original->adoptView(new QWidget,secondDoc,
+                    QStringLiteral("second"),[](){return true;}),
+                "could not set up two-canvas autosave traversal");
+        const auto views=original->openViews();
+        MobileNativeViewStack *currentRoot=original.data();
+        int visited=0;
+        for(const auto &view:views) {
+            if(!original || original.data()!=currentRoot)break;
+            require(view.document,"autosave snapshot lost document identity");
+            ++visited;
+            if(visited==1) {
+                delete original.data();
+                currentRoot=new MobileNativeViewStack(&owner);
+            }
+        }
+        require(visited==1 && !original &&
+                currentRoot->openViews().isEmpty(),
+                "autosave traversed stale canvases after root replacement");
+    }
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
