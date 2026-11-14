@@ -36,6 +36,17 @@ public:
     }
     explicit MobileProjectPreviewCache(const QString &directory) : m_directory(directory) {}
 
+    // All gallery image sources, not only cache files, must obey the
+    // same retained-pixel budget. Some Qt image plugins may ignore
+    // QImageReader::setScaledSize() and return the original bitmap.
+    static QImage boundedThumbnail(const QImage &decoded)
+    {
+        if(decoded.isNull())return {};
+        if(decoded.width()<=124 && decoded.height()<=124)return decoded;
+        return decoded.scaled(124,124,Qt::KeepAspectRatio,
+                              Qt::SmoothTransformation);
+    }
+
     QImage load(const QString &source,qint64 revision,
                 const std::atomic_bool *cancelled=nullptr) const
     {
@@ -71,10 +82,7 @@ public:
         // Some image plugins may ignore the requested scaled decode.
         // Never retain a full-size legacy PNG as an Android gallery
         // icon even if the decoder returned an unexpectedly large image.
-        if(decoded.width()>124 || decoded.height()>124)
-            decoded=decoded.scaled(124,124,Qt::KeepAspectRatio,
-                                   Qt::SmoothTransformation);
-        return decoded;
+        return boundedThumbnail(decoded);
     }
 
     // An abrupt process kill can leave a legacy or over-quota thumbnail
