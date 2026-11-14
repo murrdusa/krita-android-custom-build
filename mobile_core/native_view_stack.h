@@ -193,9 +193,12 @@ private:
             QObject::disconnect(removed.viewDestroyed);
             QObject::disconnect(removed.documentDestroyed);
             if(view && indexOf(view.data())>=0) {
-                // Qt retains ownership until the native engine's
-                // close callback has disposed of the view.
+                // Removing the selected widget emits currentChanged.
+                // Its callback may synchronously destroy the whole
+                // stack; never touch the removed view through a dead host.
+                const QPointer<MobileNativeViewStack> host(this);
                 removeWidget(view.data());
+                if(!host)return true;
                 if(view)view->hide();
             }
             return true;
