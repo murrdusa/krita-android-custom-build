@@ -108,7 +108,7 @@ public:
                 {QStringLiteral("*.pending.kra")},
                 QDir::Files|QDir::Readable|QDir::NoSymLinks)) {
             const qint64 age=pending.lastModified().toUTC().secsTo(now);
-            if(age<300 || age>365LL*24*60*60*10)continue;
+            if(age<300)continue;
             const QString path=pending.absoluteFilePath();
             const QString draft=path.left(path.size()-suffix.size());
             if(!isDraftPath(draft) || !hasReadableProject(path))continue;
