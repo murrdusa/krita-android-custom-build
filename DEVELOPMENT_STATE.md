@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — overflow-safe version-history quota enforcement
+
+- Version-history pruning now saturates its total byte tally once it exceeds the 512 MiB history quota, and uses subtraction-based capacity checks before retaining older checkpoints. This avoids overflow or accidental quota bypass when encountering oversized/sparse historical files, while preserving the newest save and verified older recovery entries.
+- Qt regression creates an oversized sparse history file, verifies a new saved checkpoint still publishes, and confirms retention removes the out-of-budget older entry without discarding the current project bytes.
+- **Verification:** earlier version-history revision `97f5986ac8e15d886ab941d70273318156cb0be5` passed the local WSL Android build. Latest source/test revisions await exact-SHA WSL and desktop Qt test verification. No APK uploaded.
+
+
 ## November 14 — preserve verified history over corrupted intermediate files
 
 - Version-history pruning now prioritizes SHA-verified older KRAs before retaining corrupted or legacy files whenever history exceeds quotas, including when the latest saved version itself is healthy. This prevents a series of corrupt intermediate snapshots from evicting all usable older recovery points.
