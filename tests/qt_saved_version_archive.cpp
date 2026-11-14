@@ -428,6 +428,40 @@ int main(int argc,char **argv)
     }
     QFile::remove(hugeDraft);
     QFile::remove(invalidDraft);
+    // A process crash may leave a fully written .pending.kra which
+    // was never published. Recent staging is left alone for active
+    // exporters; old completed staging becomes a separate recovery.
+    const QByteArray abandonedBytes=QByteArray::fromHex("504b0304")+
+        "abandoned-but-complete";
+    save(staging,abandonedBytes);
+    require(MobileDraftRecovery::setProject(draft,source),
+            "associate abandoned staging with saved project");
+    require(MobileDraftRecovery::list().size()==1 &&
+            load(staging)==abandonedBytes,
+            "recent unfinished publication was recovered too early");
+    {
+        QFile pending(staging);
+        require(pending.open(QIODevice::ReadWrite) &&
+                pending.setFileTime(QDateTime::currentDateTimeUtc().addSecs(-3600),
+                    QFileDevice::FileModificationTime),
+                "age the abandoned publication fixture");
+    }
+    const auto recoveredListing=MobileDraftRecovery::list();
+    QString abandonedRescue;
+    for(const QFileInfo &candidate:recoveredListing) {
+        if(candidate.absoluteFilePath()!=draft &&
+           load(candidate.absoluteFilePath())==abandonedBytes)
+            abandonedRescue=candidate.absoluteFilePath();
+    }
+    require(!abandonedRescue.isEmpty() &&
+            MobileDraftRecovery::projectFor(abandonedRescue)==source &&
+            load(draft)==QByteArray::fromHex("504b0304")+"replacement" &&
+            !QFile::exists(staging),
+            "abandoned publication did not retain both complete canvases");
+    QFile::remove(abandonedRescue);
+    QFile::remove(abandonedRescue+QStringLiteral(".project"));
+    require(MobileDraftRecovery::setProject(draft,QString()),
+            "clear abandoned staging fixture project association");
     const auto drafts=MobileDraftRecovery::list();
     require(drafts.size()==1 && drafts.first().absoluteFilePath()==draft &&
             MobileDraftRecovery::title(drafts.first())==QStringLiteral("a_b") &&
