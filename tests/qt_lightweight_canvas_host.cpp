@@ -418,6 +418,26 @@ int main(int argc,char **argv)
                 "last document teardown retained native canvas resources");
     }
 
+    // A close adapter is allowed to approve a document transaction
+    // without explicitly deleting the QWidget. The native stack owns
+    // that still-parented canvas and must retire it after deregistration.
+    {
+        MobileLightweightCanvasHost closeHost;
+        auto *root=closeHost.createNativeDocumentRoot();
+        require(root,"could not create close-cleanup root");
+        QObject document;
+        auto *canvas=new QWidget;
+        const QPointer<QWidget> guard(canvas);
+        require(root->adoptView(canvas,&document,QStringLiteral("Closed"),
+                                [](){return true;}),
+                "could not register close-cleanup canvas");
+        const QPointer<QObject> identity(canvas);
+        require(root->closeView(identity) && root->openViews().isEmpty(),
+                "accepted native close did not deregister its widget");
+        QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        require(!guard,"accepted native close retained its canvas allocation");
+    }
+
     MobileLightweightCanvasHost multi;
     auto *stack=multi.createNativeDocumentRoot();
     require(stack,"could not create the multi-canvas root");
