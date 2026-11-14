@@ -46,6 +46,15 @@ public:
         return reader.read();
     }
 
+    // An abrupt process kill can leave a legacy or over-quota thumbnail
+    // directory without any subsequent writes to trigger retention.
+    // The gallery runs this off the UI thread on startup.
+    void prune() const
+    {
+        QMutexLocker guard(&publicationLock());
+        pruneLocked();
+    }
+
     void store(const QString &source,qint64 revision,const QImage &image,
                const std::atomic_bool *cancelled=nullptr) const
     {
@@ -66,14 +75,25 @@ public:
             return;
         }
         const qint64 encodedBytes=output.size();
-        static QMutex publication;
-        QMutexLocker guard(&publication);
+        QMutexLocker guard(&publicationLock());
         if((cancelled && cancelled->load()) || !output.commit())return;
         static unsigned writes=0;
         // A large, valid preview can fill the quota in just a few
         // writes. Sweep immediately for those; small thumbnails still
         // amortize their directory enumeration over 32 publications.
         if(writes++%32!=0 && encodedBytes<=1024*1024)return;
+        pruneLocked();
+    }
+
+private:
+    static QMutex &publicationLock()
+    {
+        static QMutex lock;
+        return lock;
+    }
+
+    void pruneLocked() const
+    {
         const auto entries=QDir(m_directory).entryInfoList({QStringLiteral("*.png")},
             QDir::Files|QDir::NoSymLinks,QDir::Time);
         // Count-only retention permits up to 512 * 32 MiB of PNGs.
@@ -95,7 +115,6 @@ public:
         }
     }
 
-private:
     QString fileName(const QString &source,qint64 revision) const
     {
         const QByteArray key=QCryptographicHash::hash(
