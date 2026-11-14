@@ -11,6 +11,8 @@
 #pragma once
 #ifdef Q_OS_ANDROID
 #include <QAndroidJniObject>
+#include <atomic>
+#include <memory>
 #include <QFile>
 #include <QFileInfo>
 #include <QEnableSharedFromThis>
@@ -351,11 +353,14 @@ private:
             return false;
         // Krita's return value only says whether background saving started.
         // A Close → Save must keep the canvas open if the write later fails.
-        bool completed=false;
+        // Queued signals already posted by Krita can still arrive after
+        // disconnect(). Never capture this Save call's stack variables
+        // by reference in the completion callback.
+        const auto completed=std::make_shared<std::atomic_bool>(false);
         const auto connection=QObject::connect(guardedDocument.data(),
             &KisDocument::sigSavingFinished,guardedDocument.data(),
-            [&completed,&target](const QString &path) {
-                if(path==target)completed=true;
+            [completed,target](const QString &path) {
+                if(path==target)completed->store(true);
             });
         const bool started=exporting?
             guardedDocument->exportDocument(target,targetMime,false,true):
@@ -364,7 +369,7 @@ private:
         if(started && guardedDocument)
             guardedDocument->waitForSavingToComplete();
         QObject::disconnect(connection);
-        if(!completed || !guardedDocument || !m_runtime ||
+        if(!completed->load() || !guardedDocument || !m_runtime ||
            !m_runtime->ownsDocument(guardedDocument))return false;
 
         if(!exporting) {
