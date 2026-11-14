@@ -53,16 +53,28 @@ public:
         // callbacks that close the document or its native view.
         const QPointer<KisViewManager> guardedManager(manager);
         const QPointer<MobileNativeViewStack> guardedStack(stack);
+        // If attachment fails after Krita created its view, release the
+        // still-live unparented view while its manager is also alive.
+        // Otherwise the failed first canvas leaks its GL surface.
+        const auto abortAttach=[guarded,guardedManager]() -> KisView* {
+            if(guarded && guardedManager)delete guarded.data();
+            return nullptr;
+        };
         manager->inputManager()->addTrackedCanvas(view->canvasBase());
-        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)return nullptr;
+        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
+            return abortAttach();
         view->setViewManager(manager);
-        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)return nullptr;
-        if(!view->canvasBase() || !manager->paintOpBox())return nullptr;
+        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
+            return abortAttach();
+        if(!view->canvasBase() || !manager->paintOpBox())
+            return abortAttach();
         view->canvasBase()->setFavoriteResourceManager(
             manager->paintOpBox()->favoriteResourcesManager());
-        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)return nullptr;
+        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
+            return abortAttach();
         view->slotLoadingFinished();
-        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)return nullptr;
+        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
+            return abortAttach();
 
         const QString title=document->path().isEmpty()?
             QStringLiteral("Untitled"):
