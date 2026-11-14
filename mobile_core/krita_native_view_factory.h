@@ -249,7 +249,9 @@ private:
                     // Tool setup can synchronously tear down the active
                     // canvas; do not dereference a deleted selected view.
                     if(!selected || !root || !manager ||
-                       root->currentWidget()!=selected.data())return;
+                       root->currentWidget()!=selected.data() ||
+                       !selected->document() ||
+                       root->currentDocument()!=selected->document())return;
                 }
                 // Android can show the native QWidget before its
                 // QWindow/GL surface receives the first Expose event.
@@ -262,6 +264,8 @@ private:
                     // instead of dereferencing the old raw pointer.
                     if(!selected || !manager || !root ||
                        root->currentWidget()!=selected.data() ||
+                       !selected->document() ||
+                       root->currentDocument()!=selected->document() ||
                        selected->canvasBase()!=canvas)return;
                     if(QWidget *surface=selected->canvasBase()->canvasWidget())
                         surface->update();
