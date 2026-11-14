@@ -129,10 +129,16 @@ public:
             // Include hidden/removed native views as well as those
             // with a still-live document identity. An unregistered
             // QWidget must not outlive the view manager either.
-            const auto views=m_root->findChildren<KisView*>();
-            for(KisView *view:views) {
-                if(view && view->viewManager()==m_manager)
-                    delete view;
+            const auto children=m_root->findChildren<KisView*>();
+            QList<QPointer<KisView>> views;
+            views.reserve(children.size());
+            for(KisView *view:children)views.append(view);
+            // Destroying one view can synchronously close another view
+            // through KisPart/KisViewManager. Never revisit a dangling
+            // pointer from a previously captured QObject child list.
+            for(const auto &view:views) {
+                if(view && m_manager && view->viewManager()==m_manager.data())
+                    delete view.data();
             }
         }
         delete m_manager.data();
@@ -218,6 +224,7 @@ private:
     void checkpointDrafts()
     {
         if(!m_root)return;
+        const QPointer<MobileKritaStandaloneRuntime> alive(this);
         // An inactive canvas can contain unsaved strokes too. Checkpoint
         // every distinct document hosted by this runtime, not just the
         // currently selected tab. Never activate a view to save it.
@@ -235,12 +242,16 @@ private:
             } else {
                 m_pendingDrafts.removeAll(document);
                 QMetaObject::invokeMethod(document,"slotAutoSave",Qt::DirectConnection);
+                // A native Save can close the final view/window. Stop
+                // iterating immediately if its runtime was torn down.
+                if(!alive || !m_root)return;
             }
         }
     }
 
     void continueDrafts()
     {
+        const QPointer<MobileKritaStandaloneRuntime> alive(this);
         // Finish queued checkpoints independently: a busy document must
         // never block another open canvas from being protected.
         const auto pending=m_pendingDrafts;
@@ -254,6 +265,7 @@ private:
             if(ownsDocument(document) && document->isModified() &&
                !document->property("_mobileDraftPath").toString().isEmpty())
                 QMetaObject::invokeMethod(document,"slotAutoSave",Qt::DirectConnection);
+            if(!alive || !m_root)return;
         }
     }
 
