@@ -1210,6 +1210,7 @@ private:
                         if(batch.size()>=32)deliverBatch();
                     }
                 }
+                if(limitReached)break;
             }
             deliverBatch();
             if(cancel->load())return;
