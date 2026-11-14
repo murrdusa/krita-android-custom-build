@@ -116,10 +116,7 @@ public:
             // that resumed writing meanwhile must retain ownership of
             // its staging file; never rescue a file whose size or mtime
             // changed during validation.
-            const QFileInfo current(path);
-            if(!current.isFile() || current.isSymLink() ||
-               current.size()!=pending.size() ||
-               current.lastModified()!=pending.lastModified())continue;
+            if(!unchangedStaging(pending))continue;
             // False explicitly prevents replacing the previous published
             // draft; publish() moves the orphan to a separate recovery ID.
             publish(draft,false);
@@ -130,6 +127,17 @@ public:
             if(isDraft(file.absoluteFilePath()))drafts.append(file);
         }
         return drafts;
+    }
+
+    // Recheck a saved directory entry after slow ZIP verification.
+    // QFileInfo caches its initial attributes, so a fresh instance is
+    // required to detect a concurrent exporter updating the same path.
+    static bool unchangedStaging(const QFileInfo &before)
+    {
+        const QFileInfo current(before.absoluteFilePath());
+        return current.isFile() && !current.isSymLink() &&
+            before.size()==current.size() &&
+            before.lastModified()==current.lastModified();
     }
 
     static bool setProject(const QString &draft,const QString &project)
