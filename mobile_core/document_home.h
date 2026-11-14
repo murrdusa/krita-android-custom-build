@@ -855,8 +855,12 @@ private:
     {
         if(!isVisible() || !MobileDraftRecovery::isDraft(path))return;
         if(draftIsOpen(path)) {
-            QMessageBox::information(this,i18n("Draft is open"),
-                i18n("Close the drawing without saving to discard its draft."));
+            QPointer<QMessageBox> notice(new QMessageBox(
+                QMessageBox::Information,i18n("Draft is open"),
+                i18n("Close the drawing without saving to discard its draft."),
+                QMessageBox::Ok,this));
+            notice->exec();
+            delete notice.data();
             return;
         }
         const QPointer<MobileDocumentHome> home(this);
@@ -871,8 +875,12 @@ private:
         if(decision!=QMessageBox::Discard || !home || !home->isVisible())return;
         if(draftIsOpen(path) || !MobileDraftRecovery::isDraft(path))return;
         if(!QFile::remove(path)) {
-            QMessageBox::warning(this,i18n("Could not discard draft"),
-                i18n("The recovery file could not be removed."));
+            QPointer<QMessageBox> warning(new QMessageBox(
+                QMessageBox::Warning,i18n("Could not discard draft"),
+                i18n("The recovery file could not be removed."),
+                QMessageBox::Ok,this));
+            warning->exec();
+            delete warning.data();
             return;
         }
         // The document is no longer open, so any interrupted staging
