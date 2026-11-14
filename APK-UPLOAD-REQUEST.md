@@ -1,9 +1,9 @@
 # On-demand Krita Android APK upload
 
-UPLOAD_REQUEST_ID=none
+UPLOAD_REQUEST_ID=request-20261114-1031-user-apk
 UPLOAD_RELEASE_TAG=krita-mobile-studio-preview-v11
 
-**PAUSED at user request.** Keep `UPLOAD_REQUEST_ID=none` during normal source edits and WSL builds. Do not resume APK publishing unless explicitly requested.
+**ONE-TIME UPLOAD REQUESTED on November 14, 2026.** Normal source edits and WSL builds must not trigger additional APK publishing. A later upload requires a new explicit request ID.
 
 Normal local builds must **never** upload an APK automatically. The build
 watcher reads this file on each GitHub revision but publishes only when the
