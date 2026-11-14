@@ -338,10 +338,22 @@ int main(int argc,char **argv)
             !MobileDraftRecovery::publish(draft,true) &&
             !QFile::exists(staging) && QFileInfo(draft).size()==9,
             "interrupted staging must never replace the last completed checkpoint");
-    save(staging,QByteArray::fromHex("504b0304")+"failed-export");
+    const QByteArray failedExport=QByteArray::fromHex("504b0304")+
+        "failed-export-but-readable";
+    save(staging,failedExport);
     require(!MobileDraftRecovery::publish(draft,false) &&
             !QFile::exists(staging) && QFileInfo(draft).size()==9,
-            "an export failure must preserve the current checkpoint");
+            "failed export must not overwrite published draft");
+    QString failedExportRescue;
+    for(const QFileInfo &candidate:MobileDraftRecovery::list()) {
+        if(candidate.absoluteFilePath()!=draft &&
+           load(candidate.absoluteFilePath())==failedExport)
+            failedExportRescue=candidate.absoluteFilePath();
+    }
+    require(!failedExportRescue.isEmpty() &&
+            MobileDraftRecovery::isDraft(failedExportRescue),
+            "readable but failed export was lost instead of rescued");
+    QFile::remove(failedExportRescue);
     save(staging,QByteArray::fromHex("504b0304")+"replacement");
     require(MobileDraftRecovery::publish(draft,true) &&
             !QFile::exists(staging) && QFileInfo(draft).size()==15,
