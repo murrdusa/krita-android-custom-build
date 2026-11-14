@@ -477,7 +477,8 @@ public:
         QThreadPool::globalInstance()->start(
             [path,target,application,explanationGuard,openGuard,placeholder,versions,cancelled,queuedPreviews]() {
             if(cancelled->load() || !application)return;
-            const auto found=MobileSavedVersionArchive::listForBrowser(path);
+            const auto found=MobileSavedVersionArchive::listForBrowser(
+                path,QString(),cancelled.get());
             if(cancelled->load() || !application)return;
             QMetaObject::invokeMethod(application.data(),
                 [target,explanationGuard,openGuard,placeholder,versions,found,cancelled]() {
