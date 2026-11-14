@@ -64,6 +64,14 @@ int main(int argc,char **argv)
             "file URL alias bypassed open document Save As protection");
     const QString spaced=tmp.filePath(QStringLiteral("new drawing.kra"));
     const QString spacedUrl=QUrl::fromLocalFile(spaced).toString();
+    require(P::mayAttemptOpen(fileUrl) &&
+            !P::needsSaveAs(fileUrl,false,false,false) &&
+            P::saveDialogStartPath(fileUrl,pictures)==realFile,
+            "existing file URL was treated as a missing local document");
+    require(!P::mayAttemptOpen(spacedUrl) &&
+            P::needsSaveAs(spacedUrl,false,false,false),
+            "nonexistent local file URL was treated as openable");
+
     require(Guard::sameFile(spacedUrl,spaced) &&
             Guard::conflictsWithOwnBackingFile(
                 spacedUrl,QString(),spaced,true,false),
