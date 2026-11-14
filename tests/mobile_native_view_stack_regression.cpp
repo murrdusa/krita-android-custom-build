@@ -160,6 +160,34 @@ int main(int argc,char **argv)
                     "synchronous canvas destruction during adoption"))
             return 1;
     }
+    // Closing one native canvas can synchronously close a sibling through
+    // Krita's view-manager callbacks. A teardown list must use guarded
+    // pointers instead of dereferencing its original raw QObject list.
+    {
+        MobileNativeViewStack closingSiblings;
+        QObject docA,docB;
+        auto *a=new QWidget;
+        auto *b=new QWidget;
+        if(!require(closingSiblings.adoptView(
+                        a,&docA,QStringLiteral("A"),[](){return true;}) &&
+                    closingSiblings.adoptView(
+                        b,&docB,QStringLiteral("B"),[](){return true;}),
+                    "setup cascading native view destruction"))return 1;
+        QList<QPointer<QWidget>> pending{a,b};
+        QObject::connect(a,&QObject::destroyed,&closingSiblings,
+                         [b]() {delete b;});
+        delete a;
+        int remaining=0;
+        for(const auto &view:pending) {
+            if(view) {
+                ++remaining;
+                delete view.data();
+            }
+        }
+        if(!require(remaining==0 && closingSiblings.openViews().isEmpty(),
+                    "cascading view destruction left dangling shutdown entries"))
+            return 1;
+    }
     // Recovery is asynchronous. Both native view AND backing document
     // identities must be unchanged; a host can reuse a view widget.
     using Identity=MobileViewIdentityGuard;
