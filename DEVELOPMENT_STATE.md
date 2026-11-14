@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — validate computed flood-selection mask stride
+
+- The interactive Fill/Select preview already rejected unsupported *input selection* pixel strides, but its generated flood mask was still read unconditionally into a one-byte-per-pixel `QByteArray`. Unexpected engine mask formats could write beyond the allocation.
+- `MobileFillTolerancePreview::requestMask()` now validates the generated mask's actual `pixelSize()` using the bounded alpha8 helper before `readBytes()`. Unsupported output masks follow the existing no-result completion path without an unsafe read or tight retry loop.
+- Clarified the standalone Qt pixel-stride regression's coverage of both incoming and generated selection-mask allocations.
+- **Verification:** local WSL Android build SUCCESS for previous thumbnail change `006ad56d8b444a0b7cf8ea3b10a0de79c244d633`. The newest generated-mask check and regression comment await exact-SHA local build; no APK uploaded.
+
+
 ## November 14 — validate fill-preview selection coverage before reading
 
 - Audited the asynchronous Fill/Select tolerance overlay after its source sampling buffer limit was added. Selection coverage was allocated as width × height bytes, but `KisPixelSelection::readBytes()` was called without checking its pixel stride. An unexpected non-alpha8 source format could write beyond that buffer during tool/canvas transitions.
