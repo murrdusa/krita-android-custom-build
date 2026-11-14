@@ -157,8 +157,9 @@ int main(int argc,char **argv)
         const QString name=QDir(backlogFolder).filePath(
             QStringLiteral("preview-%1.png").arg(i,4,10,QLatin1Char('0')));
         QFile entry(name);
+        const QByteArray signature=QByteArray::fromHex("89504e470d0a1a0a");
         if(!entry.open(QIODevice::WriteOnly) ||
-           entry.write("png",3)!=3 ||
+           entry.write(signature)!=signature.size() ||
            !entry.setFileTime(base.addSecs(i),
                               QFileDevice::FileModificationTime))
             return 23;
