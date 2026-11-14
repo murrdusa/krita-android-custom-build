@@ -8,7 +8,6 @@
 #pragma once
 #if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
 #include <QPointer>
-#include <QScopedValueRollback>
 #include <QStackedWidget>
 #include <QVector>
 #include <functional>
@@ -63,7 +62,17 @@ public:
         m_rows.append(std::move(row));
         // addWidget() can synchronously emit currentChanged for the
         // first tab. Its observers need the registered document then.
-        if(addWidget(view)>=0)return true;
+        const QPointer<MobileNativeViewStack> host(this);
+        const QPointer<QWidget> guardedView(view);
+        const QPointer<QObject> guardedDocument(document);
+        const int inserted=addWidget(view);
+        // currentChanged handlers may synchronously destroy a newly
+        // activated view or its document. Never report a stale canvas
+        // as successfully registered after those callbacks.
+        if(!host)return false;
+        if(inserted>=0 && guardedView && guardedDocument &&
+           indexOf(guardedView.data())>=0 && uniqueRow(guardedView))
+            return true;
         forgetToken(token);
         return false;
     }
@@ -108,8 +117,12 @@ public:
            indexOf(row->view.data())<0)return false;
         const auto target=row->view;
         auto *self=const_cast<MobileNativeViewStack*>(this);
+        const QPointer<MobileNativeViewStack> host(self);
         self->setCurrentWidget(target.data());
-        return target && currentWidget()==target.data();
+        // Activation emits synchronous Qt signals; a handler can
+        // destroy the host as well as the requested native view.
+        return host && target && host->currentWidget()==target.data() &&
+               host->uniqueRow(target);
     }
 
     bool closeView(const QPointer<QObject> &identity) const override
@@ -191,10 +204,15 @@ private:
         // targeting an old tab must not close that background painting.
         const quint64 token=row->token;
         const CloseRequest close=row->closeRequest;
-        const QScopedValueRollback<bool> guarded(m_closing,true);
-        // The injected native callback must show Krita's own
-        // Save/Discard/Cancel dialog. Cancellation leaves state intact.
-        if(!close())return false;
+        // The native callback can delete the active view, its document,
+        // or the entire containing host while a prompt is open. Do not
+        // leave an RAII rollback referencing memory after host teardown.
+        const QPointer<MobileNativeViewStack> host(this);
+        m_closing=true;
+        const bool accepted=close();
+        if(!host)return accepted;
+        m_closing=false;
+        if(!accepted)return false;
         // Native callback may already have destroyed the widget.
         forgetToken(token);
         return true;
