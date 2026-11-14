@@ -802,6 +802,39 @@ int main(int argc,char **argv)
     require(foundOld && foundNew && !QDir(oldFolder).exists(),
             "colliding migration lost a snapshot or left an incomplete folder");
 
+    // Streaming migration must handle several complete archive/sidecar
+    // pairs and preserve unrelated metadata without a full file listing.
+    const QString bulkStore=temp.filePath(QStringLiteral("bulk-migration"));
+    const QString bulkDraft=temp.filePath(QStringLiteral("bulk-draft.kra"));
+    const QString bulkProject=temp.filePath(QStringLiteral("bulk-saved.kra"));
+    const QString bulkSource=MobileSavedVersionArchive::folderFor(bulkDraft,bulkStore);
+    const QString bulkTarget=MobileSavedVersionArchive::folderFor(bulkProject,bulkStore);
+    require(QDir().mkpath(bulkSource) && QDir().mkpath(bulkTarget),
+            "create streaming history migration fixture");
+    save(QDir(bulkSource).filePath(QStringLiteral("notes.txt")),
+         QByteArray("preserve-metadata"));
+    for(int i=0;i<7;++i) {
+        const QString name=QStringLiteral("20261114T%1-%2.kra")
+            .arg(i,9,10,QLatin1Char('0'))
+            .arg(QStringLiteral("streaming"));
+        const QByteArray payload=QByteArray::fromHex("504b0304")+
+            QByteArray::number(i);
+        const QString archive=QDir(bulkSource).filePath(name);
+        save(archive,payload);
+        save(archive+QStringLiteral(".sha256"),
+             QCryptographicHash::hash(payload,QCryptographicHash::Sha256).toHex());
+    }
+    MobileSavedVersionArchive::adoptHistory(bulkDraft,bulkProject,bulkStore);
+    const auto migratedBulk=MobileSavedVersionArchive::list(bulkProject,bulkStore);
+    require(migratedBulk.size()==7 &&
+            load(QDir(bulkTarget).filePath(QStringLiteral("notes.txt")))==
+                QByteArray("preserve-metadata") &&
+            !QDir(bulkSource).exists(),
+            "streaming migration lost version pairs or unrelated metadata");
+    for(const auto &version:migratedBulk)
+        require(!MobileSavedVersionArchive::materializeRecovery(version,recover).isEmpty(),
+                "streaming migration detached a version from its checksum");
+
     // A corrupt sparse checkpoint can claim to be a multi-gigabyte KRA.
     // The recent-checkpoint validator must refuse it before hashing the
     // entire file or considering it sufficient to suppress a new save.
