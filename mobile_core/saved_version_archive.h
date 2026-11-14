@@ -740,10 +740,12 @@ private:
         while(leftovers.hasNext()) {
             leftovers.next();
             const QFileInfo entry=leftovers.fileInfo();
-            // A checksum must only travel with its corresponding KRA.
-            // Moving an orphaned digest under its old name could attach
-            // it to a *different* canonical snapshot after a collision.
-            if(entry.fileName().endsWith(QStringLiteral(".kra.sha256")))
+            // Only the paired archive pass may move KRAs or their
+            // checksums. A rejected/failed KRA must not be picked up as
+            // "miscellaneous" and separated from its checksum here.
+            // Orphaned digests also must not attach to another archive.
+            if(entry.fileName().endsWith(QStringLiteral(".kra.sha256")) ||
+               entry.fileName().endsWith(QStringLiteral(".kra")))
                 continue;
             const QString targetPath=QDir(to).filePath(entry.fileName());
             if(!QFile::exists(targetPath))
