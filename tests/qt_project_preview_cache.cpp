@@ -31,9 +31,15 @@ int main(int argc,char **argv)
     // Small previews must retain their actual dimensions and colors.
     if(cache.load(source,2).size()!=QSize(8,8))return 13;
 
-    const std::atomic_bool cancelled{true};
+    std::atomic_bool cancelled{true};
     cache.store(source,2,oldImage,&cancelled);
     if(cache.load(source,2).pixelColor(0,0)!=QColor(Qt::blue))return 3;
+    // A gallery close can cancel before a decoded preview is allocated.
+    // An uncancelled subsequent visit must still retrieve the same PNG.
+    if(!cache.load(source,2,&cancelled).isNull())return 40;
+    cancelled.store(false);
+    if(cache.load(source,2,&cancelled).pixelColor(0,0)!=QColor(Qt::blue))
+        return 41;
 
     for(int i=3;i<550;++i)cache.store(source,i,newImage);
     const auto entries=QDir(directory.path()).entryList({QStringLiteral("*.png")},QDir::Files);
