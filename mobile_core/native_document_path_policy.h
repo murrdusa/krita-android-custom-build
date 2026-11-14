@@ -12,6 +12,7 @@
 #pragma once
 #if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
 #include <QFile>
+#include <QFileInfo>
 #include <QString>
 #include <QUrl>
 
@@ -40,13 +41,16 @@ public:
         if(path.isEmpty())return {};
         if(isProviderUri(path))return QUrl(path);
         const QString local=localFilePath(path);
-        return local.isEmpty()?QUrl():QUrl::fromLocalFile(local);
+        return local.isEmpty() || !QFileInfo(local).isFile()?
+            QUrl():QUrl::fromLocalFile(local);
     }
 
     static bool mayAttemptOpen(const QString &path)
     {
-        return !path.trimmed().isEmpty() &&
-               (isProviderUri(path) || QFile::exists(localFilePath(path)));
+        if(path.trimmed().isEmpty())return false;
+        if(isProviderUri(path))return true;
+        const QString local=localFilePath(path);
+        return !local.isEmpty() && QFileInfo(local).isFile();
     }
 
     static QString saveDialogStartPath(const QString &currentPath,
@@ -68,8 +72,9 @@ public:
         // Provider identity and permissions are Krita's responsibility.
         // Do not force another picker merely because QFile::exists()
         // does not understand a previously granted content URI.
-        return !isProviderUri(path) &&
-               !QFile::exists(localFilePath(path));
+        if(isProviderUri(path))return false;
+        const QString local=localFilePath(path);
+        return local.isEmpty() || !QFileInfo(local).isFile();
     }
 };
 #endif
