@@ -89,6 +89,32 @@ int main(int argc,char **argv)
     require(activations==beforeDeletion,
             "reactivated a deleted canvas root");
 
+    // An activation can close the final native canvas and destroy the
+    // observer synchronously. Its callback must remain valid until
+    // invocation returns, without a use-after-free of the member
+    // std::function being executed.
+    {
+        QWidget dyingWindow;
+        auto *dyingRoot=new QWidget(&dyingWindow);
+        dyingWindow.show();
+        drain();
+        int teardownCalls=0;
+        QPointer<MobileCanvasResumeObserver> dyingObserver;
+        dyingObserver=MobileCanvasResumeObserver::attach(
+            &dyingWindow,dyingRoot,&dyingWindow,[&]() {
+                ++teardownCalls;
+                delete dyingObserver.data();
+            });
+        require(dyingObserver,"could not create teardown observer");
+        drain();
+        require(teardownCalls==1 && !dyingObserver,
+                "canvas resume callback could not destroy its own observer");
+        dyingWindow.hide();
+        drain();
+        require(teardownCalls==1,
+                "destroyed canvas observer resumed after teardown");
+    }
+
     qInfo()<<"PASS: native canvas resumes after Android hide/show,"
            <<"skips hidden GL activation and survives deleted roots";
     return 0;
