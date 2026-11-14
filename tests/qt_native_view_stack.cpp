@@ -199,6 +199,29 @@ int main(int argc,char **argv)
                 original.data()!=replacement,
                 "stale native document root was not invalidated by Qt");
     }
+    // Save completion can arrive after a nested Qt loop replaces the
+    // original native root. A successful I/O notification alone must
+    // not authorize post-save history publication on that stale host.
+    {
+        QWidget owner;
+        QPointer<MobileNativeViewStack> original(new MobileNativeViewStack(&owner));
+        MobileNativeViewStack *runtimeRoot=original.data();
+        QDialog saveCompletion(&owner);
+        bool ioCompleted=false;
+        QTimer::singleShot(0,&app,[&]() {
+            ioCompleted=true;
+            delete original.data();
+            runtimeRoot=new MobileNativeViewStack(&owner);
+            saveCompletion.accept();
+        });
+        require(saveCompletion.exec()==QDialog::Accepted && ioCompleted,
+                "test save completion was not delivered");
+        const bool publishHistory=ioCompleted && original &&
+                                  runtimeRoot==original.data();
+        require(!publishHistory && runtimeRoot &&
+                runtimeRoot->openViews().isEmpty(),
+                "late save completion published history for replaced root");
+    }
     // Krita openPath may reenter the event loop before registration.
     // A pending import must not be attached to a replacement native root.
     {
