@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — reject stale document-cycle targets
+
+- Native previous/next canvas cycling now rejects duplicate document ownership and revalidates the full live view/document/selection snapshot before activating the neighboring canvas. This avoids cycling into a different or detached painting if Qt callbacks change the native tab list during a command.
+- Qt navigation regression covers duplicate backing documents and a simulated canvas removal during the first document-identity query.
+- **Verification:** source and tests committed. Exact WSL build status for this batch not yet reported; earlier canvas surface work remained pending at last check. Desktop regression and Fold 6 runtime execution not claimed. APK publishing paused.
+
+
 ## November 14 — Android surface recreation and canvas resume
 
 - `MobileCanvasResumeObserver` now rebinds its exposure filter whenever the host widget's native window ID changes, including replacement of a still-live QWindow during Android surface recreation. It removes the old surface filter, installs the new one and requests guarded activation. This addresses a source-level scenario where the painting canvas could remain blank after a window recreation or fold transition.
