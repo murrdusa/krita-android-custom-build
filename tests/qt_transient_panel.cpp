@@ -122,5 +122,11 @@ int main(int argc,char **argv)
     QMouseEvent release(QEvent::MouseButtonRelease,alias.rect().center(),
                         Qt::LeftButton,Qt::NoButton,Qt::NoModifier);
     QApplication::sendEvent(&alias,&release);
-    return panel->isVisible()?11:0;
+    if(panel->isVisible())return 11;
+
+    panel=new MobileTransientPanel(&canvas);
+    panel->present();
+    canvas.hide();
+    canvas.show();
+    return panel->isVisible()?12:0;
 }

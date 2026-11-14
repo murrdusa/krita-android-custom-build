@@ -871,6 +871,15 @@ private:
             sort(KisAbstractResourceModel::Name);
         }
 
+        void refreshRecent()
+        {
+            const auto recent=QSettings().value(
+                QStringLiteral("MobileStudio/brushRecent%1").arg(m_slot)).toStringList();
+            if(recent==m_recent)return;
+            m_recent=recent;
+            if(m_category==-5)invalidate();
+        }
+
         void setSearch(const QString &search)
         {
             m_search=search.trimmed();
@@ -1436,6 +1445,7 @@ private:
         body->addWidget(conversion);
         conversion->hide();
         auto candidate=std::make_shared<KisPaintOpPresetSP>();
+        auto selectionRequest=std::make_shared<unsigned>(0);
         list->setModel(filter);
         filter->setCategory(categories->currentItem()->data(Qt::UserRole).toInt(),
                             categories->currentItem()->data(Qt::UserRole+1).toString());
@@ -1448,7 +1458,8 @@ private:
             const auto row=source->indexForResourceId(preset->resourceId());
             list->setCurrentIndex(filter->mapFromSource(row.sibling(row.row(),KisAbstractResourceModel::Name)));
         };
-        const auto clearExtras=[conversion,candidate]() {
+        const auto clearExtras=[conversion,candidate,selectionRequest]() {
+            ++*selectionRequest;
             conversion->hide();
             candidate->clear();
         };
@@ -1532,6 +1543,7 @@ private:
             const QPersistentModelIndex clicked(index);
             hideSearchHandle();
             if(!clicked.isValid() || !valid() || list->property("_mobilePresetActionTap").toBool())return;
+            ++*selectionRequest;
             const auto selected=filter->mapToSource(clicked);
             const auto preset=source->resourceForIndex(selected.sibling(selected.row(),0))
                 .dynamicCast<KisPaintOpPreset>();
@@ -1557,10 +1569,12 @@ private:
                 return;
             }
             clearExtras();
+            const unsigned request=*selectionRequest;
             QTimer::singleShot(0,panel,[=]() {
-                if(!panel->isVisible() || !valid() || !usePreset(slot,preset))return;
+                if(request!=*selectionRequest || !panel->isVisible() ||
+                   !valid() || !usePreset(slot,preset))return;
                 if(!panel->isVisible())return;
-                filter->reloadPersonalLists();
+                filter->refreshRecent();
                 updateSelected();
             });
         });
@@ -1572,10 +1586,12 @@ private:
                 return;
             }
             clearExtras();
+            const unsigned request=*selectionRequest;
             QTimer::singleShot(0,panel,[=]() {
-                if(!panel->isVisible() || !valid() || !usePreset(2,result))return;
+                if(request!=*selectionRequest || !panel->isVisible() ||
+                   !valid() || !usePreset(2,result))return;
                 if(!panel->isVisible())return;
-                filter->reloadPersonalLists();
+                filter->refreshRecent();
                 updateSelected();
             });
         });

@@ -71,6 +71,10 @@ public:
 protected:
     bool eventFilter(QObject *watched,QEvent *event) override
     {
+        if(event->type()==QEvent::Hide && watched==parentWidget() && !isHidden()) {
+            close();
+            return false;
+        }
         if(!isVisible())return false;
         auto *target=qobject_cast<QWidget*>(watched);
         if(target==parentWidget() && event->type()==QEvent::Resize) {
@@ -89,10 +93,6 @@ protected:
             }
         }
         if(!target || target==this || isAncestorOf(target))return false;
-        if(type==QEvent::Hide && target==parentWidget()) {
-            close();
-            return false;
-        }
         if(type==QEvent::Show && target->isWindow() && target->parentWidget() &&
            target->parentWidget()->window()==window()) {
             close();

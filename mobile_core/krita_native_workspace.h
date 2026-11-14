@@ -1437,6 +1437,8 @@ public:
 protected:
     bool eventFilter(QObject *watched,QEvent *event) override
     {
+        if(m_colorPopup && watched==m_colorPopup && event->type()==QEvent::Hide)
+            m_lighting.save();
         if((watched==m_layers || watched==m_color || watched==m_colorPopup || watched==m_toolOptions ||
             watched==m_brushOptions || watched==m_textFormatting || watched==m_contextToolBar) &&
            (event->type()==QEvent::Show || event->type()==QEvent::Hide)) {
@@ -2462,7 +2464,7 @@ private:
     QPointer<MobileColorPicker> m_colorPicker;
     QPointer<QToolButton> m_colorOpener;
     QPointer<MobileLightingSphere> m_sphere;
-    MobileColorPicker::Lighting m_lighting;
+    MobileColorPicker::Lighting m_lighting{QSettings()};
     QPointer<MobileContextToolBar> m_contextToolBar;
     QPointer<QToolButton> m_selectionDismiss,m_cloneSourceButton;
     QPointer<QAction> m_volumeUndo;

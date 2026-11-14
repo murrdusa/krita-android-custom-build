@@ -1,5 +1,7 @@
 # Krita Mobile Studio — current development state
 
+Rapid brush picks supersede queued selections and update the Recent list without rebuilding unrelated categories. Lighting settings persist across restarts. HSV adjustments retain the selected hue on neutral colors. Transient panels close when their canvas or Home surface hides.
+
 Brush preset changes from the picker run after the item-view event, with active-view and panel checks. Android's native preset switch rejects incomplete presets and reentrant changes, and brush UI observers refresh after native preset activation. This addresses crash risks found in source. No device crash trace was available. Brush-size drag defaults to **Tool Settings** and migrates the former Tools and Paint defaults once.
 
 ## November 13 follow-up — Color picker and lighting sphere

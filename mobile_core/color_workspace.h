@@ -324,10 +324,36 @@ class MobileColorPicker final : public QWidget
 {
 public:
     struct Lighting {
-        QColor base=QColor("#c68462");
-        QColor light=QColor("#fff4dc");
-        QColor shadow=QColor("#8da9df");
-        int contrast=85;
+        explicit Lighting(const QSettings &settings)
+            : base(readColor(settings,"object",QColor("#c68462"))),
+              light(readColor(settings,"highlight",QColor("#fff4dc"))),
+              shadow(readColor(settings,"shadow",QColor("#8da9df"))),
+              contrast(qBound(0,settings.value(key("hardness"),85).toInt(),100))
+        {}
+
+        void save() const
+        {
+            QSettings settings;
+            settings.setValue(key("object"),base.name());
+            settings.setValue(key("highlight"),light.name());
+            settings.setValue(key("shadow"),shadow.name());
+            settings.setValue(key("hardness"),contrast);
+        }
+
+        QColor base,light,shadow;
+        int contrast;
+
+    private:
+        static QString key(const char *name)
+        {
+            return QStringLiteral("MobileStudio/lightingSphere/")+QString::fromLatin1(name);
+        }
+
+        static QColor readColor(const QSettings &settings,const char *name,const QColor &fallback)
+        {
+            const QColor color(settings.value(key(name)).toString());
+            return color.isValid()?color:fallback;
+        }
     };
 
     MobileColorPicker(QWidget *parent,KisCanvasResourceProvider *provider,
@@ -414,8 +440,8 @@ public:
             form->addRow(captions.at(i),row);
             connect(m_values[i],&QSlider::valueChanged,this,[this](int) {
                 m_hue=m_values[0]->value();
-                select(QColor::fromHsv(m_hue,qRound(m_values[1]->value()*2.55),
-                    qRound(m_values[2]->value()*2.55)));
+                select(QColor::fromHsvF(m_hue/360.0,m_values[1]->value()/100.0,
+                    m_values[2]->value()/100.0));
             });
         }
         connect(m_hex,&QLineEdit::editingFinished,this,[this]() {
@@ -575,6 +601,7 @@ private:
 
     void select(const QColor &color)
     {
+        if(color.hsvHue()>=0)m_hue=color.hsvHue();
         setForeground(m_provider,color);
         if(m_provider)showColor(m_provider->fgColor().toQColor());
     }
@@ -582,8 +609,8 @@ private:
     void showColor(const QColor &color)
     {
         if(!color.isValid())return;
-        m_wheel->showColor(color);
         if(color.hsvHue()>=0)m_hue=color.hsvHue();
+        m_wheel->showColor(QColor::fromHsv(m_hue,color.hsvSaturation(),color.value()));
         if(!m_hex->hasFocus())m_hex->setText(color.name());
         const int values[]{m_hue,qRound(color.hsvSaturationF()*100),qRound(color.valueF()*100)};
         paintTracks(m_values,m_hue,color);
