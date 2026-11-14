@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — bound interactive fill-tolerance preview sample allocations
+
+- Audited the asynchronous Fill/Select tolerance preview while waiting for canvas cleanup builds. `MobileFillTolerancePreview::requestMask()` directly computed and resized its raw pixel sampling buffer with `width * height * pixelSize` using implicit integer arithmetic and assumed engine image/source were available. An unexpected colorspace stride or stale/empty preview source could cause excessive allocations or null dereferences during tool/canvas transitions.
+- Introduced a Qt-only `mobileFillPreviewBufferBytes()` helper that validates preview geometry against the 384-pixel window limit, uses 64-bit multiplication, and caps a single raw sample at 16 MiB. `requestMask()` skips unavailable sources/invalid tolerances and refuses unsafe byte counts before taking an image barrier lock or allocating the source byte array.
+- Added `qt_fill_tolerance_drag.cpp` regression coverage for normal 4/16-byte pixels, empty/oversized preview dimensions, zero stride, and an unexpectedly large pixel stride.
+- **Verification:** local WSL Android build passed for canvas retirement source commit `0a4f9d2be541fffc93bd23433e484abb92d2fcef`. The fill-preview change and its standalone Qt regression require exact-SHA compilation/test execution. No APK uploaded.
+
 ## November 14 — revalidate canvas ownership when deferred retirement executes
 
 - Follow-up audit of native canvas teardown found a gap in the ownership checks: document destruction and accepted-close callbacks checked whether a detached QWidget still belonged to the old stack before calling `deleteLater()`. A different host could reparent the widget **after** that check but **before** Qt delivered the already-posted `DeferredDelete` event, causing the old owner to destroy a now-transferred painting canvas.
