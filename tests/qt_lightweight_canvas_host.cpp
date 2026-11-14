@@ -382,6 +382,28 @@ int main(int argc,char **argv)
                 "cancelled Qt delivery leaked temporary Version History copy");
     }
 
+    // Krita can delete a document through an engine-owned path before
+    // deleting the view. The native stack must release the detached
+    // painting QWidget rather than retain a hidden GL canvas forever.
+    {
+        MobileLightweightCanvasHost orphanHost;
+        auto *orphanRoot=orphanHost.createNativeDocumentRoot();
+        require(orphanRoot,"could not create orphan-view test root");
+        auto *orphanDocument=new QObject;
+        auto *orphanCanvas=new QWidget;
+        QPointer<QWidget> canvasGuard(orphanCanvas);
+        require(orphanRoot->adoptView(orphanCanvas,orphanDocument,
+                                     QStringLiteral("Orphaned"),
+                                     [](){return true;}),
+                "could not attach orphan-view test canvas");
+        delete orphanDocument;
+        require(orphanRoot->openViews().isEmpty(),
+                "destroyed engine document remained registered as a canvas");
+        QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        require(!canvasGuard,
+                "destroyed engine document retained orphaned canvas widget");
+    }
+
     MobileLightweightCanvasHost multi;
     auto *stack=multi.createNativeDocumentRoot();
     require(stack,"could not create the multi-canvas root");
