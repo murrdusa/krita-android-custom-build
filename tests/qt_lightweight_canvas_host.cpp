@@ -445,6 +445,7 @@ int main(int argc,char **argv)
                          [movedCanvas,&externalOwner,&transferred,root](int) {
             if(root->indexOf(movedCanvas)<0 && !transferred) {
                 movedCanvas->setParent(&externalOwner);
+                movedCanvas->show();
                 transferred=true;
             }
         });
@@ -452,8 +453,9 @@ int main(int argc,char **argv)
         QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
         require(transferred && movedGuard &&
                 movedCanvas->parentWidget()==&externalOwner &&
+                !movedCanvas->isHidden() &&
                 root->openViews().size()==1,
-                "external reparented native canvas was deleted during document teardown");
+                "old native stack hid or deleted a canvas transferred to another owner");
     }
 
     // A close adapter is allowed to approve a document transaction
