@@ -746,8 +746,8 @@ private:
         qint64 keptBytes=versions.first().bytes;
         QStringList retained{versions.first().path};
         if(!fallback.isEmpty()) {
-            // Reserve the latest verified recovery regardless of budget:
-            // the newest entry is still retained for diagnostics.
+            // Reserve a verified older recovery even if the newest KRA
+            // was damaged and the usual quota has already been reached.
             for(const auto &entry:versions) {
                 if(entry.path==fallback) {
                     retained.append(entry.path);
@@ -755,16 +755,17 @@ private:
                     break;
                 }
             }
-            // Under quota pressure, keep additional verified checkpoints
-            // before damaged/legacy entries. Otherwise several corrupted
-            // intermediate versions could displace perfectly good saves.
-            for(int i=1;i<versions.size() && retained.size()<maxVersions();++i) {
-                const auto &entry=versions.at(i);
-                if(entry.path==fallback || !hasPublishedCheckpoint(entry))continue;
-                if(keptBytes+entry.bytes<=maxBytes()) {
-                    retained.append(entry.path);
-                    keptBytes+=entry.bytes;
-                }
+        }
+        // On quota pressure, always prefer verified older checkpoints
+        // before damaged/legacy entries, even when the newest version
+        // is healthy. Otherwise several corrupt intermediate files can
+        // push every older valid recovery out of history.
+        for(int i=1;i<versions.size() && retained.size()<maxVersions();++i) {
+            const auto &entry=versions.at(i);
+            if(entry.path==fallback || !hasPublishedCheckpoint(entry))continue;
+            if(keptBytes+entry.bytes<=maxBytes()) {
+                retained.append(entry.path);
+                keptBytes+=entry.bytes;
             }
         }
         // Fill any remaining quota with older entries without deleting
