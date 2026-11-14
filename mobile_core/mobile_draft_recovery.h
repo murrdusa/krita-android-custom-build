@@ -98,6 +98,24 @@ public:
     {
         const QString folder=directory();
         if(folder.isEmpty())return {};
+        // If the process terminated between KRA export and publication,
+        // a complete .pending.kra would otherwise never appear in the
+        // recovery browser. Only rescue old, readable staging files:
+        // recent files may belong to an export still in progress.
+        const QDateTime now=QDateTime::currentDateTimeUtc();
+        const QString suffix=QStringLiteral(".pending.kra");
+        for(const QFileInfo &pending:QDir(folder).entryInfoList(
+                {QStringLiteral("*.pending.kra")},
+                QDir::Files|QDir::Readable|QDir::NoSymLinks)) {
+            const qint64 age=pending.lastModified().toUTC().secsTo(now);
+            if(age<300 || age>365LL*24*60*60*10)continue;
+            const QString path=pending.absoluteFilePath();
+            const QString draft=path.left(path.size()-suffix.size());
+            if(!isDraftPath(draft) || !hasReadableProject(path))continue;
+            // False explicitly prevents replacing the previous published
+            // draft; publish() moves the orphan to a separate recovery ID.
+            publish(draft,false);
+        }
         QFileInfoList drafts;
         for(const auto &file:QDir(folder).entryInfoList({QStringLiteral("*.kra")},
                     QDir::Files|QDir::Readable|QDir::NoSymLinks,QDir::Time)) {
