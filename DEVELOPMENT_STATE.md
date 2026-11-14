@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — bound All Projects scan backlog and thumbnail memory
+
+- Background shared-storage scans now permit at most eight outstanding 32-project delivery batches on the UI event queue. If Qt cannot consume them promptly, the scanner briefly waits on its worker thread and continues when the backlog drains; cancellation interrupts this wait immediately. This avoids unbounded queued allocations when indexing huge folder trees while the home/gallery UI is busy.
+- Thumbnail decoders now reject embedded KRA preview and external image dimensions exceeding 40 million pixels (in addition to existing per-axis limits) before attempting a potentially large underlying decode; valid previews still scale to the compact gallery size.
+- **Verification:** source changes await exact-SHA local WSL Android compilation. Desktop Qt test coverage for the Android-only scanner is not available in this batch. No APK uploaded.
+
+
 ## November 14 — cascading native shutdown and autosave lifetime guards
 
 - Standalone native runtime teardown captures Qt-guarded KisView identities rather than raw pointers before destroying child views. Krita can synchronously close multiple views when one is removed; sibling entries that have already been deleted are skipped instead of accessed after free.
