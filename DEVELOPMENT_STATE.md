@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — abandoned autosave staging freshness check
+
+- Restart recovery verifies that a pending KRA's size and modification timestamp remain unchanged while Krita reads its ZIP structure. Staging files modified by a resumed/exporting writer are left in place, instead of being moved to a new recovery ID mid-write.
+- Qt regression covers unchanged and concurrently rewritten staging metadata.
+- **Verification:** exact Android WSL compilation and desktop Qt test status pending for these new commits. No APK publication.
+
+
 ## November 14 — restart recovery of abandoned autosave staging
 
 - Recovery listing now scans old `.pending.kra` files left when the app exited between completing the native KRA export and publishing it. After a five-minute age threshold and successful project validation, it moves each completed staging copy into an independently listed recovery draft, preserving the old published draft and associated saved-project identity. Recent staging stays untouched to avoid racing an active export; invalid staging stays in place for manual investigation.
