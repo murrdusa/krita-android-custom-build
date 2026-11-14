@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — bound gallery scans of pending draft staging files
+
+- `MobileDraftRecovery::list()` previously bounded expensive ZIP validation to two pending files but would still iterate every pending candidate when most were too recent to rescue. The recovery browser now inspects a maximum of 128 staging candidates per invocation, rotating its starting window across refreshes so older recoverable files are not permanently starved.
+- Existing safety remains unchanged: only files aged at least five minutes, matching a canonical private draft path, and passing ZIP/readability and unchanged-file checks are considered; normal completed drafts are still listed.
+- Extended the Qt archive regression with 260 recent staging files and an older recoverable orphan. Repeated refreshes must reach and rescue the older file; test fixtures are removed afterward.
+- This change bounds **per-visit candidate inspection**, not the initial Qt directory enumeration or completed-draft listing. The new source/test commits await exact-SHA local build and Qt regression results. No APK uploaded.
+
 ## November 14 — validate document lifetime through final native canvas presentation
 
 - The native view factory now validates the original document identity, in addition to the view/manager/stack, after installing the Android window/surface resume observer, after `view->show()`, and after setting the active native canvas. Qt Show and WindowActivate callbacks can synchronously close a document without destroying its QWidget, so final attachment must not return a superficially live but documentless view.
