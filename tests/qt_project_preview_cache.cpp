@@ -9,6 +9,20 @@ int main(int argc,char **argv)
     QCoreApplication app(argc,argv);
     QTemporaryDir directory;
     if(!directory.isValid())return 1;
+    // An empty cache root must never read or prune PNGs in the current
+    // working directory. Use a temporary CWD so accidental deletion is
+    // detected without touching the developer's real files.
+    const QString originalCwd=QDir::currentPath();
+    if(!QDir::setCurrent(directory.path()))return 46;
+    QImage unrelated(4,4,QImage::Format_RGB32);
+    unrelated.fill(Qt::green);
+    if(!unrelated.save(QStringLiteral("unrelated.png"),"PNG"))return 47;
+    MobileProjectPreviewCache emptyRoot(QString());
+    emptyRoot.prune();
+    emptyRoot.store(QStringLiteral("drawing.kra"),1,unrelated);
+    const bool emptyRootSafe=QFile::exists(QStringLiteral("unrelated.png")) &&
+        emptyRoot.load(QStringLiteral("drawing.kra"),1).isNull();
+    if(!QDir::setCurrent(originalCwd) || !emptyRootSafe)return 48;
     const MobileProjectPreviewCache cache(directory.path());
     // A decoder that ignores setScaledSize() may hand the gallery a
     // full-resolution image; constrain all decoded preview sources.
