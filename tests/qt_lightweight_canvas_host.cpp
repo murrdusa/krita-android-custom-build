@@ -6,6 +6,8 @@
 #include <QApplication>
 #include <QAction>
 #include <QDebug>
+#include <QDialog>
+#include <QTimer>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPointer>
@@ -152,6 +154,21 @@ int main(int argc,char **argv)
                 !configured.discardEmptyNativeDocumentRoot() &&
                 configured.centralWidget()==root,
                 "failed startup rollback removed an initialized host");
+    }
+
+    // Version History runs a nested modal event loop. Android may
+    // destroy its parent window while that loop is active; a guarded,
+    // heap-owned child must become null without a second delete.
+    {
+        auto *closingParent=new QWidget;
+        QPointer<QWidget> parentGuard(closingParent);
+        QPointer<QDialog> historyDialog(new QDialog(closingParent));
+        QTimer::singleShot(0,&app,[closingParent]() {
+            delete closingParent;
+        });
+        historyDialog->exec();
+        require(!parentGuard && !historyDialog,
+                "nested history dialog survived destroyed owning window");
     }
 
     MobileLightweightCanvasHost multi;
