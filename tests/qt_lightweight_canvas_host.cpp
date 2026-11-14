@@ -407,12 +407,14 @@ int main(int argc,char **argv)
         const auto remaining=orphanRoot->openViews();
         require(remaining.size()==1 && remaining.first().document==survivingDocument,
                 "orphan document teardown disturbed a surviving native canvas");
+        QCoreApplication::processEvents();
         QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
         require(!canvasGuard && survivorGuard &&
                 orphanRoot->openViews().size()==1 &&
                 orphanRoot->currentWidget()==survivingCanvas,
                 "orphan cleanup freed the wrong canvas or retained its widget");
         delete survivingDocument;
+        QCoreApplication::processEvents();
         QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
         require(!survivorGuard && orphanRoot->openViews().isEmpty(),
                 "last document teardown retained native canvas resources");
@@ -450,12 +452,39 @@ int main(int argc,char **argv)
             }
         });
         delete removedDocument;
+        QCoreApplication::processEvents();
         QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
         require(transferred && movedGuard &&
                 movedCanvas->parentWidget()==&externalOwner &&
                 !movedCanvas->isHidden() &&
                 root->openViews().size()==1,
                 "old native stack hid or deleted a canvas transferred to another owner");
+    }
+
+    // An already deregistered canvas may be transferred before its
+    // deferred retirement callback runs. Revalidate ownership at that
+    // later point, not when the first delete was requested.
+    {
+        MobileLightweightCanvasHost delayedHost;
+        auto *root=delayedHost.createNativeDocumentRoot();
+        require(root,"could not create delayed transfer root");
+        QWidget newOwner;
+        auto *document=new QObject;
+        auto *canvas=new QWidget;
+        QPointer<QWidget> guardedCanvas(canvas);
+        require(root->adoptView(canvas,document,
+                                QStringLiteral("Delayed transfer"),
+                                [](){return true;}),
+                "could not register delayed transfer drawing");
+        delete document; // deregisters and schedules retirement
+        require(root->openViews().isEmpty() && guardedCanvas,
+                "document teardown unexpectedly deleted canvas synchronously");
+        canvas->setParent(&newOwner);
+        canvas->show();
+        QCoreApplication::processEvents();
+        QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        require(guardedCanvas && canvas->parentWidget()==&newOwner,
+                "deferred cleanup deleted a canvas transferred after deregistration");
     }
 
     // A close adapter is allowed to approve a document transaction
@@ -474,6 +503,7 @@ int main(int argc,char **argv)
         const QPointer<QObject> identity(canvas);
         require(root->closeView(identity) && root->openViews().isEmpty(),
                 "accepted native close did not deregister its widget");
+        QCoreApplication::processEvents();
         QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
         require(!guard,"accepted native close retained its canvas allocation");
     }
@@ -514,6 +544,7 @@ int main(int argc,char **argv)
                 root->openViews().size()==1 &&
                 root->currentWidget()==firstView,
                 "tab teardown disturbed surviving document");
+        QCoreApplication::processEvents();
         QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
     }
 
