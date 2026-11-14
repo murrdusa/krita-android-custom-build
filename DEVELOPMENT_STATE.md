@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — cancel oversized Version History scans after dialog dismissal
+
+- A Version History dialog was already limited to the newest 256 archive rows, but its background `listForBrowser()` could still continue iterating a huge interrupted-pruning history folder after the dialog was dismissed. The scan holds the archive I/O mutex, so unnecessary enumeration could also defer new checkpoints or Save As migration.
+- Added an optional atomic cancellation token to `listForBrowser()`, checked before acquiring the archive mutex, after folder resolution, during directory streaming, and before returning results. `showSavedVersions()` now passes its existing dialog-lifetime cancellation token. Canceled listing returns no partial results, does not delete or modify any archived artwork, and can be retried immediately.
+- Extended the Qt archive regression to cover pre-canceled listing (all 300 source KRAs remain), followed by a successful fresh scan returning the newest 256.
+- **Verification:** previous exact-SHA local WSL Android build passed `ca8c24353cbecbd97dd69ea65195e47eae4cc2e1`; this cancellation path and regression await exact-SHA Android compilation and standalone Qt test. No APK uploaded.
+
 ## November 14 — bound Version History browser rows after interrupted cleanup
 
 - A large history folder left behind by interrupted retention could make the Version History dialog call the unbounded `list()`, then create a `QListWidgetItem` and queued preview for **every** archived KRA. This risks main-thread freezes or out-of-memory failures even though normal retention aims for only 12 versions.
