@@ -4,7 +4,8 @@
 
 - The independent Krita native document host decodes local `file://` URLs into filesystem paths before handing them to the engine's openPath() method, while keeping Android `content://` SAF identities intact.
 - Recent Files now records the same canonical local URL whether the incoming project used a filesystem path or a local file URL. Nonlocal `file://remote-host/...` authorities are rejected by native open, version-history identity and Save As collision logic rather than accidentally targeting a different path.
-- Invalid file URLs fall back to Pictures as the initial Save As directory. Extended Qt path policy regression for all these cases.
+- Save As and Export Copy picker targets are decoded to local paths before passing them to Krita's native writer. Invalid file URLs fall back to Pictures as the initial Save As directory. Extended Qt path policy regression for all these cases.
+- An intermediate commit (`59a39808fd`) failed Android compilation because the native Recent helper was referenced before its companion header commit; the helper was added in `39b22e5a92`. A later exact-SHA build is required before the batch can be considered verified.
 - **Verification:** earlier preview-cache batch awaits a reported exact SHA; this source/test batch also awaits local Android WSL build and host Qt test execution. No APK published.
 
 
