@@ -1,5 +1,13 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — failed independent engine startup resource cleanup
+
+- A failed native engine-session bootstrap now destroys its partially initialized Krita runtime (including view manager and action collection) immediately, then releases its still-empty native document root and shared view adapter. A missing runtime also rolls back the unused root. This avoids retaining native widgets/GL resources and blocking another engine startup attempt for the rest of the window lifetime.
+- Rollback deliberately refuses an installed document service, active drawing, child painting widget or mobile chrome. Open artwork cannot be discarded by a startup cleanup path.
+- Added desktop Qt lightweight-host regression verifying empty-root removal, clean second native-root creation, and refusal to remove a root with a live drawing.
+- **Verification:** preceding native close transaction revision `4918ecb5898bd06c393a6026064b51e611e23733` passed exact-SHA WSL Android compilation. The current bootstrap cleanup and new Qt regression still require exact-SHA build/test results. No APK uploaded.
+
+
 ## November 14 — teardown-safe canvas resume and host close
 
 - Canvas resume dispatch now invokes a local copy of the activation function. If activating the selected native canvas destroys its own observer, Qt no longer executes the observer's already-freed member std::function. Desktop Qt regression explicitly destroys the observer from its own callback and confirms no later activation.
