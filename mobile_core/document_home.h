@@ -756,7 +756,11 @@ private:
                 const bool opened=home && sameCanvas && !copy.isEmpty() && home->m_files &&
                     home->m_files->openFile(copy);
                 if(!home)return;
-                home->m_restoringVersion=false;
+                // A canceled older copy can finish after the gallery
+                // reopens and a newer recovery begins. Only the current
+                // request may clear the in-progress state.
+                if(home->m_recoveryCopyCancelled==cancellation)
+                    home->m_restoringVersion=false;
                 if(opened)home->hide();
                 else if(sameCanvas) {
                     QPointer<QMessageBox> warning(new QMessageBox(
