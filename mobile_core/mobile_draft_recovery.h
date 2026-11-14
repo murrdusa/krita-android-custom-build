@@ -125,11 +125,17 @@ public:
         if(!isDraftPath(draft))return false;
         const QString staging=draft+QStringLiteral(".pending.kra");
         if(QFileInfo(staging).isSymLink())return false;
-        if(exportSucceeded && hasReadableProject(staging) &&
-           std::rename(QFile::encodeName(staging).constData(),
-                       QFile::encodeName(draft).constData())==0)return true;
-        QFile::remove(staging);
-        return false;
+        if(!exportSucceeded || !hasReadableProject(staging)) {
+            QFile::remove(staging);
+            return false;
+        }
+        // A completed staging KRA may contain the only copy of the
+        // newest edits. If atomic replacement fails (permissions,
+        // transient storage error, busy destination), preserve it for
+        // recovery or a subsequent publication attempt instead of
+        // deleting the successful export.
+        return std::rename(QFile::encodeName(staging).constData(),
+                           QFile::encodeName(draft).constData())==0;
     }
 
     static QString projectFor(const QString &draft)
