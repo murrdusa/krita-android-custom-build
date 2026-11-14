@@ -418,6 +418,44 @@ int main(int argc,char **argv)
                 "last document teardown retained native canvas resources");
     }
 
+    // A currentChanged observer can transfer a still-live canvas to
+    // another QWidget during external document teardown. The old root
+    // must not delete that widget after it leaves the root's ownership.
+    {
+        MobileLightweightCanvasHost transferHost;
+        auto *root=transferHost.createNativeDocumentRoot();
+        require(root,"could not create transfer test root");
+        QWidget externalOwner;
+        QObject survivingDocument;
+        auto *survivingCanvas=new QWidget;
+        require(root->adoptView(survivingCanvas,&survivingDocument,
+                                QStringLiteral("Survivor"),
+                                [](){return true;}),
+                "could not attach transfer test survivor");
+        auto *removedDocument=new QObject;
+        auto *movedCanvas=new QWidget;
+        QPointer<QWidget> movedGuard(movedCanvas);
+        require(root->adoptView(movedCanvas,removedDocument,
+                                QStringLiteral("Transfer"),
+                                [](){return true;}),
+                "could not attach transfer test canvas");
+        root->setCurrentWidget(movedCanvas);
+        bool transferred=false;
+        QObject::connect(root,&QStackedWidget::currentChanged,root,
+                         [movedCanvas,&externalOwner,&transferred,root](int) {
+            if(root->indexOf(movedCanvas)<0 && !transferred) {
+                movedCanvas->setParent(&externalOwner);
+                transferred=true;
+            }
+        });
+        delete removedDocument;
+        QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        require(transferred && movedGuard &&
+                movedCanvas->parentWidget()==&externalOwner &&
+                root->openViews().size()==1,
+                "external reparented native canvas was deleted during document teardown");
+    }
+
     // A close adapter is allowed to approve a document transaction
     // without explicitly deleting the QWidget. The native stack owns
     // that still-parented canvas and must retire it after deregistration.
