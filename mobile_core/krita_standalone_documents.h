@@ -119,12 +119,24 @@ public:
                     MobileSavedVersionArchive::previewRevisions().value(
                         MobileSavedVersionArchive::canonicalIdentity(path)).toLongLong()));
             for(const auto &checkpoint:checkpoints) {
+                // openPath() may dispatch Android lifecycle callbacks.
+                // Do not retry a different checkpoint after its original
+                // native window or Krita registry has disappeared.
+                if(!m_runtime || !originalRoot ||
+                   m_runtime->documentRoot()!=originalRoot.data() ||
+                   !KisPart::instance())return false;
                 document=KisPart::instance()->createDocument();
                 if(!document)return false;
                 const QPointer<KisDocument> candidate(document);
                 const bool opened=openProjectSource(
                     document,checkpoint.absoluteFilePath(),true);
                 if(!candidate)return false;
+                if(!m_runtime || !originalRoot ||
+                   m_runtime->documentRoot()!=originalRoot.data() ||
+                   !KisPart::instance()) {
+                    delete candidate.data();
+                    return false;
+                }
                 if(opened) {
                     latest=checkpoint.absoluteFilePath();
                     break;
@@ -134,13 +146,19 @@ public:
             }
         }
         if(!document) {
-            if(!MobileNativeDocumentPathPolicy::mayAttemptOpen(path))return false;
+            if(!m_runtime || !originalRoot ||
+               m_runtime->documentRoot()!=originalRoot.data() ||
+               !KisPart::instance() ||
+               !MobileNativeDocumentPathPolicy::mayAttemptOpen(path))
+                return false;
             document=KisPart::instance()->createDocument();
             if(!document)return false;
             const QPointer<KisDocument> candidate(document);
             const bool opened=openProjectSource(
                 document,path,privateDraft || savedVersion);
-            if(!candidate || !opened) {
+            if(!candidate || !opened || !m_runtime || !originalRoot ||
+               m_runtime->documentRoot()!=originalRoot.data() ||
+               !KisPart::instance()) {
                 if(candidate)delete candidate.data();
                 return false;
             }
