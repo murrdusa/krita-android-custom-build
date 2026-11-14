@@ -113,13 +113,13 @@ public:
         // gallery's UI thread. Process only a small batch per listing;
         // subsequent refreshes continue rescuing the remaining files.
         constexpr int maxOrphanChecksPerScan=2;
-        // Do not materialize every pending file into an entryInfoList:
-        // that defeats the per-visit limit on a storage directory with
-        // thousands of interrupted exports. Preserve a cursor between
-        // visits and keep only the next bounded batch in memory.
+        // Walk at most 128 directory entries per gallery visit, but
+        // stop *as soon as* two eligible files are selected. Advancing
+        // the iterator by 128 and then checking only two used to skip
+        // dozens of recoverable drafts until the cursor wrapped around.
         constexpr int maxOrphanCandidatesPerScan=128;
         QFileInfoList candidates;
-        candidates.reserve(maxOrphanCandidatesPerScan);
+        candidates.reserve(maxOrphanChecksPerScan);
         {
             static QMutex cursorLock;
             static std::unique_ptr<QDirIterator> cursor;
@@ -133,33 +133,31 @@ public:
                 cursor.reset(new QDirIterator(folder,
                     {QStringLiteral("*.pending.kra")},
                     QDir::Files|QDir::Readable|QDir::NoSymLinks));
-            for(int i=0;i<maxOrphanCandidatesPerScan;++i) {
+            for(int i=0;i<maxOrphanCandidatesPerScan &&
+                            candidates.size()<maxOrphanChecksPerScan;++i) {
                 if(!cursor->hasNext()) {
-                    // Restart only on a later gallery visit. Otherwise
-                    // a small directory is repeatedly validated 128 times.
+                    // Resume from the beginning on the next gallery visit,
+                    // not repeatedly within one scan of a small directory.
                     cursor.reset();
                     break;
                 }
                 cursor->next();
-                candidates.append(cursor->fileInfo());
+                const QFileInfo pending=cursor->fileInfo();
+                if(pending.lastModified().toUTC().secsTo(now)<300)continue;
+                const QString path=pending.absoluteFilePath();
+                const QString draft=path.left(path.size()-suffix.size());
+                if(!isDraftPath(draft))continue;
+                candidates.append(pending);
             }
         }
-        int orphanChecks=0;
         for(const QFileInfo &pending:candidates) {
-            const qint64 age=pending.lastModified().toUTC().secsTo(now);
-            if(age<300)continue;
             const QString path=pending.absoluteFilePath();
             const QString draft=path.left(path.size()-suffix.size());
-            if(!isDraftPath(draft))continue;
-            if(orphanChecks++>=maxOrphanChecksPerScan)break;
             if(!hasReadableProject(path))continue;
-            // Opening the KRA with KoStore may take time. An exporter
-            // that resumed writing meanwhile must retain ownership of
-            // its staging file; never rescue a file whose size or mtime
-            // changed during validation.
+            // An exporter that resumed writing during validation must
+            // retain ownership of its staging file.
             if(!unchangedStaging(pending))continue;
-            // False explicitly prevents replacing the previous published
-            // draft; publish() moves the orphan to a separate recovery ID.
+            // False prevents replacing the previous published draft.
             publish(draft,false);
         }
         // Avoid holding Qt's full sorted directory snapshot *and* a
