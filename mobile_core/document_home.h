@@ -473,7 +473,13 @@ public:
         });
         const int result=dialog->exec();
         cancelled->store(true);
-        if(!dialog || !home)return;
+        if(!dialog)return;
+        if(!home) {
+            // The gallery may have been destroyed while its window
+            // survived; do not leave an orphaned hidden dialog behind.
+            delete dialog.data();
+            return;
+        }
         const int row=list->currentRow();
         const bool selected=result==QDialog::Accepted &&
             row>=0 && row<versions->size();
