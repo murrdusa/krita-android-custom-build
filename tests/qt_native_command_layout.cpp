@@ -212,7 +212,7 @@ int main(int argc,char **argv)
             [&](const QRect &rect,bool) {savedPanel=rect;panel->setGeometry(rect);}}};
     },[&](bool value) {editing=value;});
     QAction *edit=nullptr;
-    for(auto *action:secondMenu->actions())
+    for(auto *action:settingsGroup->actions())
         if(action->text()==QStringLiteral("Edit UI Layout…"))edit=action;
     verify(edit,"missing canvas layout action");
     QApplication::processEvents();
