@@ -409,7 +409,7 @@ public:
             }
             auto *host=parentWidget();
             if(!host)return;
-            mobileShowActionList(host,addType,menu,this,[this,original,target](const QVariant &choice) {
+            m_addLayerMenu=mobileShowActionList(host,addType,menu,this,[this,original,target](const QVariant &choice) {
                 const auto type=choice.toString();
                 if(type==QStringLiteral("minimize")) {
                     if(isVisible() && onRequestClose)onRequestClose();
@@ -489,6 +489,12 @@ public:
     // We never cache a duplicate document or layer model.
     std::function<void()> onRequestClose;
     std::function<void()> onContentHeightChanged;
+
+    bool containsAddLayerMenu(const QWidget *target) const
+    {
+        return m_addLayerMenu && m_addLayerMenu->isVisible() &&
+            (m_addLayerMenu==target || m_addLayerMenu->isAncestorOf(target));
+    }
     int contentLength(bool horizontal,int thickness) const
     {
         int length=0;
@@ -3342,6 +3348,7 @@ private:
     QWidget *m_railHeader=nullptr;
     QPushButton *m_addLayerButton=nullptr;
     MobileLayerNameLabel *m_layerName=nullptr;
+    QPointer<MobileTransientPanel> m_addLayerMenu;
     bool m_controlsAtEnd=true;
     QScrollArea *m_horizontalScroll=nullptr;
     QWidget *m_horizontalBody=nullptr;

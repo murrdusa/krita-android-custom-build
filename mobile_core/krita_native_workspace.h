@@ -2089,7 +2089,8 @@ private:
         };
 
         if(!m_keepLayers && m_layers && m_layers->isVisible() && target!=m_layers &&
-           !m_layers->isAncestorOf(target) && action!=m_layersAction)toggleLayers();
+           !m_layers->isAncestorOf(target) && !m_layers->containsAddLayerMenu(target) &&
+           action!=m_layersAction)toggleLayers();
         dismiss(m_brushOptions,m_optionsAction);
         dismiss(m_toolOptions,m_optionsAction);
         if(target!=m_textFormatOpener)dismiss(m_textFormatting,m_optionsAction);
