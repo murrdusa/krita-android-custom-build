@@ -448,8 +448,8 @@ public:
         preferences->addActions({settingsAction,inputAction,keyboardAction});
         auto *colorMenu=preferences->addMenu(QObject::tr("Color"));
         colorMenu->addActions({colorWheelAction,lightingSphereAction});
-        auto *history=colorMenu->addAction(QObject::tr("Show recent colors below floating wheel"));
-        workspace->bindWheelHistory(history);
+        auto *wheelHistory=colorMenu->addAction(QObject::tr("Show recent colors below floating wheel"));
+        workspace->bindWheelHistory(wheelHistory);
         auto *crashReport=preferences->addAction(QObject::tr("Copy crash report"));
         QObject::connect(crashReport,&QAction::triggered,window,&MobileCrashReport::copy);
         QList<QAction*> moreActions{preferences->menuAction()};
