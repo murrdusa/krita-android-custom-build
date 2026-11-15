@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — compact toolbars, preset import, and lighting controls
+
+- Settings action lists size to their rows within the available canvas. Main and custom toolbars fit their visible commands and scroll if they run out of space.
+- Paint, Erase and Blend share a native .kpp importer. Their Import category lists presets imported through Studio that are compatible with the current mode. Existing presets are protected from filename collisions.
+- The lighting sphere follows external foreground picks by default and keeps its base when sampled. Lighting includes intensity alongside hardness, and the floating sphere opens the same controls through its settings button.
+
 ## November 15 — collapse Layers from the active layer name
 
 - The expanded rail's name strip collapses Layers, leaving Add as the only header button. The compact strip shows the active layer's name and preview and opens the rail on tap. Both strips follow the rail orientation and saved placement.

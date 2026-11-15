@@ -24,6 +24,7 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QMap>
+#include <QHBoxLayout>
 #include <QSignalBlocker>
 #include <QScopedValueRollback>
 #include <QScrollArea>
@@ -140,6 +141,18 @@ public:
             } else if(m_toolbarPreview) {
                 m_toolbarPreview->hide();
             }
+        });
+        if(auto *provider=m_engine.brushResources())
+            connect(provider,&KisCanvasResourceProvider::sigFGColorChanged,this,[this](const KoColor &color) {
+                const QColor picked=color.toQColor();
+                if(m_samplingSphere || !m_lighting.followColor || !picked.isValid() ||
+                   m_lighting.base==picked)return;
+                m_lighting.base=picked;
+                if(m_colorPicker)m_colorPicker->syncLightingBase();
+                else m_lighting.apply(m_sphere);
+            });
+        connect(qApp,&QGuiApplication::applicationStateChanged,this,[this](Qt::ApplicationState state) {
+            if(state!=Qt::ApplicationActive)m_lighting.save();
         });
         qApp->installEventFilter(this);
         connect(qApp,&QApplication::focusChanged,this,
@@ -421,10 +434,11 @@ public:
         if(self && m_toolOptions)showOverlay(m_toolOptions);
     }
 
-    void toggleColor()
+    void toggleColor(QWidget *lightingOpener=nullptr)
     {
         if(m_colorPopup && m_colorPopup->isVisible()) {
-            m_colorPopup->close();
+            if(lightingOpener && m_colorPicker)m_colorPicker->showLighting();
+            else m_colorPopup->close();
             return;
         }
         auto *canvas=m_host?m_host->nativeCanvas():nullptr;
@@ -437,8 +451,11 @@ public:
         layout->setContentsMargins(2,2,2,2);
         m_colorPicker=new MobileColorPicker(panel,provider,m_lighting,m_sphere);
         layout->addWidget(m_colorPicker);
-        QWidget *anchor=nullptr;
+        m_colorPicker->onSphereColor=[this](const QColor &color) {sampleLightingSphere(color);};
+        if(lightingOpener)m_colorPicker->showLighting();
+        QWidget *anchor=lightingOpener;
         for(auto *button:canvas->findChildren<QToolButton*>()) {
+            if(lightingOpener)break;
             if(button->defaultAction()!=m_colorAction || !button->isVisible() ||
                button->visibleRegion().isEmpty())continue;
             if(!anchor)anchor=button;
@@ -448,7 +465,7 @@ public:
             }
         }
         panel->setOpener(anchor,m_colorAction);
-        panel->anchorTo(anchor,QSize(448,570),true);
+        panel->anchorTo(anchor,QSize(448,620),true);
         const QPointer<QWidget> opener(anchor);
         panel->fitGeometry=[canvas,opener,picker=m_colorPicker.data()](const QRect &preferred) {
             QList<QRect> occupied;
@@ -472,6 +489,12 @@ public:
         syncPanelActions();
     }
 
+    void sampleLightingSphere(const QColor &color)
+    {
+        const QScopedValueRollback<bool> sampling(m_samplingSphere,true);
+        MobileColorPicker::setForeground(m_engine.brushResources(),color);
+    }
+
     void toggleLightingSphere()
     {
         auto *canvas=m_host?m_host->nativeCanvas():nullptr;
@@ -479,14 +502,26 @@ public:
         if(!m_sphere) {
             m_sphere=new MobileLightingSphere(canvas);
             m_sphere->onColor=[this](const QColor &color) {
-                MobileColorPicker::setForeground(m_engine.brushResources(),color);
+                sampleLightingSphere(color);
             };
+            auto *settings=new QToolButton(m_sphere);
+            settings->setText(QStringLiteral("⚙"));
+            settings->setAccessibleName(tr("Lighting sphere settings"));
+            settings->setToolTip(tr("Lighting sphere settings"));
+            settings->setFixedSize(34,34);
+            settings->setStyleSheet(QStringLiteral(
+                "QToolButton{background:#30323b;color:#f1f2f5;border:1px solid #55555c;"
+                "border-radius:7px;font-size:17px;}"));
+            auto *buttons=new QHBoxLayout(m_sphere);
+            buttons->setContentsMargins(0,0,0,0);
+            buttons->addStretch();
+            buttons->addWidget(settings,0,Qt::AlignTop);
+            connect(settings,&QToolButton::clicked,this,[this,settings]() {toggleColor(settings);});
             if(m_colorPicker)m_colorPicker->setFloatingSphere(m_sphere);
         }
         if(m_sphere->isVisible())m_sphere->hide();
         else {
-            m_sphere->setLighting(m_lighting.base,m_lighting.light,m_lighting.shadow,
-                                  m_lighting.contrast/100.0);
+            m_lighting.apply(m_sphere);
             showOverlay(m_sphere);
         }
     }
@@ -2491,6 +2526,7 @@ private:
     QPointer<QToolButton> m_colorOpener;
     QPointer<MobileLightingSphere> m_sphere;
     MobileColorPicker::Lighting m_lighting{QSettings()};
+    bool m_samplingSphere=false;
     QPointer<MobileContextToolBar> m_contextToolBar;
     QPointer<QToolButton> m_selectionDismiss,m_cloneSourceButton;
     QPointer<QAction> m_volumeUndo;

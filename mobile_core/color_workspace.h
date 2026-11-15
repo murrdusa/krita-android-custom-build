@@ -210,13 +210,16 @@ public:
 
     std::function<void(const QColor&)> onColor;
 
-    void setLighting(const QColor &base,const QColor &light,const QColor &shadow,qreal contrast)
+    void setLighting(const QColor &base,const QColor &light,const QColor &shadow,
+                     qreal contrast,qreal intensity)
     {
-        if(m_base==base && m_light==light && m_shadow==shadow && m_contrast==contrast)return;
+        if(m_base==base && m_light==light && m_shadow==shadow &&
+           m_contrast==contrast && m_intensity==intensity)return;
         m_base=base;
         m_light=light;
         m_shadow=shadow;
         m_contrast=contrast;
+        m_intensity=intensity;
         m_image=QImage();
         update();
     }
@@ -294,7 +297,7 @@ private:
         const qreal specular=qPow(diffuse,18.0)*0.16;
         const qreal ambient=0.32+0.12*qMax(0.0,normal.y());
         const auto channel=[&](qreal base,qreal highlight,qreal shadow) {
-            return qBound(0.0,highlight*(0.68*base*diffuse+specular)+base*shadow*ambient,1.0);
+            return qBound(0.0,m_intensity*highlight*(0.68*base*diffuse+specular)+base*shadow*ambient,1.0);
         };
         return QColor::fromRgbF(channel(m_base.redF(),m_light.redF(),m_shadow.redF()),
                                 channel(m_base.greenF(),m_light.greenF(),m_shadow.greenF()),
@@ -314,7 +317,7 @@ private:
     }
 
     QColor m_base=QColor("#c68462"),m_light=QColor("#fff4dc"),m_shadow=QColor("#8da9df");
-    qreal m_contrast=0.85;
+    qreal m_contrast=0.85,m_intensity=1.0;
     QImage m_image;
     QPointF m_sample;
     bool m_sampling=false,m_hasSample=false;
@@ -328,7 +331,9 @@ public:
             : base(readColor(settings,"object",QColor("#c68462"))),
               light(readColor(settings,"highlight",QColor("#fff4dc"))),
               shadow(readColor(settings,"shadow",QColor("#8da9df"))),
-              contrast(qBound(0,settings.value(key("hardness"),85).toInt(),100))
+              contrast(qBound(0,settings.value(key("hardness"),85).toInt(),100)),
+              intensity(qBound(0,settings.value(key("intensity"),100).toInt(),200)),
+              followColor(settings.value(key("followColor"),true).toBool())
         {}
 
         void save() const
@@ -338,10 +343,18 @@ public:
             settings.setValue(key("highlight"),light.name());
             settings.setValue(key("shadow"),shadow.name());
             settings.setValue(key("hardness"),contrast);
+            settings.setValue(key("intensity"),intensity);
+            settings.setValue(key("followColor"),followColor);
         }
 
         QColor base,light,shadow;
-        int contrast;
+        int contrast,intensity;
+        bool followColor;
+
+        void apply(MobileLightingSphere *sphere) const
+        {
+            if(sphere)sphere->setLighting(base,light,shadow,contrast/100.0,intensity/100.0);
+        }
 
     private:
         static QString key(const char *name)
@@ -363,7 +376,8 @@ public:
         auto *root=new QVBoxLayout(this);
         root->setContentsMargins(6,6,6,6);
         root->setSpacing(4);
-        auto *tabs=new QTabBar(this);
+        m_tabs=new QTabBar(this);
+        auto *tabs=m_tabs;
         tabs->setExpanding(true);
         tabs->setStyleSheet(QStringLiteral(
             "QTabBar::tab{background:#30323b;color:#c3c6d1;min-height:30px;padding:0 7px;}"
@@ -457,7 +471,9 @@ public:
         lightingLayout->setContentsMargins(0,0,0,0);
         lightingLayout->setSpacing(2);
         m_sphere=new MobileLightingSphere(lightingPage);
-        m_sphere->onColor=[this](const QColor &color) {select(color);};
+        m_sphere->onColor=[this](const QColor &color) {
+            if(onSphereColor)onSphereColor(color);
+        };
         lightingLayout->addWidget(m_sphere,1);
         auto *lightingControls=new QHBoxLayout;
         auto *group=new QButtonGroup(lightingPage);
@@ -520,17 +536,37 @@ public:
             });
         }
         refreshRole(m_lightingHues[0]);
-        auto *contrastRow=new QHBoxLayout;
-        contrastRow->addWidget(new QLabel(tr("Shadow hardness"),lightingPage));
-        auto *contrast=new MobileTouchSlider(lightingPage);
-        contrast->setAccessibleName(tr("Shadow hardness"));
-        contrast->setRange(0,100);
-        contrast->setValue(m_lighting.contrast);
-        contrastRow->addWidget(contrast,1);
-        lightingLayout->addLayout(contrastRow);
-        connect(contrast,&QSlider::valueChanged,this,[this](int value) {
-            m_lighting.contrast=value;
-            refreshLighting();
+        m_syncBase=[this,group,refreshRole]() {
+            if(m_lighting.base.hsvHue()>=0)m_lightingHues[0]=m_lighting.base.hsvHue();
+            if(group->checkedId()==0)refreshRole(m_lightingHues[0]);
+        };
+        auto *levels=new QFormLayout;
+        levels->setSpacing(2);
+        const auto addLevel=[&](const QString &label,int &value,int maximum) {
+            auto *slider=new MobileTouchSlider(lightingPage);
+            slider->setMinimumHeight(32);
+            slider->setAccessibleName(label);
+            slider->setRange(0,maximum);
+            slider->setValue(value);
+            levels->addRow(label,slider);
+            connect(slider,&QSlider::valueChanged,this,[this,&value](int changed) {
+                value=changed;
+                refreshLighting();
+            });
+        };
+        addLevel(tr("Shadow hardness"),m_lighting.contrast,100);
+        addLevel(tr("Light intensity"),m_lighting.intensity,200);
+        lightingLayout->addLayout(levels);
+        auto *follow=new QCheckBox(tr("Use picked color as base"),lightingPage);
+        follow->setChecked(m_lighting.followColor);
+        lightingLayout->addWidget(follow);
+        connect(follow,&QCheckBox::toggled,this,[this](bool enabled) {
+            m_lighting.followColor=enabled;
+            if(enabled && m_provider && m_provider->fgColor().toQColor().isValid()) {
+                m_lighting.base=m_provider->fgColor().toQColor();
+                syncLightingBase();
+            }
+            m_lighting.save();
         });
         refreshLighting();
         addPage(lightingPage,tr("Lighting"));
@@ -547,6 +583,15 @@ public:
     }
 
     std::function<void()> onPreviewLayoutChanged;
+    std::function<void(const QColor &)> onSphereColor;
+
+    void showLighting() {m_tabs->setCurrentIndex(1);}
+
+    void syncLightingBase()
+    {
+        if(m_syncBase)m_syncBase();
+        refreshLighting();
+    }
 
     int widthForPopupHeight(int height) const
     {
@@ -638,9 +683,8 @@ private:
 
     void refreshLighting()
     {
-        for(auto *sphere:{m_sphere,m_floating.data()})
-            if(sphere)sphere->setLighting(m_lighting.base,m_lighting.light,m_lighting.shadow,
-                                         m_lighting.contrast/100.0);
+        m_lighting.apply(m_sphere);
+        m_lighting.apply(m_floating);
     }
 
     QPointer<KisCanvasResourceProvider> m_provider;
@@ -649,6 +693,8 @@ private:
     MobileLightingSphere *m_sphere=nullptr;
     MobileHueWheel *m_wheel=nullptr;
     QStackedWidget *m_pages=nullptr;
+    QTabBar *m_tabs=nullptr;
+    std::function<void()> m_syncBase;
     QLineEdit *m_hex=nullptr;
     QLabel *m_previous=nullptr,*m_current=nullptr;
     std::array<int,3> m_lightingHues{};

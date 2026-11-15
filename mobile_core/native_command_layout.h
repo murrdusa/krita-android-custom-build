@@ -552,9 +552,7 @@ private:
             static_cast<QScrollArea*>(frame->layout()->itemAt(0)->widget());
         const auto *commands=scroll->widget();
         const int commandLength=commands?(vertical?commands->height():commands->width()):0;
-        const int preferredLength=qMax(vertical?rect.height():rect.width(),
-                                       minimumLength+commandLength);
-        const int length=qMin(preferredLength,available);
+        const int length=qMin(minimumLength+commandLength,available);
         const int cross=qMin(breadth,vertical?bounds.width():bounds.height());
         rect.setSize(vertical?QSize(cross,length):QSize(length,cross));
         rect.moveTo(bounds.x()+qRound(bar.placement.x()*(bounds.width()-rect.width())),
@@ -654,7 +652,7 @@ private:
         } else {
             const int available=mainVertical?bounds.height():bounds.width();
             const int breadth=main.target+4+(history?historyThickness:0);
-            const int length=main.adaptive?available:qMin(pinned+stripLength+6,available);
+            const int length=qMin(pinned+stripLength+6,available);
             const int offset=(available-length)*main.alignment/2;
             const int x=mainVertical?(main.edge==Left?bounds.left():bounds.right()-breadth+1):
                                      bounds.left()+offset;

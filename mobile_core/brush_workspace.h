@@ -9,6 +9,10 @@
 #include <QHash>
 #include <QLabel>
 #include <QFile>
+#include <QFileInfo>
+#include <QBuffer>
+#include <QAndroidJniObject>
+#include <KoFileDialog.h>
 #include <QCheckBox>
 #include <QInputMethod>
 #include <QInputDialog>
@@ -832,6 +836,51 @@ private:
         });
     }
 
+    static constexpr int importCategory=-7;
+
+    int importBrushPresets(QWidget *owner)
+    {
+        const QPointer<KritaMobileBrushWorkspace> self(this);
+        KoFileDialog picker(owner,KoFileDialog::ImportFiles,QStringLiteral("MobileBrushImport"));
+        picker.setCaption(i18n("Import Krita brush presets"));
+        // Android providers commonly label .kpp files as generic binary.
+        picker.setNameFilter(i18n("All files (*)"));
+        const auto paths=picker.filenames();
+        if(!self || paths.isEmpty())return -1;
+
+        QSettings settings;
+        const QString key=QStringLiteral("MobileStudio/importedBrushPresetIds");
+        QStringList imported=settings.value(key).toStringList();
+        int count=0;
+        for(const auto &path:paths) {
+            QFile file(path);
+            QString name=QFileInfo(path).fileName();
+            if(path.startsWith(QStringLiteral("content://"))) {
+                const auto uri=QAndroidJniObject::fromString(path);
+                const auto display=QAndroidJniObject::callStaticObjectMethod(
+                    "org/krita/android/MainActivity","tabletProjectName",
+                    "(Ljava/lang/String;)Ljava/lang/String;",uri.object<jstring>());
+                if(display.isValid() && !display.toString().isEmpty())
+                    name=QFileInfo(display.toString()).fileName();
+            }
+            if(!name.endsWith(QStringLiteral(".kpp"),Qt::CaseInsensitive) ||
+               !file.open(QIODevice::ReadOnly))continue;
+            constexpr qint64 maxPresetBytes=32*1024*1024;
+            QByteArray data=file.read(maxPresetBytes+1);
+            if(data.isEmpty() || data.size()>maxPresetBytes)continue;
+            QBuffer buffer(&data);
+            buffer.open(QIODevice::ReadOnly);
+            const auto preset=model()->importResource(name,&buffer,false);
+            if(!self)return count;
+            if(!preset)continue;
+            const auto id=QString::number(preset->resourceId());
+            if(!imported.contains(id))imported.append(id);
+            ++count;
+        }
+        if(count)settings.setValue(key,imported);
+        return count;
+    }
+
     class PresetFilter final : public QSortFilterProxyModel
     {
     public:
@@ -860,6 +909,7 @@ private:
         {
             const QSettings settings;
             m_assignments.clear();
+            m_imported=settings.value(QStringLiteral("MobileStudio/importedBrushPresetIds")).toStringList();
             m_favorites=settings.value(
                 QStringLiteral("MobileStudio/brushFavorites")).toStringList();
             m_recent=settings.value(
@@ -935,6 +985,9 @@ private:
             if(!name.contains(m_search,Qt::CaseInsensitive))return false;
             if(m_category==-4 && !m_favorites.contains(name))return false;
             if(m_category==-5 && !m_recent.contains(name))return false;
+            if(m_category==importCategory &&
+               !m_imported.contains(m_source->index(row,KisAbstractResourceModel::Id,parent).data().toString()))
+                return false;
             const auto assignment=(m_category>=9 || !m_custom.isEmpty())?categoryAssignment(row):QString();
             if(!m_custom.isEmpty() && assignment!=m_custom)return false;
             if(m_category>=9) {
@@ -968,7 +1021,7 @@ private:
         int m_category=-1;
         QString m_search,m_custom;
         mutable QHash<int,QString> m_assignments;
-        QStringList m_favorites,m_recent;
+        QStringList m_favorites,m_recent,m_imported;
         int m_slot;
     };
 
@@ -1388,6 +1441,7 @@ private:
         if(slot==2)category(i18n("Blenders"),2);
         category(i18n("All"),-1);
         if(slot==1)category(i18n("Erasers"),1);
+        category(i18n("Import"),importCategory);
         for(const auto &entry:brushFamilies())category(entry.second,entry.first);
         const auto addCustom=[categories](const QString &name) {
             auto *item=new QListWidgetItem(name,categories);
@@ -1424,6 +1478,18 @@ private:
             openAdvancedBrushSettings();
         });
         body->addWidget(advanced);
+        auto *importButton=new QToolButton(panel);
+        importButton->setText(i18n("Import brush presets…"));
+        importButton->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
+        body->addWidget(importButton);
+        auto *importHelp=new QLabel(i18n("Choose .kpp files. Here you’ll see imported presets that work in this mode."),panel);
+        importHelp->setWordWrap(true);
+        body->addWidget(importHelp);
+        const auto showImport=[importButton,importHelp](int category) {
+            importButton->setVisible(category==importCategory);
+            importHelp->setVisible(category==importCategory);
+        };
+        showImport(categories->currentItem()->data(Qt::UserRole).toInt());
 
         auto *list=new QListView(panel);
         list->setObjectName(QStringLiteral("brushRows"));
@@ -1470,9 +1536,10 @@ private:
         connect(filter,&QAbstractItemModel::rowsInserted,panel,updateList);
         connect(filter,&QAbstractItemModel::rowsRemoved,panel,updateList);
         connect(filter,&QAbstractItemModel::modelReset,panel,updateList);
-        const auto chooseCategory=[filter,list,clearExtras,updateSelected,lastCategoryKey,categoryKey](QListWidgetItem *item) {
+        const auto chooseCategory=[filter,list,clearExtras,updateSelected,showImport,lastCategoryKey,categoryKey](QListWidgetItem *item) {
             clearExtras();
             QSettings().setValue(lastCategoryKey,categoryKey(item));
+            showImport(item->data(Qt::UserRole).toInt());
             filter->setCategory(item->data(Qt::UserRole).toInt(),item->data(Qt::UserRole+1).toString());
             list->scrollToTop();
             updateSelected();
@@ -1490,6 +1557,20 @@ private:
             panel->setFocus(Qt::OtherFocusReason);
             if(QGuiApplication::inputMethod()->isVisible())QGuiApplication::inputMethod()->hide();
         };
+        connect(importButton,&QToolButton::clicked,panel,[=]() {
+            hideSearchHandle();
+            const QPointer<MobileTransientPanel> openPanel(panel);
+            const QPointer<KritaMobileBrushWorkspace> workspace(this);
+            QTimer::singleShot(0,this,[workspace,openPanel,filter,importHelp,updateList]() {
+                if(!workspace || !openPanel)return;
+                const int count=workspace->importBrushPresets(openPanel);
+                if(!openPanel || count<0)return;
+                filter->reloadPersonalLists();
+                updateList();
+                importHelp->setText(count>0?i18np("%1 preset imported.", "%1 presets imported.",count):
+                    i18n("No presets imported. Choose a valid .kpp file with a new filename."));
+            });
+        });
         const auto openRowMenu=[=](const QModelIndex &index) {
             hideSearchHandle();
             updateSelected();

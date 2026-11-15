@@ -101,7 +101,11 @@ inline MobileTransientPanel *mobileShowActionList(QWidget *host,QWidget *anchor,
         panel->close();
         if(alive)QTimer::singleShot(0,alive.data(),[picked,value]() {picked(value);});
     });
-    panel->anchorTo(anchor,QSize(300,qMin(430,12+42*list->count())),true);
+    list->ensurePolished();
+    int height=12;
+    for(int row=0;row<list->count();++row)
+        height+=qMax(40,list->sizeHintForRow(row));
+    panel->anchorTo(anchor,QSize(300,height),true);
     panel->present();
     return panel;
 }
