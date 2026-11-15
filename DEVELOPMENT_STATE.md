@@ -1,5 +1,9 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — Android launch splash
+
+- Android shows the Krita launcher icon on Studio’s dark background during cold startup. The native splash fades out when Home or the initial canvas is ready, with no added minimum wait.
+
 ## November 15 — Settings grouping, presets, and command browser
 
 - The gear lists Settings then Filters, with layout editing, toolbar setup, preferences and the floating wheel history toggle under Settings. All Krita Commands is available from the gear and is excluded from new toolbar assignments.

@@ -1745,6 +1745,30 @@ install(FILES org.kde.krita.desktop''',
             <intent-filter>
                 <action android:name="com.samsung.android.support.REMOTE_ACTION" />''',
         "Android Share single-document intent filter")
+    manifest=one(manifest,
+        '            <meta-data android:name="android.app.lib_name" android:value="mobile_studio"/>',
+        """            <meta-data android:name="android.app.lib_name" android:value="mobile_studio"/>
+            <meta-data android:name="android.app.splash_screen_drawable" android:resource="@drawable/studio_splash"/>
+            <meta-data android:name="android.app.splash_screen_sticky" android:value="true"/>""",
+        "keep the native Android splash visible while the engine starts")
+    resources=root/"packaging/android/apk/res"
+    (resources/"drawable/studio_splash.xml").write_text(
+        """<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/studio_splash_background" />
+    <item android:drawable="@mipmap/ic_launcher"
+          android:width="112dp" android:height="112dp" android:gravity="center" />
+</layer-list>
+""",encoding="utf-8")
+    styles=resources/"values/styles.xml"
+    style_xml=styles.read_text(encoding="utf-8")
+    style_xml=one(style_xml,'<resources>',
+        '<resources>\n    <color name="studio_splash_background">#252529</color>',
+        "share the launch and splash backgrounds")
+    style_xml=one(style_xml,'<item name="android:windowBackground">@android:color/black</item>',
+        '<item name="android:windowBackground">@color/studio_splash_background</item>',
+        "match the Android launch window to the Studio background")
+    styles.write_text(style_xml,encoding="utf-8")
     manifestfile.write_text(manifest,encoding="utf-8")
 
     # The older quick-pinch recognizer still runs in Krita's input manager,

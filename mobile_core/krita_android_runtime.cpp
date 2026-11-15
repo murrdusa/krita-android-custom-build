@@ -244,8 +244,8 @@ MobileKritaAndroidRuntime::Result MobileKritaAndroidRuntime::launch(
     setHistoric(cfg.useIgnoreHistoricTabletEventsWorkaround());
 #endif
 
-    // Hide the Krita splash and launch the only native drawing window.
-    // An initialization failure is an error, not an automatic UI switch.
+    // Complete Krita's donation/loading state. The native Android
+    // launch splash remains visible until the Studio window is ready.
     app.hideSplashScreen();
     if(!MobileKritaApplicationEntry::start())
         return Result::Failed;

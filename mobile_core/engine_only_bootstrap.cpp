@@ -10,6 +10,7 @@
 #include <QPointer>
 #include <QSettings>
 #include <QTimer>
+#include <QtAndroid>
 #include "lightweight_canvas_host.h"
 #include "engine_only_startup_policy.h"
 #include "krita_standalone_pilot.h"
@@ -34,12 +35,14 @@ bool MobileEngineOnlyBootstrap::launch()
             alive.data(),[](bool success) {
                 QSettings settings;
                 MobileEngineOnlyStartupPolicy::complete(settings,success);
+                QtAndroid::hideSplashScreen(success?120:0);
                 if(!success)
                     qCritical() << "Mobile Studio: native canvas initialization failed";
             });
         if(!started) {
             QSettings settings;
             MobileEngineOnlyStartupPolicy::complete(settings,false);
+            QtAndroid::hideSplashScreen();
             qCritical() << "Mobile Studio: engine session did not start";
             if(alive)alive->close();
         }
