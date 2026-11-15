@@ -127,6 +127,8 @@ private:
 class MobileLayerStrip final : public QToolButton
 {
 public:
+    static constexpr int nameThickness=20;
+
     explicit MobileLayerStrip(QWidget *parent,bool collapsed=false)
         : QToolButton(parent),m_collapsed(collapsed)
     {
@@ -142,8 +144,9 @@ public:
         if(!m_collapsed) {
             setSizePolicy(horizontal?QSizePolicy::Fixed:QSizePolicy::Ignored,
                           horizontal?QSizePolicy::Ignored:QSizePolicy::Fixed);
-            setMinimumSize(horizontal?26:0,horizontal?0:26);
-            setMaximumSize(horizontal?26:QWIDGETSIZE_MAX,horizontal?QWIDGETSIZE_MAX:26);
+            setMinimumSize(horizontal?nameThickness:0,horizontal?0:nameThickness);
+            setMaximumSize(horizontal?nameThickness:QWIDGETSIZE_MAX,
+                           horizontal?QWIDGETSIZE_MAX:nameThickness);
         }
         update();
     }
@@ -153,8 +156,8 @@ public:
         if(text()==name && !accessibleName().isEmpty())return;
         setText(name);
         const QString action=m_collapsed?i18n("Expand Layers"):i18n("Collapse Layers");
-        setAccessibleName(name.isEmpty()?action:i18n("%1: %2",action,name));
-        setToolTip(accessibleName());
+        setAccessibleName(name.isEmpty()?i18n("Layers"):name);
+        setAccessibleDescription(action);
     }
 
 protected:
@@ -174,16 +177,10 @@ protected:
             const QRect preview(area.center().x()-14,4,28,28);
             icon().paint(&painter,preview);
         }
-        QRect label=area.adjusted(4,m_collapsed?30:0,-16,-1);
+        const QRect label=area.adjusted(4,m_collapsed?30:0,-4,-1);
         painter.setPen(QColor("#edf5fb"));
         painter.drawText(label,Qt::AlignCenter,fontMetrics().elidedText(
             text().isEmpty()?i18n("Layers"):text(),Qt::ElideRight,qMax(0,label.width())));
-        const QPoint center(area.right()-8,label.center().y());
-        const int tip=m_collapsed?2:-2;
-        painter.setPen(QPen(QColor("#c2cfde"),1.5,Qt::SolidLine,Qt::RoundCap,Qt::RoundJoin));
-        const QPoint chevron[]{center+QPoint(-3,-tip),center+QPoint(0,tip),
-                               center+QPoint(3,-tip)};
-        painter.drawPolyline(chevron,3);
     }
 
 private:
@@ -557,7 +554,7 @@ public:
             length+=MobileLayerRailGeometry::tileExtent(cross,horizontal,
                 node->inherits("KisGroupLayer"),node->inherits("KisMask"))+4;
         }
-        return (m_layerName?65:45)+qMax(24,length);
+        return (m_layerName?39+MobileLayerStrip::nameThickness:45)+qMax(24,length);
     }
 
     void updateRailHeader(int thickness,bool horizontal)
