@@ -206,9 +206,17 @@ public:
     {
         setAccessibleName(tr("Lighting sphere"));
         setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Expanding);
+        m_holdTimer.setSingleShot(true);
+        m_holdTimer.setInterval(450);
+        connect(&m_holdTimer,&QTimer::timeout,this,[this]() {
+            if(m_press!=WaitingForHold || !isVisible() || !onHold)return;
+            m_press=Held;
+            onHold();
+        });
     }
 
     std::function<void(const QColor&)> onColor;
+    std::function<void()> onHold;
 
     void setLighting(const QColor &base,const QColor &light,const QColor &shadow,
                      qreal contrast,qreal intensity)
@@ -225,6 +233,15 @@ public:
     }
 
 protected:
+    bool event(QEvent *event) override
+    {
+        if(event->type()==QEvent::Hide || event->type()==QEvent::UngrabMouse) {
+            m_holdTimer.stop();
+            m_press=Idle;
+        }
+        return QWidget::event(event);
+    }
+
     void paintEvent(QPaintEvent *) override
     {
         const auto area=sphereRect();
@@ -262,23 +279,36 @@ protected:
         if(event->button()!=Qt::LeftButton || area.isEmpty())return;
         const QPointF normal=(event->localPos()-area.center())/(area.width()/2);
         if(QPointF::dotProduct(normal,normal)>1.0) {event->ignore();return;}
-        m_sampling=true;
-        pick(event->localPos());
+        m_start=event->localPos();
+        if(onHold) {
+            m_press=WaitingForHold;
+            m_holdTimer.start();
+        } else {
+            m_press=Sampling;
+            pick(m_start);
+        }
         event->accept();
     }
 
     void mouseMoveEvent(QMouseEvent *event) override
     {
-        if(!m_sampling)return;
-        pick(event->localPos());
+        if(m_press==Idle)return;
+        if(m_press==WaitingForHold &&
+           (event->localPos()-m_start).manhattanLength()>=QApplication::startDragDistance()) {
+            m_holdTimer.stop();
+            m_press=Sampling;
+        }
+        if(m_press==Sampling)pick(event->localPos());
         event->accept();
     }
 
     void mouseReleaseEvent(QMouseEvent *event) override
     {
-        if(!m_sampling || event->button()!=Qt::LeftButton)return;
-        m_sampling=false;
-        pick(event->localPos());
+        if(m_press==Idle || event->button()!=Qt::LeftButton)return;
+        m_holdTimer.stop();
+        const bool sample=m_press!=Held;
+        m_press=Idle;
+        if(sample)pick(event->localPos());
         event->accept();
     }
 
@@ -319,8 +349,11 @@ private:
     QColor m_base=QColor("#c68462"),m_light=QColor("#fff4dc"),m_shadow=QColor("#8da9df");
     qreal m_contrast=0.85,m_intensity=1.0;
     QImage m_image;
-    QPointF m_sample;
-    bool m_sampling=false,m_hasSample=false;
+    QPointF m_sample,m_start;
+    QTimer m_holdTimer;
+    enum Press {Idle,WaitingForHold,Sampling,Held};
+    Press m_press=Idle;
+    bool m_hasSample=false;
 };
 
 class MobileColorPicker final : public QWidget
@@ -557,15 +590,12 @@ public:
         addLevel(tr("Shadow hardness"),m_lighting.contrast,100);
         addLevel(tr("Light intensity"),m_lighting.intensity,200);
         lightingLayout->addLayout(levels);
-        auto *follow=new QCheckBox(tr("Use picked color as base"),lightingPage);
+        auto *follow=new QCheckBox(tr("Auto-update base color"),lightingPage);
+        follow->setAccessibleDescription(tr("Use colors picked outside the sphere as its base."));
         follow->setChecked(m_lighting.followColor);
         lightingLayout->addWidget(follow);
         connect(follow,&QCheckBox::toggled,this,[this](bool enabled) {
             m_lighting.followColor=enabled;
-            if(enabled && m_provider && m_provider->fgColor().toQColor().isValid()) {
-                m_lighting.base=m_provider->fgColor().toQColor();
-                syncLightingBase();
-            }
             m_lighting.save();
         });
         refreshLighting();

@@ -467,14 +467,22 @@ public:
         panel->setOpener(anchor,m_colorAction);
         panel->anchorTo(anchor,QSize(448,620),true);
         const QPointer<QWidget> opener(anchor);
-        panel->fitGeometry=[canvas,opener,picker=m_colorPicker.data()](const QRect &preferred) {
+        const bool fromSphere=lightingOpener!=nullptr;
+        panel->fitGeometry=[canvas,opener,fromSphere,picker=m_colorPicker.data()](const QRect &preferred) {
             QList<QRect> occupied;
             for(auto *bar:canvas->findChildren<QFrame*>(QString(),Qt::FindDirectChildrenOnly)) {
                 if(bar->isVisible() && bar->property("mobileCommandToolbar").toBool())
                     occupied.append(bar->geometry());
             }
-            auto fitted=MobileOverlayPlacement::nearest(
-                preferred,MobileNativeCommandLayout::controlBounds(canvas),occupied,QSize(1,1));
+            const QRect bounds=MobileNativeCommandLayout::controlBounds(canvas);
+            auto fitted=MobileOverlayPlacement::nearest(preferred,bounds,occupied,QSize(1,1));
+            if(fromSphere && opener && fitted.isValid()) {
+                const QRect sphere(opener->geometry());
+                occupied.append(sphere);
+                const auto beside=MobileOverlayPlacement::nearest(preferred,bounds,occupied,
+                                                                  fitted.size().boundedTo(QSize(270,420)));
+                if(beside.isValid())fitted=beside;
+            }
             if(!fitted.isValid())return fitted;
             const int width=qBound(1,picker->widthForPopupHeight(fitted.height()),fitted.width());
             const int right=fitted.right();
@@ -504,19 +512,8 @@ public:
             m_sphere->onColor=[this](const QColor &color) {
                 sampleLightingSphere(color);
             };
-            auto *settings=new QToolButton(m_sphere);
-            settings->setText(QStringLiteral("⚙"));
-            settings->setAccessibleName(tr("Lighting sphere settings"));
-            settings->setToolTip(tr("Lighting sphere settings"));
-            settings->setFixedSize(34,34);
-            settings->setStyleSheet(QStringLiteral(
-                "QToolButton{background:#30323b;color:#f1f2f5;border:1px solid #55555c;"
-                "border-radius:7px;font-size:17px;}"));
-            auto *buttons=new QHBoxLayout(m_sphere);
-            buttons->setContentsMargins(0,0,0,0);
-            buttons->addStretch();
-            buttons->addWidget(settings,0,Qt::AlignTop);
-            connect(settings,&QToolButton::clicked,this,[this,settings]() {toggleColor(settings);});
+            m_sphere->setAccessibleDescription(tr("Tap to sample color. Hold for lighting settings."));
+            m_sphere->onHold=[this]() {toggleColor(m_sphere);};
             if(m_colorPicker)m_colorPicker->setFloatingSphere(m_sphere);
         }
         if(m_sphere->isVisible())m_sphere->hide();

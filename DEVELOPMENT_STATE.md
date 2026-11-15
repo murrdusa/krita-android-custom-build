@@ -4,7 +4,7 @@
 
 - Settings action lists size to their rows within the available canvas. Main and custom toolbars fit their visible commands and scroll if they run out of space.
 - Paint, Erase and Blend share a native .kpp importer. Their Import category lists presets imported through Studio that are compatible with the current mode. Existing presets are protected from filename collisions.
-- The lighting sphere follows external foreground picks by default and keeps its base when sampled. Lighting includes intensity alongside hardness, and the floating sphere opens the same controls through its settings button.
+- The lighting sphere follows external foreground picks by default and keeps its base when sampled. Lighting includes intensity alongside hardness, and hold the floating sphere to open the same controls. A tap or drag samples the sphere.
 
 ## November 15 — collapse Layers from the active layer name
 
