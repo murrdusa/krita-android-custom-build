@@ -966,64 +966,11 @@ public:
                                          QStringLiteral("#202934")));
         }
     }
-    void openWheelOptions()
+    void setWheelHistoryVisible(bool visible)
     {
-        m_history=MobileRecentColors::load();
-        refreshHistory();
+        if(m_showHistory==visible)return;
+        m_showHistory=visible;
         updateForViewport();
-        QDialog dialog(window());
-        dialog.setWindowTitle(i18n("Color options"));
-        MobileTouchScroll::styleMenuDialog(dialog,QSize(380,470));
-        auto *layout=new QVBoxLayout(&dialog);
-        if(!m_history.isEmpty()) {
-            layout->addWidget(new QLabel(i18n("Recent colors"),&dialog));
-            auto *swatches=new QGridLayout;
-            for(int i=0;i<m_history.size();++i) {
-                const QColor color(m_history.at(i));
-                if(!color.isValid())continue;
-                auto *swatch=new QToolButton(&dialog);
-                swatch->setMinimumSize(44,44);
-                swatch->setAccessibleName(color.name());
-                swatch->setStyleSheet(QStringLiteral(
-                    "QToolButton{background:%1;border:1px solid #7e8995;border-radius:4px;}")
-                    .arg(color.name()));
-                swatches->addWidget(swatch,i/4,i%4);
-                connect(swatch,&QToolButton::clicked,&dialog,[this,color,&dialog]() {
-                    setNativeColor(color);
-                    dialog.accept();
-                });
-            }
-            layout->addLayout(swatches);
-        }
-        if(m_wheelOnly) {
-            auto *history=new QCheckBox(i18n("Show recent colors below the wheel"),&dialog);
-            history->setChecked(m_showHistory);
-            history->setMinimumHeight(44);
-            layout->addWidget(history);
-            connect(history,&QCheckBox::toggled,&dialog,[this](bool enabled) {
-                m_showHistory=enabled;
-                QSettings().setValue(QStringLiteral("MobileStudio/colorWheelHistory"),enabled);
-                updateForViewport();
-            });
-        }
-        auto *advanced=new QPushButton(i18n("Advanced color…"),&dialog);
-        advanced->setMinimumHeight(44);
-        layout->addWidget(advanced);
-        connect(advanced,&QPushButton::clicked,&dialog,[this,&dialog]() {
-            if(auto *provider=m_engine.brushResources()) {
-                const QColor color=QColorDialog::getColor(provider->fgColor().toQColor(),
-                    &dialog,i18n("Foreground color"),QColorDialog::ShowAlphaChannel);
-                if(color.isValid()) {
-                    setNativeColor(color);
-                    dialog.accept();
-                }
-            }
-        });
-        auto *done=new QPushButton(i18n("Done"),&dialog);
-        done->setMinimumHeight(44);
-        layout->addWidget(done);
-        connect(done,&QPushButton::clicked,&dialog,&QDialog::accept);
-        dialog.exec();
     }
 
     void clearWheelGeometry()

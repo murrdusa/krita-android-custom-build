@@ -101,4 +101,76 @@ inline void replace(QSettings &settings,const QString &target,const QSize &size,
     for(auto it=values.cbegin();it!=values.cend();++it)
         settings.setValue(group(target)+it.key(),it.value());
 }
+// Named presets capture behavior and the current screen's layout only.
+inline bool presetPreference(const QString &key)
+{
+    static const QStringList groups{
+        QStringLiteral("MobileStudio/touchGestures/"),
+        QStringLiteral("MobileStudio/keyboardShortcuts/"),
+        QStringLiteral("MobileStudio/lightingSphere/"),
+        QStringLiteral("MobileStudio/fingerPressure")
+    };
+    for(const auto &prefix:groups)
+        if(key.startsWith(prefix))return true;
+    static const QStringList keys{
+        QStringLiteral("MobileStudio/keepLayersOpen"),
+        QStringLiteral("MobileStudio/keepColorOpen"),
+        QStringLiteral("MobileStudio/fadePanels"),
+        QStringLiteral("MobileStudio/idlePanelOpacity"),
+        QStringLiteral("MobileStudio/panelFadeDelay"),
+        QStringLiteral("MobileStudio/protectCanvasBack"),
+        QStringLiteral("MobileStudio/eyedropperActiveLayer"),
+        QStringLiteral("MobileStudio/mirrorAtPen"),
+        QStringLiteral("MobileStudio/colorWheelHistory"),
+        QStringLiteral("MobileStudio/toolbarColorHistory"),
+        QStringLiteral("MobileStudio/toolbarDrag/sample"),
+        QStringLiteral("MobileStudio/toolbarVerticalSlider/opacity"),
+        QStringLiteral("MobileStudio/toolbarVerticalSlider/size"),
+        QStringLiteral("TabletUi/doubleTapMs"),
+        QStringLiteral("TabletUi/quickPinch"),
+        QStringLiteral("TabletUi/pinchMs"),
+        QStringLiteral("TabletUi/referenceFingerDrag"),
+        QStringLiteral("TabletUi/referenceTwoFinger"),
+        QStringLiteral("TabletUi/referenceDoubleTapEnabled"),
+        QStringLiteral("TabletUi/referenceDoubleTapMs"),
+        QStringLiteral("TabletUi/volumeKeys"),
+        QStringLiteral("TabletUi/volumeDownShort"),
+        QStringLiteral("TabletUi/volumeUpShort"),
+        QStringLiteral("TabletUi/volumeDownLong"),
+        QStringLiteral("TabletUi/volumeUpLong"),
+        QStringLiteral("TabletUi/volumeLongMs")
+    };
+    return keys.contains(key);
+}
+
+inline QVariantMap capturePreset(const QSettings &settings,const QString &screen)
+{
+    QVariantMap preferences,layout;
+    const QString prefix=group(screen);
+    for(const auto &key:settings.allKeys()) {
+        if(presetPreference(key))preferences.insert(key,settings.value(key));
+        if(!screen.isEmpty() && key.startsWith(prefix) && key!=prefix+QStringLiteral("size"))
+            layout.insert(key.mid(prefix.size()),settings.value(key));
+    }
+    return {{QStringLiteral("preferences"),preferences},{QStringLiteral("layout"),layout}};
+}
+
+inline void applyPreset(QSettings &settings,const QString &screen,const QSize &size,
+                        const QVariantMap &preset)
+{
+    const QVariantMap preferences=preset.value(QStringLiteral("preferences")).toMap();
+    const QVariantMap layout=preset.value(QStringLiteral("layout")).toMap();
+    const QString prefix=group(screen);
+    for(const auto &key:settings.allKeys()) {
+        if(presetPreference(key) ||
+           (!screen.isEmpty() && key.startsWith(prefix) && key!=prefix+QStringLiteral("size")))
+            settings.remove(key);
+    }
+    for(auto it=preferences.cbegin();it!=preferences.cend();++it)
+        if(presetPreference(it.key()))settings.setValue(it.key(),it.value());
+    if(screen.isEmpty())return;
+    if(!layout.isEmpty())remember(settings,screen,size);
+    for(auto it=layout.cbegin();it!=layout.cend();++it)
+        if(it.key()!=QStringLiteral("size"))settings.setValue(prefix+it.key(),it.value());
+}
 }

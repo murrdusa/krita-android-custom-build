@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — Settings grouping, presets, and command browser
+
+- The gear lists Settings then Filters, with layout editing, toolbar setup, preferences and the floating wheel history toggle under Settings. All Krita Commands is available from the gear and is excluded from new toolbar assignments.
+- The command browser uses an in-window panel and validates its document and command before dispatch. Settings presets save preferences and a screen layout, and applying one updates the active screen. Artwork, brush resources, and stored project history are independent.
+
 ## November 15 — compact three-tab Color picker
 
 - Wheel, Sliders (Hex and HSV), and Lighting have separate tabs and popup sizes. The shared picker history shows up to 24 stroke colors across three rows. The toolbar history stays compact.

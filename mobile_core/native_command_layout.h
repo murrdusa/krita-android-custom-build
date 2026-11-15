@@ -93,16 +93,27 @@ public:
         more->setObjectName(QStringLiteral("_mobileNativeMoreButton"));
         row->addWidget(more);
         auto *menu=new QMenu(more);
+        menu->setObjectName(QStringLiteral("_mobileNativeSettingsMenu"));
         menu->setTitle(QObject::tr("Settings and commands"));
         QObject::connect(settings,&QAction::triggered,menu,[canvas,more,menu]() {
             mobileShowMenu(canvas,more,menu);
         });
 
-        auto *edit=menu->addAction(QObject::tr("Edit UI Layout…"));
+        QMenu *preferences=nullptr;
+        for(auto *entry:moreActions) {
+            auto *group=entry?entry->menu():nullptr;
+            if(group && group->objectName()==QStringLiteral("mobileSettingsGroup")) {
+                preferences=group;
+                break;
+            }
+        }
+        if(!preferences)preferences=new QMenu(QObject::tr("Settings"),menu);
+        menu->addMenu(preferences);
+        auto *edit=preferences->addAction(QObject::tr("Edit UI Layout…"));
         QObject::connect(edit,&QAction::triggered,layout,[layout]() {
             QTimer::singleShot(0,layout,[layout]() {layout->editCanvasLayout();});
         });
-        auto *toolbars=menu->addMenu(QObject::tr("Toolbars"));
+        auto *toolbars=preferences->addMenu(QObject::tr("Toolbars"));
         layout->m_toolbarsMenu=toolbars;
         auto *commandsAction=toolbars->addAction(QObject::tr("Customize toolbar commands…"));
         QObject::connect(commandsAction,&QAction::triggered,layout,[layout]() {
@@ -110,6 +121,7 @@ public:
         });
         if(layout->m_selectColor) {
             auto *history=toolbars->addAction(QObject::tr("Toolbar color history"));
+            layout->m_historyAction=history;
             history->setCheckable(true);
             history->setChecked(layout->m_historyEnabled);
             QObject::connect(history,&QAction::toggled,layout,[layout](bool enabled) {
@@ -123,7 +135,7 @@ public:
             if(auto action=commands.value(id))drawing->addAction(action);
         drawing->menuAction()->setVisible(!drawing->isEmpty());
         for(QAction *action:moreActions) {
-            if(!action)continue;
+            if(!action || action==preferences->menuAction())continue;
             menu->addAction(action);
         }
 
@@ -220,6 +232,17 @@ public:
     {
         m_applyWorkspace=std::move(apply);
         if(!m_profile.isEmpty())m_applyWorkspace(m_profile,m_portrait);
+    }
+
+    void reloadSettings()
+    {
+        m_historyEnabled=m_selectColor &&
+            QSettings().value(QStringLiteral("MobileStudio/toolbarColorHistory"),true).toBool();
+        if(m_historyAction) {
+            const QSignalBlocker blocked(m_historyAction);
+            m_historyAction->setChecked(m_historyEnabled);
+        }
+        if(!m_profile.isEmpty())loadWorkspace();
     }
 
     void updateStrokeColors(const QStringList &colors)
@@ -891,7 +914,8 @@ private:
             QStringLiteral("deselect")
         };
         for(auto command=m_commands.cbegin();command!=m_commands.cend();++command) {
-            if(!command.value() || existing.contains(command.key()))continue;
+            if(!command.value() || existing.contains(command.key()) ||
+               command.value()->property("mobileExcludeToolbarPicker").toBool())continue;
             QString name=command.value()->text();
             name.remove(QLatin1Char('&'));
             if(name.isEmpty())continue;
@@ -1137,6 +1161,7 @@ private:
     std::function<void(const QColor &)> m_selectColor;
     QStringList m_recentColors;
     bool m_historyEnabled=false;
+    QPointer<QAction> m_historyAction;
     QStringList m_defaults;
     QVector<Bar> m_bars;
     QVector<QFrame*> m_extra;

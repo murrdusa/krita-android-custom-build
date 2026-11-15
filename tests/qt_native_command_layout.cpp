@@ -157,8 +157,11 @@ int main(int argc,char **argv)
     auto *secondMore=secondCanvas->findChild<QToolButton*>(QStringLiteral("_mobileNativeMoreButton"));
     auto *secondMenu=secondMore?secondMore->findChild<QMenu*>(QString(),Qt::FindDirectChildrenOnly):nullptr;
     verify(secondMenu,"second toolbar lost its Settings menu");
+    auto *settingsGroup=secondMenu->actions().first()->menu();
+    verify(settingsGroup && settingsGroup->title()==QStringLiteral("Settings"),
+           "Settings is not the first group");
     QMenu *toolbarMenu=nullptr;
-    for(auto *action:secondMenu->actions())
+    for(auto *action:settingsGroup->actions())
         if(action->text()==QStringLiteral("Toolbars"))toolbarMenu=action->menu();
     verify(toolbarMenu,"gear menu did not group toolbar settings");
     QAction *historyToggle=nullptr;

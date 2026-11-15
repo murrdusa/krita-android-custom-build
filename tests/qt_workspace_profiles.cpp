@@ -43,6 +43,22 @@ int main(int argc,char **argv)
     if(settings.value(group(QStringLiteral("folded"))+
         QStringLiteral("size")).toSize()!=QSize(375,790))return 13;
 
+    const auto folded=QStringLiteral("folded"),wide=QStringLiteral("wide");
+    const auto historyKey=QStringLiteral("MobileStudio/colorWheelHistory");
+    const auto artworkKey=QStringLiteral("MobileStudio/strokeColors");
+    const auto touchKey=QStringLiteral("MobileStudio/touchGestures/99");
+    settings.setValue(historyKey,true);
+    settings.setValue(artworkKey,QStringList{QStringLiteral("#ff445566")});
+    const auto preset=capturePreset(settings,folded);
+    settings.setValue(historyKey,false);
+    settings.setValue(touchKey,QStringLiteral("changed"));
+    applyPreset(settings,wide,QSize(850,610),preset);
+    if(!settings.value(historyKey).toBool() || settings.contains(touchKey) ||
+       settings.value(artworkKey).toStringList().size()!=1 ||
+       !settings.value(group(wide)+QStringLiteral("layersCollapsed")).toBool() ||
+       settings.value(group(wide)+QStringLiteral("size")).toSize()!=QSize(850,610) ||
+       settings.value(group(folded)+QStringLiteral("size")).toSize()!=QSize(375,790))return 15;
+
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,files.path());
     QCoreApplication::setOrganizationName(QStringLiteral("KritaWorkspaceTest"));

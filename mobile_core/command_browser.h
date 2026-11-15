@@ -11,7 +11,8 @@
 #include <QAbstractItemView>
 #include <QAction>
 #include <QColor>
-#include <QDialog>
+#include "transient_panel.h"
+#include <memory>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -31,6 +32,7 @@
 #include <functional>
 #include <klocalizedstring.h>
 #include "engine_bridge.h"
+#include "view_identity_guard.h"
 
 class MobileCommandBrowser final
 {
@@ -53,6 +55,10 @@ public:
     static void open(const MobileEngineBridge &engine,QWidget *parent)
     {
         if(!parent)return;
+        for(auto *existing:parent->findChildren<QFrame*>(QStringLiteral("mobileCommandBrowser"),
+                                                        Qt::FindDirectChildrenOnly)) {
+            if(existing->isVisible()) {existing->raise();return;}
+        }
 
         // Snapshot Qt's live File/Edit/View/Image/Layer/... hierarchy.
         // Only hold QPointer<QAction>, never copy the command handlers.
@@ -73,7 +79,8 @@ public:
             if(!menu || depth>=12 || ancestry.contains(menu))return;
             ancestry.insert(menu);
             for(QAction *a:menu->actions()) {
-                if(!a || a->isSeparator())continue;
+                if(!a || a->isSeparator() || a->objectName()==QStringLiteral("mobileBrowseCommands"))
+                    continue;
                 QString name=label(a->text());
                 if(name.isEmpty() && a->menu())
                     name=label(a->menu()->title());
@@ -111,51 +118,42 @@ public:
             tree[0].children.removeAll(extra);
         }
 
-        QDialog dialog(parent);
-        dialog.setWindowTitle(i18n("Menus"));
-        MobileTouchScroll::styleMenuDialog(dialog,QSize(535,725));
-        auto *layout=new QVBoxLayout(&dialog);
+        auto *panel=new MobileTransientPanel(parent);
+        panel->setObjectName(QStringLiteral("mobileCommandBrowser"));
+        panel->setAccessibleName(i18n("All Krita Commands"));
+        panel->anchorTo(nullptr,QSize(535,725));
+        auto *layout=new QVBoxLayout(panel);
         layout->setContentsMargins(9,8,9,9);
         layout->setSpacing(6);
 
-        auto *heading=new QLabel(i18n("Krita menus"),&dialog);
-        heading->setStyleSheet(QStringLiteral("font-size:17px;font-weight:600;"));
-        layout->addWidget(heading);
-        auto *search=new QLineEdit(&dialog);
-        search->setPlaceholderText(i18n("Search every menu and command"));
+        auto *navigation=new QHBoxLayout;
+        auto *back=new QPushButton(i18n("Back"),panel);
+        auto *breadcrumb=new QLabel(panel);
+        breadcrumb->setWordWrap(true);
+        navigation->addWidget(back);
+        navigation->addWidget(breadcrumb,1);
+        layout->addLayout(navigation);
+        auto *search=new QLineEdit(panel);
+        search->setPlaceholderText(i18n("Search commands"));
         search->setClearButtonEnabled(true);
         layout->addWidget(search);
-        auto *bar=new QHBoxLayout;
-        auto *back=new QPushButton(i18n("Back"),&dialog);
-        back->setFixedWidth(85);
-        auto *breadcrumb=new QLabel(&dialog);
-        breadcrumb->setWordWrap(true);
-        bar->addWidget(back);
-        bar->addWidget(breadcrumb,1);
-        layout->addLayout(bar);
-        auto *list=new QListWidget(&dialog);
+        auto *list=new QListWidget(panel);
+        list->setUniformItemSizes(true);
         MobileTouchScroll::configureList(list);
         layout->addWidget(list,1);
-        auto *count=new QLabel(&dialog);
-        count->setStyleSheet(QStringLiteral("color:#b9ccdc;font-size:12px;"));
-        layout->addWidget(count);
-        auto *close=new QPushButton(i18n("Close"),&dialog);
-        layout->addWidget(close);
-        QObject::connect(close,&QPushButton::clicked,
-                         &dialog,&QDialog::reject);
-
-        int folder=0;
-        QPointer<QAction> selected;
-        const auto render=[&]() {
+        const auto catalog=std::make_shared<const QVector<MenuItem>>(std::move(tree));
+        const auto folder=std::make_shared<int>(0);
+        const auto view=MobileViewIdentityGuard::uniqueActive(engine.openDocuments());
+        const auto render=[catalog,folder,list,search,breadcrumb,back]() {
+            const auto &tree=*catalog;
             list->clear();
             const QString term=search->text().trimmed();
             const bool searching=!term.isEmpty();
-            const QString current=tree.at(folder).path;
+            const QString current=tree.at(*folder).path;
             breadcrumb->setText(searching?
                 i18n("Search across all menus"):
                 current.isEmpty()?i18n("All menus"):current);
-            back->setEnabled(searching || folder!=0);
-            int matches=0;
+            back->setEnabled(searching || *folder!=0);
             if(searching) {
                 // Search across every nested menu, not just the current
                 // section. Show full parent paths to disambiguate labels.
@@ -170,66 +168,57 @@ public:
                     auto *item=new QListWidgetItem(entry.path,list);
                     item->setData(Qt::UserRole,i);
                     item->setToolTip(entry.action->objectName());
-                    if(!entry.action->icon().isNull())
-                        item->setIcon(entry.action->icon());
+                    item->setSizeHint(QSize(0,42));
                     if(!entry.action->isEnabled())
                         item->setForeground(QColor(151,169,185));
-                    ++matches;
                 }
             } else {
-                for(int id:tree.at(folder).children) {
+                for(int id:tree.at(*folder).children) {
                     const auto &entry=tree.at(id);
                     auto *item=new QListWidgetItem(
                         entry.name+(entry.submenu?QStringLiteral("  ›"):
                                                     QString()),list);
                     item->setData(Qt::UserRole,id);
                     item->setToolTip(entry.path);
-                    if(entry.action && !entry.action->icon().isNull())
-                        item->setIcon(entry.action->icon());
+                    item->setSizeHint(QSize(0,42));
                     if(!entry.submenu && entry.action &&
                        !entry.action->isEnabled())
                         item->setForeground(QColor(151,169,185));
-                    ++matches;
                 }
             }
-            count->setText(i18np("%1 menu item","%1 menu items",matches));
         };
-        QObject::connect(search,&QLineEdit::textChanged,&dialog,
-                         [&](const QString&){render();});
-        QObject::connect(back,&QPushButton::clicked,&dialog,[&]() {
-            if(!search->text().isEmpty()) {
-                search->clear();
-            } else if(folder!=0) {
-                folder=qMax(0,tree.at(folder).parent);
+        QObject::connect(search,&QLineEdit::textChanged,panel,render);
+        QObject::connect(back,&QPushButton::clicked,panel,[catalog,folder,search,render]() {
+            if(!search->text().isEmpty())search->clear();
+            else if(*folder!=0) {
+                *folder=qMax(0,catalog->at(*folder).parent);
                 render();
             }
         });
-        QObject::connect(list,&QListWidget::itemClicked,&dialog,
-                         [&](QListWidgetItem *item) {
+        QObject::connect(list,&QListWidget::itemClicked,panel,
+                         [panel,engine,view,catalog,folder,search,render](QListWidgetItem *item) {
             if(!item)return;
             const int id=item->data(Qt::UserRole).toInt();
-            if(id<1 || id>=tree.size())return;
-            const auto &entry=tree.at(id);
+            if(id<1 || id>=catalog->size())return;
+            const auto &entry=catalog->at(id);
             if(entry.submenu) {
-                folder=id;
-                search->clear();
-                render();
+                *folder=id;
+                if(search->text().isEmpty())render();
+                else search->clear();
                 return;
             }
-            if(!entry.action || !entry.action->isEnabled())return;
-            selected=entry.action;
-            dialog.accept();
+            const auto action=entry.action;
+            if(!action || !action->isEnabled())return;
+            const QPointer<QWidget> host(panel->parentWidget());
+            panel->close();
+            if(host)QTimer::singleShot(0,host,[engine,view,action]() {
+                if(action && action->isEnabled() && view &&
+                   view==MobileViewIdentityGuard::uniqueActive(engine.openDocuments()))
+                    action->trigger();
+            });
         });
         render();
-        const QSize bounds=parent->window()->size();
-        dialog.resize(qMin(535,qMax(1,bounds.width()-24)),
-                      qMin(725,qMax(1,bounds.height()-24)));
-        dialog.setMaximumSize(qMax(1,bounds.width()-12),qMax(1,bounds.height()-12));
-        dialog.exec();
-
-        // Let the chooser close completely before invoking a native Krita
-        // command, especially any action which opens a file/dialog.
-        if(selected && selected->isEnabled())selected->trigger();
+        panel->present();
     }
 };
 #endif // Q_OS_ANDROID

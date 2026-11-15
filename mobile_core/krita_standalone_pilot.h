@@ -140,9 +140,9 @@ public:
         });
         auto *toolsAction=makeAction("Tools");
         auto *optionsAction=makeAction("Tool Settings");
-        auto *colorOptionsAction=makeAction("Color options…");
         auto *commandsAction=makeAction("All Krita Commands");
         commandsAction->setObjectName(QStringLiteral("mobileBrowseCommands"));
+        commandsAction->setProperty("mobileExcludeToolbarPicker",true);
         auto *settingsAction=makeAction("Workspace Settings");
         auto *inputAction=makeAction("Touch, Pressure & Buttons");
         auto *keyboardAction=makeAction("Keyboard shortcuts");
@@ -215,9 +215,6 @@ public:
                          [workspace]() {workspace->chooseTool();});
         QObject::connect(optionsAction,&QAction::triggered,window,
                          [workspace]() {workspace->toggleToolSettings();});
-        QObject::connect(colorOptionsAction,&QAction::triggered,window,[workspace]() {
-            QTimer::singleShot(0,workspace,[workspace]() {workspace->openColorOptions();});
-        });
         QObject::connect(commandsAction,&QAction::triggered,window,
                          [workspace]() {workspace->browseCommands();});
         QObject::connect(settingsAction,&QAction::triggered,window,
@@ -442,25 +439,23 @@ public:
         documentMenu->addActions({previousCanvasAction,nextCanvasAction});
         documentMenu->addSeparator();
         documentMenu->addAction(closeAction);
-        QList<QAction*> moreActions{
-            documentMenu->menuAction()
-        };
-        if(!viewMenu->isEmpty())
-            moreActions.append(viewMenu->menuAction());
-        if(!selectionMenu->isEmpty())
-            moreActions.append(selectionMenu->menuAction());
-        if(!drawingMenu->isEmpty())
-            moreActions.append(drawingMenu->menuAction());
-        if(!filtersMenu->isEmpty())
-            moreActions.append(filtersMenu->menuAction());
-        moreActions.append(commandsAction);
         auto *preferences=new QMenu(QObject::tr("Settings"),window);
-        preferences->addActions({settingsAction,colorWheelAction,lightingSphereAction,
-                                 colorOptionsAction,inputAction,keyboardAction});
-        moreActions.append(preferences->menuAction());
-        auto *crashReport=new QAction(QObject::tr("Copy crash report"),window);
+        preferences->setObjectName(QStringLiteral("mobileSettingsGroup"));
+        auto *presetsAction=preferences->addAction(QObject::tr("Settings presets…"));
+        QObject::connect(presetsAction,&QAction::triggered,workspace,[workspace]() {
+            workspace->openSettingsPresets();
+        });
+        preferences->addActions({settingsAction,inputAction,keyboardAction});
+        auto *colorMenu=preferences->addMenu(QObject::tr("Color"));
+        colorMenu->addActions({colorWheelAction,lightingSphereAction});
+        auto *history=colorMenu->addAction(QObject::tr("Show recent colors below floating wheel"));
+        workspace->bindWheelHistory(history);
+        auto *crashReport=preferences->addAction(QObject::tr("Copy crash report"));
         QObject::connect(crashReport,&QAction::triggered,window,&MobileCrashReport::copy);
-        moreActions.append(crashReport);
+        QList<QAction*> moreActions{preferences->menuAction()};
+        for(auto *menu:{filtersMenu,documentMenu,drawingMenu,selectionMenu,viewMenu})
+            if(!menu->isEmpty())moreActions.append(menu->menuAction());
+        moreActions.append(commandsAction);
         moreActions.append(exitAction);
         MobileNativeCommandLayout::Commands toolbarCommands;
         for(auto *action:nativeBridge.availableActions()) {
@@ -479,7 +474,7 @@ public:
             {"save-as",saveAsAction},{"export",exportAction},{"versions",versionsAction},
             {"close",closeAction},{"canvas-only",canvasOnlyAction},
             {"clone-source",cloneSourceAction},{"input-settings",inputAction},
-            {"workspace-settings",settingsAction},{"color-options",colorOptionsAction},
+            {"workspace-settings",settingsAction},
             {"floating-color-wheel",colorWheelAction},{"lighting-sphere",lightingSphereAction},
             {"commands",commandsAction},{"keyboard-shortcuts",keyboardAction}
         };

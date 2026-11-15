@@ -109,15 +109,7 @@ public:
             KisConfigNotifier::instance()->notifyConfigChanged();
         }
         const QSettings settings;
-        m_keepLayers=settings.value(QStringLiteral("MobileStudio/keepLayersOpen"),true).toBool();
-        m_keepColor=settings.value(QStringLiteral("MobileStudio/keepColorOpen"),false).toBool();
-        const bool oldSliders=settings.value(QStringLiteral("MobileStudio/showBrushSliders"),false).toBool();
-        m_showSize=settings.value(QStringLiteral("MobileStudio/showSizeSlider"),oldSliders).toBool();
-        m_showOpacity=settings.value(QStringLiteral("MobileStudio/showOpacitySlider"),oldSliders).toBool();
-        m_fadePanels=settings.value(QStringLiteral("MobileStudio/fadePanels"),true).toBool();
-        m_preventCanvasBack=settings.value(QStringLiteral("MobileStudio/protectCanvasBack"),false).toBool();
-        m_idleOpacity=qBound(15,settings.value(QStringLiteral("MobileStudio/idlePanelOpacity"),30).toInt(),90);
-        m_fadeDelay=qBound(1,settings.value(QStringLiteral("MobileStudio/panelFadeDelay"),3).toInt(),30);
+        readWorkspacePreferences(settings);
         m_fadeClock.start();
         m_fadeTimer=new QTimer(this);
         m_fadeTimer->setInterval(160);
@@ -317,12 +309,16 @@ public:
         showOverlay(m_brushOptions);
     }
 
-    void openColorOptions()
+    void bindWheelHistory(QAction *action)
     {
-        if(!m_host || !m_engine.hasDocument())return;
-        if(!m_color && !ensureColorPanel())return;
-        m_color->openWheelOptions();
-        placeDrawingOverlays();
+        m_wheelHistoryAction=action;
+        action->setCheckable(true);
+        action->setChecked(QSettings().value(QStringLiteral("MobileStudio/colorWheelHistory"),false).toBool());
+        connect(action,&QAction::toggled,this,[this](bool enabled) {
+            QSettings().setValue(QStringLiteral("MobileStudio/colorWheelHistory"),enabled);
+            if(m_color)m_color->setWheelHistoryVisible(enabled);
+            placeDrawingOverlays();
+        });
     }
 
     void applyScreenWorkspace(const QString &id,bool portrait)
@@ -563,11 +559,9 @@ public:
     {
         if(!m_host || !m_engine.hasDocument())return;
         QPointer<MobileLightweightCanvasHost> host=m_host;
-        // The native More popup must close before the modeless-to-modal
-        // transition; the browser dispatches only currently enabled
-        // Krita QActions, not synthetic keyboard shortcuts.
+        // Let the invoking menu close before adding the browser to the canvas.
         QTimer::singleShot(0,this,[this,host]() {
-            if(host)MobileCommandBrowser::open(m_engine,host.data());
+            if(host)MobileCommandBrowser::open(m_engine,host->nativeCanvas());
         });
     }
 
@@ -1142,6 +1136,82 @@ public:
 
     void bindToolbarLayout(MobileNativeCommandLayout *layout) {m_toolbarLayout=layout;}
 
+    void openSettingsPresets()
+    {
+        auto *canvas=m_host?m_host->nativeCanvas():nullptr;
+        if(!canvas)return;
+        auto *panel=new MobileTransientPanel(canvas);
+        panel->setAccessibleName(tr("Settings presets"));
+        panel->anchorTo(nullptr,QSize(390,440));
+        auto *layout=new QVBoxLayout(panel);
+        auto *name=new QLineEdit(panel);
+        name->setPlaceholderText(tr("Preset name"));
+        name->setMaxLength(64);
+        auto *save=new QPushButton(tr("Save current settings"),panel);
+        auto *list=new QListWidget(panel);
+        MobileTouchScroll::configureList(list);
+        auto *status=new QLabel(tr("Presets include preferences and this screen’s layout."),panel);
+        status->setWordWrap(true);
+        auto *apply=new QPushButton(tr("Apply"),panel);
+        auto *remove=new QPushButton(tr("Delete"),panel);
+        auto *actions=new QHBoxLayout;
+        actions->addWidget(apply);
+        actions->addWidget(remove);
+        layout->addWidget(status);
+        layout->addWidget(name);
+        layout->addWidget(save);
+        layout->addWidget(list,1);
+        layout->addLayout(actions);
+        const QString key=QStringLiteral("MobileStudio/namedSettingsPresets");
+        const auto refresh=[list,key]() {
+            list->clear();
+            for(const auto &name:QSettings().value(key).toMap().keys()) {
+                auto *item=new QListWidgetItem(name,list);
+                item->setSizeHint(QSize(0,40));
+            }
+        };
+        const auto sync=[list,apply,remove]() {
+            apply->setEnabled(list->currentItem()!=nullptr);
+            remove->setEnabled(list->currentItem()!=nullptr);
+        };
+        connect(list,&QListWidget::currentItemChanged,panel,sync);
+        connect(save,&QPushButton::clicked,panel,[this,name,key,status,refresh]() {
+            const QString title=name->text().trimmed();
+            if(title.isEmpty()) {name->setFocus();return;}
+            QSettings settings;
+            auto presets=settings.value(key).toMap();
+            if(presets.contains(title)) {
+                status->setText(tr("That preset name is already in use."));
+                return;
+            }
+            m_lighting.save();
+            presets.insert(title,MobileWorkspaceProfiles::capturePreset(settings,m_workspaceId));
+            settings.setValue(key,presets);
+            name->clear();
+            refresh();
+            status->setText(tr("Preset saved."));
+        });
+        connect(remove,&QPushButton::clicked,panel,[list,key,status,refresh]() {
+            if(!list->currentItem())return;
+            QSettings settings;
+            auto presets=settings.value(key).toMap();
+            presets.remove(list->currentItem()->text());
+            settings.setValue(key,presets);
+            refresh();
+            status->setText(QObject::tr("Preset deleted."));
+        });
+        connect(apply,&QPushButton::clicked,panel,[this,panel,list,key]() {
+            if(!list->currentItem())return;
+            const auto preset=QSettings().value(key).toMap().value(list->currentItem()->text()).toMap();
+            if(preset.isEmpty())return;
+            panel->close();
+            QTimer::singleShot(0,this,[this,preset]() {applySettingsPreset(preset);});
+        });
+        refresh();
+        sync();
+        panel->present();
+    }
+
     void openSettings()
     {
         if(!m_host)return;
@@ -1548,6 +1618,53 @@ protected:
     }
 
 private:
+    void readWorkspacePreferences(const QSettings &settings)
+    {
+        m_keepLayers=settings.value(QStringLiteral("MobileStudio/keepLayersOpen"),true).toBool();
+        m_keepColor=settings.value(QStringLiteral("MobileStudio/keepColorOpen"),false).toBool();
+        const bool oldSliders=settings.value(QStringLiteral("MobileStudio/showBrushSliders"),false).toBool();
+        m_showSize=settings.value(QStringLiteral("MobileStudio/showSizeSlider"),oldSliders).toBool();
+        m_showOpacity=settings.value(QStringLiteral("MobileStudio/showOpacitySlider"),oldSliders).toBool();
+        m_fadePanels=settings.value(QStringLiteral("MobileStudio/fadePanels"),true).toBool();
+        m_preventCanvasBack=settings.value(QStringLiteral("MobileStudio/protectCanvasBack"),false).toBool();
+        m_idleOpacity=qBound(15,settings.value(QStringLiteral("MobileStudio/idlePanelOpacity"),30).toInt(),90);
+        m_fadeDelay=qBound(1,settings.value(QStringLiteral("MobileStudio/panelFadeDelay"),3).toInt(),30);
+    }
+
+    void applySettingsPreset(const QVariantMap &preset)
+    {
+        if(!m_host)return;
+        if(m_colorPopup)m_colorPopup->close();
+        QSettings settings;
+        MobileWorkspaceProfiles::applyPreset(settings,m_workspaceId,m_workspaceSize,preset);
+        readWorkspacePreferences(settings);
+        m_sampleActiveLayer=settings.value(QStringLiteral("MobileStudio/eyedropperActiveLayer"),false).toBool();
+        m_lighting=MobileColorPicker::Lighting(settings);
+        m_lighting.apply(m_sphere);
+        const bool history=settings.value(QStringLiteral("MobileStudio/colorWheelHistory"),false).toBool();
+        if(m_color)m_color->setWheelHistoryVisible(history);
+        if(m_wheelHistoryAction) {
+            const QSignalBlocker blocked(m_wheelHistoryAction);
+            m_wheelHistoryAction->setChecked(history);
+        }
+        if(m_fadePanels && QGuiApplication::applicationState()==Qt::ApplicationActive)m_fadeTimer->start();
+        else m_fadeTimer->stop();
+        for(auto *panel:fadeTargets())wakePanel(panel);
+        for(auto it=m_keyboardCommands.cbegin();it!=m_keyboardCommands.cend();++it) {
+            if(!it.value())continue;
+            const QString key=QStringLiteral("MobileStudio/keyboardShortcuts/")+it.key();
+            it.value()->setShortcuts(settings.contains(key)?
+                QKeySequence::listFromString(settings.value(key).toString()):m_defaultKeys.value(it.key()));
+        }
+        if(auto *manager=m_engine.manager())
+            if(manager->inputManager())
+                QMetaObject::invokeMethod(manager->inputManager(),"profileChanged",Qt::QueuedConnection);
+        if(m_toolbarLayout)m_toolbarLayout->reloadSettings();
+        updateCanvasBackProtection();
+        syncEyedropper();
+        placeDrawingOverlays();
+    }
+
     void updateCanvasBackProtection()
     {
         const bool enabled=m_preventCanvasBack && m_host && m_host->nativeViewPort() &&
@@ -2494,6 +2611,7 @@ private:
     }
     QPointer<MobileLightweightCanvasHost> m_host;
     QPointer<MobileNativeCommandLayout> m_toolbarLayout;
+    QPointer<QAction> m_wheelHistoryAction;
     QMap<QString,QPointer<QAction>> m_keyboardCommands;
     QMap<QString,QList<QKeySequence>> m_defaultKeys;
     bool m_preventCanvasBack=false;
