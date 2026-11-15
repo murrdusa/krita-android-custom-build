@@ -680,6 +680,8 @@ public:
                     if(root->currentDocument()) {
                         if(wasHome) {
                             gallery->hide();
+                            if(!alive || !root)return;
+                            alive->update();
                             MobileKritaNativeViewFactory::refreshAfterHome(manager,root);
                         }
                         firstCanvas();

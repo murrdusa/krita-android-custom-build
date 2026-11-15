@@ -8,18 +8,18 @@
 
 #include <QColor>
 #include <QComboBox>
-#include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QGuiApplication>
 #include <QInputMethod>
-#include <QScopeGuard>
 #include <QScopedValueRollback>
 #include <QScreen>
 #include <QWindow>
 #include <QScrollArea>
 #include <QSizePolicy>
 #include "touch_scroll.h"
+#include "transient_panel.h"
+#include <functional>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -38,35 +38,43 @@
 class MobileDocumentWorkflow final
 {
 public:
-    static bool create(const MobileEngineBridge &engine,QWidget *owner)
+    static void create(const MobileEngineBridge &engine,QWidget *owner,
+                       std::function<void()> created={})
     {
-        static bool creating=false;
-        if(!owner || creating)return false;
-        const QScopedValueRollback<bool> transaction(creating,true);
-        const QPointer<QWidget> host=owner;
-        QPointer<QDialog> formDialog=new QDialog(owner);
-        const auto cleanup=qScopeGuard([&]() {delete formDialog.data();});
-        auto &dialog=*formDialog;
-        dialog.setWindowTitle(i18n("New canvas"));
-        MobileTouchScroll::styleMenuDialog(dialog,QSize(460,570));
+        if(!owner)return;
+        const auto panels=owner->findChildren<QFrame*>(
+            QStringLiteral("mobileNewCanvas"),Qt::FindDirectChildrenOnly);
+        for(auto *existing:panels) {
+            if(existing->isVisible()) {
+                existing->raise();
+                return;
+            }
+        }
+
+        // Keep the form and canvas in the same Qt window. On Android,
+        // closing a separate modal surface can race the first GL frame.
+        auto *panel=new MobileTransientPanel(owner);
+        panel->setObjectName(QStringLiteral("mobileNewCanvas"));
+        panel->setAccessibleName(i18n("New canvas"));
+        panel->anchorTo(nullptr,QSize(525,600));
         // Keep actions visible even on short portrait phones and with
         // Android display scaling. Only the form itself scrolls.
-        auto *layout=new QVBoxLayout(&dialog);
+        auto *layout=new QVBoxLayout(panel);
         layout->setContentsMargins(10,10,10,10);
         layout->setSpacing(6);
-        auto *heading=new QLabel(i18n("Create canvas"),&dialog);
+        auto *heading=new QLabel(i18n("Create canvas"),panel);
         heading->setStyleSheet(
             QStringLiteral("font-size:19px;font-weight:600;"));
         layout->addWidget(heading);
         // Keep the primary text field outside the kinetic scroll viewport
         // so a name tap goes to the editor even while the options are scrolling.
-        auto *name=new QLineEdit(&dialog);
+        auto *name=new QLineEdit(panel);
         name->setAccessibleName(i18n("Canvas name"));
         name->setText(i18n("Untitled"));
         auto *nameRow=new QFormLayout;
         nameRow->addRow(i18n("Name"),name);
         layout->addLayout(nameRow);
-        auto *scroll=new QScrollArea(&dialog);
+        auto *scroll=new QScrollArea(panel);
         scroll->setWidgetResizable(true);
         scroll->setFrameShape(QFrame::NoFrame);
         scroll->setMinimumSize(0,0);
@@ -80,7 +88,7 @@ public:
         form->setSpacing(8);
         form->setRowWrapPolicy(QFormLayout::WrapAllRows);
         form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-        auto *preset=new MobileTouchComboBox(&dialog);
+        auto *preset=new MobileTouchComboBox(panel);
         preset->setAnchoredPopup(true);
         preset->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         const auto addPreset=[preset](const QString &label,const QSize &size,int dpi=0) {
@@ -107,8 +115,8 @@ public:
         addPreset(i18n("A4 at 300 DPI"),QSize(2480,3508),300);
         addPreset(i18n("US Letter at 300 DPI"),QSize(2550,3300),300);
         form->addRow(i18n("Preset"),preset);
-        auto *width=new QSpinBox(&dialog);
-        auto *height=new QSpinBox(&dialog);
+        auto *width=new QSpinBox(panel);
+        auto *height=new QSpinBox(panel);
         width->setRange(1,8192);
         height->setRange(1,8192);
         width->setSuffix(i18n(" px"));
@@ -120,13 +128,13 @@ public:
             QStringLiteral("MobileStudio/newHeight"),2048).toInt());
         form->addRow(i18n("Width"),width);
         form->addRow(i18n("Height"),height);
-        auto *dpi=new QSpinBox(&dialog);
+        auto *dpi=new QSpinBox(panel);
         dpi->setRange(72,600);
         dpi->setValue(settings.value(
             QStringLiteral("MobileStudio/newDPI"),300).toInt());
         dpi->setSuffix(i18n(" DPI"));
         form->addRow(i18n("Resolution"),dpi);
-        auto *background=new MobileTouchComboBox(&dialog);
+        auto *background=new MobileTouchComboBox(panel);
         background->setAnchoredPopup(true);
         background->addItem(i18n("Transparent"),QColor(Qt::transparent));
         background->addItem(i18n("White"),QColor(Qt::white));
@@ -146,7 +154,7 @@ public:
         scroll->setWidget(formContents);
         layout->addWidget(scroll,1);
         QObject::connect(preset,QOverload<int>::of(&QComboBox::currentIndexChanged),
-                         &dialog,[preset,width,height,dpi](int){
+                         panel,[preset,width,height,dpi](int){
             const QSize size=preset->currentData().toSize();
             if(size.isValid()) {
                 width->setValue(size.width());
@@ -155,59 +163,51 @@ public:
                 if(resolution>0)dpi->setValue(resolution);
             }
         });
+        auto *validation=new QLabel(i18n("Choose a canvas under 40 million pixels."),panel);
+        validation->setWordWrap(true);
+        validation->hide();
+        layout->addWidget(validation);
         auto *actions=new QDialogButtonBox(
-            QDialogButtonBox::Cancel|QDialogButtonBox::Ok,&dialog);
+            QDialogButtonBox::Cancel|QDialogButtonBox::Ok,panel);
         actions->button(QDialogButtonBox::Ok)->setText(i18n("Create"));
         layout->addWidget(actions);
-        QObject::connect(actions,&QDialogButtonBox::rejected,
-                         &dialog,&QDialog::reject);
-        QObject::connect(actions,&QDialogButtonBox::accepted,&dialog,[&]() {
+        QObject::connect(actions,&QDialogButtonBox::rejected,panel,&QWidget::close);
+        QObject::connect(actions,&QDialogButtonBox::accepted,panel,
+                         [panel,engine,name,width,height,dpi,background,validation,created]() {
             for(auto *field:{width,height,dpi})field->interpretText();
-            if(qint64(width->value())*height->value()>40000000LL) {
-                QMessageBox::warning(&dialog,i18n("Canvas too large"),
-                    i18n("This preview currently limits new canvases to "
-                         "40 million pixels to avoid excessive memory use."));
+            const QSize size(width->value(),height->value());
+            if(qint64(size.width())*size.height()>40000000LL) {
+                validation->show();
                 return;
             }
-            dialog.accept();
+            const QString title=name->text();
+            const int resolution=dpi->value();
+            const QColor color=background->currentData().value<QColor>();
+            const QPointer<QWidget> host=panel->parentWidget();
+            QGuiApplication::inputMethod()->hide();
+            panel->close();
+            if(!host)return;
+            QTimer::singleShot(0,host.data(),[host,engine,title,size,resolution,color,created]() {
+                static bool creating=false;
+                if(!host || !host->isVisible() || creating)return;
+                const QScopedValueRollback<bool> transaction(creating,true);
+                MobileCrashReport::checkpoint(QStringLiteral("Create canvas %1 x %2")
+                    .arg(size.width()).arg(size.height()));
+                if(!engine.createCanvas(title,size.width(),size.height(),resolution,color)) {
+                    if(host)QMessageBox::warning(host,i18n("Canvas not created"),
+                        i18n("Krita could not create this document. Try smaller canvas dimensions."));
+                    return;
+                }
+                QSettings settings;
+                settings.setValue(QStringLiteral("MobileStudio/newWidth"),size.width());
+                settings.setValue(QStringLiteral("MobileStudio/newHeight"),size.height());
+                settings.setValue(QStringLiteral("MobileStudio/newDPI"),resolution);
+                settings.setValue(QStringLiteral("MobileStudio/newBackground"),color);
+                if(host && created)created();
+            });
         });
-        const QScreen *display=QGuiApplication::primaryScreen();
-        const QSize available=display?display->availableGeometry().size():
-            owner->window()->size();
-        // Never impose a 315px minimum width or 440px minimum height:
-        // both can exceed the actual app viewport on narrow devices.
-        const int usableWidth=qMax(1,qMin(available.width(),
-                                         owner->window()->width())-16);
-        const int usableHeight=qMax(1,qMin(available.height(),
-                                          owner->window()->height())-16);
-        dialog.resize(qMin(525,usableWidth),qMin(600,usableHeight));
-        dialog.setMaximumSize(usableWidth,usableHeight);
+        panel->present();
         actions->button(QDialogButtonBox::Ok)->setFocus(Qt::OtherFocusReason);
-        const int result=dialog.exec();
-        QGuiApplication::inputMethod()->hide();
-        if(result!=QDialog::Accepted || !formDialog || !host || !host->isVisible())return false;
-        const QString canvasName=name->text();
-        const QSize canvasSize(width->value(),height->value());
-        const int resolution=dpi->value();
-        const QColor color=background->currentData().value<QColor>();
-        delete formDialog.data();
-        if(!host || !host->isVisible())return false;
-        MobileCrashReport::checkpoint(QStringLiteral("Create canvas %1 x %2")
-            .arg(canvasSize.width()).arg(canvasSize.height()));
-        if(!engine.createCanvas(canvasName,canvasSize.width(),canvasSize.height(),
-                                resolution,color)) {
-            if(host)QMessageBox::warning(host,i18n("Canvas not created"),
-                i18n("Krita could not create this document. Try smaller canvas dimensions."));
-            return false;
-        }
-        settings.setValue(QStringLiteral("MobileStudio/newWidth"),
-                          canvasSize.width());
-        settings.setValue(QStringLiteral("MobileStudio/newHeight"),
-                          canvasSize.height());
-        settings.setValue(QStringLiteral("MobileStudio/newDPI"),
-                          resolution);
-        settings.setValue(QStringLiteral("MobileStudio/newBackground"),color);
-        return true;
     }
     static bool open(const MobileEngineBridge &engine,QWidget *owner)
     {

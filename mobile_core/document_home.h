@@ -334,9 +334,7 @@ public:
         connect(create,&QPushButton::clicked,this,[this]() {
             QTimer::singleShot(0,this,[this]() {
                 if(!isVisible())return;
-                const QPointer<MobileDocumentHome> home(this);
-                const bool created=MobileDocumentWorkflow::create(m_engine,window());
-                if(created && home)home->hide();
+                MobileDocumentWorkflow::create(m_engine,this,[this]() {hide();});
             });
         });
         connect(browse,&QPushButton::clicked,this,[this]() {

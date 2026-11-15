@@ -101,7 +101,9 @@ protected:
         if(!target || target==this || isAncestorOf(target))return false;
         if(type==QEvent::Show && target->isWindow() && target->parentWidget() &&
            target->parentWidget()->window()==window()) {
-            close();
+            // An owned choice popup belongs to this panel's interaction.
+            if(!isAncestorOf(target->parentWidget()) && target->parentWidget()!=this)
+                close();
         } else if(sameWindow && (type==QEvent::MouseButtonPress || type==QEvent::MouseButtonDblClick ||
                                type==QEvent::TabletPress || type==QEvent::TouchBegin)) {
             // Native touch or pen may reach a parent before Qt synthesizes

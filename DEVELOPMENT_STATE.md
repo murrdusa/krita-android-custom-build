@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 14 — create canvases inside the existing Android window
+
+- New Canvas uses an in-window touch panel. Create closes the form and queues native document creation after the input event completes. This removes the separate modal window transition from the first canvas reveal.
+- Android rendering still requires device verification.
+
 ## November 14 — restore tool tile height and fit Color to its preview
 
 - Tool grid cells own their 40 px row height, independent of the shared button stylesheet. The scroll content retains the full grid height.
