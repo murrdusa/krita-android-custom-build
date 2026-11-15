@@ -605,7 +605,7 @@ public:
     {
         if(!strip || !strip->isVisible())return;
         auto *view=m_engine.manager();
-        const KisNodeSP node=view?view->activeNode():KisNodeSP();
+        KisNodeSP node=view?view->activeNode():KisNodeSP();
         strip->setLayerName(editingGlobalSelection(manager())?i18n("Editing selection"):
             node?node->name():QString());
         const qint64 now=m_thumbnailClock.elapsed();
