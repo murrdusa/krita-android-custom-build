@@ -16,9 +16,9 @@
 - Paint, Erase and Blend share a native .kpp importer. Their Import category lists presets imported through Studio that are compatible with the current mode. Existing presets are protected from filename collisions.
 - The lighting sphere follows external foreground picks by default and keeps its base when sampled. Lighting includes intensity alongside hardness, and hold the floating sphere to open the same controls. A tap or drag samples the sphere.
 
-## November 15 — collapse Layers from the active layer name
+## November 15 — minimize Layers from the Add menu
 
-- The expanded rail's name strip collapses Layers, leaving Add as the only header button. The compact strip shows the active layer's name and preview and opens the rail on tap. Both strips follow the rail orientation and saved placement.
+- The rail footer displays the active layer name as a label. The **+** menu contains **Minimize Layers Panel**, and the small Layers icon reopens the minimized rail.
 
 ## November 14 — create canvases inside the existing Android window
 
