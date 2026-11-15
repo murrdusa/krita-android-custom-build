@@ -61,5 +61,20 @@ int main(int argc,char **argv)
     tap(1);
     if(panel->isVisible())return 4;
     QCoreApplication::processEvents();
-    return calls==1 && picked.toInt()==42?0:5;
+    if(calls!=1 || picked.toInt()!=42)return 5;
+
+    QMenu settings;
+    for(int i=0;i<14;++i)
+        settings.addAction(QStringLiteral("Setting %1").arg(i));
+    window.resize(750,900);
+    auto *tall=mobileShowActionList(&window,&anchor,settings,&window,[](const QVariant &) {});
+    QCoreApplication::processEvents();
+    auto *items=tall->findChild<QListWidget*>();
+    if(tall->height()<=430 || items->sizeHintForRow(0)<40 ||
+       items->verticalScrollBar()->maximum()!=0)return 6;
+
+    window.resize(350,360);
+    QCoreApplication::processEvents();
+    return window.rect().contains(tall->geometry()) &&
+           items->verticalScrollBar()->maximum()>0?0:7;
 }

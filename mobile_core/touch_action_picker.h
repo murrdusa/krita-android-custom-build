@@ -73,6 +73,7 @@ inline MobileTransientPanel *mobileShowActionList(QWidget *host,QWidget *anchor,
     auto *layout=new QVBoxLayout(panel);
     layout->setContentsMargins(4,4,4,4);
     auto *list=new QListWidget(panel);
+    const int rowHeight=qMax(40,list->fontMetrics().height()+12);
     for(auto *action:menu.actions()) {
         if(!action->isVisible() || action->isSeparator())continue;
         if(action->property("mobileSectionHeading").toBool()) {
@@ -82,6 +83,7 @@ inline MobileTransientPanel *mobileShowActionList(QWidget *host,QWidget *anchor,
             heading->setFont(font);
             heading->setForeground(QColor("#bfc9dc"));
             heading->setFlags(Qt::NoItemFlags);
+            heading->setSizeHint(QSize(0,rowHeight));
             continue;
         }
         auto *item=new QListWidgetItem(action->icon(),
@@ -89,6 +91,7 @@ inline MobileTransientPanel *mobileShowActionList(QWidget *host,QWidget *anchor,
             QString(action->text()).remove(QLatin1Char('&'))+
             (action->menu()?QStringLiteral("  ›"):QString()),list);
         item->setData(Qt::UserRole,action->data());
+        item->setSizeHint(QSize(0,rowHeight));
         if(!action->isEnabled())item->setFlags(Qt::NoItemFlags);
     }
     if(!list->count()) {panel->deleteLater();return nullptr;}
@@ -101,11 +104,7 @@ inline MobileTransientPanel *mobileShowActionList(QWidget *host,QWidget *anchor,
         panel->close();
         if(alive)QTimer::singleShot(0,alive.data(),[picked,value]() {picked(value);});
     });
-    list->ensurePolished();
-    int height=12;
-    for(int row=0;row<list->count();++row)
-        height+=qMax(40,list->sizeHintForRow(row));
-    panel->anchorTo(anchor,QSize(300,height),true);
+    panel->anchorTo(anchor,QSize(300,12+rowHeight*list->count()),true);
     panel->present();
     return panel;
 }
