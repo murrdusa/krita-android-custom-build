@@ -16,10 +16,12 @@ int main(int argc,char **argv)
     using namespace MobileRecentColors;
     if(!load().isEmpty() || !recordStroke(QColor()).isEmpty() ||
        !recordStroke(Qt::transparent).isEmpty())return 2;
-    for(int i=0;i<10;++i)recordStroke(QColor(i,0,0));
-    if(load().size()!=8 || load().first()!=QColor(9,0,0).name(QColor::HexArgb))return 3;
-    if(!recordStroke(QColor(9,0,0)).isEmpty())return 4;
-    const auto history=recordStroke(QColor(3,0,0));
-    if(history.size()!=8 || history.first()!=QColor(3,0,0).name(QColor::HexArgb) ||
-       history.count(history.first())!=1)return 5;
+    for(int i=0;i<28;++i)recordStroke(QColor(i,0,0));
+    if(load().size()!=8 || load().first()!=QColor(27,0,0).name(QColor::HexArgb))return 3;
+    const auto expanded=load(pickerCapacity);
+    if(expanded.size()!=24 || expanded.last()!=QColor(4,0,0).name(QColor::HexArgb) ||
+       !recordStroke(QColor(27,0,0)).isEmpty())return 4;
+    const auto history=recordStroke(QColor(5,0,0));
+    if(history.size()!=8 || history.first()!=QColor(5,0,0).name(QColor::HexArgb) ||
+       load(pickerCapacity).count(history.first())!=1)return 5;
 }

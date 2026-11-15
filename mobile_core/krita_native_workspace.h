@@ -465,10 +465,11 @@ public:
             }
         }
         panel->setOpener(anchor,m_colorAction);
-        panel->anchorTo(anchor,QSize(448,620),true);
         const QPointer<QWidget> opener(anchor);
+        auto *picker=m_colorPicker.data();
+        panel->anchorTo(opener,picker->preferredPopupSize(),true);
         const bool fromSphere=lightingOpener!=nullptr;
-        panel->fitGeometry=[canvas,opener,fromSphere,picker=m_colorPicker.data()](const QRect &preferred) {
+        panel->fitGeometry=[canvas,opener,fromSphere,picker](const QRect &preferred) {
             QList<QRect> occupied;
             for(auto *bar:canvas->findChildren<QFrame*>(QString(),Qt::FindDirectChildrenOnly)) {
                 if(bar->isVisible() && bar->property("mobileCommandToolbar").toBool())
@@ -492,7 +493,10 @@ public:
             if(alignRight)fitted.moveRight(right);
             return fitted;
         };
-        m_colorPicker->onPreviewLayoutChanged=[panel]() {panel->reposition();};
+        m_colorPicker->onPreviewLayoutChanged=[panel,opener,picker]() {
+            panel->anchorTo(opener,picker->preferredPopupSize(),true);
+            panel->reposition();
+        };
         panel->present();
         syncPanelActions();
     }

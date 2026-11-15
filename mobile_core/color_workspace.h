@@ -29,6 +29,8 @@
 #include <QLabel>
 #include <QMouseEvent>
 #include <QResizeEvent>
+#include <QScrollArea>
+#include <QTimer>
 #include <QRegion>
 #include <QSize>
 #include <QPainter>
@@ -217,17 +219,28 @@ public:
 
     std::function<void(const QColor&)> onColor;
     std::function<void()> onHold;
+    std::function<void(const QPointF&)> onLightDirection;
+
+    static QPointF defaultDirection() {return QPointF(-0.47,-0.61);}
+
+    void setEditingDirection(bool editing)
+    {
+        m_editingDirection=editing;
+        update();
+    }
 
     void setLighting(const QColor &base,const QColor &light,const QColor &shadow,
-                     qreal contrast,qreal intensity)
+                     qreal contrast,qreal intensity,const QPointF &direction)
     {
         if(m_base==base && m_light==light && m_shadow==shadow &&
-           m_contrast==contrast && m_intensity==intensity)return;
+           m_contrast==contrast && m_intensity==intensity && m_direction==direction)return;
         m_base=base;
         m_light=light;
         m_shadow=shadow;
         m_contrast=contrast;
         m_intensity=intensity;
+        m_direction=direction;
+        m_lightZ=qSqrt(qMax(0.0,1.0-QPointF::dotProduct(direction,direction)));
         m_image=QImage();
         update();
     }
@@ -263,12 +276,12 @@ protected:
         QPainter painter(this);
         painter.setRenderHint(QPainter::SmoothPixmapTransform);
         painter.drawImage(area,m_image);
-        if(m_hasSample) {
-            const QPointF point=area.center()+m_sample*area.width()/2;
+        if(m_editingDirection || m_hasSample) {
+            const QPointF point=area.center()+(m_editingDirection?m_direction:m_sample)*area.width()/2;
             painter.setRenderHint(QPainter::Antialiasing);
             painter.setPen(QPen(Qt::black,3));
             painter.drawEllipse(point,6,6);
-            painter.setPen(QPen(Qt::white,1.5));
+            painter.setPen(QPen(m_editingDirection?QColor("#ffd26a"):Qt::white,1.5));
             painter.drawEllipse(point,6,6);
         }
     }
@@ -322,7 +335,7 @@ private:
     QColor shade(const QPointF &normal) const
     {
         const qreal z=qSqrt(qMax(0.0,1.0-QPointF::dotProduct(normal,normal)));
-        const qreal light=-0.47*normal.x()-0.61*normal.y()+0.637*z;
+        const qreal light=QPointF::dotProduct(m_direction,normal)+m_lightZ*z;
         const qreal diffuse=qPow(qMax(0.0,light),0.55+2.1*m_contrast);
         const qreal specular=qPow(diffuse,18.0)*0.16;
         const qreal ambient=0.32+0.12*qMax(0.0,normal.y());
@@ -338,9 +351,14 @@ private:
     {
         const auto area=sphereRect();
         if(area.isEmpty())return;
-        m_sample=(position-area.center())/(area.width()/2);
-        const qreal length=qSqrt(QPointF::dotProduct(m_sample,m_sample));
-        if(length>1)m_sample/=length;
+        QPointF point=(position-area.center())/(area.width()/2);
+        const qreal length=qSqrt(QPointF::dotProduct(point,point));
+        if(length>1)point/=length;
+        if(m_editingDirection) {
+            if(onLightDirection)onLightDirection(point);
+            return;
+        }
+        m_sample=point;
         m_hasSample=true;
         update();
         if(onColor)onColor(shade(m_sample));
@@ -350,6 +368,9 @@ private:
     qreal m_contrast=0.85,m_intensity=1.0;
     QImage m_image;
     QPointF m_sample,m_start;
+    QPointF m_direction=defaultDirection();
+    qreal m_lightZ=qSqrt(1.0-QPointF::dotProduct(m_direction,m_direction));
+    bool m_editingDirection=false;
     QTimer m_holdTimer;
     enum Press {Idle,WaitingForHold,Sampling,Held};
     Press m_press=Idle;
@@ -366,8 +387,13 @@ public:
               shadow(readColor(settings,"shadow",QColor("#8da9df"))),
               contrast(qBound(0,settings.value(key("hardness"),85).toInt(),100)),
               intensity(qBound(0,settings.value(key("intensity"),100).toInt(),200)),
-              followColor(settings.value(key("followColor"),true).toBool())
-        {}
+              followColor(settings.value(key("followColor"),true).toBool()),
+              direction(settings.value(key("direction"),MobileLightingSphere::defaultDirection()).toPointF())
+        {
+            const qreal magnitude=QPointF::dotProduct(direction,direction);
+            if(!qIsFinite(magnitude) || magnitude>1.000001)
+                direction=MobileLightingSphere::defaultDirection();
+        }
 
         void save() const
         {
@@ -378,15 +404,17 @@ public:
             settings.setValue(key("hardness"),contrast);
             settings.setValue(key("intensity"),intensity);
             settings.setValue(key("followColor"),followColor);
+            settings.setValue(key("direction"),direction);
         }
 
         QColor base,light,shadow;
         int contrast,intensity;
         bool followColor;
+        QPointF direction;
 
         void apply(MobileLightingSphere *sphere) const
         {
-            if(sphere)sphere->setLighting(base,light,shadow,contrast/100.0,intensity/100.0);
+            if(sphere)sphere->setLighting(base,light,shadow,contrast/100.0,intensity/100.0,direction);
         }
 
     private:
@@ -418,6 +446,7 @@ public:
         root->addWidget(tabs);
         m_pages=new QStackedWidget(this);
         auto *pages=m_pages;
+        pages->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Ignored);
         root->addWidget(pages,1);
         const auto addPage=[tabs,pages](QWidget *page,const QString &name) {
             pages->addWidget(page);
@@ -464,8 +493,12 @@ public:
         };
         addPage(wheelPage,tr("Wheel"));
 
-        auto *values=new QWidget(wheelPage);
-        auto *form=new QFormLayout(values);
+        auto *values=new QWidget(pages);
+        auto *valuesLayout=new QVBoxLayout(values);
+        valuesLayout->setContentsMargins(0,0,0,0);
+        auto *form=new QFormLayout;
+        valuesLayout->addLayout(form);
+        valuesLayout->addStretch();
         form->setContentsMargins(4,0,4,0);
         form->setSpacing(0);
         m_hex=new QLineEdit(values);
@@ -497,7 +530,7 @@ public:
             if(text.size()>=6 && color.isValid())select(color);
             if(m_provider)m_hex->setText(m_provider->fgColor().toQColor().name());
         });
-        wheelLayout->addWidget(values);
+        addPage(values,tr("Sliders"));
 
         auto *lightingPage=new QWidget(pages);
         auto *lightingLayout=new QVBoxLayout(lightingPage);
@@ -508,6 +541,16 @@ public:
             if(onSphereColor)onSphereColor(color);
         };
         lightingLayout->addWidget(m_sphere,1);
+        m_lightingScroll=new QScrollArea(lightingPage);
+        m_lightingScroll->setWidgetResizable(true);
+        m_lightingScroll->setFrameShape(QFrame::NoFrame);
+        MobileTouchScroll::configure(m_lightingScroll);
+        auto *controls=new QWidget;
+        m_lightingScroll->setWidget(controls);
+        lightingLayout->addWidget(m_lightingScroll);
+        auto *lightingSettings=new QVBoxLayout(controls);
+        lightingSettings->setContentsMargins(0,0,0,0);
+        lightingSettings->setSpacing(2);
         auto *lightingControls=new QHBoxLayout;
         auto *group=new QButtonGroup(lightingPage);
         const QStringList roles{tr("Object"),tr("Highlight"),tr("Shadow")};
@@ -522,7 +565,7 @@ public:
             roleButtons[i]=button;
         }
         roleButtons[0]->setChecked(true);
-        lightingLayout->addLayout(lightingControls);
+        lightingSettings->addLayout(lightingControls);
         auto *lightingForm=new QFormLayout;
         lightingForm->setSpacing(2);
         std::array<MobileTouchSlider*,3> lightingSliders{};
@@ -534,7 +577,7 @@ public:
             lightingForm->addRow(captions.at(i),slider);
             lightingSliders[i]=slider;
         }
-        lightingLayout->addLayout(lightingForm);
+        lightingSettings->addLayout(lightingForm);
         m_lightingHues={{qMax(0,m_lighting.base.hsvHue()),
                          qMax(0,m_lighting.light.hsvHue()),
                          qMax(0,m_lighting.shadow.hsvHue())}};
@@ -554,6 +597,7 @@ public:
         for(int i=0;i<3;++i) {
             connect(roleButtons[i],&QPushButton::clicked,this,[this,i,refreshRole]() {
                 refreshRole(m_lightingHues[i]);
+                fitLightingControls();
                 if(onPreviewLayoutChanged)onPreviewLayoutChanged();
             });
             connect(lightingSliders[i],&QSlider::valueChanged,this,
@@ -589,24 +633,41 @@ public:
         };
         addLevel(tr("Shadow hardness"),m_lighting.contrast,100);
         addLevel(tr("Light intensity"),m_lighting.intensity,200);
-        lightingLayout->addLayout(levels);
+        lightingSettings->addLayout(levels);
         auto *follow=new QCheckBox(tr("Auto-update base color"),lightingPage);
         follow->setAccessibleDescription(tr("Use colors picked outside the sphere as its base."));
         follow->setChecked(m_lighting.followColor);
-        lightingLayout->addWidget(follow);
+        lightingSettings->addWidget(follow);
         connect(follow,&QCheckBox::toggled,this,[this](bool enabled) {
             m_lighting.followColor=enabled;
             m_lighting.save();
         });
+        auto *direction=new QPushButton(tr("Adjust light direction"),controls);
+        direction->setCheckable(true);
+        direction->setAccessibleDescription(tr("Turn on, then drag on the sphere to move the light."));
+        lightingSettings->addWidget(direction);
+        connect(direction,&QPushButton::toggled,this,[this,direction](bool enabled) {
+            m_sphere->setEditingDirection(enabled);
+            direction->setText(enabled?tr("Done moving light"):tr("Adjust light direction"));
+        });
+        m_sphere->onLightDirection=[this](const QPointF &point) {
+            m_lighting.direction=point;
+            refreshLighting();
+        };
         refreshLighting();
         addPage(lightingPage,tr("Lighting"));
 
-        auto *history=new QHBoxLayout;
-        history->setSpacing(3);
-        for(const auto &color:MobileRecentColors::load())
-            history->addWidget(swatch(this,QColor(color)));
-        if(history->count())root->addLayout(history);
-        else delete history;
+        const auto colors=MobileRecentColors::load(MobileRecentColors::pickerCapacity);
+        if(!colors.isEmpty()) {
+            m_historyGrid=new QGridLayout;
+            m_historyGrid->setSpacing(3);
+            for(int i=0;i<colors.size();++i) {
+                constexpr int columns=MobileRecentColors::stripCapacity;
+                m_historyGrid->addWidget(swatch(this,QColor(colors.at(i))),i/columns,i%columns);
+                m_historyGrid->setColumnStretch(i%columns,1);
+            }
+            root->addLayout(m_historyGrid);
+        }
         connect(provider,&KisCanvasResourceProvider::sigFGColorChanged,this,
                 [this](const KoColor &color) {showColor(color.toQColor());});
         showColor(provider->fgColor().toQColor());
@@ -615,7 +676,7 @@ public:
     std::function<void()> onPreviewLayoutChanged;
     std::function<void(const QColor &)> onSphereColor;
 
-    void showLighting() {m_tabs->setCurrentIndex(1);}
+    void showLighting() {m_tabs->setCurrentIndex(2);}
 
     void syncLightingBase()
     {
@@ -623,15 +684,20 @@ public:
         refreshLighting();
     }
 
+    QSize preferredPopupSize() const
+    {
+        const int chrome=outerRowsHeight()+4;
+        switch(m_tabs->currentIndex()) {
+        case 1:return QSize(320,m_pages->currentWidget()->layout()->sizeHint().height()+chrome+10);
+        case 2:return QSize(360,470+chrome);
+        default:return QSize(344,328+chrome);
+        }
+    }
+
     int widthForPopupHeight(int height) const
     {
-        const auto *page=m_pages->currentWidget();
-        const QSize controls=page->layout()->minimumSize();
-        const int otherRows=layout()->minimumSize().height()-m_pages->minimumSizeHint().height();
-        constexpr int horizontalPadding=16; // picker and popup margins
-        constexpr int frameHeight=4;
-        return horizontalPadding+qMax(controls.width(),
-            height-frameHeight-otherRows-controls.height());
+        if(m_tabs->currentIndex()!=0)return preferredPopupSize().width();
+        return qMax(230,height-outerRowsHeight()+12);
     }
 
     void setFloatingSphere(MobileLightingSphere *sphere)
@@ -648,7 +714,28 @@ public:
             provider->setFGColor(KoColor(color,current.colorSpace()));
     }
 
+protected:
+    void resizeEvent(QResizeEvent *event) override
+    {
+        QWidget::resizeEvent(event);
+        fitLightingControls();
+    }
+
 private:
+    int outerRowsHeight() const
+    {
+        return 12+m_tabs->sizeHint().height()+4+
+            (m_historyGrid?m_historyGrid->sizeHint().height()+4:0);
+    }
+
+    void fitLightingControls()
+    {
+        if(!m_lightingScroll)return;
+        const int ideal=m_lightingScroll->widget()->sizeHint().height();
+        const int available=qMax(0,height()-outerRowsHeight());
+        m_lightingScroll->setFixedHeight(qMin(ideal,available*3/5));
+    }
+
     static void paintChip(QLabel *chip,const QColor &color)
     {
         chip->setStyleSheet(QStringLiteral("background:%1;border:1px solid #767681;border-radius:6px;")
@@ -680,7 +767,8 @@ private:
     {
         auto *button=new QPushButton(parent);
         button->setMinimumWidth(0);
-        button->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Preferred);
+        button->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
+        button->setFixedHeight(24);
         button->setAccessibleName(color.name());
         button->setStyleSheet(QStringLiteral("QPushButton{background:%1;border:1px solid #767681;border-radius:6px;"
                                               "min-height:24px;padding:0;}")
@@ -724,6 +812,8 @@ private:
     MobileHueWheel *m_wheel=nullptr;
     QStackedWidget *m_pages=nullptr;
     QTabBar *m_tabs=nullptr;
+    QGridLayout *m_historyGrid=nullptr;
+    QScrollArea *m_lightingScroll=nullptr;
     std::function<void()> m_syncBase;
     QLineEdit *m_hex=nullptr;
     QLabel *m_previous=nullptr,*m_current=nullptr;

@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — compact three-tab Color picker
+
+- Wheel, Sliders (Hex and HSV), and Lighting have separate tabs and popup sizes. The shared picker history shows up to 24 stroke colors across three rows. The toolbar history stays compact.
+- In Lighting, enable **Adjust light direction** and drag on the sphere. The option starts inactive, updates both sphere previews, and stores the direction alongside the lighting settings.
+
 ## November 15 — compact toolbars, preset import, and lighting controls
 
 - Settings action lists size to their rows within the available canvas. Main and custom toolbars fit their visible commands and scroll if they run out of space.

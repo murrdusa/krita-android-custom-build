@@ -7,21 +7,24 @@
 
 namespace MobileRecentColors
 {
-inline QStringList load()
+constexpr int stripCapacity=8;
+constexpr int pickerCapacity=3*stripCapacity;
+
+inline QStringList load(int limit=stripCapacity)
 {
-    return QSettings().value(QStringLiteral("MobileStudio/strokeColors")).toStringList().mid(0,8);
+    return QSettings().value(QStringLiteral("MobileStudio/strokeColors")).toStringList().mid(0,limit);
 }
 
 inline QStringList recordStroke(const QColor &color)
 {
     if(!color.isValid() || color.alpha()==0)return {};
-    auto colors=load();
+    auto colors=load(pickerCapacity);
     const auto code=color.name(QColor::HexArgb);
     if(!colors.isEmpty() && colors.first()==code)return {};
     colors.removeAll(code);
     colors.prepend(code);
-    if(colors.size()>8)colors.removeLast();
+    if(colors.size()>pickerCapacity)colors.removeLast();
     QSettings().setValue(QStringLiteral("MobileStudio/strokeColors"),colors);
-    return colors;
+    return colors.mid(0,stripCapacity);
 }
 }
