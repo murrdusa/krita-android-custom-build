@@ -76,13 +76,23 @@ int main(int argc,char **argv)
     auto *bar=canvas->findChild<QFrame*>(QStringLiteral("_mobileNativeToolbar"));
     auto *scroll=bar?bar->findChild<QScrollArea*>():nullptr;
     auto *more=bar?bar->findChild<QToolButton*>(QStringLiteral("_mobileNativeMoreButton")):nullptr;
-    auto *settingsMenu=more?more->findChild<QMenu*>(QStringLiteral("_mobileNativeSettingsMenu")):nullptr;
+    auto *settingsMenu=more?more->findChild<QMenu*>(QString(),Qt::FindDirectChildrenOnly):nullptr;
     verify(bar && scroll && more && settingsMenu,"toolbar or Settings missing");
     verify(!more->menu() && !more->defaultAction()->menu(),"Settings has an implicit wrapper menu");
     more->click();
     QApplication::processEvents();
-    verify(settingsMenu->isVisible(),"Settings button did not open its menu directly");
-    settingsMenu->hide();
+    auto *settingsPanel=canvas->findChild<QFrame*>(QStringLiteral("mobileContextOptionList"));
+    verify(settingsPanel && settingsPanel->isVisible(),"Settings touch list did not open");
+    more->click();
+    verify(!settingsPanel->isVisible(),"Settings touch list did not close");
+    host.resize(1000,850);
+    QApplication::processEvents();
+    if(bar->height()>bar->width())
+        verify(bar->height()<canvas->height()-30,"vertical toolbar fills unused height");
+    else
+        verify(bar->width()<canvas->width()-30,"horizontal toolbar fills unused width");
+    host.resize(320,420);
+    QApplication::processEvents();
     verify(canvas->rect().contains(bar->geometry()),"toolbar overflowed the narrow canvas");
     verify(scroll->horizontalScrollBar()->maximum()>0,"narrow toolbar does not scroll");
     verify(settingsMenu->actions().contains(&open),"file command disappeared");
@@ -144,7 +154,8 @@ int main(int argc,char **argv)
            "saved right rail did not restore vertically at the edge");
     verify(MobileNativeCommandLayout::overlayBounds(secondCanvas).right()<side->geometry().left(),
            "right rail did not reserve space for floating panels");
-    auto *secondMenu=secondCanvas->findChild<QMenu*>(QStringLiteral("_mobileNativeSettingsMenu"));
+    auto *secondMore=secondCanvas->findChild<QToolButton*>(QStringLiteral("_mobileNativeMoreButton"));
+    auto *secondMenu=secondMore?secondMore->findChild<QMenu*>(QString(),Qt::FindDirectChildrenOnly):nullptr;
     verify(secondMenu,"second toolbar lost its Settings menu");
     QMenu *toolbarMenu=nullptr;
     for(auto *action:secondMenu->actions())
