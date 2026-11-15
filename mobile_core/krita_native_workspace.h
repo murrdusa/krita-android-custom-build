@@ -202,6 +202,8 @@ public:
         QObject::connect(poll,&QTimer::timeout,this,[this]() {
             if(m_layers && m_layers->isVisible())
                 m_layers->refreshFromEngine();
+            if(m_layers && m_showLayers && m_showLayers->isVisible())
+                m_layers->refreshCollapsedStrip(m_showLayers,m_layersAction?m_layersAction->icon():QIcon());
             syncSelectionDismissButton();
             syncCloneSourceButton();
             syncReferenceShortcut();
@@ -1784,18 +1786,17 @@ private:
             m_layers->installEventFilter(this);
             m_layers->onContentHeightChanged=[this]() {placeLayerOverlay();};
             m_layers->onRequestClose=[this]() {toggleLayers();};
-            m_showLayers=new QToolButton(canvas);
-            m_showLayers->setAccessibleName(tr("Show Layers"));
-            m_showLayers->setToolTip(tr("Show Layers"));
-            m_showLayers->setIcon(m_layersAction?m_layersAction->icon():QIcon());
-            if(m_showLayers->icon().isNull())m_showLayers->setText(tr("Layers"));
-            m_showLayers->setFixedSize(44,44);
-            m_showLayers->setStyleSheet(QStringLiteral(
-                "QToolButton{background:#34343a;color:white;border:1px solid #66666d;border-radius:7px;}"));
+            m_showLayers=new MobileLayerStrip(canvas,true);
+            m_showLayers->setObjectName(QStringLiteral("mobileCollapsedLayers"));
+            m_showLayers->setLayerName({});
             connect(m_showLayers,&QToolButton::clicked,this,[this]() {toggleLayers();});
         }
         if(m_layers)m_layers->setVisible(available && !m_layersCollapsed);
-        if(m_showLayers)m_showLayers->setVisible(available && m_layersCollapsed);
+        if(m_showLayers) {
+            m_showLayers->setVisible(available && m_layersCollapsed);
+            if(m_showLayers->isVisible())
+                m_layers->refreshCollapsedStrip(m_showLayers,m_layersAction?m_layersAction->icon():QIcon());
+        }
         syncPanelActions();
     }
 
@@ -2302,14 +2303,16 @@ private:
             if(m_legacyLayerCorner && !editedLayers && !m_layersHorizontal)
                 layerLength=qMin(layerLength,railBounds.height()*m_layerHeight/100);
             if(collapsed) {
-                QRect preferred(layerAnchor.topLeft(),QSize(44,44));
+                m_showLayers->setOrientation(m_layersHorizontal);
+                const QSize size=m_layersHorizontal?QSize(52,thickness):QSize(thickness,52);
+                QRect preferred(layerAnchor.topLeft(),size);
                 if(layerReverse) {
                     if(m_layersHorizontal)preferred.moveRight(layerAnchor.right());
                     else preferred.moveBottom(layerAnchor.bottom());
                 } else if(!m_layersHorizontal && layerAnchor.center().x()>railBounds.center().x()) {
                     preferred.moveRight(layerAnchor.right());
                 }
-                placePanel(m_showLayers,preferred,railBounds,obstacles,QSize(44,44));
+                placePanel(m_showLayers,preferred,railBounds,obstacles,size);
                 layerAnchor={};
             } else {
                 const auto initial=MobileLayerRailGeometry::expand(
@@ -2469,7 +2472,7 @@ private:
     QSize m_workspaceSize;
     bool m_layoutPanelsDirty=false;
     bool m_layersHorizontal=false,m_layersCollapsed=false,m_legacyLayerCorner=false;
-    QPointer<QToolButton> m_showLayers;
+    QPointer<MobileLayerStrip> m_showLayers;
     bool m_fadePanels=false;
     int m_idleOpacity=35,m_fadeDelay=3;
     QElapsedTimer m_fadeClock;

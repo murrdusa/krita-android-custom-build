@@ -1,5 +1,9 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — collapse Layers from the active layer name
+
+- The expanded rail's name strip collapses Layers, leaving Add as the only header button. The compact strip shows the active layer's name and preview and opens the rail on tap. Both strips follow the rail orientation and saved placement.
+
 ## November 14 — create canvases inside the existing Android window
 
 - New Canvas uses an in-window touch panel. Create closes the form and queues native document creation after the input event completes. This removes the separate modal window transition from the first canvas reveal.

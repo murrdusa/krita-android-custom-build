@@ -124,6 +124,73 @@ private:
     QColor m_background=QColor("#252e39");
 };
 
+class MobileLayerStrip final : public QToolButton
+{
+public:
+    explicit MobileLayerStrip(QWidget *parent,bool collapsed=false)
+        : QToolButton(parent),m_collapsed(collapsed)
+    {
+        QFont small=font();
+        small.setPixelSize(11);
+        setFont(small);
+        setOrientation(false);
+    }
+
+    void setOrientation(bool horizontal)
+    {
+        m_horizontal=horizontal;
+        if(!m_collapsed) {
+            setSizePolicy(horizontal?QSizePolicy::Fixed:QSizePolicy::Ignored,
+                          horizontal?QSizePolicy::Ignored:QSizePolicy::Fixed);
+            setMinimumSize(horizontal?26:0,horizontal?0:26);
+            setMaximumSize(horizontal?26:QWIDGETSIZE_MAX,horizontal?QWIDGETSIZE_MAX:26);
+        }
+        update();
+    }
+
+    void setLayerName(const QString &name)
+    {
+        if(text()==name && !accessibleName().isEmpty())return;
+        setText(name);
+        const QString action=m_collapsed?i18n("Expand Layers"):i18n("Collapse Layers");
+        setAccessibleName(name.isEmpty()?action:i18n("%1: %2",action,name));
+        setToolTip(accessibleName());
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        if(m_horizontal) {
+            painter.translate(0,height());
+            painter.rotate(-90);
+        }
+        const QRect area(QPoint(),m_horizontal?size().transposed():size());
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(QColor("#484f59"));
+        painter.setBrush(isDown()?QColor("#3c536a"):QColor("#252e39"));
+        painter.drawRoundedRect(area.adjusted(0,0,-1,-1),5,5);
+        if(m_collapsed) {
+            const QRect preview(area.center().x()-14,4,28,28);
+            icon().paint(&painter,preview);
+        }
+        QRect label=area.adjusted(4,m_collapsed?30:0,-16,-1);
+        painter.setPen(QColor("#edf5fb"));
+        painter.drawText(label,Qt::AlignCenter,fontMetrics().elidedText(
+            text().isEmpty()?i18n("Layers"):text(),Qt::ElideRight,qMax(0,label.width())));
+        const QPoint center(area.right()-8,label.center().y());
+        const int tip=m_collapsed?2:-2;
+        painter.setPen(QPen(QColor("#c2cfde"),1.5,Qt::SolidLine,Qt::RoundCap,Qt::RoundJoin));
+        const QPoint chevron[]{center+QPoint(-3,-tip),center+QPoint(0,tip),
+                               center+QPoint(3,-tip)};
+        painter.drawPolyline(chevron,3);
+    }
+
+private:
+    bool m_collapsed;
+    bool m_horizontal=false;
+};
+
 class MobileLayerTileButton final : public QToolButton
 {
 public:
@@ -225,15 +292,13 @@ public:
         m_railLayout->addWidget(m_tree,1);
         layout->addLayout(m_railLayout,1);
         if(compactRail) {
-            m_layerName=new MobileLayerNameLabel(this);
+            m_layerName=new MobileLayerStrip(this);
             m_layerName->setObjectName(QStringLiteral("mobileLayerName"));
-            m_layerName->setStyleSheet(QStringLiteral(
-                "QLabel#mobileLayerName{background:#252e39;color:#edf5fb;"
-                "border-radius:5px;font-size:11px;padding:0 4px;}"));
-            m_layerName->setAlignment(Qt::AlignCenter);
-            m_layerName->setFixedHeight(19);
-            m_layerName->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
+            m_layerName->setLayerName({});
             m_railLayout->addWidget(m_layerName);
+            connect(m_layerName,&QToolButton::clicked,this,[this]() {
+                if(onRequestClose)onRequestClose();
+            });
         }
         m_dragGhost=new QLabel(m_tree->viewport());
         m_dragGhost->setFixedSize(60,60);
@@ -357,31 +422,18 @@ public:
         addType->setAccessibleName(i18n("Add layer"));
         addType->setToolTip(i18n("Add a layer or mask"));
         m_railHeader=new QWidget(this);
-        m_railHeaderLayout=new QBoxLayout(QBoxLayout::LeftToRight,m_railHeader);
-        m_railHeaderLayout->setContentsMargins(0,0,0,0);
-        m_railHeaderLayout->setSpacing(1);
-        m_railHeaderLayout->setAlignment(Qt::AlignCenter);
+        auto *headerLayout=new QHBoxLayout(m_railHeader);
+        headerLayout->setContentsMargins(0,0,0,0);
+        headerLayout->setAlignment(Qt::AlignCenter);
         m_addLayerButton=addType;
-        m_railHeaderLayout->addWidget(addType);
+        headerLayout->addWidget(addType);
         if(compactRail) {
-            auto *minimize=new QPushButton(QStringLiteral("−"),m_railHeader);
-            minimize->setAccessibleName(i18n("Minimize Layers"));
-            minimize->setToolTip(i18n("Minimize Layers"));
-            const QString style=QStringLiteral(
+            addType->setStyleSheet(QStringLiteral(
                 "QPushButton{background:#34343a;color:white;border:1px solid #55555c;"
                 "border-radius:5px;min-height:0;padding:0;font-size:16px;}"
-                "QPushButton:pressed{background:#5685a6;}");
-            addType->setStyleSheet(style);
-            minimize->setStyleSheet(style);
-            m_minimizeLayerButton=minimize;
-            m_railHeaderLayout->addWidget(minimize);
-            connect(minimize,&QPushButton::clicked,this,[this]() {
-                if(onRequestClose)onRequestClose();
-            });
+                "QPushButton:pressed{background:#5685a6;}"));
         }
-        // The buttons always occupy the rail's SHORT axis: side-by-side
-        // for a vertical rail, stacked for a horizontal rail.
-        updateRailHeader(82,false,true);
+        updateRailHeader(82,false);
         m_railLayout->insertWidget(0,m_railHeader);
         connect(addType,&QPushButton::clicked,this,[this,addType]() {
             auto *view=m_engine.manager();
@@ -505,46 +557,18 @@ public:
             length+=MobileLayerRailGeometry::tileExtent(cross,horizontal,
                 node->inherits("KisGroupLayer"),node->inherits("KisMask"))+4;
         }
-        return (horizontal?85:(m_layerName?58:45))+qMax(24,length);
+        return (m_layerName?65:45)+qMax(24,length);
     }
 
-    void updateRailHeader(int thickness,bool horizontal,bool controlsAtEnd)
+    void updateRailHeader(int thickness,bool horizontal)
     {
-        if(!m_railHeader || !m_railHeaderLayout || !m_addLayerButton)return;
-
-        // controlsAtEnd indicates the canvas-facing side of layer tiles.
-        // Minimize belongs on the OPPOSITE side, closest to the screen edge.
-        const bool minimizeFirst=controlsAtEnd;
-        m_railHeaderLayout->setDirection(horizontal?
-            QBoxLayout::TopToBottom:QBoxLayout::LeftToRight);
-
-        m_railHeaderLayout->removeWidget(m_addLayerButton);
-        if(m_minimizeLayerButton)m_railHeaderLayout->removeWidget(m_minimizeLayerButton);
-        if(minimizeFirst && m_minimizeLayerButton)
-            m_railHeaderLayout->addWidget(m_minimizeLayerButton,0,Qt::AlignCenter);
-        m_railHeaderLayout->addWidget(m_addLayerButton,0,Qt::AlignCenter);
-        if(!minimizeFirst && m_minimizeLayerButton)
-            m_railHeaderLayout->addWidget(m_minimizeLayerButton,0,Qt::AlignCenter);
-
-        const int compactThickness=qMax(horizontal?58:64,thickness);
-        if(horizontal) {
-            // Top/bottom rail: minimize above/below Add, respectively.
-            m_railHeader->setMinimumWidth(0);
-            m_railHeader->setFixedWidth(36);
-            m_railHeader->setMinimumHeight(0);
-            m_railHeader->setMaximumHeight(QWIDGETSIZE_MAX);
-            m_addLayerButton->setFixedSize(34,
-                qMax(30,compactThickness-(m_minimizeLayerButton?27:4)));
-        } else {
-            // Left/right rail: minimize left/right of the larger Add.
-            m_railHeader->setMinimumHeight(0);
-            m_railHeader->setFixedHeight(36);
-            m_railHeader->setMinimumWidth(0);
-            m_railHeader->setMaximumWidth(QWIDGETSIZE_MAX);
-            m_addLayerButton->setFixedSize(
-                qMax(30,compactThickness-(m_minimizeLayerButton?29:4)),34);
-        }
-        if(m_minimizeLayerButton)m_minimizeLayerButton->setFixedSize(23,22);
+        if(!m_railHeader || !m_addLayerButton)return;
+        const int extent=qMax(horizontal?58:64,thickness)-4;
+        m_railHeader->setMinimumSize(0,0);
+        m_railHeader->setMaximumSize(QWIDGETSIZE_MAX,QWIDGETSIZE_MAX);
+        if(horizontal)m_railHeader->setFixedWidth(36);
+        else m_railHeader->setFixedHeight(36);
+        m_addLayerButton->setFixedSize(horizontal?QSize(34,extent):QSize(extent,34));
     }
 
     void setRailGeometry(const QRect &geometry,bool horizontal,bool controlsAtEnd)
@@ -554,14 +578,14 @@ public:
         const bool rebuild=orientationChanged || controlsAtEnd!=m_controlsAtEnd ||
             thickness!=(horizontal?height():width());
         m_controlsAtEnd=controlsAtEnd;
-        if(rebuild)updateRailHeader(thickness,horizontal,controlsAtEnd);
+        if(rebuild)updateRailHeader(thickness,horizontal);
         if(orientationChanged) {
             m_horizontalRail=horizontal;
             if(horizontal && !m_horizontalScroll)createHorizontalRail();
             m_tree->setVisible(!horizontal);
             if(m_horizontalScroll)m_horizontalScroll->setVisible(horizontal);
             m_railLayout->setDirection(horizontal?QBoxLayout::LeftToRight:QBoxLayout::TopToBottom);
-            if(m_layerName)m_layerName->setRotated(horizontal);
+            if(m_layerName)m_layerName->setOrientation(horizontal);
             m_dragGhost->setParent(railViewport());
             m_dropMarker->setParent(railViewport());
             hideLayerDropPreview();
@@ -575,6 +599,28 @@ public:
         setGeometry(geometry);
         updateLayerName();
         if(rebuild)QTimer::singleShot(0,this,[this]() {refreshNow();});
+    }
+
+    void refreshCollapsedStrip(MobileLayerStrip *strip,const QIcon &fallback)
+    {
+        if(!strip || !strip->isVisible())return;
+        auto *view=m_engine.manager();
+        const KisNodeSP node=view?view->activeNode():KisNodeSP();
+        strip->setLayerName(editingGlobalSelection(manager())?i18n("Editing selection"):
+            node?node->name():QString());
+        const qint64 now=m_thumbnailClock.elapsed();
+        if(node==m_collapsedPreviewNode.toStrongRef() && now<m_collapsedPreviewAt)return;
+        m_collapsedPreviewAt=now+2500;
+        m_collapsedPreviewNode=node;
+        QIcon icon=fallback;
+        if(node) {
+            if(node->inherits("KisGroupLayer"))icon=groupFolderIcon(!node->collapsed());
+            else if(!node->inherits("KisMask")) {
+                const QImage image=node->createThumbnail(56,56,Qt::KeepAspectRatio);
+                if(!image.isNull())icon=QIcon(QPixmap::fromImage(image));
+            }
+        }
+        strip->setIcon(icon);
     }
 
     void syncSelectionContext()
@@ -2757,16 +2803,8 @@ private:
     void updateLayerName()
     {
         if(!m_layerName)return;
-        const QString name=editingGlobalSelection(manager())?i18n("Editing selection"):
-            m_active?m_active->name():QString();
-        const QString display=m_layerName->fontMetrics().elidedText(
-            name,Qt::ElideRight,qMax(0,(m_horizontalRail?height():width())-14));
-        // The layer rail refreshes during painting. Avoid spurious Qt
-        // label updates and accessibility events while nothing changed.
-        if(m_layerName->text()!=display)m_layerName->setText(display);
-        if(m_layerName->toolTip()!=name)m_layerName->setToolTip(name);
-        if(m_layerName->accessibleName()!=name)
-            m_layerName->setAccessibleName(name);
+        m_layerName->setLayerName(editingGlobalSelection(manager())?i18n("Editing selection"):
+            m_active?m_active->name():QString());
     }
 
     void resizeEvent(QResizeEvent *event) override
@@ -3374,9 +3412,8 @@ private:
     QTreeWidget *m_tree=nullptr;
     QBoxLayout *m_railLayout=nullptr;
     QWidget *m_railHeader=nullptr;
-    QBoxLayout *m_railHeaderLayout=nullptr;
-    QPushButton *m_addLayerButton=nullptr,*m_minimizeLayerButton=nullptr;
-    MobileLayerNameLabel *m_layerName=nullptr;
+    QPushButton *m_addLayerButton=nullptr;
+    MobileLayerStrip *m_layerName=nullptr;
     bool m_controlsAtEnd=true;
     QScrollArea *m_horizontalScroll=nullptr;
     QWidget *m_horizontalBody=nullptr;
@@ -3391,6 +3428,8 @@ private:
     QVector<bool> m_thumbnailReady;
     QHash<int,qint64> m_thumbnailRetryAfter;
     QElapsedTimer m_thumbnailClock;
+    KisNodeWSP m_collapsedPreviewNode;
+    qint64 m_collapsedPreviewAt=0;
     qint64 m_lastActiveThumbnailRefresh=-2500;
     KisNodeList m_selected;
     KisNodeSP m_active;
