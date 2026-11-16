@@ -113,6 +113,15 @@ public:
         return false;
     }
 
+    // A view can be registered while temporarily outside the Qt
+    // layout during a reentrant transfer. Callers must not infer
+    // ownership from indexOf() when deciding whether to delete it.
+    bool hasViewRegistration(const QPointer<QObject> &identity) const
+    {
+        const Row *row=uniqueRow(identity);
+        return row && row->view && row->document;
+    }
+
     bool updateViewState(const QPointer<QObject> &identity,
                          const QString &title,bool modified)
     {
