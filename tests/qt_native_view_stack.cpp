@@ -786,6 +786,41 @@ int main(int argc,char **argv)
         delete document;
     }
 
+    // Engine tool-factory initialization is a synchronous callback
+    // boundary. If it closes the host, bootstrap must not register
+    // another action using the deleted runtime or native root.
+    {
+        auto *host=new QObject;
+        auto *runtime=new QObject(host);
+        auto *root=new QObject(host);
+        const QPointer<QObject> hostGuard(host);
+        const QPointer<QObject> runtimeGuard(runtime);
+        const QPointer<QObject> rootGuard(root);
+        int laterRegistrations=0;
+        const auto initializeFactory=[host]() {delete host;};
+        initializeFactory();
+        if(runtimeGuard && hostGuard && rootGuard)
+            ++laterRegistrations;
+        require(!hostGuard && !runtimeGuard && !rootGuard &&
+                laterRegistrations==0,
+                "startup continued after tool factory destroyed native host");
+    }
+    {
+        QObject host;
+        QObject runtime(&host);
+        QObject root(&host);
+        const QPointer<QObject> hostGuard(&host);
+        const QPointer<QObject> runtimeGuard(&runtime);
+        const QPointer<QObject> rootGuard(&root);
+        int registrations=0;
+        const auto initializeFactory=[]() {};
+        initializeFactory();
+        if(runtimeGuard && hostGuard && rootGuard)
+            ++registrations;
+        require(registrations==1,
+                "live native bootstrap skipped normal tool registration");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
