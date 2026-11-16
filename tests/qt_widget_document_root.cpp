@@ -117,8 +117,29 @@ int main(int argc,char **argv)
                 "generic mobile UI still owns the original painting canvas");
         delete mobile;
     }
+    // A document stack may be replaced while a deferred canvas repaint
+    // is pending. Its original root must not be dereferenced by the
+    // transfer's refresh callback after the Qt event loop resumes.
+    auto *mobile=new GenericMobileSurface;
+    require(transfer.enter(mobile),
+            "could not enter mobile mode for root-teardown regression");
+    const QPointer<QWidget> disappearingRoot=documentRoot;
+    delete documentRoot;
+    require(!disappearingRoot,
+            "document root was not destroyed in teardown regression");
+    QApplication::processEvents();
+    require(transfer.active() && mobile->ownsNativeCanvas(canvas),
+            "document-root teardown lost the still-live drawing canvas");
+    require(transfer.leave(),
+            "could not recover the canvas after its document root disappeared");
+    QApplication::processEvents();
+    require(backend.centralWidget()==canvas &&
+            canvas->property("nativeImageRevision").toInt()==84,
+            "document-root teardown damaged the native canvas");
+    delete mobile;
+
     qInfo() << "PASS: eight Qt QWidget document-root handoffs without"
             << "QMdiArea, preserved original canvas, tab restoration"
-            << "and unchanged drawing state";
+            << "unchanged drawing state and disappearing document root";
     return 0;
 }
