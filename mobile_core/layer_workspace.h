@@ -8,6 +8,8 @@
 #ifdef Q_OS_ANDROID
 
 #include <QFrame>
+#include <QHideEvent>
+#include <QShowEvent>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QListWidget>
@@ -595,6 +597,46 @@ public:
         if(!m_reorderPending && !m_clipBusy &&
            !m_clipPropertyPending && !m_mouseNode &&
            m_touches.isEmpty())reload();
+    }
+
+protected:
+    void hideEvent(QHideEvent *event) override
+    {
+        // The gallery may hide this panel while its Krita document is
+        // closed. Unlike a visible panel, it receives no refresh, so
+        // cached KisNodeSP references could keep an entire old layer
+        // tree (including paint devices) alive indefinitely.
+        // Do not release nodes still involved in an active transaction.
+        if(!m_reloading && !m_deleteImage && !m_reorderPending &&
+           !m_clipBusy && !m_clipPropertyPending && !m_mouseNode &&
+           m_touches.isEmpty()) {
+            const QScopedValueRollback<bool> refreshing(m_reloading,true);
+            clearHorizontalRows();
+            m_tree->clear();
+            m_nodes.clear();
+            m_items.clear();
+            m_rowFrames.clear();
+            m_rowButtons.clear();
+            m_rowDepths.clear();
+            m_thumbnailReady.clear();
+            m_thumbnailRetryAfter.clear();
+            m_clipBases.clear();
+            m_selected.clear();
+            m_active.clear();
+            m_suppressedClickNode.clear();
+            m_signature.clear();
+        }
+        QFrame::hideEvent(event);
+    }
+
+    void showEvent(QShowEvent *event) override
+    {
+        QFrame::showEvent(event);
+        // Reconstruct from the current native document after a hidden
+        // interval. Do not replay cached nodes from a closed canvas.
+        QTimer::singleShot(0,this,[this]() {
+            if(isVisible())refreshNow();
+        });
     }
 
 private:
