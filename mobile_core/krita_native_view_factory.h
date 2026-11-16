@@ -422,6 +422,11 @@ private:
                                 watched->setProperty(
                                     "_mobileFirstSwapRetryCount",
                                     qMin(attempts+1,3));
+                                if(!receiver || !watched || !selected ||
+                                   !manager || !root) {
+                                    if(receiver)receiver->deleteLater();
+                                    return;
+                                }
                                 QTimer::singleShot(retryDelayMs,firstSwap,
                                     [manager,root,selected,watched,receiver]() {
                                         if(!receiver)return;
