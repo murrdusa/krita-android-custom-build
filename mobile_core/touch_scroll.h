@@ -490,13 +490,18 @@ public:
         list->setModelColumn(modelColumn());
         list->setEditTriggers(QAbstractItemView::NoEditTriggers);
         list->setSelectionMode(QAbstractItemView::SingleSelection);
-        const QModelIndex initial=model()->index(currentIndex(),modelColumn(),rootModelIndex());
+        // A popup's model can be reset or replaced before the queued
+        // initial scroll runs (for example, a refreshed brush/resource list).
+        // A persistent index becomes invalid instead of retaining a stale
+        // model row across that transition.
+        const QPersistentModelIndex initial(
+            model()->index(currentIndex(),modelColumn(),rootModelIndex()));
         list->setCurrentIndex(initial);
         MobileTouchScroll::configureList(list);
         // QComboBox can contain long lists: show the active choice when
         // opened without sacrificing native finger kinetic scrolling.
         QTimer::singleShot(0,&choices,[list,initial]() {
-            if(initial.isValid())
+            if(initial.isValid() && list->model()==initial.model())
                 list->scrollTo(initial,QAbstractItemView::PositionAtCenter);
         });
         layout->addWidget(list,1);
