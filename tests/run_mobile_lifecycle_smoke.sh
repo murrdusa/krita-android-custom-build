@@ -15,13 +15,14 @@ if ! command -v c++ >/dev/null || ! command -v pkg-config >/dev/null ||
 fi
 
 # Cache only verified passes. Source/header changes force another run,
-# while docs-only watcher ticks do not recompile four desktop tests.
+# while docs-only watcher ticks do not recompile five desktop tests.
 inputs=(
     "$repo/tests/run_mobile_lifecycle_smoke.sh"
     "$repo/tests/qt_native_view_stack.cpp"
     "$repo/tests/qt_native_document_rollback.cpp"
     "$repo/tests/qt_canvas_resume_observer.cpp"
     "$repo/tests/qt_project_preview_cache.cpp"
+    "$repo/tests/qt_saved_version_archive.cpp"
     "$repo/mobile_core/native_view_stack.h"
     "$repo/mobile_core/lightweight_canvas_host.h"
     "$repo/mobile_core/native_document_rollback.h"
@@ -31,6 +32,8 @@ inputs=(
     "$repo/mobile_core/host_services.h"
     "$repo/mobile_core/native_canvas_chrome.h"
     "$repo/mobile_core/project_preview_cache.h"
+    "$repo/mobile_core/saved_version_archive.h"
+    "$repo/mobile_core/mobile_draft_recovery.h"
 )
 # These headers are included transitively by the tested native host.
 # Include the host Qt version too: a previously passing binary is not
@@ -47,7 +50,7 @@ fi
 
 out="$(mktemp -d)"
 trap 'rm -rf "$out"' EXIT
-for name in qt_native_view_stack qt_native_document_rollback qt_canvas_resume_observer qt_project_preview_cache; do
+for name in qt_native_view_stack qt_native_document_rollback qt_canvas_resume_observer qt_project_preview_cache qt_saved_version_archive; do
     echo "Native Qt lifecycle tests: compiling $name"
     c++ -std=c++17 -fPIC -O1 -g -DKRITA_MOBILE_QT_TEST -I"$repo" \
         "$repo/tests/$name.cpp" -o "$out/$name" \
@@ -57,4 +60,4 @@ for name in qt_native_view_stack qt_native_document_rollback qt_canvas_resume_ob
 done
 printf '%s\n' "$fingerprint" > "$stamp.tmp"
 mv "$stamp.tmp" "$stamp"
-echo "Native Qt lifecycle tests: PASS (4 executables; exact source fingerprint $fingerprint)"
+echo "Native Qt lifecycle tests: PASS (5 executables; exact source fingerprint $fingerprint)"
