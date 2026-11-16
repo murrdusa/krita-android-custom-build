@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — preserve canvas-create backend across Krita reentrancy
+
+- `MobileDocumentService::createCanvas()` now retains its `QSharedPointer<MobileDocumentHostPort>` in a local variable throughout `KisDocument::newImage()`, `KisPart::addDocument()` and native view attachment. Krita's synchronous document registration and view creation callbacks may destroy the originating mobile document service; accessing its `m_host` afterward previously risked a use-after-free. The newly created `KisDocument` is also guarded before image initialization and dynamic property callbacks, so a callback that destroys it does not leave a dangling pointer for cleanup or registration. Existing failed-attach rollback and Save/Discard/Cancel ownership remain unchanged.
+- Source commit `9e5e7bd99e2a3ede5dd8241f9a5323956e4a07c2`. This code requires the Android Krita engine and has no standalone Qt-only integration fixture; exact-revision WSL Android build/device results remain unverified. No APK uploaded.
+
 ## November 15 — guard native document-open picker against host teardown
 
 - `MobileDocumentService::openFiles()` now holds a local `QSharedPointer` to its document backend across `KoFileDialog::filename()` and checks a `QPointer<QWidget>` to the original window after that potentially nested Android picker. If the app window was destroyed during the picker, the selected file is not opened into a stale host; if `openFile()` subsequently destroys the window or service, the result is still returned without dereferencing their stale members. A failed Open only displays an error dialog while its owner remains live.
