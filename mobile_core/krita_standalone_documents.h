@@ -93,22 +93,41 @@ public:
         const QPointer<MobileNativeViewStack> originalRoot(
             m_runtime->documentRoot());
         if(!originalRoot)return false;
-        for(const auto &view:originalRoot->openViews()) {
-            auto *existing=qobject_cast<KisDocument*>(view.document.data());
-            if(!existing || !view.nativeView)continue;
+        const auto openViews=originalRoot->openViews();
+        for(const auto &view:openViews) {
+            if(!m_runtime || !originalRoot ||
+               m_runtime->documentRoot()!=originalRoot.data())
+                return false;
+            const QPointer<KisDocument> existing=
+                qobject_cast<KisDocument*>(view.document.data());
+            if(!existing || !view.nativeView)return false;
             const QString currentPath=existing->path();
-            const QString draft=existing->property("_mobileDraftPath").toString();
+            if(!m_runtime || !originalRoot || !existing || !view.nativeView ||
+               m_runtime->documentRoot()!=originalRoot.data())return false;
+            const QString draft=existing->property(
+                "_mobileDraftPath").toString();
+            if(!m_runtime || !originalRoot || !existing || !view.nativeView ||
+               m_runtime->documentRoot()!=originalRoot.data())return false;
             const bool samePath=currentPath==path || draft==path;
             const bool sameProject=!identity.isEmpty() &&
                 (identity==MobileSavedVersionArchive::canonicalIdentity(currentPath) ||
                  identity==MobileSavedVersionArchive::canonicalIdentity(draft));
             if(samePath || sameProject) {
+                // A modal callback may have closed/replaced a different
+                // canvas while these identities were canonicalized.
+                // Do not activate a stale tab or open the same file twice.
                 if(!m_runtime || !originalRoot ||
-                   m_runtime->documentRoot()!=originalRoot.data())
+                   m_runtime->documentRoot()!=originalRoot.data() ||
+                   !MobileViewIdentityGuard::sameRecoveryWorkspace(
+                       openViews,originalRoot->openViews()))
                     return false;
                 return originalRoot->activateView(view.nativeView);
             }
         }
+        if(!m_runtime || !originalRoot ||
+           m_runtime->documentRoot()!=originalRoot.data() ||
+           !MobileViewIdentityGuard::sameRecoveryWorkspace(
+               openViews,originalRoot->openViews()))return false;
 
         const bool privateDraft=MobileDraftRecovery::isDraft(path);
         const bool savedVersion=MobileSavedVersionArchive::isRecoveryCopy(path);
