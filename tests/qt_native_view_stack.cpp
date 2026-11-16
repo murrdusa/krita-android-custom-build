@@ -872,6 +872,55 @@ int main(int argc,char **argv)
                 "save guard rejected live native canvas");
     }
 
+    // Attaching a newly opened document must not hand its stale pointer
+    // to the native view factory if a document-image or registry query
+    // synchronously closes the document or its original canvas root.
+    {
+        auto *host=new QObject;
+        auto *root=new QObject(host);
+        auto *document=new QObject(host);
+        const QPointer<QObject> hostGuard(host);
+        const QPointer<QObject> rootGuard(root);
+        const QPointer<QObject> documentGuard(document);
+        int attachCalls=0;
+        const auto queryImage=[document]() {delete document;return true;};
+        const bool imageAvailable=queryImage();
+        if(imageAvailable && hostGuard && rootGuard && documentGuard)
+            ++attachCalls;
+        require(!documentGuard && attachCalls==0,
+                "native view attached after image query destroyed document");
+        delete host;
+    }
+    {
+        auto *host=new QObject;
+        auto *root=new QObject(host);
+        auto *document=new QObject(host);
+        const QPointer<QObject> hostGuard(host);
+        const QPointer<QObject> rootGuard(root);
+        const QPointer<QObject> documentGuard(document);
+        int attachCalls=0;
+        const auto queryRegistration=[root]() {delete root;return true;};
+        const bool registered=queryRegistration();
+        if(registered && hostGuard && rootGuard && documentGuard)
+            ++attachCalls;
+        require(!rootGuard && documentGuard && attachCalls==0,
+                "native view attached after registry query destroyed root");
+        delete host;
+    }
+    {
+        QObject host;
+        QObject root(&host);
+        QObject document(&host);
+        const QPointer<QObject> hostGuard(&host);
+        const QPointer<QObject> rootGuard(&root);
+        const QPointer<QObject> documentGuard(&document);
+        int attachCalls=0;
+        if(hostGuard && rootGuard && documentGuard)
+            ++attachCalls;
+        require(attachCalls==1,
+                "native view attachment rejected live document and root");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
