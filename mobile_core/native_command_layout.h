@@ -27,6 +27,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScopedValueRollback>
+#include <QScopeGuard>
 #include <QTimer>
 #include <QTabBar>
 #include <QSet>
@@ -900,7 +901,15 @@ private:
 
     QString chooseCommand(QWidget *parent,const QStringList &existing)
     {
-        QDialog dialog(parent);
+        // A nested command picker must not be a stack-owned QObject
+        // child of a modal toolbar editor that can be rejected on
+        // Android window teardown.
+        QDialog dialog;
+        if(parent) {
+            QObject::connect(parent,&QObject::destroyed,&dialog,&QDialog::reject);
+            if(auto *ownerDialog=qobject_cast<QDialog*>(parent))
+                QObject::connect(ownerDialog,&QDialog::rejected,&dialog,&QDialog::reject);
+        }
         dialog.setWindowTitle(QObject::tr("Add command"));
         MobileTouchScroll::styleMenuDialog(dialog,QSize(510,650));
         auto *layout=new QVBoxLayout(&dialog);
@@ -974,9 +983,19 @@ private:
 
     void editToolbar()
     {
-        if(m_editing)return;
-        QScopedValueRollback<bool> editing(m_editing,true);
-        QDialog dialog(m_toolbar->window());
+        if(m_editing || !m_toolbar)return;
+        const QPointer<MobileNativeCommandLayout> alive(this);
+        const QPointer<QWidget> owner(m_toolbar->window());
+        if(!owner)return;
+        m_editing=true;
+        const auto editing=qScopeGuard([alive]() {
+            if(alive)alive->m_editing=false;
+        });
+        // Do not parent a stack QDialog to the Android window. The
+        // window may die during exec(), before this stack frame exits.
+        QDialog dialog;
+        QObject::connect(owner.data(),&QObject::destroyed,
+                         &dialog,&QDialog::reject);
         dialog.setWindowTitle(QObject::tr("Customize toolbar commands"));
         MobileTouchScroll::styleMenuDialog(dialog,QSize(520,660));
         auto *layout=new QVBoxLayout(&dialog);
@@ -1154,7 +1173,7 @@ private:
         layout->addWidget(buttons);
         refillBars();
         sync(list->currentRow());
-        if(dialog.exec()!=QDialog::Accepted)return;
+        if(dialog.exec()!=QDialog::Accepted || !alive || !owner)return;
         // Android may accept a dialog without moving focus out of the
         // currently edited QLineEdit. Commit its current text explicitly.
         if(current>0 && current<bars.size() &&
