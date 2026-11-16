@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — avoid stack calibration dialog deletion on native window close
+
+- `MobileNativeCanvasPilot` opened `MobileFingerPressureCalibrationDialog dialog(m_backend); dialog.exec()` as a stack variable with the Android native window as its QObject parent. If that window was destroyed while the modal dialog's nested Qt loop was running, Qt could delete the child dialog before stack unwinding, leaving a double-delete/use-after-free risk. The calibration dialog is now a parentless stack object, sized relative to the original window and rejected on its owner's `destroyed()` signal. The calibration controls and saved pressure settings are unchanged.
+- Source commit `0ed3510a8bff75dafc677be01cf5f604ed2c37bd`. The existing `qt_native_canvas_chrome.cpp` modal-teardown regression covers the same parentless stack-dialog rejection ownership pattern, but it does not instantiate the Android-only calibration UI. Exact-revision Android compilation and device behavior are not yet confirmed; no APK uploaded.
+
 ## November 15 — dispose of unregistered documents after synchronous KisPart notifications
 
 - Native Open and New Canvas both call `KisPart::addDocument()`, which can invoke observers synchronously. When an observer removes the newly added document from `KisPart` without destroying its `KisDocument` QObject, later host attachment fails its `isRegistered` check; the existing `MobileFailedDocumentAttach::rollback()` deliberately processes *only* still-registered documents, so the now-unregistered, loaded image remained allocated with no canvas. Both paths now check registration immediately after `addDocument()` returns and delete a still-live unregistered document before returning failure. A document that was already destroyed by the observer is ignored via `QPointer`; a normally registered document proceeds through the unchanged attach and rollback logic. No changes to save/recovery files.
