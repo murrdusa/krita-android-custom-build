@@ -1377,6 +1377,37 @@ int main(int argc,char **argv)
         item.close();
         stressDrafts.append(draft);
     }
+    // Project recovery must retain only the matching newer checkpoints
+    // while streaming a directory of unrelated drafts. Preserve both
+    // newest-first ordering and the saved-project modification cutoff.
+    const QString targetedProject=temp.filePath(
+        QStringLiteral("streamed-checkpoints.kra"));
+    const QString unrelatedProject=temp.filePath(
+        QStringLiteral("unrelated-checkpoints.kra"));
+    const QString olderMatch=stressDrafts.at(1);
+    const QString newerMatch=stressDrafts.at(2);
+    const QString unrelatedMatch=stressDrafts.at(3);
+    require(MobileDraftRecovery::setProject(olderMatch,targetedProject) &&
+            MobileDraftRecovery::setProject(newerMatch,targetedProject) &&
+            MobileDraftRecovery::setProject(unrelatedMatch,unrelatedProject),
+            "could not associate streamed checkpoint fixtures");
+    const qint64 olderMs=QFileInfo(olderMatch).lastModified().toMSecsSinceEpoch();
+    const qint64 newerMs=QFileInfo(newerMatch).lastModified().toMSecsSinceEpoch();
+    const auto matching=MobileDraftRecovery::checkpointsFor(
+        targetedProject,qMin(olderMs,newerMs)-1);
+    const QString expectedNewest=olderMs>newerMs?olderMatch:newerMatch;
+    const QString expectedOlder=olderMs>newerMs?newerMatch:olderMatch;
+    require(matching.size()==2 &&
+            matching.at(0).absoluteFilePath()==expectedNewest &&
+            matching.at(1).absoluteFilePath()==expectedOlder,
+            "streamed checkpoint scan lost ordering or included unrelated drafts");
+    const auto newerOnly=MobileDraftRecovery::checkpointsFor(
+        targetedProject,qMin(olderMs,newerMs));
+    require(newerOnly.size()==1 &&
+            newerOnly.first().absoluteFilePath()==expectedNewest,
+            "streamed checkpoint cutoff returned older or unrelated drafts");
+    for(const QString &associated:{olderMatch,newerMatch,unrelatedMatch})
+        MobileDraftRecovery::setProject(associated,QString());
     const auto stressFull=MobileDraftRecovery::list();
     const auto stressBounded=MobileDraftRecovery::list(7);
     require(stressBounded.size()==7,
