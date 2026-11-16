@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — preserve re-registered canvas during deferred retirement
+
+- Audited `MobileNativeViewStack::retireDetachedView()` after the recent Close/adoption/deregistration fixes. Its deferred callback previously used QWidget parentage and `indexOf()` alone. During a reentrant canvas handoff, an original QWidget can be registered with a live document row while temporarily outside `QStackedWidget`'s layout. In that case `indexOf() == -1` was not proof of orphan ownership, and a previously queued cleanup could delete a still-registered painting canvas. The callback now checks `uniqueRow()` as well before deletion. Source `b7d1643`.
+- Added Qt lifecycle coverage that forgets a canvas, re-adopts it under a new document in the same native stack, removes its Qt layout slot temporarily, dispatches deferred cleanup, verifies the registered QWidget survives, then unregisters it and verifies retirement (`b7197fd`). Exact-revision PC compilation and Qt test execution pending; the most recent WSL watcher report still states that host Qt5Widgets development libraries are unavailable. No APK uploaded.
+
 ## November 16 — retire surviving canvas after explicit native deregistration
 
 - Audited `MobileNativeViewStack::forgetView()`, a separate path from accepted `closeImpl()` and failed `adoptView()`. `forgetToken()` removes the QStackedWidget layout registration but Qt keeps a surviving painting QWidget parented to the original native stack. When a caller explicitly forgets a live view without a Close transaction, the previous code could retain an invisible GL-capable child until the entire host closed. The method now records the original widget and stack identities before deregistration and schedules the existing `retireDetachedView()` after successful removal; that callback checks actual parent/index ownership before deleting the orphan. Source `454e2e2`.
