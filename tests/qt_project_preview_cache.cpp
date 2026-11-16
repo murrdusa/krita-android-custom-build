@@ -55,6 +55,28 @@ int main(int argc,char **argv)
        cache.load(source,1).pixelColor(0,0)!=QColor(Qt::red) ||
        !cache.load(source,3).isNull())return 2;
 
+    // Unix cache pruning can unlink a thumbnail while a worker is
+    // decoding it. An already-open file handle must remain readable;
+    // reopening by pathname after metadata inspection would fail.
+    {
+        const QString racePath=directory.filePath(
+            QStringLiteral("concurrent-prune.png"));
+        QImage raceImage(24,12,QImage::Format_RGB32);
+        raceImage.fill(Qt::darkGreen);
+        if(!raceImage.save(racePath,"PNG"))return 52;
+        QFile stable(racePath);
+        if(!stable.open(QIODevice::ReadOnly))return 53;
+        const bool unlinked=QFile::remove(racePath);
+        if(unlinked) {
+            QImageReader reader(&stable,"png");
+            const QImage decoded=reader.read();
+            if(decoded.size()!=QSize(24,12) ||
+               decoded.pixelColor(0,0)!=QColor(Qt::darkGreen))
+                return 54;
+        }
+        stable.close();
+        QFile::remove(racePath);
+    }
     // A legacy cache may contain full-sized image data. Loading it for
     // a 124 px gallery icon must not allocate the full decoded bitmap.
     QImage largePreview(2048,1536,QImage::Format_RGB32);
