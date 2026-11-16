@@ -276,18 +276,40 @@ private:
         for(const auto &view:originalRoot->openViews()) {
             if(!alive || !originalRoot ||
                alive->m_root!=originalRoot)return;
-            auto *document=qobject_cast<KisDocument*>(view.document.data());
+            const QPointer<KisDocument> document=
+                qobject_cast<KisDocument*>(view.document.data());
             if(!document || seen.contains(document))continue;
             seen.append(document);
-            if(!ownsDocument(document) || !document->isModified() ||
-               document->property("_mobileDraftPath").toString().isEmpty())
+            // Ownership queries and document state observers can run
+            // synchronous Qt callbacks, including closing this canvas.
+            // Recheck the document AND runtime between each operation.
+            if(!ownsDocument(document.data())) {
+                if(!alive || !originalRoot ||
+                   alive->m_root!=originalRoot)return;
                 continue;
-            if(document->isSaving()) {
+            }
+            if(!alive || !originalRoot || !document ||
+               alive->m_root!=originalRoot)return;
+            const bool modified=document->isModified();
+            if(!alive || !originalRoot || !document ||
+               alive->m_root!=originalRoot)return;
+            if(!modified)continue;
+            const QString draft=document->property(
+                "_mobileDraftPath").toString();
+            if(!alive || !originalRoot || !document ||
+               alive->m_root!=originalRoot)return;
+            if(draft.isEmpty())continue;
+            const bool saving=document->isSaving();
+            if(!alive || !originalRoot || !document ||
+               alive->m_root!=originalRoot)return;
+            if(saving) {
                 if(!m_pendingDrafts.contains(document))
                     m_pendingDrafts.append(document);
             } else {
                 m_pendingDrafts.removeAll(document);
-                QMetaObject::invokeMethod(document,"slotAutoSave",Qt::DirectConnection);
+                if(document)
+                    QMetaObject::invokeMethod(document.data(),"slotAutoSave",
+                                              Qt::DirectConnection);
                 // A native Save can close the final view/window. Stop
                 // iterating immediately if its runtime was torn down.
                 if(!alive || !originalRoot ||
@@ -326,11 +348,26 @@ private:
                 m_pendingDrafts.removeAll(QPointer<KisDocument>());
                 continue;
             }
-            if(document->isSaving())continue;
+            const bool saving=document->isSaving();
+            if(!alive || !originalRoot || !document ||
+               alive->m_root!=originalRoot)return;
+            if(saving)continue;
             if(!m_pendingDrafts.removeAll(document))continue;
-            if(ownsDocument(document) && document->isModified() &&
-               !document->property("_mobileDraftPath").toString().isEmpty())
-                QMetaObject::invokeMethod(document,"slotAutoSave",Qt::DirectConnection);
+            const bool owned=ownsDocument(document.data());
+            if(!alive || !originalRoot || !document ||
+               alive->m_root!=originalRoot)return;
+            if(!owned)continue;
+            const bool modified=document->isModified();
+            if(!alive || !originalRoot || !document ||
+               alive->m_root!=originalRoot)return;
+            if(!modified)continue;
+            const QString draft=document->property(
+                "_mobileDraftPath").toString();
+            if(!alive || !originalRoot || !document ||
+               alive->m_root!=originalRoot)return;
+            if(!draft.isEmpty())
+                QMetaObject::invokeMethod(document.data(),"slotAutoSave",
+                                          Qt::DirectConnection);
             if(!alive || !originalRoot ||
                alive->m_root!=originalRoot)return;
         }
