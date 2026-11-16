@@ -316,7 +316,9 @@ private:
             if(id==QStringLiteral("mobile:close") ||
                id==QStringLiteral("mobile:save") ||
                id==QStringLiteral("mobile:save_as")) {
-                const auto documents=m_engine.openDocuments();
+                const MobileEngineBridge engine=m_engine;
+                const auto documents=engine.openDocuments();
+                if(!alive)return;
                 for(const auto &document:documents) {
                     if(!document.active)continue;
                     // Ambiguous current view: refuse rather than risk
