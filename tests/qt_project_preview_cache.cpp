@@ -69,6 +69,19 @@ int main(int argc,char **argv)
        legacyThumbnail.size()!=QSize(124,93) ||
        legacyThumbnail.pixelColor(0,0)!=QColor(Qt::magenta))
         return 43;
+    // A legacy PNG larger than one megapixel is no longer decoded:
+    // Qt image plugins may ignore the requested scaled size and allocate
+    // the full bitmap on an Android thumbnail worker. The gallery will
+    // regenerate a bounded 124 px preview from its original project.
+    QImage oversizedLegacy(1100,1100,QImage::Format_RGB32);
+    oversizedLegacy.fill(Qt::yellow);
+    const QByteArray oversizedKey=QCryptographicHash::hash(
+        source.toUtf8()+'\n'+QByteArray::number(22),
+        QCryptographicHash::Sha256).toHex();
+    const QString oversizedPath=QDir(directory.path()).filePath(
+        QString::fromLatin1(oversizedKey)+QStringLiteral(".png"));
+    if(!oversizedLegacy.save(oversizedPath,"PNG") ||
+       !cache.load(source,22).isNull())return 49;
     // Small previews must retain their actual dimensions and colors.
     if(cache.load(source,2).size()!=QSize(8,8))return 13;
 
