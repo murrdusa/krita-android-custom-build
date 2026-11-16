@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — reduce blocking archive validation for unnamed recovery gallery entries
+
+- `MobileDocumentHome::showList()` rebuilt Home on the UI thread and ran `MobileDraftRecovery::hasReadableProject()` (Android ZIP/KoStore open and `maindoc.xml` index lookup) on up to 20,000 draft KRA files. Even though only listing entries, large untitled backlogs could cause prolonged main-thread I/O and Android not-responding behavior.
+- Changed initial enumeration to use the existing bounded `hasKraHeader()` file-type/size verification, and only perform the full `hasReadableProject()` archive validation for drafts associated with a named project (`3c1f2bf`). This preserves selecting the newest **valid** checkpoint for each named document and keeps normal project loading responsible for opening an unnamed draft. A damaged untitled draft with a valid ZIP signature may now be listed but fail when opened; its bytes remain available for manual recovery rather than being silently discarded.
+- Exact-revision WSL Android build and Qt host tests have not yet validated this change. The host Qt suite remains blocked by missing Qt5Widgets development libraries. No APK uploaded.
+
+
 ## November 16 — prevent brush rename from using destroyed workspace after modal editor
 
 - Audited `KritaMobileBrushWorkspace::showPresetActions()`: Duplicate already checked its workspace `QPointer` after the modal name prompt, but Rename did not. If the Android host closed while that nested `QInputDialog::getText()` event loop was running, Rename could access `parentWidget()` or member helpers on a freed workspace. Added the missing lifetime check before the rename operation and recheck after the Krita resource rename callback returns (`2312963`).
