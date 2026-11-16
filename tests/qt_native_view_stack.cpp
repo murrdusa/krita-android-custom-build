@@ -1799,6 +1799,30 @@ int main(int argc,char **argv)
         require(!retained,"visibility handoff retained unregistered canvas");
     }
 
+    // An externally removed layout slot must not make the document
+    // appear active while its view is temporarily outside the stack.
+    // The engine must never save or activate a merely registered row
+    // as though its canvas were still selected.
+    {
+        MobileNativeViewStack stack;
+        QObject document;
+        auto *canvas=new QWidget;
+        const QPointer<QWidget> retained(canvas);
+        require(stack.adoptView(canvas,&document,
+                    QStringLiteral("detached selection"),[](){return false;}),
+                "selection ownership fixture could not register canvas");
+        require(stack.currentDocument()==&document,
+                "selection ownership fixture lost active document");
+        stack.removeWidget(canvas);
+        require(!stack.currentDocument() && stack.openViews().isEmpty(),
+                "detached native canvas remained an active document");
+        require(stack.forgetView(QPointer<QObject>(canvas)),
+                "detached selection fixture could not unregister canvas");
+        QCoreApplication::sendPostedEvents(nullptr,0);
+        QApplication::processEvents();
+        require(!retained,"detached selection fixture leaked canvas");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
