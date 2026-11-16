@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — Screen Layouts picker lifecycle
+
+- The screen-layout picker now saves the selected layout and target profile before closing its editor. Since `closeEditor(false)` invokes workspace-completion callbacks that can synchronously destroy the `MobileNativeCommandLayout`, the picker checks its owning controller before replacing the profile or reloading the workspace; it no longer reads freed controller state after teardown.
+- Source commit `2e08eead66778c3ecadd8044e0af0f7d19ff82ef`. The existing toolbar/controller Qt regression covers synchronous owner destruction on editor completion, but the picker branch is not yet separately exercised; exact-revision Android compile remains pending. No APK uploaded.
+
 ## November 15 — toolbar layout controller callback lifetime
 
 - `MobileNativeCommandLayout::editCanvasLayout()` now checks its QObject lifetime after external editing/target callbacks. On layout-editor completion it guards the owning controller across `saveBars()`, toolbar `rebuild()`/`position()`, and the external `m_layoutEditing(false)` callback, avoiding use of freed state when a workspace rebuild or callback destroys the controller.
