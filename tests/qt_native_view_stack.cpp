@@ -361,6 +361,45 @@ int main(int argc,char **argv)
                 stack.openViews().isEmpty(),
                 "destroyed document remained eligible for final attachment");
     }
+    // A closed Krita document can die before its QWidget painting view.
+    // Keep the native stack alive across many such closures and verify
+    // each orphan is actually retired after its queued Qt cleanup.
+    // A retained view holds a GL surface and canvas resources on Android.
+    {
+        MobileNativeViewStack churn;
+        int destroyedViews=0;
+        constexpr int cycles=128;
+        for(int iteration=0;iteration<cycles;++iteration) {
+            auto *document=new QObject;
+            auto *canvas=new QWidget;
+            QPointer<QWidget> guardedCanvas(canvas);
+            QObject::connect(canvas,&QObject::destroyed,&churn,
+                             [&destroyedViews]() {++destroyedViews;});
+            require(churn.adoptView(canvas,document,
+                        QStringLiteral("churn-%1").arg(iteration),
+                        [](){return true;}),
+                    "could not register churn canvas");
+            require(churn.openViews().size()==1 &&
+                    churn.currentDocument()==document,
+                    "churn canvas not registered as selected");
+            delete document;
+            require(churn.openViews().isEmpty() &&
+                    !churn.currentDocument(),
+                    "document teardown retained a stale canvas registration");
+            // retireDetachedView schedules deletion only after Qt's
+            // removeWidget/currentChanged handlers have unwound.
+            QCoreApplication::sendPostedEvents(nullptr,0);
+            QApplication::processEvents();
+            QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+            QApplication::processEvents();
+            require(!guardedCanvas && destroyedViews==iteration+1,
+                    "closed document retained an orphaned canvas widget");
+        }
+        require(churn.findChildren<QWidget*>().isEmpty() &&
+                destroyedViews==cycles,
+                "canvas widgets accumulated across native document churn");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
