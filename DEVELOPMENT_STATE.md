@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — cancel deferred Saved versions gallery after Home teardown
+
+- Audited the `Saved versions…` QAction in `MobileKritaStandalonePilot::launch()`. It previously fetched the active `KisDocument` as a raw pointer, looked up the path (potential Android provider callback), then queued `home->showSavedVersions()` using a raw Home capture. If the provider or a close callback destroyed Home or the document, later dereferences could be invalid. The action now retains `QPointer` identities for document and Home, verifies them after the path lookup, and binds the timer to the guarded Home context so Qt cancels it on destruction. Source `b051ebc`.
+- Added Qt-only tests for synchronous document/Home destruction during a path query, cancellation of a queued gallery callback when Home is deleted, and normal callback delivery while Home survives (`c1a23ac`). Tests model Qt lifetime and timer behavior, not Android's Krita gallery. Exact-revision PC build/test results pending; no APK uploaded.
+
 ## November 16 — protect Home and Android intent callbacks after document teardown
 
 - Audited `MobileKritaStandalonePilot::launch()`. The Home command's deferred close handler called `home->showHome()` using a raw widget pointer after `documents->closeDocumentView()`. Native Save/Discard/Cancel can synchronously destroy the window and child Home during the close transaction, producing a use-after-free. The startup Android-intent callback similarly used raw Home immediately after `attachAndOpen()`, which can dispatch Qt/Android lifecycle callbacks. Both paths now capture `QPointer<MobileDocumentHome>`, validate the window and Home after each destructive call, and suppress stale boot completion. Source `ae6a5a7`.
