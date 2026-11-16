@@ -1220,6 +1220,41 @@ int main(int argc,char **argv)
                 "failed engine bootstrap leaked a surviving host");
     }
 
+    // Bootstrap's native Save adapter is parented to its runtime.
+    // An attachment callback can destroy that parent and the adapter
+    // before the failure branch runs: never double-delete the adapter.
+    {
+        auto *runtime=new QObject;
+        auto *saver=new QObject(runtime);
+        const QPointer<QObject> alive(runtime);
+        const QPointer<QObject> guardedSaver(saver);
+        int saverDestructions=0;
+        QObject::connect(saver,&QObject::destroyed,
+                         [&saverDestructions]() {++saverDestructions;});
+        const auto attachServices=[runtime]() {
+            delete runtime;
+            return false;
+        };
+        const bool attached=attachServices();
+        if(!attached && guardedSaver)delete guardedSaver.data();
+        require(!attached && !alive && !guardedSaver &&
+                saverDestructions==1,
+                "bootstrap failure double-deleted a parent-owned Save adapter");
+    }
+    {
+        QObject runtime;
+        auto *saver=new QObject(&runtime);
+        const QPointer<QObject> guardedSaver(saver);
+        int saverDestructions=0;
+        QObject::connect(saver,&QObject::destroyed,
+                         [&saverDestructions]() {++saverDestructions;});
+        const auto attachServices=[]() {return false;};
+        const bool attached=attachServices();
+        if(!attached && guardedSaver)delete guardedSaver.data();
+        require(!attached && !guardedSaver && saverDestructions==1,
+                "bootstrap failure retained an unattached Save adapter");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
