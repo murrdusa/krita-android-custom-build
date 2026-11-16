@@ -1459,8 +1459,39 @@ int main(int argc,char **argv)
     require(newerOnly.size()==1 &&
             newerOnly.first().absoluteFilePath()==expectedNewest,
             "streamed checkpoint cutoff returned older or unrelated drafts");
-    for(const QString &associated:{olderMatch,newerMatch,unrelatedMatch})
-        MobileDraftRecovery::setProject(associated,QString());
+    // A project can accumulate far more automatic drafts than Open
+    // needs to inspect. Keep only the newest 32 candidate metadata
+    // entries, without deleting any of the older recovery files.
+    QStringList projectDrafts{olderMatch,newerMatch};
+    for(int i=48;i<96;++i) {
+        const QString associated=stressDrafts.at(i);
+        require(MobileDraftRecovery::setProject(associated,targetedProject),
+                "cannot associate bulk project recovery fixture");
+        projectDrafts.append(associated);
+    }
+    QFileInfoList expectedCandidates;
+    for(const QString &path:projectDrafts)
+        expectedCandidates.append(QFileInfo(path));
+    std::sort(expectedCandidates.begin(),expectedCandidates.end(),
+              [](const QFileInfo &a,const QFileInfo &b) {
+        if(a.lastModified()!=b.lastModified())
+            return a.lastModified()>b.lastModified();
+        return a.fileName()>b.fileName();
+    });
+    const auto boundedCandidates=MobileDraftRecovery::checkpointsFor(
+        targetedProject,0);
+    require(boundedCandidates.size()==32,
+            "automatic Open recovery retained an unbounded project backlog");
+    for(int i=0;i<boundedCandidates.size();++i)
+        require(boundedCandidates.at(i).absoluteFilePath()==
+                    expectedCandidates.at(i).absoluteFilePath(),
+                "automatic Open recovery discarded one of the newest drafts");
+    require(QFileInfo(expectedCandidates.last().absoluteFilePath()).exists(),
+            "bounded Open recovery deleted an older manual recovery file");
+    for(const QString &associated:projectDrafts)
+        require(MobileDraftRecovery::setProject(associated,QString()),
+                "cannot clear bounded recovery association");
+    MobileDraftRecovery::setProject(unrelatedMatch,QString());
     const auto stressFull=MobileDraftRecovery::list();
     const auto stressBounded=MobileDraftRecovery::list(7);
     require(stressBounded.size()==7,
