@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — regression for native canvas destruction churn
+
+- Added a 128-cycle Qt-only regression to `tests/qt_native_view_stack.cpp`. Each cycle attaches a fresh canvas widget to a new document, destroys that document while the native stack remains alive, drains queued/deferred Qt events, and checks that its view registration, current document and widget have all been released. The test also counts actual `QObject::destroyed` notifications and checks the stack has no accumulated child canvases. This is aimed at catching retained canvas/OpenGL widget lifetimes as the Android app repeatedly opens and closes drawings.
+- Test commit `220a09774ed8702d8c1cdf98dce34efeb402d4cf`. It uses plain Qt widgets rather than actual Krita GL contexts; it does not measure device memory. Host-test execution and exact-revision WSL Android compilation are not yet confirmed. No APK uploaded.
+
 ## November 15 — release hidden layer rail's retained Krita node references
 
 - `KritaMobileLayersPanel::hideEvent()` now releases cached `KisNodeSP` entries (`m_nodes`, active and selected nodes), layer thumbnail widgets/icons and tree rows when the panel becomes hidden. Previously the panel's refresh path skipped hidden widgets, so closing or switching a canvas while its layer rail was hidden left the rail holding strong references to the previous document's paint nodes until the rail was reopened. Those references could delay destruction of layer pixel data and keep memory resident during subsequent canvases.
