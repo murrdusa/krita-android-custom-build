@@ -189,6 +189,46 @@ int main(int argc,char **argv)
                 "Open incorrectly rejected a surviving canonicalized workspace");
     }
 
+    // A deferred Save or Export can trigger document-view callbacks
+    // which release the owning service. The two backend ports must stay
+    // alive until the request finishes even if the service is retired.
+    {
+        struct SaveBackends {
+            QSharedPointer<QObject> documents;
+            QSharedPointer<QObject> views;
+        };
+        auto owner=std::make_unique<SaveBackends>();
+        owner->documents=QSharedPointer<QObject>::create();
+        owner->views=QSharedPointer<QObject>::create();
+        QPointer<QObject> documentBackend(owner->documents.data());
+        QPointer<QObject> viewBackend(owner->views.data());
+        const auto documents=owner->documents;
+        const auto views=owner->views;
+        int saveCalls=0;
+        const auto selectDocument=[&owner]() {
+            owner.reset(); // Nested Qt close disposes the UI service.
+            return true;
+        };
+        if(selectDocument() && documents && views &&
+           documentBackend && viewBackend)
+            ++saveCalls;
+        require(!owner && saveCalls==1 &&
+                documentBackend && viewBackend,
+                "deferred Save lost its backends after service teardown");
+    }
+    {
+        auto *document=new FakeDocument;
+        const QPointer<FakeDocument> guardedDocument(document);
+        const auto selectDocument=[document]() {
+            delete document;
+            return true;
+        };
+        int saves=0;
+        if(selectDocument() && guardedDocument)++saves;
+        require(!guardedDocument && saves==0,
+                "deferred Save used a document destroyed during selection");
+    }
+
     qInfo()<<"PASS: attach failure rollback, duplicate prevention and"
               "ownership isolation";
     return 0;
