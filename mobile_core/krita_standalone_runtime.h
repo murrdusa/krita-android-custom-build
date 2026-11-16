@@ -213,27 +213,36 @@ public:
         auto *view=MobileKritaNativeViewFactory::attach(
             liveDocument.data(),manager.data(),root.data(),saver);
         if(!alive || !liveDocument || !view)return nullptr;
-        {
-            connect(liveDocument.data(),&KisDocument::sigMobileDraftPublished,this,
-                [](const QString &draft,const QString &project) {
-                    MobileSavedVersionArchive::enqueueDraftCheckpoint(
-                        draft,project.isEmpty()?draft:project,
-                        QGuiApplication::applicationState()!=Qt::ApplicationActive);
-                });
-            connect(liveDocument.data(),&KisDocument::sigCompleteBackgroundSaving,this,[this]() {
-                scheduleDraftContinuation();
+        // QObject connection setup may notify engine observers during
+        // native view initialization. Check lifetime after every hook
+        // before using either the runtime or KisDocument again.
+        connect(liveDocument.data(),&KisDocument::sigMobileDraftPublished,this,
+            [](const QString &draft,const QString &project) {
+                MobileSavedVersionArchive::enqueueDraftCheckpoint(
+                    draft,project.isEmpty()?draft:project,
+                    QGuiApplication::applicationState()!=Qt::ApplicationActive);
             });
-            // A tab may be closed while its background save completes.
-            // Drop its queued identity immediately rather than retaining
-            // a dead entry until another document finishes saving.
-            connect(liveDocument.data(),&QObject::destroyed,this,[this,document]() {
-                for(int i=m_pendingDrafts.size()-1;i>=0;--i)
-                    if(!m_pendingDrafts.at(i) ||
-                       m_pendingDrafts.at(i).data()==document)
-                        m_pendingDrafts.removeAt(i);
+        if(!alive || !liveDocument || !root || !manager ||
+           alive->m_root!=root || alive->m_manager!=manager)return nullptr;
+        connect(liveDocument.data(),&KisDocument::sigCompleteBackgroundSaving,this,
+            [alive]() {
+                if(alive)alive->scheduleDraftContinuation();
             });
-        }
-        return liveDocument && alive ? view : nullptr;
+        if(!alive || !liveDocument || !root || !manager ||
+           alive->m_root!=root || alive->m_manager!=manager)return nullptr;
+        // A tab may be closed while its background save completes.
+        // Drop its queued identity immediately rather than retaining
+        // a dead entry until another document finishes saving.
+        connect(liveDocument.data(),&QObject::destroyed,this,
+            [alive,document]() {
+                if(!alive)return;
+                for(int i=alive->m_pendingDrafts.size()-1;i>=0;--i)
+                    if(!alive->m_pendingDrafts.at(i) ||
+                       alive->m_pendingDrafts.at(i).data()==document)
+                        alive->m_pendingDrafts.removeAt(i);
+            });
+        return liveDocument && alive && root && manager &&
+            alive->m_root==root && alive->m_manager==manager ? view : nullptr;
     }
 
 private:
