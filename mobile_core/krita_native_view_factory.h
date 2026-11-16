@@ -474,7 +474,11 @@ private:
                                         if(watched) {
                                             watched->setProperty(
                                                 "_mobileWaitingForFirstSwap",false);
-                                            if(watched->isValid())
+                                            // Dynamic-property change observers
+                                            // can synchronously destroy the GL
+                                            // widget. QPointer may become null
+                                            // during setProperty() above.
+                                            if(watched && watched->isValid())
                                                 watched->setProperty(
                                                     "_mobileFirstSwapRetryCount",0);
                                         }
