@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — avoid validating obsolete named recovery checkpoints
+
+- `MobileDocumentHome::showList()` obtains private drafts in newest-first order. For each named project it previously performed a full Android ZIP/KoStore readability check *before* checking whether a newer valid checkpoint for that project had already been chosen. Reordered the membership check before archive validation (`faf7254`), eliminating redundant archive opens across older checkpoints during repeated Home refreshes.
+- The selected key is still inserted **only after** a readable checkpoint passes verification, so an invalid recent KRA does not mask an older valid recovery copy. This reduces main-thread I/O and temporary archive work without deleting or migrating recovery data. Device impact depends on checkpoint backlog; no crash fix or exact-revision validation claimed. Host Qt lifecycle tests still require Qt5Widgets development dependencies. No APK uploaded.
+
+
 ## November 16 — reduce blocking archive validation for unnamed recovery gallery entries
 
 - `MobileDocumentHome::showList()` rebuilt Home on the UI thread and ran `MobileDraftRecovery::hasReadableProject()` (Android ZIP/KoStore open and `maindoc.xml` index lookup) on up to 20,000 draft KRA files. Even though only listing entries, large untitled backlogs could cause prolonged main-thread I/O and Android not-responding behavior.
