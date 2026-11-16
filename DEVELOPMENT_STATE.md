@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — retire accepted Close widgets already unregistered by native callback
+
+- Audited `MobileNativeViewStack::closeImpl()`. A successful native close callback can call `forgetView()` itself while leaving the QWidget child alive. In that path `forgetToken(token)` returns false on the outer close and the old `if(removed)` condition skipped `retireDetachedView()`, retaining a detached canvas and its GL resources until the entire host closed. After any accepted close, the stack now schedules the existing ownership-checked deferred retirement of the original guarded view, whether the row was removed by the callback or by the outer close. The helper preserves transferred/re-adopted widgets. Source `73fa35b`.
+- Added actual Qt native-stack regressions where the close callback unregisters its still-live canvas and where it transfers that canvas to a second stack during accepted Close (`fe52974`). The old host must retire the orphan in the first case but preserve the transferred widget in the second. The local watcher still reports host Qt5Widgets development libraries unavailable, so these tests have not been independently executed on WSL. Exact-revision Android build/test result pending; no APK uploaded.
+
 ## November 16 — verified host Qt dependency blocker
 
 - Issue #1 now explicitly shows `Native Qt lifecycle tests: NOT RUN (Qt5Widgets host development libraries unavailable)` for the watcher revision `4172e93`. This is **not** a passing Qt regression result, even though the Android APK watcher outcome says SUCCESS. The three desktop Qt lifecycle executables, including the 128-cycle successful close and 128-cycle failed adoption tests, remain unexecuted on WSL. The runner deliberately avoids an automatic privileged `apt install` and does not change Android build dependencies. Installing Linux host packages `g++`, `pkg-config`, and `qtbase5-dev` in the WSL distribution would enable the runner. No user/device test is required for subsequent commits once those dependencies are present.
