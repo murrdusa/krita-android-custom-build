@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — tool browser refresh teardown guards
+
+- Tool browser panel and scroll references are guarded during menu reconstruction. Showing the panel, replacing its tile tree, and writing favorite-tool settings can dispatch synchronous Qt layout/window callbacks; refresh now stops when its owning panel or scroll area has been destroyed, instead of accessing stale widget pointers. Existing favorites, tool selection, scrolling, and active-document validation are unchanged.
+- Source revision `ae36e9cf6b7358eb6c909267bdc5856a32f66098`. Android compile and Fold 6 runtime for this revision remain unverified until the local watcher reports its exact SHA. No APK uploaded.
+
 ## November 15 — New Canvas IME and panel teardown safety
 
 - Creating a canvas now guards the transient form across Android input-method dismissal before closing it. Showing the New Canvas panel also checks that both the panel and button box survived synchronous window/focus callbacks before assigning focus. Prevents stale QWidget dereferences without changing document creation, settings persistence, or canvas rendering.
