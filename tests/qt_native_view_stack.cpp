@@ -1622,6 +1622,62 @@ int main(int argc,char **argv)
                 "failed-adoption retirement deleted a transferred canvas");
     }
 
+    // An engine-side native Close can unregister a live QWidget before
+    // closeImpl() finishes. The accepted close must still retire that
+    // now-detached child instead of retaining it for the host's lifetime.
+    {
+        MobileNativeViewStack stack;
+        QObject document;
+        auto *canvas=new QWidget;
+        QPointer<QWidget> orphan(canvas);
+        int destroyed=0;
+        QObject::connect(canvas,&QObject::destroyed,&stack,
+                         [&destroyed]() {++destroyed;});
+        require(stack.adoptView(canvas,&document,QStringLiteral("reentrant close"),
+                   [&stack,orphan]() {
+                       return orphan &&
+                           stack.forgetView(QPointer<QObject>(orphan.data()));
+                   }),"reentrant Close fixture failed to adopt view");
+        require(stack.closeView(QPointer<QObject>(canvas)) &&
+                stack.openViews().isEmpty(),
+                "reentrant native Close failed to unregister its view");
+        QCoreApplication::sendPostedEvents(nullptr,0);
+        QApplication::processEvents();
+        require(!orphan && destroyed==1 &&
+                stack.findChildren<QWidget*>().isEmpty(),
+                "native Close leaked a view unregistered by its own callback");
+    }
+    // A closing callback can transfer the widget elsewhere; accepted
+    // close must not delete a view now owned by a different stack.
+    {
+        MobileNativeViewStack original;
+        MobileNativeViewStack receiving;
+        QObject firstDocument;
+        QObject secondDocument;
+        auto *canvas=new QWidget;
+        const QPointer<QWidget> transferred(canvas);
+        require(original.adoptView(canvas,&firstDocument,
+                    QStringLiteral("transfer close"),
+                    [&original,&receiving,&secondDocument,transferred]() {
+                        if(!transferred ||
+                           !original.forgetView(
+                               QPointer<QObject>(transferred.data())))
+                            return false;
+                        transferred->setParent(nullptr);
+                        return receiving.adoptView(
+                            transferred.data(),&secondDocument,
+                            QStringLiteral("receiving close"),
+                            [](){return false;});
+                    }),"transfer-on-close fixture failed to adopt view");
+        require(original.closeView(QPointer<QObject>(canvas)),
+                "accepted view transfer failed during native Close");
+        QCoreApplication::sendPostedEvents(nullptr,0);
+        QApplication::processEvents();
+        require(transferred && receiving.openViews().size()==1 &&
+                original.openViews().isEmpty(),
+                "old close handler destroyed the receiving owner's widget");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
