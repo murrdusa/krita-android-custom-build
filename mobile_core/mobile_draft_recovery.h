@@ -237,7 +237,8 @@ public:
     {
         if(!isDraftPath(draft))return false;
         const QString staging=draft+QStringLiteral(".pending.kra");
-        if(QFileInfo(staging).isSymLink())return false;
+        const QFileInfo before(staging);
+        if(!before.isFile() || before.isSymLink())return false;
         // The exporter can report failure after writing an otherwise
         // complete KRA (for example if its final flush failed). Never
         // replace the last published draft when exportSucceeded is false.
@@ -250,6 +251,11 @@ public:
             if(exportSucceeded)QFile::remove(staging);
             return false;
         }
+        // ZIP validation can take significant time for a large draft.
+        // If an exporter resumed or replaced this staging file while it
+        // was checked, do not overwrite the previous completed draft
+        // with bytes that have not been verified.
+        if(!unchangedStaging(before))return false;
         if(exportSucceeded &&
            std::rename(QFile::encodeName(staging).constData(),
                        QFile::encodeName(draft).constData())==0)return true;
