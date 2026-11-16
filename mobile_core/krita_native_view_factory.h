@@ -295,8 +295,20 @@ private:
                             // surface visible and initialized its GL context.
                             if(!surface->property("_mobileWaitingForFirstSwap").toBool()) {
                                 surface->setProperty("_mobileWaitingForFirstSwap",true);
-                                QObject::connect(gl,&QOpenGLWidget::frameSwapped,selected,
-                                    [manager,root,selected]() {
+                                // This is a startup-only retry. Leaving a frameSwapped
+                                // observer on the view makes every later painting frame
+                                // execute a callback even after initialization succeeds.
+                                // A child receiver owns the connection and disconnects
+                                // before requesting the deferred activation.
+                                auto *firstSwap=new QObject(selected.data());
+                                const QPointer<QObject> receiver(firstSwap);
+                                const QPointer<QOpenGLWidget> watched(gl);
+                                QObject::connect(gl,&QOpenGLWidget::frameSwapped,firstSwap,
+                                    [manager,root,selected,receiver,watched]() {
+                                        if(receiver && watched)
+                                            QObject::disconnect(watched.data(),nullptr,
+                                                                receiver.data(),nullptr);
+                                        if(receiver)receiver->deleteLater();
                                         if(selected && !selected->property(
                                                 "_mobileInitialProjectionReady").toBool())
                                             scheduleActivation(manager,root,selected);
