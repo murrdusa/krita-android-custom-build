@@ -291,9 +291,15 @@ public:
         const QString metadata=draft+QStringLiteral(".project");
         if(QFileInfo(metadata).isSymLink())return {};
         QFile file(metadata);
+        constexpr qint64 maxAssociationBytes=16384;
         if(!file.open(QIODevice::ReadOnly) || file.size()<0 ||
-           file.size()>16384)return {};
-        return QString::fromUtf8(file.readAll());
+           file.size()>maxAssociationBytes)return {};
+        // The sidecar can grow after the size check (for example during
+        // an interrupted or external metadata update). Never let an
+        // unbounded readAll() allocate memory based on a moving file.
+        const QByteArray association=file.read(maxAssociationBytes+1);
+        if(association.size()>maxAssociationBytes)return {};
+        return QString::fromUtf8(association);
     }
 
     static QFileInfoList checkpointsFor(const QString &project,qint64 savedModified)
