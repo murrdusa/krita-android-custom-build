@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — non-allocating native chrome discovery
+
+- `MobileNativeCanvasChrome` now finds existing direct-child menu and status bars without invoking `QMainWindow::menuBar()` or `statusBar()`, which create widgets when none exist. The adapter's periodic 750 ms discovery previously could instantiate and retain unused desktop UI on a minimal native host simply to hide it. Existing desktop controls still retain their original visibility restoration semantics.
+- `tests/qt_native_canvas_chrome.cpp` now exercises 20 enter/scan/exit cycles on a host with no menu/status bar and asserts neither widget gets allocated. Source commit `cad2cb8941c74efbc2b42209de98ced724a2cf57`, regression commit `a5cb37d398ff39709422baba5e0c38c156624238`. Android compile and Qt host regression for this revision are not yet verified. No APK uploaded.
+
 ## November 15 — guard toolbar event forwarding after gesture cancellation
 
 - `MobileToolbarGestureButton::event()` now checks whether the button survived cancellation triggered by Hide, UngrabMouse, WindowDeactivate or disabling. Cancellation callbacks may synchronously rebuild the Android workspace and delete the button; the old event handler then forwarded the event to `QToolButton::event()` on deleted memory. Drag preview also rechecks the button after `setDown(false)` before accessing its state.
