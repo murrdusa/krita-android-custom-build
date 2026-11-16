@@ -10,6 +10,8 @@
 #include <QLabel>
 #include <QMainWindow>
 #include <QMenuBar>
+#include <QMenu>
+#include <QTimer>
 #include <QPointer>
 #include <QStatusBar>
 #include <QTabBar>
@@ -333,6 +335,27 @@ int main(int argc,char **argv)
                 !minimal.findChild<QStatusBar*>(
                     QString(),Qt::FindDirectChildrenOnly),
                 "chrome discovery allocated an unused desktop menu/status bar");
+    }
+
+    // The stationary pilot's More menu runs a nested QMenu::exec().
+    // Its anchor can disappear when Krita rebuilds the dock during the
+    // popup; stack menus must remain unparented to avoid double deletion.
+    {
+        QPointer<QWidget> anchor=new QWidget;
+        anchor->resize(80,40);
+        anchor->show();
+        QMenu menu;
+        menu.addAction(QStringLiteral("Native command"));
+        const QPointer<QMenu> liveMenu(&menu);
+        QTimer::singleShot(0,&menu,[&]() {
+            delete anchor.data();
+            require(!anchor && liveMenu,
+                    "native More menu was deleted with its toolbar anchor");
+            menu.close();
+        });
+        menu.exec(QPoint(50,50));
+        require(liveMenu && !anchor,
+                "native More menu did not survive anchor teardown");
     }
 
     qInfo() << "PASS: 25 chrome-only switches, identical canvas identity,"
