@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — touch scroll filter synchronous teardown
+
+- The application-wide `MobileTouchScroll::MenuPointerFilter` now checks its QObject lifetime after scrollbar value changes and synchronous synthetic mouse-event delivery. Scrollbar listeners, button actions, or stylus gap dragging can destroy the filter during its own event handler; the old handler accessed members after these callbacks and could use freed memory.
+- `tests/qt_mobile_touch_scroll.cpp` now simulates a scrollbar valueChanged listener deleting the active menu input filter during a drag. Code commit `df3fcc21f3f7380a6d8f6f619aca90f5d38a06d2`; regression commit `75b86125ea58def7e5851283aeb0db0b31ae0d2f`. Exact Android compile and host Qt regression execution remain to be verified; no APK uploaded.
+
 ## November 15 — Screen Layouts picker lifecycle
 
 - The screen-layout picker now saves the selected layout and target profile before closing its editor. Since `closeEditor(false)` invokes workspace-completion callbacks that can synchronously destroy the `MobileNativeCommandLayout`, the picker checks its owning controller before replacing the profile or reloading the workspace; it no longer reads freed controller state after teardown.
