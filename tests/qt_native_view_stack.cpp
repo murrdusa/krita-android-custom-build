@@ -713,6 +713,40 @@ int main(int argc,char **argv)
                 "reentrant recovery metadata destroyed document before next write");
     }
 
+    // A background autosave request can be deferred while its document
+    // is still saving. A timer owned by the runtime must retry only
+    // while the owner and document survive, then release the pending
+    // request when that save has finished.
+    {
+        auto *owner=new QObject;
+        auto *document=new QObject(owner);
+        const QPointer<QObject> ownerGuard(owner);
+        const QPointer<QObject> documentGuard(document);
+        bool saving=true;
+        bool pending=true;
+        int checkpoints=0;
+        const auto retry=[ownerGuard,documentGuard,&saving,&pending,&checkpoints]() {
+            if(!ownerGuard || !documentGuard || !pending || saving)return;
+            pending=false;
+            ++checkpoints;
+        };
+        QTimer::singleShot(0,owner,retry);
+        QCoreApplication::processEvents();
+        require(pending && checkpoints==0,
+                "deferred checkpoint ran while document was still saving");
+        saving=false;
+        QTimer::singleShot(0,owner,retry);
+        QCoreApplication::processEvents();
+        require(!pending && checkpoints==1,
+                "pending checkpoint was not resumed after save completion");
+        pending=true;
+        QTimer::singleShot(0,owner,retry);
+        delete owner;
+        QCoreApplication::processEvents();
+        require(!ownerGuard && !documentGuard && checkpoints==1,
+                "deferred checkpoint survived runtime destruction");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
