@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — preserve Android file intents during window replacement
+
+- An Android document open that fails while its registered Qt window or document host is replaced now retains the path for the replacement host. The old implementation removed the path before `openFile()` and could silently lose a user-requested document during activity recreation. Retried delivery is deferred to the replacement window after the current draining transaction ends; genuine failures with an unchanged host still report once and are discarded. Successful openings are never retried.
+- Code commit `d04b634bdcd95e5e10b1609b7959f2b0bcb99c4a`. Android-specific lifecycle regression remains to be checked on device; exact-revision WSL compile pending. No APK uploaded.
+
 ## November 15 — disabled thumbnail cache when app-private storage is unavailable
 
 - Gallery preview loading now passes an empty cache directory if `QStandardPaths::AppDataLocation` is missing. The cache already treats an empty root as disabled; the previous caller accidentally built a CWD-relative `project-thumbs` directory and could write thumbnails outside app-private storage. Preview extraction remains available without persistent disk caching.
