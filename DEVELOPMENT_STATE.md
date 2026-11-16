@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — guard native save ownership before render dialog construction
+
+- Audited `MobileKritaStandaloneDocuments::writeDocument()`, including the save render-completion dialog. The initial conditional previously called `m_runtime->ownsDocument(document)` then dereferenced `m_runtime->documentRoot()` and its current document through raw/unrevalidated identities. If Krita registration observers tear down the canvas during the ownership query, that second dereference risks a stale-runtime or stale-root access.
+- The save path now captures `QPointer` identities for the imported document and runtime, validates them after the ownership query, then captures and checks the original native root before creating the save transaction/render dialog. It retrieves the document image through a guarded identity and verifies runtime/root/current-document ownership again after the image query. The existing heap-allocated, guarded delayed-save dialog remains intact.
+- Added a Qt-only native-view-stack regression simulating document and root destruction during a save ownership query; the guard must prevent access to the destroyed document image. Source commit `5ae2a3167a959b829493df1a4a954b5e8adbc14a`; test commit `3ac2883f9d48f1d710c9d06ebf026158633a4392`. Exact-revision compilation and Qt test execution are not yet confirmed. No APK uploaded.
+
 ## November 16 — verify original canvas root after import MIME callbacks
 
 - The prior document guard in `openProjectSource()` handled an imported `KisDocument` being destroyed during Android provider-name or Krita MIME callbacks, but those callbacks could also destroy/replace the original native canvas root while leaving the document alive. A still-live document alone is not authorization to load a potentially large KRA into a replaced workspace.
