@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — guard recovery metadata setters against synchronous document destruction
+
+- In `MobileKritaStandaloneDocuments::openFile()`, successful private draft and saved-project checkpoint imports updated `_mobileDraftPath`, path, MIME, recovery and modified flags before first constructing a `QPointer<KisDocument>` lifetime guard. Document path/property notifications can synchronously destroy a pending import or replace its native root, making the subsequent raw-pointer setter a use-after-free. The entire recovery metadata sequence now checks document/root/runtime identity after every setter, and refuses to register the imported document after teardown. An interrupted import still owned by this code is deleted if it has not been registered with `KisPart`, avoiding an orphaned loaded KRA image; no registered document is deleted by this abort path.
+- Added a Qt-only regression to `tests/qt_native_view_stack.cpp` simulating an imported QObject destroyed synchronously in a metadata change signal and verifying that a second setter is not attempted. This tests the Qt reentrancy pattern, not the Krita document implementation. Source commits `3abc86a6789a131a693f847a8eb03866062ac352`, `87dd34b7b22122e3f7914b7ae5026d0853b92ae2`; test commit `b593a5b8e2da6d60914cdca7ad8dabe7c4630b9d`. Exact-revision Android build and host test execution not yet confirmed. No APK uploaded.
+
 ## November 15 — complete late-attachment rollback after resume observer setup
 
 - Reviewed the new `MobileKritaNativeViewFactory::attach()` rollback added in `2d01005` against every post-`adoptView()` failure branch. The resume-observer installation branch still returned `nullptr` directly if a synchronous Android/window callback destroyed the candidate manager, canvas or document, bypassing the new registered-canvas cleanup. That branch now calls `abortRegistered()` as well; unrelated tabs remain registered.
