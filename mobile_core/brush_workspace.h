@@ -1325,8 +1325,12 @@ private:
                 bool accepted=false;
                 const auto name=QInputDialog::getText(parentWidget(),i18n("Rename brush"),i18n("Name"),
                     QLineEdit::Normal,oldName,&accepted).trimmed();
-                if(!accepted || name.isEmpty() || name==oldName)return;
+                // The modal name editor can close the Android drawing
+                // window. Never use parentWidget() or brush workspace
+                // state after returning from a destroyed host.
+                if(!workspace || !accepted || name.isEmpty() || name==oldName)return;
                 success=KisResourceUserOperations::renameResourceWithUserInput(parentWidget(),preset,name);
+                if(!workspace)return;
                 if(success)renamePersonalEntries(oldName,name);
                 break;
             }
