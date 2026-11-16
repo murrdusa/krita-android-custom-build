@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — clear layer rail nodes when the Krita manager disappears
+
+- Fixed `KritaMobileLayersPanel::reload()` to use its established no-image cleanup when the native `KisNodeManager` or `KisViewManager` is unavailable. Previously an early `if(!m || !view)return` bypassed cleanup of `m_nodes`, `m_selected`, `m_active`, thumbnail widgets and layer-tree rows. If a document closed while its rail remained visible, those strong `KisNodeSP` references could retain the closed document's paint nodes until another valid view initialized. Now the no-manager state releases them and records the `no-view` signature, allowing a later manager to repopulate the rail normally.
+- Source commit `07e4139630f7759186c1faa27c7ce2f060fa3c0c`. This Krita-integrated panel cannot be exercised by existing host-only tests; exact-revision WSL Android compilation and RAM reduction are not yet verified. No APK uploaded.
+
 ## November 15 — release fill-tolerance preview memory on canvas hide
 
 - `MobileFillTolerancePreview` now frees its sampled paint-device `QByteArray`, sampled selection bytes, and rendered `QImage` overlay whenever Android hides the canvas. These buffers are only temporary copies for interactive tolerance feedback, but previously remained resident for the lifetime of the widget even while another document was open. Hide invalidates the active worker generation and stops its delay timer; `requestMask()` now refuses hidden work, worker completion callbacks avoid rescheduling hidden previews, and Show requests a fresh sample once the previous worker completes (or immediately if idle). Original Krita paint devices, undo history, and document data are unchanged.
