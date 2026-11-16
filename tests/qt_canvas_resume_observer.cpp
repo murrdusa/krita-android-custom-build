@@ -12,6 +12,25 @@
 #include <QWidget>
 #include "mobile_core/canvas_resume_observer.h"
 
+// Model Android/Qt listeners that synchronously retire a GL surface
+// when its first-frame waiting flag is cleared.
+class RetireOnFirstSwapDisarm final : public QObject
+{
+protected:
+    bool eventFilter(QObject *watched,QEvent *event) override
+    {
+        if(event->type()==QEvent::DynamicPropertyChange) {
+            auto *change=static_cast<QDynamicPropertyChangeEvent*>(event);
+            if(change->propertyName()=="_mobileWaitingForFirstSwap" &&
+               !watched->property("_mobileWaitingForFirstSwap").toBool()) {
+                delete watched;
+                return true;
+            }
+        }
+        return QObject::eventFilter(watched,event);
+    }
+};
+
 static void require(bool passed,const char *reason)
 {
     if(!passed)qFatal("Canvas resume observer: %s",reason);
@@ -52,6 +71,24 @@ int main(int argc,char **argv)
     require(attempt==0 &&
             MobileFirstSwapRetryPolicy::timeoutMs(attempt)==2000,
             "restored GL surface retained stale first-frame retry backoff");
+    // First-swap completion clears a surface property. An observer
+    // may synchronously destroy that surface; subsequent GL access
+    // must check the QPointer again after setProperty() returns.
+    {
+        RetireOnFirstSwapDisarm retire;
+        auto *surface=new QObject;
+        surface->setProperty("_mobileWaitingForFirstSwap",true);
+        surface->installEventFilter(&retire);
+        const QPointer<QObject> watched(surface);
+        watched->setProperty("_mobileWaitingForFirstSwap",false);
+        int retriesReset=0;
+        if(watched) {
+            watched->setProperty("_mobileFirstSwapRetryCount",0);
+            ++retriesReset;
+        }
+        require(!watched && retriesReset==0,
+                "first-swap disarm accessed a surface destroyed by a callback");
+    }
     QWidget window;
     auto *layout=new QVBoxLayout(&window);
     auto *root=new QWidget;
