@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — retire detached documents from deferred autosave watchdog
+
+- Audited the pending-draft retry added in `136ad7c4` and refined by `710c8561`. `MobileKritaStandaloneRuntime::continueDrafts()` previously called `document->isSaving()` *before* checking whether it still belonged to the native runtime. If a live KisDocument had been detached (e.g., moved to another host) but continued saving, its queued identity could remain indefinitely and repeatedly schedule delayed retries despite no longer being owned by the mobile canvas.
+- Deferred checkpoint processing now validates `ownsDocument()` first, rechecks QObject/root identities after that potentially reentrant query, and removes any unowned document from `m_pendingDrafts`. Owned documents still wait until their current save finishes. Backoff/timer behavior and the actual autosave operation are unchanged.
+- Added a Qt-only view-stack regression modeling a document that remains alive after its view is forgotten; a pending retry snapshot drops the unowned identity even when it still reports saving. The test exercises stack ownership and a model of queue retirement, not the Android-only runtime method directly. Runtime commit `93f70aa5b3bdf0aa43bb147c75a95eded4d3ce07`; test commits `04a2041f910001a452cd03066611689b86b36f76` and `9f0daa43d6fb58e01143d237bb1130025dbae3ac`. Exact-revision compilation and regression execution pending; no APK uploaded.
+
 ## November 16 — back off pending background-draft retries during lengthy saves
 
 - Followed up on deferred autosave retry (`136ad7c4`). Android's watchdog checked `m_pendingDrafts` every two seconds until a document's current Krita save finished. This was safe from uncontrolled timer allocation because of `m_draftRetryQueued`, but a long or stuck save still woke the app and rechecked the same document every two seconds.
