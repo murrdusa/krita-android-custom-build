@@ -236,7 +236,11 @@ public:
         // A scan refresh cancels queued scan jobs. Never share that
         // cancellable queue with durable index updates or startup cleanup.
         m_indexWorkers.setMaxThreadCount(1);
-        m_thumbnails.setMaxThreadCount(2);
+        // Qt image plugins may ignore scaled decoding and temporarily
+        // allocate the full (up to 16 MP) preview bitmap. Two simultaneous
+        // decoders can exceed a phone's available heap during gallery
+        // navigation. Serialize decoding while keeping it off the UI thread.
+        m_thumbnails.setMaxThreadCount(1);
         setObjectName(QStringLiteral("mobileDocumentHome"));
         setAttribute(Qt::WA_StyledBackground);
         setStyleSheet(QStringLiteral(
