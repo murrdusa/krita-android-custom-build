@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QAction>
 #include <QMouseEvent>
+#include <QPointer>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QtTest/QTest>
@@ -156,4 +157,61 @@ int main(int argc,char **argv)
     mouse(&eyedropper,QEvent::MouseButtonRelease,QPoint(105,20));
     require(arms==1 && sampled==beforeDrag+1,
             "release after cancellation must not sample or trigger the button");
+
+    // Inline preview can synchronously rebuild the toolbar, deleting
+    // the button while update() is still handling this mouse movement.
+    QPointer<MobileToolbarGestureButton> previewButton;
+    int previewTeardowns=0;
+    previewButton=new MobileToolbarGestureButton(nullptr,
+        QStringLiteral("tool-settings"),false,
+        [&](const QString &,qreal,const QPoint &,Phase phase) {
+            if(phase==Phase::Preview) {
+                ++previewTeardowns;
+                delete previewButton.data();
+            }
+        },{});
+    previewButton->resize(48,48);
+    previewButton->show();
+    QApplication::processEvents();
+    mouse(previewButton.data(),QEvent::MouseButtonPress,QPoint(20,20));
+    mouse(previewButton.data(),QEvent::MouseMove,QPoint(90,20));
+    require(!previewButton && previewTeardowns==1,
+            "toolbar preview deletion must not access a destroyed gesture button");
+
+    // The release/commit path has the same callback lifetime contract.
+    QPointer<MobileToolbarGestureButton> commitButton;
+    int commitTeardowns=0;
+    commitButton=new MobileToolbarGestureButton(nullptr,
+        QStringLiteral("tool-settings"),false,
+        [&](const QString &,qreal,const QPoint &,Phase phase) {
+            if(phase==Phase::Commit) {
+                ++commitTeardowns;
+                delete commitButton.data();
+            }
+        },{});
+    commitButton->resize(48,48);
+    commitButton->show();
+    QApplication::processEvents();
+    mouse(commitButton.data(),QEvent::MouseButtonPress,QPoint(20,20));
+    mouse(commitButton.data(),QEvent::MouseMove,QPoint(90,20));
+    mouse(commitButton.data(),QEvent::MouseButtonRelease,QPoint(100,20));
+    require(!commitButton && commitTeardowns==1,
+            "toolbar commit deletion must not use a freed callback");
+
+    // Holding a button may close the tool panel before the timer's
+    // callback completes.
+    QPointer<MobileToolbarGestureButton> holdButton;
+    int holdTeardowns=0;
+    holdButton=new MobileToolbarGestureButton(nullptr,
+        QStringLiteral("eyedropper"),false,adjust,sample,[&]() {
+            ++holdTeardowns;
+            delete holdButton.data();
+        });
+    holdButton->resize(48,48);
+    holdButton->show();
+    QApplication::processEvents();
+    mouse(holdButton.data(),QEvent::MouseButtonPress,QPoint(20,20));
+    QTest::qWait(520);
+    require(!holdButton && holdTeardowns==1,
+            "toolbar hold deletion must not use a freed callback");
 }
