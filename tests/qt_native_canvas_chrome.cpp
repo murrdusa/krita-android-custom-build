@@ -11,6 +11,7 @@
 #include <QMainWindow>
 #include <QMenuBar>
 #include <QMenu>
+#include <QDialog>
 #include <QTimer>
 #include <QPointer>
 #include <QStatusBar>
@@ -356,6 +357,24 @@ int main(int argc,char **argv)
         menu.exec(QPoint(50,50));
         require(liveMenu && !anchor,
                 "native More menu did not survive anchor teardown");
+    }
+
+    // Layer sheets are stack QDialogs, but Android can destroy their
+    // owning panel during exec(). An unparented dialog must reject and
+    // unwind normally instead of being deleted by QObject parenting.
+    {
+        QPointer<QWidget> panel=new QWidget;
+        QDialog sheet;
+        QObject::connect(panel.data(),&QObject::destroyed,
+                         &sheet,&QDialog::reject);
+        const QPointer<QDialog> guardedSheet(&sheet);
+        QTimer::singleShot(0,&sheet,[&]() {
+            delete panel.data();
+            require(!panel && guardedSheet,
+                    "modal layer sheet was destroyed with its panel");
+        });
+        require(sheet.exec()==QDialog::Rejected && guardedSheet && !panel,
+                "modal layer sheet failed to reject on panel teardown");
     }
 
     qInfo() << "PASS: 25 chrome-only switches, identical canvas identity,"
