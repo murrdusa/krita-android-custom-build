@@ -172,18 +172,21 @@ public:
     }
 
 private:
-    // A canvas can be transferred *after* removeWidget() returns but
-    // before a posted DeferredDelete is processed. Delay the decision,
-    // not just deletion: the old stack must not destroy a widget now
-    // owned by another host or registered in a later transaction.
+    // Wait until removeWidget()/selection notification has unwound,
+    // then verify ownership at the point of destruction. Calling
+    // deleteLater() after this verification would leave a second gap:
+    // another host could adopt the still-live canvas before Qt processes
+    // DeferredDelete, and the old host would destroy its new owner's view.
+    // The zero-delay callback is outside the stack's layout transaction,
+    // so synchronous deletion is safe after all ownership checks pass.
     static void retireDetachedView(const QPointer<MobileNativeViewStack> &host,
                                    const QPointer<QWidget> &view)
     {
         if(!host || !view)return;
         QTimer::singleShot(0,host.data(),[host,view]() {
-            if(host && view && view->parentWidget()==host.data() &&
-               host->indexOf(view.data())<0)
-                view->deleteLater();
+            if(!host || !view || view->parentWidget()!=host.data() ||
+               host->indexOf(view.data())>=0)return;
+            delete view.data();
         });
     }
 
