@@ -62,6 +62,29 @@ int main(int argc,char **argv)
     require(!MobileSavedVersionArchive::snapshot(uri,store) &&
             MobileSavedVersionArchive::list(uri,store).isEmpty(),
             "unreadable provider must not produce a version");
+    // A routine rate-limited autosave should inspect only the latest
+    // archive, even if a crash left many older files in its folder.
+    // Retention cleanup intentionally keeps its complete inventory.
+    const QString boundedRoot=temp.filePath(QStringLiteral("latest-only"));
+    require(MobileSavedVersionArchive::snapshot(source,boundedRoot),
+            "could not publish latest-only autosave fixture");
+    const QString boundedFolder=MobileSavedVersionArchive::folderFor(
+        source,boundedRoot);
+    for(int i=0;i<48;++i) {
+        const QString legacy=QDir(boundedFolder).filePath(
+            QStringLiteral("20000101T000000000-%1.kra").arg(i,4,10,QLatin1Char('0')));
+        save(legacy,QByteArray::fromHex("504b0304")+"old");
+    }
+    const auto beforeRateLimit=MobileSavedVersionArchive::list(source,boundedRoot);
+    require(beforeRateLimit.size()==49 &&
+            MobileSavedVersionArchive::snapshotFrom(
+                source,source,boundedRoot,600000),
+            "latest-only rate-limit failed with a large historical backlog");
+    const auto afterRateLimit=MobileSavedVersionArchive::list(source,boundedRoot);
+    require(afterRateLimit.size()==beforeRateLimit.size() &&
+            afterRateLimit.first().path==beforeRateLimit.first().path,
+            "latest-only scan changed the published archive inventory");
+
     const QString encodedProject=temp.filePath(
         QStringLiteral("a drawing with spaces.kra"));
     const QByteArray encodedBytes=QByteArray::fromHex("504b0304")+"url-encoded";
