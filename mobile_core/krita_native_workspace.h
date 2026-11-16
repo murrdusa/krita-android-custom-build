@@ -780,7 +780,15 @@ public:
         QPointer<MobileLightweightCanvasHost> host=m_host;
         QTimer::singleShot(0,this,[this,host]() {
             if(!host)return;
-            QDialog dialog(host);
+            // Keep the stack-owned dialog out of the Android window's
+            // QObject child tree: host teardown during exec() must only
+            // reject this modal, never delete its stack storage.
+            QDialog dialog;
+            dialog.setWindowModality(Qt::ApplicationModal);
+            QObject::connect(host.data(),&QObject::destroyed,
+                             &dialog,&QDialog::reject);
+            QObject::connect(this,&QObject::destroyed,
+                             &dialog,&QDialog::reject);
             dialog.setWindowTitle(QObject::tr("Touch, Pressure & Buttons"));
             MobileTouchScroll::styleMenuDialog(dialog,QSize(500,660));
             auto *outer=new QVBoxLayout(&dialog);
@@ -819,9 +827,13 @@ public:
             auto *calibrate=new QPushButton(QObject::tr(
                 "Calibrate contact size and sensitivity"),body);
             form->addRow(calibrate);
-            QObject::connect(calibrate,&QPushButton::clicked,&dialog,[host]() {
+            QObject::connect(calibrate,&QPushButton::clicked,&dialog,[host,&dialog]() {
                 if(!host)return;
-                MobileFingerPressureCalibrationDialog calibration(host);
+                // The outer dialog is no longer owned by the host. The
+                // nested calibration must close if its parent is rejected.
+                MobileFingerPressureCalibrationDialog calibration(&dialog);
+                QObject::connect(&dialog,&QDialog::rejected,
+                                 &calibration,&QDialog::reject);
                 calibration.exec();
             });
 
@@ -1234,7 +1246,13 @@ public:
         if(!m_host)return;
         QTimer::singleShot(0,this,[this]() {
             if(!m_host)return;
-            QDialog dialog(m_host);
+            const QPointer<MobileLightweightCanvasHost> host=m_host;
+            QDialog dialog;
+            dialog.setWindowModality(Qt::ApplicationModal);
+            QObject::connect(host.data(),&QObject::destroyed,
+                             &dialog,&QDialog::reject);
+            QObject::connect(this,&QObject::destroyed,
+                             &dialog,&QDialog::reject);
             dialog.setWindowTitle(QObject::tr("Workspace Settings"));
             MobileTouchScroll::styleMenuDialog(dialog,QSize(500,600));
             auto *outer=new QVBoxLayout(&dialog);
@@ -1418,7 +1436,13 @@ public:
     void openKeyboardSettings()
     {
         if(!m_host)return;
-        QDialog dialog(m_host);
+        const QPointer<MobileLightweightCanvasHost> host=m_host;
+        QDialog dialog;
+        dialog.setWindowModality(Qt::ApplicationModal);
+        QObject::connect(host.data(),&QObject::destroyed,
+                         &dialog,&QDialog::reject);
+        QObject::connect(this,&QObject::destroyed,
+                         &dialog,&QDialog::reject);
         dialog.setWindowTitle(tr("Keyboard shortcuts"));
         MobileTouchScroll::styleMenuDialog(dialog,QSize(460,560));
         auto *layout=new QVBoxLayout(&dialog);
