@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — prevent deferred canvas activation after synchronous view teardown
+
+- Audited `MobileKritaNativeViewFactory::scheduleActivation()`, which compared `manager->canvasBase()` against `selected->canvasBase()` in a single expression. A Qt/Krita observer triggered by the first getter could destroy the selected view before the second getter. The deferred activation now captures its selected `KisCanvas2` in a `QPointer`, obtains the manager canvas separately, and revalidates the selected view and original root before any view switch. Source `cfcf937`.
+- Added a Qt-only lifecycle regression that deletes the selected QWidget during the modeled manager query and verifies no switch, plus an intact-canvas case (`b0f8955`, fixture ownership correction `a892e1d`). This models the Qt callback boundary rather than running Android Krita's view activation. Exact-revision local compilation and Qt test results pending; no APK uploaded.
+
 ## November 16 — avoid stale canvas switch during native Close
 
 - Audited `MobileKritaNativeViewFactory::attach()`'s close callback. It compared `manager->canvasBase()` to `guarded->canvasBase()`, then immediately called `setCurrentView()` when they differed. A synchronous Qt/Krita callback during either getter could destroy the closing view, its canvas or manager before switching to it. The callback now holds the closing canvas in a `QPointer` and checks view, manager and canvas after querying the current manager canvas and before switching. Source `53ec042`.
