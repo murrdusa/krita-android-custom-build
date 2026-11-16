@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — make WSL watcher report native Qt lifecycle regressions
+
+- The local Android build previously reported `SUCCESS` after reusing a cached APK, without compiling/running Qt-only native view regressions. Added `tests/run_mobile_lifecycle_smoke.sh` (`7a2b56d`), which builds and runs `qt_native_view_stack`, `qt_native_document_rollback`, and `qt_canvas_resume_observer` using host Qt5Widgets. A passing fingerprint cache skips recompilation of unchanged tests; source/header changes force a rerun. Missing Qt host development libraries produce an explicit `NOT RUN` rather than a false pass, and compile/test failure fails the WSL watcher build.
+- `local-build.sh` now invokes the runner in build mode *before* the cached APK early-exit (`fc2dc45`), so test-only commits are no longer validated solely by reusing an APK. It does not run GitHub Actions, upload APKs, or alter the Android app's feature set. Check Issue #1 for the exact revision's `Native Qt lifecycle tests:` lines; if `NOT RUN`, host Qt5 dev dependencies are missing and the smoke tests remain unverified. Current-revision watcher result pending.
+
 ## November 16 — stress-test successful Open/Close canvas retirement
 
 - Audited the native stack's successful `closeView()` and deferred `retireDetachedView()` flow. Added 128 repeated real Qt stack Open/Close cycles to `qt_native_view_stack.cpp`, modeling a native Close handler that accepts the close while leaving the QWidget's retirement to the stack. Each cycle asserts one registered view on Open, zero after Close, exactly one QWidget destruction after the queued callback, and no accumulated QWidget children under the long-lived root. Test `85c2f94`. This complements the 128 failed-adoption cycles without changing production code whose existing retirement policy already handles the normal close.
