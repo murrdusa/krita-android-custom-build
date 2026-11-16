@@ -119,9 +119,15 @@ public:
         if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
             return abortAttach();
 
-        const QString title=document->path().isEmpty()?
+        // A path getter can emit synchronous Krita/Qt notifications.
+        // Read it once, then verify all original attachment identities
+        // before passing the view into the native stack.
+        const QString initialPath=guardedDocument->path();
+        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
+            return abortAttach();
+        const QString title=initialPath.isEmpty()?
             QStringLiteral("Untitled"):
-            MobileSavedVersionArchive::projectName(document->path());
+            MobileSavedVersionArchive::projectName(initialPath);
         if(!stack->adoptView(view,document,title,
                             [guarded,manager=QPointer<KisViewManager>(manager)]() {
             if(!guarded || !manager)return false;
@@ -186,15 +192,18 @@ public:
         auto refresh=[trackedStack,trackedDocument,guarded]() {
             if(!trackedStack || !trackedDocument || !guarded)return;
             const QString path=trackedDocument->path();
+            if(!trackedStack || !trackedDocument || !guarded)return;
             const QString title=path.isEmpty()?
                 QStringLiteral("Untitled"):
                 MobileSavedVersionArchive::projectName(path);
+            if(!trackedStack || !trackedDocument || !guarded)return;
+            const bool modified=trackedDocument->isModified();
+            if(!trackedStack || !trackedDocument || !guarded)return;
             // QPointer is not covariant in the Android Qt version:
             // explicitly convert the live KisView pointer to the
             // QObject identity expected by MobileNativeViewStack.
             const QPointer<QObject> identity(guarded.data());
-            trackedStack->updateViewState(identity,title,
-                                          trackedDocument->isModified());
+            trackedStack->updateViewState(identity,title,modified);
         };
         QObject::connect(document,&KisDocument::sigPathChanged,stack,
                          [refresh](const QString &) {refresh();});
