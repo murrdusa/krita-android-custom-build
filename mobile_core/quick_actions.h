@@ -353,7 +353,15 @@ private:
     // "All commands" includes every non-menu QAction plus native tools.
     QString choose(QWidget *parent,const QStringList &already)
     {
-        QDialog dlg(parent);
+        // A parent can be deleted while exec() processes Android/Qt
+        // close events. The dialog lives on this stack frame, so Qt
+        // must never own/delete it through the parent QObject tree.
+        QDialog dlg;
+        dlg.setWindowModality(Qt::ApplicationModal);
+        const QPointer<QWidget> owner(parent);
+        if(!owner)return {};
+        QObject::connect(owner.data(),&QObject::destroyed,&dlg,
+                         &QDialog::reject);
         dlg.setWindowTitle(i18n("Add Quick Action"));
         dlg.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
         dlg.setStyleSheet(
@@ -440,7 +448,8 @@ private:
         QObject::connect(list,&QListWidget::itemDoubleClicked,&dlg,
                          [&](QListWidgetItem*){acceptChoice();});
         refill();
-        const QSize bounds=parent->window()->size();
+        if(!owner)return {};
+        const QSize bounds=owner->window()->size();
         dlg.resize(qMin(520,qMax(1,bounds.width()-24)),
                    qMin(700,qMax(1,bounds.height()-24)));
         dlg.setMaximumSize(qMax(1,bounds.width()-12),qMax(1,bounds.height()-12));
@@ -460,7 +469,12 @@ private:
 
     void editActions()
     {
-        QDialog dlg(this);
+        // Keep a modal stack dialog outside the owning toolbar's
+        // QObject child tree: the toolbar may close during exec().
+        QDialog dlg;
+        dlg.setWindowModality(Qt::ApplicationModal);
+        const QPointer<MobileQuickActions> alive(this);
+        QObject::connect(this,&QObject::destroyed,&dlg,&QDialog::reject);
         dlg.setWindowTitle(i18n("Edit Quick Actions"));
         dlg.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
         dlg.setStyleSheet(
@@ -519,7 +533,7 @@ private:
             const QStringList ids=currentIds();
             if(ids.size()>=24)return;
             const QString id=choose(&dlg,ids);
-            if(id.isEmpty())return;
+            if(!alive || id.isEmpty())return;
             auto *item=new QListWidgetItem(QStringLiteral("☰   ")+label(id),list);
             item->setData(Qt::UserRole,id);
             item->setToolTip(id);
@@ -558,7 +572,7 @@ private:
         dlg.resize(qMin(535,qMax(1,bounds.width()-24)),
                    qMin(760,qMax(1,bounds.height()-24)));
         dlg.setMaximumSize(qMax(1,bounds.width()-12),qMax(1,bounds.height()-12));
-        if(dlg.exec()!=QDialog::Accepted)return;
+        if(dlg.exec()!=QDialog::Accepted || !alive)return;
         const QStringList updated=currentIds();
         if(updated==m_ids)return; // No rebuild for an unchanged toolbar.
         m_ids=updated;
