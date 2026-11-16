@@ -151,6 +151,17 @@ public:
                 [](KisDocument *candidate) {
                     KisPart::instance()->removeDocument(candidate);
                 });
+            // A document can survive unregistering during a failed
+            // attachment. It has no canvas owner, but still retains
+            // its image and layer allocations unless disposed here.
+            if(KisPart::instance())
+                MobileFailedDocumentAttach::disposeUnregistered(
+                    guardedDocument,[](KisDocument *candidate) {
+                        if(!KisPart::instance())return true;
+                        for(const auto &entry:KisPart::instance()->documents())
+                            if(entry==candidate)return true;
+                        return false;
+                    });
             return false;
         }
         return true;
