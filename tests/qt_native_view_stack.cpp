@@ -747,6 +747,44 @@ int main(int argc,char **argv)
                 "deferred checkpoint survived runtime destruction");
     }
 
+    // A document may remain a live QObject after its native view is
+    // detached. Pending background retries must retire this identity
+    // before checking its stale "saving" flag, or the retry watchdog
+    // continues waking indefinitely for a foreign document.
+    {
+        MobileNativeViewStack stack;
+        auto *document=new QObject;
+        auto *canvas=new QWidget;
+        const QPointer<QObject> identity(document);
+        require(stack.adoptView(canvas,document,QStringLiteral("handoff"),
+                                [](){return true;}),
+                "failed to create deferred-save handoff fixture");
+        const auto registered=stack.openViews();
+        require(registered.size()==1 && registered.first().document==identity,
+                "handoff fixture lost its initial document identity");
+        stack.forgetView(QPointer<QObject>(canvas));
+        require(identity && stack.openViews().isEmpty(),
+                "detached native view unexpectedly destroyed document");
+        QList<QPointer<QObject>> pending{identity};
+        const auto stillOwned=[&stack](const QPointer<QObject> &candidate) {
+            for(const auto &row:stack.openViews())
+                if(row.document==candidate)return true;
+            return false;
+        };
+        bool staleSaving=true;
+        int retries=0;
+        for(const auto &candidate:pending) {
+            if(!candidate || !stillOwned(candidate)) {
+                pending.removeAll(candidate);
+                continue;
+            }
+            if(staleSaving)++retries;
+        }
+        require(pending.isEmpty() && retries==0 && staleSaving,
+                "detached document stayed in pending save retry queue");
+        delete document;
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
