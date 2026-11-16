@@ -416,12 +416,13 @@ private:
                                 // unavailable. Back off per GL surface (2, 4,
                                 // 8, then 16 seconds) without abandoning
                                 // recovery when its context becomes usable.
-                                const int attempts=qBound(0,watched->property(
-                                    "_mobileFirstSwapRetryCount").toInt(),3);
-                                const int retryDelayMs=2000 << attempts;
+                                const int attempts=watched->property(
+                                    "_mobileFirstSwapRetryCount").toInt();
+                                const int retryDelayMs=
+                                    MobileFirstSwapRetryPolicy::timeoutMs(attempts);
                                 watched->setProperty(
                                     "_mobileFirstSwapRetryCount",
-                                    qMin(attempts+1,3));
+                                    MobileFirstSwapRetryPolicy::afterTimeoutScheduled(attempts));
                                 if(!receiver || !watched || !selected ||
                                    !manager || !root) {
                                     if(watched)
