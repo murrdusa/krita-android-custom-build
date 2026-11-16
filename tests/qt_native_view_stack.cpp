@@ -1428,6 +1428,45 @@ int main(int argc,char **argv)
                 "bootstrap rollback double-deleted a runtime retired by its host");
     }
 
+    // The document switcher's Close command may release its owner
+    // from inside the native Save/Discard callback. A locally retained
+    // view port must survive the entire transaction and preserve the
+    // captured target identity.
+    {
+        struct ViewOwner {
+            QSharedPointer<MobileViewHostPort> views;
+        };
+        auto *root=new MobileNativeViewStack;
+        auto *document=new QObject;
+        auto *canvas=new QWidget;
+        const QPointer<QWidget> guardedCanvas(canvas);
+        auto owner=std::make_unique<ViewOwner>();
+        owner->views=QSharedPointer<MobileNativeViewPortAdapter>::create(root);
+        const QWeakPointer<MobileViewHostPort> weakPort(owner->views);
+        require(root->adoptView(canvas,document,QStringLiteral("close"),
+                  [&owner,canvas]() {
+                      owner.reset(); // UI service is destroyed during Close.
+                      delete canvas;
+                      return true;
+                  }),
+                "could not adopt owner-lifetime close fixture");
+        {
+            const auto port=owner->views;
+            const auto snapshot=port->openViews();
+            const auto current=port->currentDocument();
+            const auto target=MobileViewIdentityGuard::safeCloseTarget(
+                snapshot,current);
+            require(target && port->closeView(target) &&
+                    !owner && !guardedCanvas && weakPort &&
+                    port->openViews().isEmpty(),
+                    "native close used an expired view backend after owner teardown");
+        }
+        require(weakPort.isNull(),
+                "retained view port leaked after native close finished");
+        delete document;
+        delete root;
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
