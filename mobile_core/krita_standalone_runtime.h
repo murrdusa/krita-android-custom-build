@@ -513,10 +513,19 @@ private:
         // and leaves that document pending. Without another wakeup its
         // private checkpoint could be skipped indefinitely. Retry with
         // a bounded backoff; never spin in the nested save event loop.
-        if(!m_pendingDrafts.isEmpty() && !m_draftRetryQueued) {
+        if(m_pendingDrafts.isEmpty()) {
+            m_draftRetryAttempts=0;
+            return;
+        }
+        if(!m_draftRetryQueued) {
             m_draftRetryQueued=true;
+            const int timeoutMs=MobilePendingDraftRetryPolicy::timeoutMs(
+                m_draftRetryAttempts);
+            m_draftRetryAttempts=
+                MobilePendingDraftRetryPolicy::afterTimeoutScheduled(
+                    m_draftRetryAttempts);
             const QPointer<MobileKritaStandaloneRuntime> retry(this);
-            QTimer::singleShot(2000,this,[retry]() {
+            QTimer::singleShot(timeoutMs,this,[retry]() {
                 if(!retry)return;
                 retry->m_draftRetryQueued=false;
                 if(!retry->m_checkpointing)
@@ -543,6 +552,7 @@ private:
     bool m_checkpointAgain=false;
     bool m_draftContinuationQueued=false;
     bool m_draftRetryQueued=false;
+    int m_draftRetryAttempts=0;
     bool m_memoryDiagnosticsEnabled=false;
     bool m_closedMemorySnapshotQueued=false;
     QSharedPointer<MobileCommandRegistryPort> m_commands;
