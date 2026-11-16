@@ -362,6 +362,12 @@ private:
         if(!owner)return {};
         QObject::connect(owner.data(),&QObject::destroyed,&dlg,
                          &QDialog::reject);
+        // The outer Quick Actions editor is stack-owned: a disappearing
+        // toolbar rejects it rather than destroying it. The nested
+        // chooser must unwind as well instead of remaining modal.
+        if(auto *parentDialog=qobject_cast<QDialog*>(owner.data()))
+            QObject::connect(parentDialog,&QDialog::rejected,&dlg,
+                             &QDialog::reject);
         dlg.setWindowTitle(i18n("Add Quick Action"));
         dlg.setWindowFlags(Qt::Dialog|Qt::FramelessWindowHint);
         dlg.setStyleSheet(
