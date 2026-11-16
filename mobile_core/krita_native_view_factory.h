@@ -13,6 +13,7 @@
 #include <QPointer>
 #include <QTimer>
 #include <QMetaObject>
+#include <QWindow>
 #include <QStackedWidget>
 #include <KisDocument.h>
 #include <KisPart.h>
@@ -335,6 +336,10 @@ private:
                             // surface visible and initialized its GL context.
                             if(!surface->property("_mobileWaitingForFirstSwap").toBool()) {
                                 surface->setProperty("_mobileWaitingForFirstSwap",true);
+                                // Qt dynamic-property observers may tear down or
+                                // replace the GL canvas synchronously.
+                                if(!isCurrent() || !canvas || !surface ||
+                                   canvas->canvasWidget()!=surface)return;
                                 // This is a startup-only retry. Leaving a frameSwapped
                                 // observer on the view makes every later painting frame
                                 // execute a callback even after initialization succeeds.
@@ -342,11 +347,16 @@ private:
                                 // before requesting the deferred activation.
                                 auto *firstSwap=new QObject(selected.data());
                                 const QPointer<QObject> receiver(firstSwap);
-                                const QPointer<QOpenGLWidget> watched(gl);
+                                const QPointer<QOpenGLWidget> watched(
+                                    qobject_cast<QOpenGLWidget*>(surface.data()));
+                                if(!watched) {
+                                    firstSwap->deleteLater();
+                                    return;
+                                }
                                 // Android can replace the GL QWidget before
                                 // its first swap. Without clearing this flag,
                                 // a new surface will never install a retry.
-                                QObject::connect(gl,&QObject::destroyed,firstSwap,
+                                QObject::connect(watched.data(),&QObject::destroyed,firstSwap,
                                     [selected,receiver]() {
                                         if(selected && !selected->property(
                                                 "_mobileInitialProjectionReady").toBool())
@@ -354,7 +364,7 @@ private:
                                                 "_mobileWaitingForFirstSwap",false);
                                         if(receiver)receiver->deleteLater();
                                     });
-                                QObject::connect(gl,&QOpenGLWidget::frameSwapped,firstSwap,
+                                QObject::connect(watched.data(),&QOpenGLWidget::frameSwapped,firstSwap,
                                     [manager,root,selected,receiver,watched]() {
                                         if(receiver && watched)
                                             QObject::disconnect(watched.data(),nullptr,
@@ -370,10 +380,13 @@ private:
                                             if(!watched || !watched->isValid())
                                                 selected->setProperty(
                                                     "_mobileWaitingForFirstSwap",false);
-                                            scheduleActivation(manager,root,selected);
+                                            if(selected && manager && root)
+                                                scheduleActivation(manager,root,selected);
                                         }
                                     });
                             }
+                            if(!isCurrent() || !canvas || !surface ||
+                               canvas->canvasWidget()!=surface)return;
                             surface->update();
                             return;
                         }
@@ -384,6 +397,8 @@ private:
                     if(fitNeeded)selected->zoomManager()->slotZoomToFit();
                     if(!isCurrent() || !canvas || canvas->canvasWidget()!=surface)return;
                     selected->setProperty("_mobileInitialProjectionReady",true);
+                    if(!isCurrent() || !canvas || !surface ||
+                       canvas->canvasWidget()!=surface)return;
                     const bool needsReload=!selected->document()->property("_mobileBlankCanvas").toBool() ||
                         fitNeeded || surface->property("_mobileWaitingForFirstSwap").toBool();
                     // Native canvas initialization already queues the projection.
@@ -398,9 +413,15 @@ private:
                 canvas->updateCanvas();
                 if(!isCurrent() || !canvas)return;
                 if(auto *surface=canvas->canvasWidget())surface->update();
-                if(firstProjection)
-                    if(auto *window=root->window()->windowHandle())
-                        if(window->isExposed())window->requestUpdate();
+                // update() can synchronously dispatch a surface-lifecycle
+                // callback which removes the root or its current view.
+                if(!isCurrent() || !canvas)return;
+                if(firstProjection) {
+                    const QPointer<QWidget> hostWindow=root->window();
+                    if(!isCurrent() || !hostWindow)return;
+                    const QPointer<QWindow> window=hostWindow->windowHandle();
+                    if(window && window->isExposed())window->requestUpdate();
+                }
             }
         });
     }
