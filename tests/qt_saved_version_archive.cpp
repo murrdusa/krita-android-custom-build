@@ -1408,6 +1408,39 @@ int main(int argc,char **argv)
             "streamed recovery association scan retained removed metadata");
     for(const QString &draft:stressDrafts)QFile::remove(draft);
 
+    // Existence checks for project deletion must still rescue complete
+    // interrupted exports, even though they no longer build list(1).
+    const QString rescueAssociation=temp.filePath(
+        QStringLiteral("streamed-rescue-ownership.kra"));
+    const QString unfinished=MobileDraftRecovery::allocate(
+        QStringLiteral("association-rescue-test"));
+    require(!unfinished.isEmpty() &&
+            MobileDraftRecovery::setProject(unfinished,rescueAssociation),
+            "failed to associate interrupted recovery fixture");
+    const QString staged=unfinished+QStringLiteral(".pending.kra");
+    save(staged,QByteArray::fromHex("504b0304")+"rescue-association");
+    QFile stagedEntry(staged);
+    require(stagedEntry.open(QIODevice::ReadWrite) &&
+            stagedEntry.setFileTime(QDateTime::currentDateTime().addSecs(-600),
+                                    QFileDevice::FileModificationTime),
+            "failed to age interrupted association fixture");
+    stagedEntry.close();
+    bool discovered=false;
+    for(int visit=0;visit<12 && !discovered;++visit)
+        discovered=MobileDraftRecovery::hasProjectDraft(rescueAssociation);
+    require(discovered && !QFile::exists(staged),
+            "streamed association check skipped interrupted export rescue");
+    for(const auto &draft:MobileDraftRecovery::list()) {
+        if(MobileDraftRecovery::projectFor(draft.absoluteFilePath())==
+           rescueAssociation) {
+            QFile::remove(draft.absoluteFilePath());
+            QFile::remove(draft.absoluteFilePath()+QStringLiteral(".project"));
+        }
+    }
+    QFile::remove(unfinished+QStringLiteral(".project"));
+    require(!MobileDraftRecovery::hasProjectDraft(rescueAssociation),
+            "rescued association remained after fixture cleanup");
+
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
                " provider identity, SAF tree normalization and legacy migration";
     return 0;
