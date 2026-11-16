@@ -134,10 +134,22 @@ public:
            m_uiInstalled || !root->openViews().isEmpty() ||
            !root->findChildren<QWidget*>(QString(),Qt::FindDirectChildrenOnly).isEmpty())
             return false;
+        // takeCentralWidget() reparents the root and can notify Qt
+        // observers that destroy the host or transfer the detached
+        // canvas to another owner. Never clear members of a dead host
+        // or delete a QWidget adopted during those callbacks.
+        const QPointer<MobileLightweightCanvasHost> host(this);
+        const QPointer<MobileNativeViewStack> originalRoot(root);
         QWidget *detached=takeCentralWidget();
-        if(detached!=root)return false;
+        if(!host || !originalRoot || detached!=originalRoot.data())
+            return false;
+        if(originalRoot->parentWidget())
+            return false;
         m_nativeViewPort.clear();
-        delete detached;
+        if(!host || !originalRoot || originalRoot->parentWidget())
+            return false;
+        delete originalRoot.data();
+        if(!host)return false;
         return !m_canvas && !centralWidget();
     }
 
