@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — retire surviving canvas after explicit native deregistration
+
+- Audited `MobileNativeViewStack::forgetView()`, a separate path from accepted `closeImpl()` and failed `adoptView()`. `forgetToken()` removes the QStackedWidget layout registration but Qt keeps a surviving painting QWidget parented to the original native stack. When a caller explicitly forgets a live view without a Close transaction, the previous code could retain an invisible GL-capable child until the entire host closed. The method now records the original widget and stack identities before deregistration and schedules the existing `retireDetachedView()` after successful removal; that callback checks actual parent/index ownership before deleting the orphan. Source `454e2e2`.
+- Added real Qt view-stack regression cases for independent `forgetView()` of a live widget and immediate transfer/re-adoption into another stack, verifying the original host deletes only unowned orphans (`bc6a40f`). Existing host-Qt5Widgets development libraries remain unavailable in WSL's reported environment, so Qt test execution is still pending. No APK uploaded.
+
 ## November 16 — retire accepted Close widgets already unregistered by native callback
 
 - Audited `MobileNativeViewStack::closeImpl()`. A successful native close callback can call `forgetView()` itself while leaving the QWidget child alive. In that path `forgetToken(token)` returns false on the outer close and the old `if(removed)` condition skipped `retireDetachedView()`, retaining a detached canvas and its GL resources until the entire host closed. After any accepted close, the stack now schedules the existing ownership-checked deferred retirement of the original guarded view, whether the row was removed by the callback or by the outer close. The helper preserves transferred/re-adopted widgets. Source `73fa35b`.
