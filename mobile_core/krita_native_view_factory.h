@@ -399,8 +399,16 @@ private:
                     selected->setProperty("_mobileInitialProjectionReady",true);
                     if(!isCurrent() || !canvas || !surface ||
                        canvas->canvasWidget()!=surface)return;
-                    const bool needsReload=!selected->document()->property("_mobileBlankCanvas").toBool() ||
-                        fitNeeded || surface->property("_mobileWaitingForFirstSwap").toBool();
+                    const QPointer<KisDocument> currentDocument=selected->document();
+                    if(!currentDocument)return;
+                    const bool blank=currentDocument->property("_mobileBlankCanvas").toBool();
+                    if(!isCurrent() || !canvas || !surface ||
+                       canvas->canvasWidget()!=surface)return;
+                    const bool waitingForSwap=surface->property(
+                        "_mobileWaitingForFirstSwap").toBool();
+                    if(!isCurrent() || !canvas || !surface ||
+                       canvas->canvasWidget()!=surface)return;
+                    const bool needsReload=!blank || fitNeeded || waitingForSwap;
                     // Native canvas initialization already queues the projection.
                     // A new blank image can use that upload on a ready surface.
                     if(needsReload) {
