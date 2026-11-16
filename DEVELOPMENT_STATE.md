@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — validate recovery checksum before staging an output
+
+- Audited `MobileSavedVersionArchive::materializeRecovery()` after its bounded copy/sidecar checks. It opened a new `QSaveFile` temporary recovery output before validating the SHA-256 metadata. Malformed history sidecars caused avoidable temporary filesystem work on every recovery attempt. Moved metadata validation ahead of destination creation, retaining the same checksum rules, cancellation, streaming copy and publication semantics. Source `5861953`.
+- Extended the Qt-only saved-version regression to repeat recovery attempts with malformed checksum metadata, verify no published copies appear, and restore the healthy digest afterward (`3672fb9`). This reduces unnecessary recovery staging activity, not a demonstrated crash or memory leak. Exact-revision PC compilation and Qt test execution pending; no APK uploaded.
+
 ## November 16 — cap automatic project-recovery inventory
 
 - Audited `MobileDraftRecovery::checkpointsFor()`, called during project Open. It previously appended and sorted all matching saved-project recovery drafts in memory. A project with a large history of autosave/recovery entries could allocate an unbounded candidate list and make startup recovery less responsive. It now streams the directory with a newest-first 32-entry heap, and skips opening older KRA archives that cannot enter that candidate set. Files excluded from automatic Open remain intact and accessible through the unrestricted manual recovery gallery. Source `7f8a757`.
