@@ -442,6 +442,44 @@ int main(int argc,char **argv)
                 "native close cycles accumulated orphaned painting widgets");
     }
 
+    // A native view factory can fail after adoptView() already returned
+    // success, for example when a resume observer closes the manager.
+    // Roll back only that view's registration, preserving other canvases
+    // and their document identities. This is the Qt-side contract used
+    // by the Krita-specific late-attachment failure handler.
+    {
+        MobileNativeViewStack stack;
+        auto *firstDocument=new QObject;
+        auto *secondDocument=new QObject;
+        auto *failedView=new QWidget;
+        auto *survivingView=new QWidget;
+        QPointer<QWidget> failed(failedView);
+        QPointer<QWidget> surviving(survivingView);
+        require(stack.adoptView(failedView,firstDocument,
+                    QStringLiteral("failed"),[](){return true;}) &&
+                stack.adoptView(survivingView,secondDocument,
+                    QStringLiteral("surviving"),[](){return true;}),
+                "could not register two canvases for late attach rollback");
+        // Model the exact view identity inspected by abortRegistered.
+        bool registered=false;
+        for(const auto &entry:stack.openViews()) {
+            if(entry.nativeView.data()==failed.data() &&
+               entry.document.data()==firstDocument)
+                registered=true;
+        }
+        require(registered && stack.forgetView(QPointer<QObject>(failed.data())),
+                "failed canvas was not removable by its original identity");
+        if(failed && failed->parentWidget()==&stack && stack.indexOf(failed.data())<0)
+            delete failed.data();
+        require(!failed && surviving && stack.openViews().size()==1 &&
+                stack.currentDocument().data()==secondDocument &&
+                stack.openViews().first().nativeView.data()==surviving.data(),
+                "late attachment rollback removed a different live canvas");
+        delete firstDocument;
+        delete secondDocument;
+        QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
