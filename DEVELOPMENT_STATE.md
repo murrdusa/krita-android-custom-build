@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — revalidate autosave staging before publishing recovered artwork
+
+- Audited `MobileDraftRecovery::publish()` after the project-specific streaming optimization. It checked that a `.pending.kra` was readable, then could rename it over the last published draft without checking if another exporter replaced or modified the staging file during ZIP validation. This is particularly dangerous when a large export and Android lifecycle callbacks overlap: an unverified staging file must not overwrite the most recent known-good recovery.
+- `publish()` now captures `QFileInfo` for the staged export before validation and requires `unchangedStaging(before)` (same size, modification time, regular file, not a symlink) immediately after validation and before any rename, including the separate failed-export rescue path. If the staging file changed, it is preserved for later inspection instead of risking overwrite of the published draft.
+- Extended `tests/qt_saved_version_archive.cpp` to mutate a completed staging file after capturing its metadata, verify the stability check detects the change while the published draft remains intact, and confirm a stable subsequent export still publishes normally. Source commit `d0e6e8f7623e9fc96c9d69b2fa329b4e8039e4fb`; test commit `54643d48271b915ab2135191892ef182759bd307`. This covers the detection predicate, not a fully concurrent export race. Exact-revision compilation and Qt test execution remain unverified. No APK uploaded.
+- The watcher confirmed Android source commit `7bf62797` successful at 10:48 UTC (November 16).
+
 ## November 16 — stream project-specific recovery without sorting unrelated drafts
 
 - `MobileDraftRecovery::checkpointsFor()` previously invoked `list(0, savedModified)`, which collected and sorted every newer draft in the recovery directory before retaining only those associated with one project. This could allocate a large `QFileInfoList` when a device had many drafts from unrelated paintings.
