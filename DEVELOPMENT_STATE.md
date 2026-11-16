@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — reset GL retry backoff on confirmed context recovery
+
+- The first-frame backoff counter was reset on `frameSwapped` but not when `QOpenGLWidget::isValid()` became true before a frame signal. A recovered surface could therefore retain a saturated 16-second delay and use it during a later, unrelated OpenGL context loss.
+- `MobileKritaNativeViewFactory::scheduleActivation()` now resets the retry count when it sees a valid GL widget, only writing the Qt dynamic property if nonzero. The view/root/canvas identity is rechecked after the property update. `MobileFirstSwapRetryPolicy::afterSurfaceReady()` exposes the reset transition to Qt-only regression coverage, with an assertion that the next delay starts at two seconds.
+- Changes: retry policy `6bceefb855d086342ba02cc3de55c48cb9449481`, runtime wiring `ddf6c87f76b86c79dc9a0af05769fc18c547afe8`, regression `bcfe0db3995cebda37cd34336e6f5c0483beefee`. At this point, exact-revision Android compilation and test execution have not been verified. No APK uploaded.
+
 ## November 16 — Qt regression for bounded GL first-swap retries
 
 - Audited the Android home gallery and background index writers for unbounded memory growth. Gallery decode size, in-memory icons, pending requests, scanner delivery and index-worker queues already have limits. No confirmed resource leak was found in that audit, so no speculative cache changes were made.
