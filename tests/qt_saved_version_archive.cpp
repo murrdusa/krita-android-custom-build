@@ -1244,6 +1244,33 @@ int main(int argc,char **argv)
         if(entry.completeBaseName().contains(QStringLiteral("_orphan-batch-")))
             QFile::remove(entry.absoluteFilePath());
 
+    // A heavily populated recovery directory must not allocate an
+    // unbounded gallery snapshot. Keep the two newest entries by
+    // modification time, retaining full discovery for recovery flows.
+    QStringList galleryFixtures;
+    for(int i=0;i<5;++i) {
+        const QString draft=MobileDraftRecovery::allocate(
+            QStringLiteral("bounded-gallery-")+QString::number(i));
+        require(!draft.isEmpty(),"cannot allocate bounded gallery fixture");
+        save(draft,QByteArray::fromHex("504b0304")+"gallery");
+        QFile item(draft);
+        require(item.open(QIODevice::ReadWrite) &&
+                item.setFileTime(QDateTime::currentDateTime().addSecs(-100+i),
+                                 QFileDevice::FileModificationTime),
+                "cannot timestamp bounded gallery fixture");
+        item.close();
+        galleryFixtures.append(draft);
+    }
+    const auto fullDrafts=MobileDraftRecovery::list();
+    const auto boundedDrafts=MobileDraftRecovery::list(2);
+    require(fullDrafts.size()>=5 && boundedDrafts.size()==2 &&
+            boundedDrafts.at(0).absoluteFilePath()==
+                fullDrafts.at(0).absoluteFilePath() &&
+            boundedDrafts.at(1).absoluteFilePath()==
+                fullDrafts.at(1).absoluteFilePath(),
+            "bounded recovery gallery did not retain the newest two drafts");
+    for(const QString &draft:galleryFixtures)QFile::remove(draft);
+
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
                " provider identity, SAF tree normalization and legacy migration";
     return 0;
