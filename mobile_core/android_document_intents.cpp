@@ -39,10 +39,21 @@ int drain()
         const QString path=s_pending.takeFirst();
         // Opening a document can synchronously close its old Android
         // window. Retain this host until its own openFile() returns.
+        const QPointer<QWidget> originalWindow=s_window;
         const QSharedPointer<MobileDocumentHostPort> host=s_documentHost;
-        if(host->openFile(path)) {
+        const bool success=host->openFile(path);
+        if(success) {
             ++opened;
             qInfo() << "Mobile Studio: opened Android file intent" << path;
+        } else if(s_window!=originalWindow || s_documentHost!=host) {
+            // A failed open against a window being replaced is not a
+            // definitive file failure. Keep the intent until the next
+            // host can try it; an invalid path on an unchanged host is
+            // still reported and discarded as before.
+            if(!s_pending.contains(path))s_pending.prepend(path);
+            if(s_window && s_documentHost)
+                QTimer::singleShot(0,s_window.data(),[](){drain();});
+            break;
         } else {
             qWarning() << "Mobile Studio: could not open Android file intent"
                        << path;
