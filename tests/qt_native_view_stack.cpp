@@ -1318,6 +1318,33 @@ int main(int argc,char **argv)
                 "could not clean up intact engine startup root fixture");
     }
 
+    // A nested Save/Discard callback can replace the view adapter while
+    // the window survives. Shutdown must not accept an empty result
+    // from the old adapter as proof that the new port has no artwork.
+    {
+        auto original=QSharedPointer<MobileViewHostPort>(
+            new MobileNativeViewPortAdapter(nullptr));
+        auto current=original;
+        const auto closeOldPort=[&current]() {
+            current=QSharedPointer<MobileViewHostPort>(
+                new MobileNativeViewPortAdapter(nullptr));
+            return true;
+        };
+        const bool accepted=closeOldPort();
+        const bool mayClose=accepted && current==original;
+        require(accepted && !mayClose,
+                "host close accepted a replaced native view adapter");
+    }
+    {
+        auto original=QSharedPointer<MobileViewHostPort>(
+            new MobileNativeViewPortAdapter(nullptr));
+        auto current=original;
+        const auto closeOldPort=[]() {return true;};
+        const bool accepted=closeOldPort();
+        require(accepted && current==original,
+                "host close rejected an unchanged native view adapter");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
