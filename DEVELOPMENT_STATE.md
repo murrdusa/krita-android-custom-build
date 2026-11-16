@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — revalidate native Save before showing collision warnings
+
+- Audited `MobileKritaStandaloneDocuments::writeDocument()` for Save As/Export Copy destination conflicts. `MobileOpenDocumentDestinationPolicy::conflictsWithBackingFile()` and `conflictsWithOwnBackingFile()` can canonicalize Android SAF identities, potentially dispatching nested Qt/provider callbacks that close the runtime or its root. The old conflict branches immediately used `m_runtime->window()` to parent a modal warning with no intervening lifetime validation; this could dereference a cleared `QPointer`. The result is now captured separately and `stillSaving()` rechecks runtime, root and selected document before any warning-parent lookup. Source `36b7b90`.
+- Added Qt-only lifetime-pattern checks for a collision lookup destroying the runtime/window and a surviving-owner control (`6f75bb4`). These test the callback/guard policy, not the Android-specific collision implementation. Exact-revision PC build and tests pending; no APK uploaded.
+
 ## November 16 — guard failed native root rollback against host teardown and canvas transfer
 
 - Audited `MobileLightweightCanvasHost::discardEmptyNativeDocumentRoot()`. Its `takeCentralWidget()` reparents the central canvas and can notify Qt observers that close the host, destroy the candidate, or adopt it in another window. The old implementation immediately accessed host members, cleared the adapter, and deleted the returned raw widget after that operation. The rollback now captures `QPointer` identities before the Qt call, verifies the original host/root survive and the detached root is still unparented, then clears the adapter and destroys only that still-unowned canvas. Source `156a7f3`.
