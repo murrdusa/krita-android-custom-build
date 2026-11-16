@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — reject closing an obsolete native view adapter
+
+- Audited `MobileLightweightCanvasHost::closeEvent()`. It snapshots `m_nativeViewPort` and closes each document through that shared backend, but native Save/Discard callbacks can run nested Qt event loops that replace or clear the host's native root and its view adapter. A still-live host could finish closing every view from the old adapter and then accept window closure even though the current adapter owned different artwork. The host now verifies that its installed port still matches the original snapshot after `openViews()`, `closeView()`, and the refreshed view list; a replacement cancels window shutdown. Source `8e6307c`.
+- Added a Qt-only shared-port identity regression modeling a replacement during a successful close and a stable-port control (`786e2e4`). The test models identity policy; the integration test continues to exercise canceled Close prompts and native view teardown. Exact-revision PC compilation/test execution pending; no APK uploaded.
+
 ## November 16 — guard host before native canvas root installation
 
 - Audited `MobileKritaEngineSession::attach()`. The original flow queried the host, called `createNativeDocumentRoot()` (which installs a central QWidget and can dispatch Qt notifications), then created a `QPointer` from the original raw host. If a notification destroyed the window during root creation, even constructing that post-call guard would access a dangling QObject pointer. The host is now guarded before any QWidget queries; each readiness check revalidates the host, and root creation retains a guarded `MobileNativeViewStack` identity before runtime initialization. Source `a3040bd`, initial readiness recheck `43ea8cc`.
