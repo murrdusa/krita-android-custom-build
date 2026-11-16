@@ -1531,6 +1531,37 @@ int main(int argc,char **argv)
                 stack.findChildren<QWidget*>().isEmpty(),
                 "failed adoption leaked an unregistered canvas widget");
     }
+    // Repeated canceled imports must not accumulate detached GL-capable
+    // painting widgets under one long-lived native host. Test cleanup
+    // between attempts, not only when the stack is eventually destroyed.
+    {
+        MobileNativeViewStack stack;
+        int destroyed=0;
+        constexpr int attempts=128;
+        for(int i=0;i<attempts;++i) {
+            QObject document;
+            auto *canvas=new QWidget;
+            const QPointer<QWidget> orphan(canvas);
+            QObject::connect(canvas,&QObject::destroyed,&stack,
+                             [&destroyed]() {++destroyed;});
+            const auto cancel=QObject::connect(
+                &stack,&QStackedWidget::currentChanged,&stack,
+                [&stack,orphan](int) {
+                    if(orphan)
+                        stack.forgetView(QPointer<QObject>(orphan.data()));
+                });
+            require(!stack.adoptView(canvas,&document,
+                        QStringLiteral("failed import"),[](){return false;}) &&
+                    stack.openViews().isEmpty(),
+                    "repeated canceled adoption retained a view registration");
+            QObject::disconnect(cancel);
+            QCoreApplication::sendPostedEvents(nullptr,0);
+            QApplication::processEvents();
+            require(!orphan && destroyed==i+1 &&
+                    stack.findChildren<QWidget*>().isEmpty(),
+                    "failed imports accumulated orphaned painting widgets");
+        }
+    }
     // A canceled adoption may be transferred before deferred retirement.
     // The old owner must not destroy a canvas adopted by another stack.
     {
