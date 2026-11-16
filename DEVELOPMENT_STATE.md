@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — rearm native OpenGL first-frame retry after surface teardown
+
+- `MobileKritaNativeViewFactory::scheduleActivation()` now resets `_mobileWaitingForFirstSwap` if Android destroys the watched `QOpenGLWidget` before the initial valid frame, and also if a `frameSwapped` callback arrives while its context is still invalid. Previously this flag was set before registering a one-shot callback and was never cleared on failure. Replaced or reinitialized GL surfaces could therefore remain unable to register a new first-frame retry, leaving the native projection uninitialized until another lifecycle event or canvas recreation. The one-shot receiver remains scoped to the native view; the ordinary successful first-frame path is unchanged and still requests a full projection upload for a waiting canvas.
+- Source commit `85ecdc7dd5f340ba896777f0920df73461acfeab`. This requires real Android OpenGL/Krita lifecycle conditions and has no meaningful Qt-only mock fixture. Exact-revision WSL compilation and on-device recovery remain unverified; no APK uploaded.
+
 ## November 15 — clear layer rail nodes when the Krita manager disappears
 
 - Fixed `KritaMobileLayersPanel::reload()` to use its established no-image cleanup when the native `KisNodeManager` or `KisViewManager` is unavailable. Previously an early `if(!m || !view)return` bypassed cleanup of `m_nodes`, `m_selected`, `m_active`, thumbnail widgets and layer-tree rows. If a document closed while its rail remained visible, those strong `KisNodeSP` references could retain the closed document's paint nodes until another valid view initialized. Now the no-manager state releases them and records the `no-view` signature, allowing a later manager to repopulate the rail normally.
