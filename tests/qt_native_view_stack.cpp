@@ -1035,10 +1035,10 @@ int main(int argc,char **argv)
         require(stack.adoptView(selected,&document,QStringLiteral("active"),
                                 [](){return true;}),
                 "could not register intact activation fixture");
-        QObject selectedCanvas(selected);
+        auto *selectedCanvas=new QObject(selected);
         QObject managerCanvas;
         const QPointer<QWidget> selectedGuard(selected);
-        const QPointer<QObject> selectedCanvasGuard(&selectedCanvas);
+        const QPointer<QObject> selectedCanvasGuard(selectedCanvas);
         const QPointer<QObject> managerCanvasGuard(&managerCanvas);
         int switches=0;
         if(selectedGuard && selectedCanvasGuard &&
