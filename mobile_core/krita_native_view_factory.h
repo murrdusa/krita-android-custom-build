@@ -410,12 +410,19 @@ private:
                                     });
                                 // Android can suspend or lose the GL context
                                 // before any frameSwapped signal occurs.
-                                // A listener without a deadline would remain
-                                // attached for the entire canvas lifetime and
-                                // leave this surface permanently marked as
-                                // waiting. Bound the observation and retry
-                                // only for the still-selected visible canvas.
-                                QTimer::singleShot(2000,firstSwap,
+                                // Repeated two-second retries would otherwise
+                                // allocate a new QObject and queue a surface
+                                // update indefinitely while the driver is
+                                // unavailable. Back off per GL surface (2, 4,
+                                // 8, then 16 seconds) without abandoning
+                                // recovery when its context becomes usable.
+                                const int attempts=qBound(0,watched->property(
+                                    "_mobileFirstSwapRetryCount").toInt(),3);
+                                const int retryDelayMs=2000 << attempts;
+                                watched->setProperty(
+                                    "_mobileFirstSwapRetryCount",
+                                    qMin(attempts+1,3));
+                                QTimer::singleShot(retryDelayMs,firstSwap,
                                     [manager,root,selected,watched,receiver]() {
                                         if(!receiver)return;
                                         if(watched)
@@ -450,9 +457,13 @@ private:
                                         // can be skipped while Android hides
                                         // the app; leaving the flag set would
                                         // permanently prevent another retry.
-                                        if(watched)
+                                        if(watched) {
                                             watched->setProperty(
                                                 "_mobileWaitingForFirstSwap",false);
+                                            if(watched->isValid())
+                                                watched->setProperty(
+                                                    "_mobileFirstSwapRetryCount",0);
+                                        }
                                         if(!selected || !manager || !root)return;
                                         const bool projectionReady=selected->property(
                                             "_mobileInitialProjectionReady").toBool();
