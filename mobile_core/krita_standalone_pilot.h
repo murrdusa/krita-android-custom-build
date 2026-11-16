@@ -91,20 +91,30 @@ public:
             delete bootWindow.data();
             return false;
         }
-        // KisStatusBar::setup() still creates the Qt footer for engine
-        // bookkeeping. Keep it live but hide desktop presentation.
-        if(!window->suppressNativeStatusChrome())
+        // Suppressing desktop status chrome can emit synchronous Qt
+        // visibility notifications. Keep the attached engine session
+        // and its host guarded before creating mobile controls.
+        const QPointer<MobileKritaEngineSession> guardedSession(engineSession);
+        if(!bootWindow || !guardedSession)return false;
+        const bool statusHidden=bootWindow->suppressNativeStatusChrome();
+        if(!bootWindow || !guardedSession)return false;
+        if(!statusHidden)
             qWarning() << "Independent status footer was not found";
         stage("Native Krita services connected");
-        const MobileHostServices services=engineSession->services();
+        if(!bootWindow || !guardedSession)return false;
+        const MobileHostServices services=guardedSession->services();
         auto documents=QSharedPointer<MobileDocumentService>::create(
             services.documents,services.views);
-        QPointer<MobileLightweightCanvasHost> alive=window;
-        const MobileEngineBridge nativeBridge(services,engineSession->viewManager());
+        if(!bootWindow || !guardedSession)return false;
+        QPointer<MobileLightweightCanvasHost> alive=bootWindow;
+        const QPointer<KisViewManager> manager=guardedSession->viewManager();
+        if(!alive || !guardedSession || !manager)return false;
+        const MobileEngineBridge nativeBridge(services,manager.data());
         // Native controls now use the independent manager and host ports,
         // not the old desktop MDI window or its docker instances.
         auto *workspace=new MobileKritaNativeWorkspace(
-            window,services,engineSession->viewManager());
+            alive.data(),services,manager.data());
+        if(!alive || !guardedSession || !manager)return false;
 
         // Reuse every real QAction callback from the validated engine,
         // but present the controls in short native rows, not one
