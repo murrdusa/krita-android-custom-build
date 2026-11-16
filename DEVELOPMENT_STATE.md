@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — abort loading if native host changes during document construction
+
+- Reviewed pending Qt callbacks, native view-stack retirement, and the new first-swap observer diagnostics. The view-stack already checks detached-widget ownership before destruction and the recovery worker guards its request queues. No confirmed unbounded leak was established from those paths.
+- Identified a document-open lifecycle gap in `MobileKritaStandaloneDocuments::openFile()`: after `KisPart::createDocument()` returned, both recovery-checkpoint and normal-open paths called `openProjectSource()` directly. Document construction can deliver engine/plugin callbacks that close or replace the Android native root before the expensive KRA load begins. Both paths now revalidate the original root/runtime and Krita singleton, disposing a surviving unregistered document before reading when its original host is gone.
+- Added a Qt-only native-view-stack regression modeling document creation that synchronously replaces its root; the code must discard the new unregistered document without starting import. Source commit `f5a31bccb0a5c5c71d511147f1baffb79d0fde7e`; test commit `5066d8e1982904c99c5c63adf33ce0b4ca7d63b5`. This is a targeted teardown/stale-host safety change; exact-revision Android compilation and test execution remain unverified at commit time. No APK uploaded.
+
 ## November 16 — track pending OpenGL swap observers in opt-in memory diagnostics
 
 - The existing native close-churn regression already exercises 128 consecutive view/document retirements, and `MobileNativeViewStack` uses deferred deletion with ownership checks. The archive history migration also uses a recursive mutex intentionally. No additional confirmed orphan-view leak was established in this pass.
