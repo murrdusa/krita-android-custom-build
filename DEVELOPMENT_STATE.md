@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — verify the opened KRA inode before gallery preview ZIP parsing
+
+- `MobileProjectPreviewCache::safeLocalKraSource()` checked path size, regular-file state, symlink state and ZIP signature but, after opening the file, checked only the header. If a concurrent save or provider renamed/replaced a document between the initial `QFileInfo` stat and `QFile::open()`, the new handle could refer to an oversized or unexpected file, bypassing the source guard and reaching Krita's ZIP reader.
+- Added an opened-handle `QFileInfo` check and explicit 4-byte/8 GiB bounds on the actual opened file before accepting its PK header (`7a78b3b`). This mirrors the safer existing `MobileDraftRecovery::hasKraHeader()` pattern. The existing `qt_project_preview_cache.cpp` exercises valid, symlink, malformed and oversized KRA previews, but cannot deterministically recreate the narrow replacement race. No observed crash claimed.
+- Android WSL exact-revision build is pending; host Qt5Widgets regression suite remains NOT RUN until missing development dependencies are available. No APK uploaded.
+
+
 ## November 16 — capture current Android process memory in crash diagnostics
 
 - Following repeated successful Android builds but absent host Qt5Widgets testing, shifted from speculative crash guards to measurable memory diagnostics. Added `MobileCrashReport::memorySnapshot()` in `mobile_core/crash_report.h`: one read capped at 16 KiB from the app's own `/proc/self/status`, emitting kernel-reported `VmRSS` (current resident memory), `VmHWM` (peak RSS), and `VmSwap` (swap) when present, or an unavailable label. No drawing bytes, file paths, or extra Android permissions.
