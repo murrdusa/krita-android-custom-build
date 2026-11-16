@@ -370,19 +370,19 @@ private:
                                             QObject::disconnect(watched.data(),nullptr,
                                                                 receiver.data(),nullptr);
                                         if(receiver)receiver->deleteLater();
-                                        if(selected && !selected->property(
-                                                "_mobileInitialProjectionReady").toBool()) {
-                                            // A swap does not guarantee a
-                                            // usable context if Android has
-                                            // already begun tearing it down.
-                                            // Allow the next activation to
-                                            // install a new one-shot observer.
-                                            if(!watched || !watched->isValid())
-                                                selected->setProperty(
-                                                    "_mobileWaitingForFirstSwap",false);
-                                            if(selected && manager && root)
-                                                scheduleActivation(manager,root,selected);
+                                        if(!selected)return;
+                                        const bool projectionReady=selected->property(
+                                            "_mobileInitialProjectionReady").toBool();
+                                        if(!selected || projectionReady)return;
+                                        // A swap does not guarantee a usable
+                                        // context if Android is tearing it down.
+                                        if(!watched || !watched->isValid()) {
+                                            selected->setProperty(
+                                                "_mobileWaitingForFirstSwap",false);
+                                            if(!selected)return;
                                         }
+                                        if(manager && root)
+                                            scheduleActivation(manager,root,selected);
                                     });
                             }
                             if(!isCurrent() || !canvas || !surface ||
