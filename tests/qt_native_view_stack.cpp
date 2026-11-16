@@ -1825,6 +1825,21 @@ int main(int argc,char **argv)
         require(!retained,"detached selection fixture leaked canvas");
     }
 
+    // Stack-owned mobile modal dialogs must never be Qt children of a
+    // toolbar that can disappear while a nested event loop is running.
+    // Host teardown rejects the independent dialog instead of deleting
+    // its stack storage, and exec() returns before the caller resumes.
+    {
+        auto *owner=new QWidget;
+        const QPointer<QWidget> alive(owner);
+        QDialog dialog;
+        dialog.setWindowModality(Qt::ApplicationModal);
+        QObject::connect(owner,&QObject::destroyed,&dialog,&QDialog::reject);
+        QTimer::singleShot(0,&app,[owner]() {delete owner;});
+        require(dialog.exec()==QDialog::Rejected && !alive,
+                "modal dialog survived owner destruction without rejection");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
