@@ -403,26 +403,26 @@ private:
                                             QObject::disconnect(watched.data(),nullptr,
                                                                 receiver.data(),nullptr);
                                         if(receiver)receiver->deleteLater();
-                                        if(!selected)return;
+                                        // The one-shot observer is now gone.
+                                        // Always disarm its flag on the
+                                        // owning GL surface, including for a
+                                        // valid swap. The deferred activation
+                                        // can be skipped while Android hides
+                                        // the app; leaving the flag set would
+                                        // permanently prevent another retry.
+                                        if(watched)
+                                            watched->setProperty(
+                                                "_mobileWaitingForFirstSwap",false);
+                                        if(!selected || !manager || !root)return;
                                         const bool projectionReady=selected->property(
                                             "_mobileInitialProjectionReady").toBool();
-                                        if(!selected || projectionReady)return;
+                                        if(!selected || !manager || !root ||
+                                           projectionReady)return;
                                         // A swap does not guarantee a usable
                                         // context if Android is tearing it down.
-                                        if(!watched || !watched->isValid()) {
-                                            // This is the same QWidget whose
-                                            // waiting flag was set when the
-                                            // listener was installed. Clear it
-                                            // here so another valid first-swap
-                                            // listener can be armed if the GL
-                                            // context was lost mid-frame.
-                                            if(watched)
-                                                watched->setProperty(
-                                                    "_mobileWaitingForFirstSwap",false);
-                                            if(!selected || !manager || !root)return;
-                                        }
-                                        if(manager && root)
-                                            scheduleActivation(manager,root,selected);
+                                        // Let the ordinary activation path
+                                        // decide whether to arm a new retry.
+                                        scheduleActivation(manager,root,selected);
                                     });
                             }
                             if(!isCurrent() || !canvas || !surface ||
