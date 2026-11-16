@@ -354,14 +354,45 @@ public:
                 this,[this](const QUrl &url) {
             const auto path=url.isLocalFile()?url.toLocalFile():url.toString();
             if(url.isLocalFile() && (!isKra(path) || MobileDraftRecovery::isDraft(path)))return;
-            // Persist new locations even if the user never visits All Projects.
-            m_indexWorkers.start([path]() {
-                const MobileProjectIndexEntry entry{
-                    path,MobileSavedVersionArchive::projectName(path),
-                    MobileSavedVersionArchive::projectModified(path),
-                    QStringLiteral("recent")};
-                MobileProjectIndex::save(MobileProjectIndex::merge(
-                    MobileProjectIndex::load(),{entry}));
+            // A burst of recent-file notifications must not enqueue an
+            // unbounded number of expensive index load/save jobs.
+            // Coalesce duplicate paths and persist each pending batch in
+            // one transaction on the existing serialized index pool.
+            const auto state=m_recentWriteState;
+            bool schedule=false;
+            {
+                QMutexLocker guard(&state->mutex);
+                state->paths.insert(path);
+                if(!state->queued) {
+                    state->queued=true;
+                    schedule=true;
+                }
+            }
+            if(!schedule)return;
+            m_indexWorkers.start([state]() {
+                for(;;) {
+                    QSet<QString> paths;
+                    {
+                        QMutexLocker guard(&state->mutex);
+                        paths.swap(state->paths);
+                    }
+                    QVector<MobileProjectIndexEntry> recent;
+                    recent.reserve(paths.size());
+                    for(const QString &project:paths) {
+                        recent.append({project,
+                            MobileSavedVersionArchive::projectName(project),
+                            MobileSavedVersionArchive::projectModified(project),
+                            QStringLiteral("recent")});
+                    }
+                    if(!recent.isEmpty())
+                        MobileProjectIndex::save(MobileProjectIndex::merge(
+                            MobileProjectIndex::load(),recent));
+                    QMutexLocker guard(&state->mutex);
+                    if(state->paths.isEmpty()) {
+                        state->queued=false;
+                        return;
+                    }
+                }
             });
         });
         connect(m_search,&QLineEdit::textChanged,this,
@@ -1745,6 +1776,13 @@ private:
     };
     std::shared_ptr<IndexWriteState> m_indexWriteState=
         std::make_shared<IndexWriteState>();
+    struct RecentWriteState {
+        QMutex mutex;
+        QSet<QString> paths;
+        bool queued=false;
+    };
+    std::shared_ptr<RecentWriteState> m_recentWriteState=
+        std::make_shared<RecentWriteState>();
     // Only m_scanner is cleared on refresh. Durable index writes and
     // maintenance stay queued in the separate single-threaded pool.
     QThreadPool m_scanner,m_indexWorkers,m_thumbnails;
