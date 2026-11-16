@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — avoid stack popup deletion during toolbar teardown
+
+- The stationary native canvas pilot's More menu now uses an unparented stack `QMenu`. Its `exec()` enters a nested Qt event loop, and previously the menu was QObject-parented to the toolbar anchor (or main window). Destroying that owner during a workspace replacement could delete the C++ stack object before `showMore()` unwound, leading to invalid stack destruction/use-after-free. The menu remains scoped to `showMore()` and is automatically destroyed after `exec()` returns; deferred QAction callbacks already target the pilot's context timer.
+- `tests/qt_native_canvas_chrome.cpp` adds an offscreen nested-menu fixture that destroys its anchor while the popup is executing and checks the independent menu survives. Source commit `117fff2f401e7ef0269f80db299cbe0860783f20`; regression commit `6f1c32435022f2bbde65286d1137dd9aab5ca979`. Exact-revision WSL Android build and host Qt test execution not yet confirmed. No APK uploaded.
+
 ## November 15 — isolate version-history browsing from paint workers
 
 - `MobileDocumentHome::showSavedVersions()` now sends history enumeration and KRA thumbnail decoding through the existing one-worker `recoveryPool()`, instead of Qt's global worker pool. Previously only recovery materialization used that isolated pool, while the history dialog's potentially long file scan and preview extraction still occupied a global worker shared with interactive drawing/fill operations. This also serializes history reads with recovery copies; gallery cancellation, queued-preview limit (four), and temporary-file ownership remain unchanged.
