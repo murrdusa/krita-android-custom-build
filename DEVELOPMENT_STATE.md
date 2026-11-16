@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — guard asynchronous crash-report delivery at Android shutdown
+
+- `MobileCrashReport::copy()` now captures a `QPointer<QCoreApplication>` before submitting the Android JNI exit-history worker. If the application is destroyed while the query is pending or executing, the worker skips posting its report instead of calling `QMetaObject::invokeMethod(qApp, ...)` through a potentially stale global pointer. The normal clipboard/report dialog path is unchanged while the application remains active; the queued receiver context also prevents delivery after application destruction.
+- Code commit `ac2a6bc2348a659db69c685db6903458a0001d2a`. This is an Android JNI/lifecycle path without a standalone Qt fixture; exact-revision local Android compile and runtime results remain unverified. No APK uploaded.
+
 ## November 15 — guard native view attachment after draft setup
 
 - `MobileKritaStandaloneRuntime::attachDocument()` now captures `QPointer` identities for its runtime, Krita document, native stack, and view manager before reading/setting the document's private draft-path property. A QObject dynamic-property notification can synchronously close the originating window or document; previously the factory was then invoked using raw pointers from the possibly destroyed runtime. The method now confirms all identities remain valid and still belong to the original runtime before invoking `MobileKritaNativeViewFactory::attach()`. This does not change draft naming, close behavior, or painting resources.
