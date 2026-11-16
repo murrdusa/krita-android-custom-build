@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — prevent layer-modal stack object deletion during Android teardown
+
+- `KritaMobileLayersPanel` no longer QObject-parents its stack-allocated layer-options `QMenu`, layer options sheet, opacity dialog, blend-mode dialog, or group-layer dialog to the native panel/window. Android can destroy that parent during `QDialog::exec()` or nested selection dialogs, previously causing parent-owned deletion of the C++ stack object before its enclosing function unwound. Each unparented modal dialog is rejected on layer-panel destruction; the panel uses `QPointer` checks after modal returns, including after nested action selection, before accessing Krita layer state. No layer commands, undo actions, or save semantics changed.
+- `tests/qt_native_canvas_chrome.cpp` adds a Qt-only regression in which a modal sheet is rejected by its destroyed-panel signal and survives until normal stack unwinding. Source commit `1d4708f0dd8874a37b66628f72fc26cb7292db0b`, test commit `c9585fd95c045164f755a65555c5256ebcc9a188`. Exact-revision Android build and Qt test execution not yet verified; no APK uploaded.
+
 ## November 15 — prevent quick-action refresh after native pilot teardown
 
 - `MobileNativeCanvasPilot::runQuickAction()` now tracks the pilot's member `QTimer` through a `QPointer` while dispatching native actions, tool selections, Undo/Redo, and panel changes. In particular, native commands can synchronously close the final canvas or replace the mobile workspace; previously execution continued to `refresh()` on a destroyed pilot. The deferred dialog and Save/Close dispatcher now makes the same lifetime check after its engine command returns. The timer is a member destroyed with the pilot, so no separate QObject ownership scheme was added. Existing document identity guards and Save/Discard/Cancel behavior are unchanged.
