@@ -133,7 +133,12 @@ public:
     }
     int openFiles(QWidget *parent) const
     {
-        if(!m_host || !m_host->available() || !parent)return 0;
+        // Android's file picker may run a nested Qt event loop and close
+        // the originating window or its document-service owner. Retain
+        // the backend independently of this service's member storage.
+        const auto host=m_host;
+        const QPointer<QWidget> window(parent);
+        if(!host || !host->available() || !window)return 0;
         KoFileDialog dialog(parent,KoFileDialog::ImportFile,
                             QStringLiteral("MobileOpenDocument"));
         dialog.setDefaultDir(QStandardPaths::writableLocation(
@@ -142,14 +147,14 @@ public:
         dialog.setNameFilter(QObject::tr("All files (*)"));
         dialog.setCaption(QObject::tr("Open drawing"));
         const QString path=dialog.filename();
-        if(path.isEmpty())return 0;
-        if(!m_host->openFile(path)) {
-            QMessageBox::warning(parent,QObject::tr("Drawing not opened"),
+        if(path.isEmpty() || !window || !host->available())return 0;
+        const bool opened=host->openFile(path);
+        if(!opened && window) {
+            QMessageBox::warning(window.data(),QObject::tr("Drawing not opened"),
                 QObject::tr("Could not open %1.").arg(
                     MobileSavedVersionArchive::projectName(path)));
-            return 0;
         }
-        return 1;
+        return opened?1:0;
     }
     bool saveCurrentDocument(bool saveAs=false) const
     {
