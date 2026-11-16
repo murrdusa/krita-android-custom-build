@@ -189,6 +189,25 @@ int main(int argc,char **argv)
             !MobileSavedVersionArchive::materializeRecovery(
                 MobileSavedVersionArchive::list(source,store).first(),recover).isEmpty(),
             "intact archive with bad metadata should recover after repair");
+    // Malformed history metadata must fail before recovery opens a
+    // temporary output. Repeated attempts must not leave new files or
+    // disturb already materialized recovery copies.
+    const QString digestFixture=firstSnapshot+QStringLiteral(".sha256");
+    const QByteArray healthyDigest=load(digestFixture);
+    const int recoveryFileCountBefore=QDir(recover).entryList(
+        {QStringLiteral("Recovered-*.kra")},QDir::Files).size();
+    save(digestFixture,QByteArray("not-a-sha256"));
+    for(int attempt=0;attempt<3;++attempt) {
+        require(MobileSavedVersionArchive::materializeRecovery(
+                    MobileSavedVersionArchive::list(source,store).first(),
+                    recover).isEmpty(),
+                "malformed recovery checksum unexpectedly produced a copy");
+    }
+    require(QDir(recover).entryList(
+                {QStringLiteral("Recovered-*.kra")},QDir::Files).size()==
+                recoveryFileCountBefore,
+            "invalid recovery metadata created a published recovery file");
+    save(digestFixture,healthyDigest);
     // Deduplication must treat a large replaced digest as missing and
     // repair it from the verified archive rather than reading it all.
     save(firstSnapshot+QStringLiteral(".sha256"),QByteArray(1024*1024,'x'));
