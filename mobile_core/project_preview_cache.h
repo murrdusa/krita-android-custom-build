@@ -65,8 +65,15 @@ public:
         const QSize size=reader.size();
         // Cache files are untrusted disk input. Reject malformed or very
         // large images before allocating their decoded pixel buffers.
-        if(!size.isValid() || size.width()>4096 || size.height()>4096 ||
-           qint64(size.width())*size.height()>4096*4096)
+        // Current cache writes are 124 px. Reject oversized legacy
+        // PNGs instead of risking a full 4096x4096 (64 MiB) decode if
+        // an image plugin ignores setScaledSize(). The gallery can
+        // regenerate the small thumbnail from its original project.
+        constexpr int maxLegacyDimension=1024;
+        constexpr qint64 maxLegacyPixels=1024LL*1024;
+        if(!size.isValid() || size.width()>maxLegacyDimension ||
+           size.height()>maxLegacyDimension ||
+           qint64(size.width())*size.height()>maxLegacyPixels)
             return {};
         // Thumbnails are only displayed at 124 px. A cache entry may
         // still contain a much larger legacy or damaged-but-decodable
