@@ -25,6 +25,7 @@
 #include <QToolBar>
 #include <QVector>
 #include <QWidget>
+#include <algorithm>
 
 class MobileNativeCanvasChrome final
 {
@@ -255,6 +256,11 @@ private:
     void captureAdditionalDesktopChrome()
     {
         if(!m_backend)return;
+        // New Krita documents may replace dockers and toolbars while
+        // Mobile Studio remains active. Drop destroyed QObject entries
+        // instead of accumulating one snapshot per replaced widget.
+        m_chrome.erase(std::remove_if(m_chrome.begin(),m_chrome.end(),
+            [](const ChromeSnapshot &saved) {return !saved.widget;}),m_chrome.end());
         const auto store=[this](QWidget *widget) {
             if(!widget || widget==m_topDock || widget==m_bottomDock ||
                widget==m_sideDock)return;
@@ -293,6 +299,12 @@ private:
     void captureAdditionalTabs()
     {
         if(!m_nativeCanvas)return;
+        // A tabbar can be recreated on each document-layout change.
+        // A null QPointer has no restoration target; retire it during
+        // periodic active-mode capture rather than retaining it until
+        // the user exits the workspace.
+        m_tabs.erase(std::remove_if(m_tabs.begin(),m_tabs.end(),
+            [](const TabSnapshot &saved) {return !saved.widget;}),m_tabs.end());
         for(QTabBar *bar:m_nativeCanvas->findChildren<QTabBar*>()) {
             bool known=false;
             for(const TabSnapshot &saved:m_tabs) {
