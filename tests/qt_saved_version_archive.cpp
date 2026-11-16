@@ -60,7 +60,7 @@ int main(int argc,char **argv)
     const QVariant originalPreview=settings.value(previewKey);
     const bool hadPreview=settings.contains(previewKey);
     QVariantMap oversizedPreview;
-    for(int i=0;i<300;++i)
+    for(int i=0;i<4096;++i)
         oversizedPreview.insert(QStringLiteral("legacy-%1").arg(i),i+1);
     settings.setValue(previewKey,oversizedPreview);
     MobileSavedVersionArchive::recordPreviewRevision(source);
@@ -68,8 +68,9 @@ int main(int argc,char **argv)
     require(trimmedPreview.size()==128 &&
             trimmedPreview.contains(
                 MobileSavedVersionArchive::canonicalIdentity(source)) &&
-            trimmedPreview.contains(QStringLiteral("legacy-299")) &&
-            !trimmedPreview.contains(QStringLiteral("legacy-0")),
+            trimmedPreview.contains(QStringLiteral("legacy-4095")) &&
+            trimmedPreview.contains(QStringLiteral("legacy-3969")) &&
+            !trimmedPreview.contains(QStringLiteral("legacy-3968")),
             "saved-preview revision map did not prune a legacy backlog");
     if(hadPreview)settings.setValue(previewKey,originalPreview);
     else settings.remove(previewKey);
