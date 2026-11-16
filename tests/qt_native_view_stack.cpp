@@ -1884,6 +1884,28 @@ int main(int argc,char **argv)
                 "host teardown stranded nested keyboard shortcut modal");
     }
 
+    // Quick Actions opens its Add chooser from an independent modal
+    // editor. The editor is not destroyed when its toolbar disappears,
+    // so the nested chooser must observe rejection, not just destruction.
+    {
+        auto *toolbar=new QWidget;
+        const QPointer<QWidget> liveToolbar(toolbar);
+        QDialog editor;
+        QObject::connect(toolbar,&QObject::destroyed,
+                         &editor,&QDialog::reject);
+        bool chooserRejected=false;
+        QTimer::singleShot(0,&editor,[&]() {
+            QDialog chooser;
+            QObject::connect(&editor,&QDialog::rejected,
+                             &chooser,&QDialog::reject);
+            QTimer::singleShot(0,&chooser,[toolbar]() {delete toolbar;});
+            chooserRejected=chooser.exec()==QDialog::Rejected;
+        });
+        require(editor.exec()==QDialog::Rejected &&
+                chooserRejected && !liveToolbar,
+                "nested Quick Actions chooser remained open after editor rejection");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
