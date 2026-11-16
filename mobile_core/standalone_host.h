@@ -490,7 +490,11 @@ private:
     }
     void openMore()
     {
-        QMenu menu(this);
+        // exec() enters a nested Qt event loop. The mobile window can
+        // disappear during document close, so the stack QMenu must not
+        // also be owned (and deleted) by that window's QObject tree.
+        QMenu menu;
+        QObject::connect(this,&QObject::destroyed,&menu,&QMenu::close);
         auto *tools=menu.addAction(i18n("Tools — search Krita's tool registry"));
         tools->setEnabled(m_engine.hasDocument());
         connect(tools,&QAction::triggered,this,[this]() {
