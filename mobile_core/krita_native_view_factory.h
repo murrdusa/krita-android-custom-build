@@ -68,8 +68,19 @@ public:
         // If attachment fails after Krita created its view, release the
         // still-live unparented view while its manager is also alive.
         // Otherwise the failed first canvas leaks its GL surface.
-        const auto abortAttach=[guarded,guardedManager]() -> KisView* {
-            if(guarded && guardedManager)delete guarded.data();
+        bool inputTracked=false;
+        const auto abortAttach=[guarded,guardedManager,&inputTracked]() -> KisView* {
+            if(guarded && guardedManager) {
+                // Tracking precedes setViewManager() during native view
+                // initialization. If setup fails in that interval,
+                // KisView's destructor cannot deregister the canvas
+                // through a manager it was never assigned.
+                if(inputTracked && guarded->viewManager()!=guardedManager.data() &&
+                   guardedManager->inputManager() && guarded->canvasBase())
+                    guardedManager->inputManager()->removeTrackedCanvas(
+                        guarded->canvasBase());
+                delete guarded.data();
+            }
             return nullptr;
         };
         if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
@@ -91,6 +102,7 @@ public:
         if(!manager->inputManager() || !view->canvasBase())
             return abortAttach();
         manager->inputManager()->addTrackedCanvas(view->canvasBase());
+        inputTracked=true;
         if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
             return abortAttach();
         view->setViewManager(manager);
