@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — cap legacy gallery thumbnail decoder allocations
+
+- The thumbnail disk-cache reader now rejects PNGs exceeding 1024 px in either dimension or 1 megapixel total. The prior allowance of 4096x4096 could allocate approximately 64 MiB per image on Qt plugins that ignore scaled-decode requests; two concurrent gallery workers could compound transient Android memory pressure. New cache writes remain downscaled to 124 px, and older smaller cached previews remain readable. Oversized legacy cache entries miss and are regenerated from original projects.
+- `tests/qt_project_preview_cache.cpp` now confirms that a 1100x1100 legacy PNG is rejected while its existing 640x480 legacy PNG remains readable. Code commit `7ca121406e6d09f64863e86523aed18a24f7ef5b`, regression commit `7b3cdde78e07329434555fbaa728fde62f2fb5e2`. Exact revision Android build and Qt regression have not yet been verified; no APK uploaded.
+
 ## November 15 — coalesced recent-project index writes
 
 - The gallery's `KisRecentFilesManager::fileAdded` callback previously enqueued an independent JSON index load/merge/save job for every recent-file notification. Rapid file opens could accumulate redundant disk transactions and queued worker allocations while one serialized index pool was busy. The callback now accumulates unique pending paths in a shared, mutex-protected set and schedules only one drainer; each batch merges into the existing persistent index, and notifications arriving during a write are processed by the same worker's next pass. Project deletion and full-scan index work remain serialized on the original pool.
