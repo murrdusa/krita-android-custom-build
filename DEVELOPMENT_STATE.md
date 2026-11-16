@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — revalidate document metadata before native Save As picker
+
+- `MobileKritaStandaloneDocuments::writeDocument()` now records an original-document/root identity guard immediately after the image render-wait phase, and rechecks it between source path, MIME type, supported-format registry and recovered-state queries. It also rechecks after reading `nativeFormatMimeType()` before configuring the Save As/Export Copy chooser. These Krita/Qt operations can synchronously notify observers; without revalidation, a closed or switched canvas could be accessed in the next metadata read or used to initialize a picker.
+- Source commit `1749ba0afdfb0ff647593f95fc697568f983d9cd`. The patch preserves the existing save policy, collision checks, and file formats. This path is native Krita integration rather than a pure Qt helper, so there is no executable engine-level regression in this batch. Exact-revision Android build and on-device Save As behavior remain pending; no APK uploaded.
+
 ## November 16 — fail closed on changing Save As workspace
 
 - `MobileKritaStandaloneDocuments::writeDocument()` now protects each other-document path/draft metadata lookup with `QPointer<KisDocument>` and checks that the originating document, runtime and selected native root still exist. Previously a close or host replacement while collecting other drawings' backing paths could leave a stale `KisDocument*` in the overwrite scan.
