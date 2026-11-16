@@ -80,10 +80,15 @@ public:
             qWarning() << "Standalone engine checkpoint:" << name;
         };
         stage("Creating independent Krita engine session");
+        // Engine bootstrap can enter Qt/Krita callbacks which may close
+        // and destroy this host before attach() reports failure. Never
+        // delete the original raw pointer after such teardown.
+        const QPointer<MobileLightweightCanvasHost> bootWindow(window);
         MobileKritaEngineSession *engineSession=
             MobileKritaEngineSession::attach(window);
+        if(!bootWindow)return false;
         if(!engineSession) {
-            delete window;
+            delete bootWindow.data();
             return false;
         }
         // KisStatusBar::setup() still creates the Qt footer for engine
