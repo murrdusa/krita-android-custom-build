@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — layout editor synchronous callback teardown
+
+- `MobileCanvasLayoutEditor::closeEditor()` now checks the editor's lifetime after hiding/restoring widgets and invoking placement and completion callbacks. These callbacks may rebuild the current workspace and destroy the editor synchronously; the old loop could continue reading freed editor members or call `deleteLater()` on a destroyed QObject. The completion callback is copied before external calls.
+- `tests/qt_native_command_layout.cpp` now exercises a completion callback that deletes the editor during close. Code commit `0af161df1005269d945078808ebd115a16d0ceda`, test commit `d803233669a10616f48b52c235af946f861e2fa2`. Local Qt test and exact-revision Android build are not yet verified; no APK published.
+
 ## November 15 — preserve Android file intents during window replacement
 
 - An Android document open that fails while its registered Qt window or document host is replaced now retains the path for the replacement host. The old implementation removed the path before `openFile()` and could silently lose a user-requested document during activity recreation. Retried delivery is deferred to the replacement window after the current draining transaction ends; genuine failures with an unchanged host still report once and are discarded. Successful openings are never retried.
