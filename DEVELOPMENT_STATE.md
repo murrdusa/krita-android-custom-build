@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — protect independent background draft checkpoints from document teardown
+
+- `MobileKritaStandaloneRuntime::checkpointDrafts()` now retains each candidate document as a `QPointer<KisDocument>` and checks that the native root, runtime and document still exist between ownership, modified-state, private-draft metadata and active-saving queries. A synchronous document/Qt callback can close the canvas while a background/quit checkpoint is traversing the document list; later operations must not dereference the deleted original pointer.
+- `continueDrafts()`, which retries checkpoints queued behind active background saves, now performs the same lifetime/ownership checks before invoking `slotAutoSave` on an eligible document. Queued draft identities are removed when ready, and no view activation or user-visible Save/Discard behavior is changed.
+- Commit `09edd83137df9d3ad7a3a406ca4e3951a57d4af8`. This native Krita runtime path is not directly covered by the standalone Qt-only tests; exact-revision Android compilation, on-device background/resume behavior and measured crash reduction remain unverified. No APK uploaded.
+
 ## November 16 — tighten GL surface-destruction and zoom initialization guards
 
 - `MobileKritaNativeViewFactory::scheduleActivation()` now rechecks the selected view after reading its projection-ready Qt property in the one-shot GL surface destruction callback. The property lookup may dispatch QObject observers; a callback that destroys the view must not be followed by a write through its stale pointer.
