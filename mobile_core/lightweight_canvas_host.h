@@ -231,6 +231,14 @@ protected:
             m_closing=true;
             auto pending=views->openViews();
             if(!host)return;
+            // Saving or closing a view can replace the native root and
+            // its adapter through a nested Qt event loop. Never accept
+            // shutdown based on the stale adapter's emptied view list.
+            if(m_nativeViewPort!=views) {
+                m_closing=false;
+                event->ignore();
+                return;
+            }
             while(!pending.isEmpty()) {
                 const auto current=MobileViewIdentityGuard::uniqueActive(pending);
                 if(!current) {
@@ -240,14 +248,14 @@ protected:
                 }
                 const bool closed=views->closeView(current);
                 if(!host)return;
-                if(!closed) {
+                if(m_nativeViewPort!=views || !closed) {
                     m_closing=false;
                     event->ignore();
                     return;
                 }
                 const auto remaining=views->openViews();
                 if(!host)return;
-                if(remaining.size()>=pending.size()) {
+                if(m_nativeViewPort!=views || remaining.size()>=pending.size()) {
                     m_closing=false;
                     event->ignore();
                     return;
