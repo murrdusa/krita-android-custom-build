@@ -271,6 +271,30 @@ int main(int argc,char **argv)
                 activeRoot && activeRoot->openViews().isEmpty(),
                 "document constructor teardown allowed a stale KRA load");
     }
+    // MIME metadata resolution may replace the native root without
+    // destroying an in-flight import. The loader must recheck both
+    // identities before reading a KRA, not only the document pointer.
+    {
+        QWidget owner;
+        QPointer<MobileNativeViewStack> original(
+            new MobileNativeViewStack(&owner));
+        MobileNativeViewStack *runtimeRoot=original.data();
+        auto *imported=new QObject;
+        const QPointer<QObject> guardedImport(imported);
+        bool startedLoad=false;
+        const auto resolveMime=[&]() {
+            delete original.data();
+            runtimeRoot=new MobileNativeViewStack(&owner);
+        };
+        resolveMime();
+        if(guardedImport && original &&
+           runtimeRoot==original.data())
+            startedLoad=true;
+        require(!original && guardedImport && !startedLoad &&
+                runtimeRoot && runtimeRoot->openViews().isEmpty(),
+                "MIME callback allowed import into a replaced native root");
+        delete imported;
+    }
     // Recovery Open may try several checkpoints before the original
     // project. A failed first load which tears down the native root
     // must abort retries rather than construct a second stale document.
