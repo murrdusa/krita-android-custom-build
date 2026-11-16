@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — handle lighting color-picker raster allocation failure
+
+- `MobileLightingSphere::paintEvent()` now checks `QImage::isNull()` after allocating its 192-by-192 ARGB drawing buffer. Qt can return a null raster when Android denies a memory allocation under pressure; the previous loop unconditionally wrote through `scanLine(y)` and could dereference null. If allocation fails, only this decorative color-sphere paint is skipped for that frame; its raster is retried on the next repaint, with no effect on artwork or document saving.
+- Source commit `a9dc442ce10d6d571d9d1855b0511393854d5a27`. This Android/Krita color-workspace paint path has no practical host-only allocation-failure fixture; exact-revision local build and on-device low-memory behavior are unverified. No APK uploaded.
+
 ## November 15 — prevent layer-modal stack object deletion during Android teardown
 
 - `KritaMobileLayersPanel` no longer QObject-parents its stack-allocated layer-options `QMenu`, layer options sheet, opacity dialog, blend-mode dialog, or group-layer dialog to the native panel/window. Android can destroy that parent during `QDialog::exec()` or nested selection dialogs, previously causing parent-owned deletion of the C++ stack object before its enclosing function unwound. Each unparented modal dialog is rejected on layer-panel destruction; the panel uses `QPointer` checks after modal returns, including after nested action selection, before accessing Krita layer state. No layer commands, undo actions, or save semantics changed.
