@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — include thumbnail memory/cache regression in local Qt smoke suite
+
+- The WSL native Qt smoke runner compiled three tests but omitted the already-maintained `tests/qt_project_preview_cache.cpp`. That independent test covers gallery thumbnail decode bounds, cache publication/cancellation, 128 MiB quota retention, 620-entry backlog eviction, corrupted/empty PNG cleanup and oversized KRA-source rejection — directly relevant to the recent memory-pressure changes.
+- Added it as a fourth compiled/executed test in `tests/run_mobile_lifecycle_smoke.sh` (`8fddf8e`), and included the source and `mobile_core/project_preview_cache.h` in the pass-cache fingerprint so changes to thumbnail-cache implementation force revalidation. Updated the build reporter fixture's sample PASS count to four (`55db38c`).
+- WSL currently lacks host Qt5Widgets development libraries, so the runner continues to report NOT RUN rather than silently passing; this patch does not install packages or claim test execution. Android rebuild is not required by the test-only runner change; reporter should identify exact revision. No APK uploaded.
+
+
 ## November 16 — avoid unnecessary file opens during thumbnail-cache pruning
 
 - `MobileProjectPreviewCache::pruneLocked()` maintains a 512-entry newest-first heap, but continued opening every older eligible PNG and reading its signature even when its timestamp/name ranked below the oldest retained candidate. Added an early heap-bound check before disk open (`819136a`), so an overfull/legacy cache avoids unnecessary file descriptors, tiny reads, and filesystem work while preserving valid-PNG qualification for files that could be retained.
