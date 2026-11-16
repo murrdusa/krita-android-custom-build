@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — stress regression for recovery-list memory bounds
+
+- Verified the native build watcher had reported a successful Android build at `be3f07e8`, covering the initial 20k gallery bound; the subsequent checkpoint time cutoff still lacked a matching build report during this pass.
+- Expanded the Qt-only saved-version regression from a handful of fixtures to a **192-file** published-draft directory with deterministic, out-of-order modification times. It compares the bounded newest-seven results with the unrestricted sorted list, then repeats that comparison with a saved-project timestamp cutoff. Fixtures are dated after unrelated preexisting test drafts so the assertions actually exercise the generated entries. Cleanup removes every generated draft.
+- Test commits `07ae87653b0cfd2ea7e9825a15cc97214846e6d5` and `eb5ed66d773d3ba14e600e4ae6d81afeadf034a7`. This change adds correctness coverage rather than changing Android runtime behavior. Execution of the new regression remains pending; no APK uploaded.
+
 ## November 16 — discard obsolete recovery entries before allocation
 
 - Reviewed the newest-first bounded heap in `MobileDraftRecovery::list()` and confirmed that the most recent Android watcher report compiled regression source commit `bfe269eb`. The design still left `checkpointsFor()` collecting and sorting every published private draft before rejecting entries at or before the saved project's modification time.
