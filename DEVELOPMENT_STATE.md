@@ -4,6 +4,7 @@
 
 - Native views size to the canvas stack before loading and rely on the stack for visibility. New blank canvases use Krita’s first projection on a ready surface, with a refresh retained if layout or surface initialization needs it.
 - Brush capability checks run in short batches while the picker is visible. Popup refresh, touch replay, preset actions and native brush activation guard against teardown during callbacks. Canvas removal emits selection notifications after Qt’s layout removal completes, fixing a locally reproduced teardown crash. Device-specific crash reports remain needed to identify other failure paths.
+- Item-view scrolling tolerates synchronous filter teardown when a tap stops a fling. Brush mode changes verify the original resource provider after native actions, and the canvas switcher safely unwinds if its owner closes during the modal dialog.
 
 ## November 15 — Android launch splash
 

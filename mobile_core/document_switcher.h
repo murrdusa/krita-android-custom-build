@@ -17,6 +17,7 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QScroller>
+#include <QScopeGuard>
 #include <QSize>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -29,7 +30,11 @@ public:
     static void open(const MobileEngineBridge &engine,QWidget *parent)
     {
         if(!parent)return;
-        QDialog dialog(parent);
+        const QPointer<QWidget> owner(parent);
+        const MobileEngineBridge native=engine;
+        QPointer<QDialog> chooser(new QDialog(parent));
+        const auto cleanup=qScopeGuard([&chooser]() {delete chooser.data();});
+        auto &dialog=*chooser;
         dialog.setWindowTitle(i18n("Canvases"));
         MobileTouchScroll::styleMenuDialog(dialog,QSize(430,610));
         auto *layout=new QVBoxLayout(&dialog);
@@ -124,23 +129,22 @@ public:
         dialog.resize(qMin(500,qMax(1,bounds.width()-24)),
                       qMin(620,qMax(1,bounds.height()-24)));
         dialog.setMaximumSize(qMax(1,bounds.width()-12),qMax(1,bounds.height()-12));
-        if(dialog.exec()!=QDialog::Accepted)return;
+        if(dialog.exec()!=QDialog::Accepted || !owner || !chooser)return;
         // End the chooser before opening a native Krita document dialog.
-        if(choice==Create)MobileDocumentWorkflow::create(engine,parent);
-        else if(choice==Open)MobileDocumentWorkflow::open(engine,parent);
+        if(choice==Create)MobileDocumentWorkflow::create(native,owner);
+        else if(choice==Open)MobileDocumentWorkflow::open(native,owner);
         else if(choice==CloseCurrent) {
             // Android Qt may still be tearing down this frameless popup.
             // Close on the next event-loop pass so Krita's native
             // Save/Discard/Cancel dialog is shown above the live canvas,
             // rather than behind the document switcher.
-            const MobileEngineBridge native=engine;
-            QTimer::singleShot(0,parent,[native,activeView]() {
+            QTimer::singleShot(0,owner.data(),[native,activeView]() {
                 // Guarded identity: a changed MDI ordering or closed view
                 // must never redirect Close Current to a different file.
                 if(activeView)native.closeDocumentView(activeView);
             });
         }
-        else if(desiredView)engine.activateDocumentView(desiredView);
+        else if(desiredView)native.activateDocumentView(desiredView);
     }
 };
 #endif // Q_OS_ANDROID

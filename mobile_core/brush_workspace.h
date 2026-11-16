@@ -345,7 +345,8 @@ public:
 
     bool activateCloneBrush()
     {
-        auto *provider=resources();
+        const QPointer<KritaMobileBrushWorkspace> self(this);
+        const QPointer<KisCanvasResourceProvider> provider(resources());
         if(!provider)return false;
         auto preset=provider->currentPreset();
         if(!preset || preset->paintOp().id()!=QStringLiteral("duplicate")) {
@@ -362,13 +363,17 @@ public:
             }
             if(!preset)return false;
         }
-        m_engine.freehandBrush();
+        const MobileEngineBridge engine=m_engine;
+        engine.freehandBrush();
+        if(!self || !provider || resources()!=provider)return false;
         if(provider->currentPreset()!=preset && !setNativePreset(preset))return false;
+        if(!self || !provider || resources()!=provider)return false;
         setEraser(false);
+        if(!self)return false;
         m_slot=0;
         m_hasSelectedMode=true;
         refresh();
-        return provider->currentPreset() &&
+        return self && provider && resources()==provider && provider->currentPreset() &&
                provider->currentPreset()->paintOp().id()==QStringLiteral("duplicate");
     }
 
@@ -1171,18 +1176,24 @@ private:
     }
     void switchMode(int slot)
     {
-        if(!resources() || slot<0 || slot>2)return;
+        const QPointer<KritaMobileBrushWorkspace> self(this);
+        const QPointer<KisCanvasResourceProvider> provider(resources());
+        if(!provider || slot<0 || slot>2)return;
         // Changing presets never replaces Krita's tool or input manager.
-        m_engine.freehandBrush();
+        const MobileEngineBridge engine=m_engine;
+        engine.freehandBrush();
+        if(!self || !provider || resources()!=provider)return;
         KisPaintOpPresetSP preset=findPreset(slot);
         const auto available=capabilities(preset);
         if(!available.supports(slot) || (slot==2 && !available.blend))preset.clear();
-        if(!preset && slot==0 && capabilities(resources()->currentPreset()).paint)
-            preset=resources()->currentPreset();
+        if(!preset && slot==0 && capabilities(provider->currentPreset()).paint)
+            preset=provider->currentPreset();
         if(!preset)preset=firstPresetFor(slot);
         if(slot==2 && !preset)return;
         if(preset && !setNativePreset(preset))return;
+        if(!self || !provider || resources()!=provider)return;
         setEraser(slot==1);
+        if(!self)return;
         m_slot=slot;
         m_hasSelectedMode=true;
         if(preset)rememberPreset(slot,preset);
@@ -1191,9 +1202,12 @@ private:
     bool usePreset(int slot,const KisPaintOpPresetSP &preset)
     {
         const QPointer<KritaMobileBrushWorkspace> self(this);
+        const QPointer<KisCanvasResourceProvider> provider(resources());
+        if(!provider)return false;
         const MobileEngineBridge engine=m_engine;
         engine.freehandBrush();
-        if(!self || !setNativePreset(preset))return false;
+        if(!self || !provider || resources()!=provider || !setNativePreset(preset))return false;
+        if(!self || !provider || resources()!=provider)return false;
         setEraser(slot==1);
         if(!self)return false;
         m_slot=slot;

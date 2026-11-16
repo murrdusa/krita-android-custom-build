@@ -166,4 +166,24 @@ int main(int argc,char **argv)
     int presetClicks=0;
     QObject::connect(&brushes,&QListView::clicked,&brushes,[&]() {++presetClicks;});
     checkView(brushes,presetClicks);
+
+    // Interrupting a fling can synchronously tear down the pointer filter
+    // through a QScroller state listener, before the press handler returns.
+    auto *viewport=brushes.viewport();
+    QPointer<QObject> filter=viewport->findChild<QObject*>(
+        QStringLiteral("_mobileItemViewPointer"),Qt::FindDirectChildrenOnly);
+    auto *scroller=QScroller::scroller(viewport);
+    brushes.verticalScrollBar()->setValue(0);
+    scroller->scrollTo(QPointF(0,100),1000);
+    verify(filter && scroller->state()==QScroller::Scrolling,"fixture must start a fling");
+    const auto teardown=QObject::connect(scroller,&QScroller::stateChanged,&brushes,
+        [&filter](QScroller::State state) {
+            if(state==QScroller::Inactive)delete filter.data();
+        });
+    const auto tile=brushes.visualRect(presets.index(0,0)).center();
+    const int before=presetClicks;
+    pointer(viewport,QEvent::MouseButtonPress,tile);
+    QObject::disconnect(teardown);
+    verify(!filter,"press interrupting a fling must survive filter teardown");
+    verify(presetClicks==before,"interrupting a fling must not activate a brush on press");
 }
