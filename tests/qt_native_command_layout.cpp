@@ -284,8 +284,9 @@ int main(int argc,char **argv)
     });
     edit->trigger();
     QApplication::processEvents();
-    auto *finalEditor=secondCanvas->findChild<MobileCanvasLayoutEditor*>(
-        QStringLiteral("_mobileCanvasLayoutEditor"));
+    auto *finalEditor=dynamic_cast<MobileCanvasLayoutEditor*>(
+        secondCanvas->findChild<QWidget*>(
+            QStringLiteral("_mobileCanvasLayoutEditor")));
     verify(finalEditor && controller,"final editor did not open");
     finalEditor->closeEditor(false);
     verify(!controller && controllerTeardowns==1,
