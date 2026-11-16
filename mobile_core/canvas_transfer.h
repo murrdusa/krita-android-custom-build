@@ -279,7 +279,11 @@ public:
                 if(!restored || !backend ||
                    backend->centralWidget()!=restored)return;
                 restored->show();
+                if(!restored || !backend ||
+                   backend->centralWidget()!=restored)return;
                 restored->updateGeometry();
+                if(!restored || !backend ||
+                   backend->centralWidget()!=restored)return;
                 restored->update();
                 refreshDocumentRoot(documents);
             });
@@ -298,13 +302,18 @@ private:
     // Krita presently supplies QMdiArea, but this adapter only needs
     // a QWidget document root. It requests a viewport repaint for
     // scroll-area roots without depending on native MDI ownership.
-    static void refreshDocumentRoot(QWidget *documents)
+    static void refreshDocumentRoot(const QPointer<QWidget> &documents)
     {
         if(!documents)return;
+        // A layout recalculation can synchronously notify a Krita
+        // document host, which may replace/destroy this widget.
         documents->updateGeometry();
+        if(!documents)return;
         documents->update();
-        if(auto *scroll=qobject_cast<QAbstractScrollArea*>(documents)) {
-            if(scroll->viewport())scroll->viewport()->update();
+        if(!documents)return;
+        if(auto *scroll=qobject_cast<QAbstractScrollArea*>(documents.data())) {
+            const QPointer<QWidget> viewport=scroll->viewport();
+            if(viewport)viewport->update();
         }
     }
 
@@ -326,6 +335,10 @@ private:
                    backend->centralWidget()!=host ||
                    m_active!=expectedMobileState)return;
                 canvas->updateGeometry();
+                if(!backend || !host || !canvas ||
+                   !m_persistentHostInstalled ||
+                   backend->centralWidget()!=host ||
+                   m_active!=expectedMobileState)return;
                 canvas->update();
                 refreshDocumentRoot(documents);
             });
