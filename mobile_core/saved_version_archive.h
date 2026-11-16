@@ -394,8 +394,12 @@ public:
                            original.lastModified()!=before)return false;
                     }
                     if(oldSha.toLower()!=sha) {
-                        QSaveFile repair(previous.first().path+
-                                         QStringLiteral(".sha256"));
+                        const QString digestPath=sidecar.fileName();
+                        // QSaveFile follows an existing symlink. Unlink it
+                        // first so a repair only writes inside the archive.
+                        if(QFileInfo(digestPath).isSymLink() &&
+                           !QFile::remove(digestPath))return false;
+                        QSaveFile repair(digestPath);
                         if(!repair.open(QIODevice::WriteOnly))return false;
                         if(repair.write(sha)!=sha.size() ||
                            !repair.commit())return false;

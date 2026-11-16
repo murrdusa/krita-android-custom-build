@@ -27,7 +27,7 @@ public:
     // a 160 MiB bitmap allocation on each thumbnail worker.
     static bool safePreviewDecodeSize(const QSize &size)
     {
-        return size.isValid() && size.width()<=8192 && size.height()<=8192 &&
+        return !size.isEmpty() && size.width()<=8192 && size.height()<=8192 &&
             qint64(size.width())*size.height()<=16LL*1024*1024;
     }
     // Gallery preview extraction must reject unsuitable local KRAs
@@ -102,8 +102,8 @@ public:
         // still contain a much larger legacy or damaged-but-decodable
         // PNG; decoding the full image can allocate tens of MiB per
         // queued worker. Ask the decoder to downscale before allocation.
-        const QSize displaySize=size.scaled(124,124,Qt::KeepAspectRatio);
-        if(displaySize!=size)reader.setScaledSize(displaySize);
+        if(size.width()>124 || size.height()>124)
+            reader.setScaledSize(size.scaled(124,124,Qt::KeepAspectRatio));
         // Avoid decoding legacy large PNGs if a gallery refresh or
         // Android window teardown superseded this thumbnail request.
         if(cancelled && cancelled->load())return {};

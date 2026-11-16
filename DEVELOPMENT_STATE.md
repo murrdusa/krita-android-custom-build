@@ -4,6 +4,7 @@
 
 - The stability branch includes the Wheel, Sliders, and Lighting picker, Layers minimization from Add, and the native splash. Color tabs fit narrow popups and the numeric controls scroll when needed. The Layers launcher always shows an icon, and the Add menu closes when the rail hides. Android 12 and newer use Studio’s splash colors and icon during the system launch transition.
 - Krita repopulates the first projection once per drawable surface, including blank canvases and replacement Android surfaces after the GL context becomes ready. The newer reentrancy, recovery, and memory fixes remain in place. Device rendering and cold-start appearance still need runtime verification.
+- Local Qt tests exposed two existing defects in the stability batch. Gallery preview validation now rejects zero dimensions and keeps small cached images at their original size. Archive checksum repair replaces a linked sidecar without writing through it. The lifecycle, gallery and archive regression fixtures now run on host Qt.
 
 ## November 16 — verify the opened KRA inode before gallery preview ZIP parsing
 

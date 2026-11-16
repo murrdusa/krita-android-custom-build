@@ -6,6 +6,7 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDebug>
+#include <QExposeEvent>
 #include <QPointer>
 #include <QWindow>
 #include <QVBoxLayout>
@@ -139,7 +140,7 @@ int main(int argc,char **argv)
     QWindow *surface=window.windowHandle();
     require(surface,"native window surface was not created");
     const int beforeExpose=activations;
-    QEvent exposed(QEvent::Expose);
+    QExposeEvent exposed(QRegion(window.rect()));
     QCoreApplication::sendEvent(surface,&exposed);
     drain();
     require(activations>beforeExpose,

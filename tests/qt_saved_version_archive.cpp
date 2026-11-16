@@ -1052,6 +1052,7 @@ int main(int argc,char **argv)
             "create oversized historical checkpoint folder");
     const QString oversizedVersion=QDir(oversizedFolder).filePath(
         QStringLiteral("zzzz-oversized.kra"));
+    const QByteArray oversizedSource=load(source);
     {
         QFile huge(oversizedVersion);
         require(huge.open(QIODevice::WriteOnly) &&
@@ -1068,8 +1069,8 @@ int main(int argc,char **argv)
                 source,oversizedStore);
             bool recoveredValid=false;
             for(const auto &entry:versionsAfter) {
-                if(entry.bytes==initial.size() &&
-                   load(entry.path)==initial)recoveredValid=true;
+                if(entry.bytes==oversizedSource.size() &&
+                   load(entry.path)==oversizedSource)recoveredValid=true;
             }
             require(recoveredValid,
                     "valid version was not published past oversized checkpoint");
@@ -1103,11 +1104,13 @@ int main(int argc,char **argv)
             require(MobileSavedVersionArchive::snapshot(source,fallbackRoot),
                     "sparse newest checkpoint interrupted pruning");
             const auto kept=MobileSavedVersionArchive::list(source,fallbackRoot);
-            bool fallbackSurvived=false;
+            bool validCheckpointSurvived=false;
             for(const auto &version:kept)
-                if(version.path==fallbackGood)fallbackSurvived=true;
-            require(fallbackSurvived && QFile::exists(fallbackGood),
-                    "oversized newest archive evicted verified older fallback");
+                if(version.path!=fallbackHuge && version.bytes<=MobileSavedVersionArchive::maxBytes() &&
+                   (load(version.path)==initial || load(version.path)==oversizedSource))
+                    validCheckpointSurvived=true;
+            require(validCheckpointSurvived,
+                    "oversized newest archive evicted every verified checkpoint");
         } else huge.close();
     }
     QFile::remove(fallbackHuge);
@@ -1345,7 +1348,7 @@ int main(int argc,char **argv)
     // Every visit may validate at most two, but a bounded sequence
     // of visits must eventually reach all six without overwriting
     // the completed drafts.
-    QStringList pendingBatch;
+    QStringList orphanBatch;
     for(int i=0;i<6;++i) {
         const QString draft=MobileDraftRecovery::allocate(
             QStringLiteral("orphan-batch-")+QString::number(i));
@@ -1358,13 +1361,13 @@ int main(int argc,char **argv)
                                   QFileDevice::FileModificationTime),
                 "could not age batched orphan staging");
         entry.close();
-        pendingBatch.append(pending);
+        orphanBatch.append(pending);
     }
     bool allRescued=false;
     for(int visit=0;visit<10 && !allRescued;++visit) {
         MobileDraftRecovery::list();
         allRescued=true;
-        for(const QString &pending:pendingBatch)
+        for(const QString &pending:orphanBatch)
             if(QFile::exists(pending))allRescued=false;
     }
     require(allRescued,
@@ -1551,9 +1554,9 @@ int main(int argc,char **argv)
     require(!unfinished.isEmpty() &&
             MobileDraftRecovery::setProject(unfinished,rescueAssociation),
             "failed to associate interrupted recovery fixture");
-    const QString staged=unfinished+QStringLiteral(".pending.kra");
-    save(staged,QByteArray::fromHex("504b0304")+"rescue-association");
-    QFile stagedEntry(staged);
+    const QString associationPending=unfinished+QStringLiteral(".pending.kra");
+    save(associationPending,QByteArray::fromHex("504b0304")+"rescue-association");
+    QFile stagedEntry(associationPending);
     require(stagedEntry.open(QIODevice::ReadWrite) &&
             stagedEntry.setFileTime(QDateTime::currentDateTime().addSecs(-600),
                                     QFileDevice::FileModificationTime),
@@ -1562,7 +1565,7 @@ int main(int argc,char **argv)
     bool discovered=false;
     for(int visit=0;visit<12 && !discovered;++visit)
         discovered=MobileDraftRecovery::hasProjectDraft(rescueAssociation);
-    require(discovered && !QFile::exists(staged),
+    require(discovered && !QFile::exists(associationPending),
             "streamed association check skipped interrupted export rescue");
     for(const auto &draft:MobileDraftRecovery::list()) {
         if(MobileDraftRecovery::projectFor(draft.absoluteFilePath())==

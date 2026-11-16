@@ -38,7 +38,7 @@ int main(int argc,char **argv)
     QImage unscaled(900,600,QImage::Format_RGB32);
     unscaled.fill(Qt::cyan);
     const QImage bounded=MobileProjectPreviewCache::boundedThumbnail(unscaled);
-    if(bounded.size()!=QSize(124,83) ||
+    if(bounded.size()!=unscaled.size().scaled(124,124,Qt::KeepAspectRatio) ||
        bounded.pixelColor(0,0)!=QColor(Qt::cyan) ||
        !MobileProjectPreviewCache::boundedThumbnail(QImage()).isNull())
         return 44;
@@ -92,7 +92,8 @@ int main(int argc,char **argv)
     widePreview.fill(Qt::darkCyan);
     cache.store(source,23,widePreview);
     const QImage wideCached=cache.load(source,23);
-    if(wideCached.isNull() || wideCached.size()!=QSize(124,4) ||
+    if(wideCached.isNull() ||
+       wideCached.size()!=widePreview.size().scaled(124,124,Qt::KeepAspectRatio) ||
        wideCached.pixelColor(0,0)!=QColor(Qt::darkCyan))return 51;
     // Reproduce a *legacy* cache entry directly: older versions
     // stored full-resolution PNGs, unlike the current store() path.
