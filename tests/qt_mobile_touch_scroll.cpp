@@ -195,4 +195,37 @@ int main(int argc,char **argv)
     verify(initial.isValid(),"combo index fixture starts valid");
     changing.setStringList({QStringLiteral("replacement")});
     verify(!initial.isValid(),"combo initial index invalidates on model reset");
+
+    // A scrollbar listener can synchronously destroy the application
+    // pointer filter while it is handling a drag. The subsequent access
+    // to the second scrollbar or replay state must not touch that filter.
+    QScrollArea teardownSheet;
+    teardownSheet.resize(240,180);
+    auto *teardownBody=new QWidget;
+    auto *teardownLayout=new QVBoxLayout(teardownBody);
+    auto *teardownAction=new QPushButton(QStringLiteral("Scroll control"),teardownBody);
+    teardownLayout->addWidget(teardownAction);
+    teardownLayout->addSpacing(500);
+    teardownSheet.setWidgetResizable(true);
+    teardownSheet.setWidget(teardownBody);
+    MobileTouchScroll::configure(&teardownSheet);
+    teardownSheet.show();
+    QApplication::processEvents();
+    QPointer<MobileTouchScroll::MenuPointerFilter> menuFilter;
+    for(QObject *child:app.children()) {
+        if(auto *candidate=dynamic_cast<MobileTouchScroll::MenuPointerFilter*>(child)) {
+            menuFilter=candidate;
+            break;
+        }
+    }
+    verify(menuFilter && teardownSheet.verticalScrollBar()->maximum()>0,
+           "teardown fixture needs a live filter and vertical scroll range");
+    QObject::connect(teardownSheet.verticalScrollBar(),&QScrollBar::valueChanged,
+        &teardownSheet,[&](int value) {
+            if(value>0)delete menuFilter.data();
+        });
+    const QPoint startPoint=teardownAction->rect().center();
+    pointer(teardownAction,QEvent::MouseButtonPress,startPoint);
+    pointer(teardownAction,QEvent::MouseMove,startPoint-QPoint(0,75));
+    verify(!menuFilter,"scrollbar callback must be allowed to destroy the active touch filter");
 }
