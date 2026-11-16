@@ -331,15 +331,27 @@ private:
            originalRoot->currentDocument().data()!=guardedDocument.data())
             return false;
 
+        // Every Krita document query below may notify Qt observers
+        // during a nested save/close workflow. Keep the original view
+        // and document selected before preparing any file chooser.
+        const auto stillSelected=[this,originalRoot,guardedDocument]() {
+            return guardedDocument && m_runtime && originalRoot &&
+                m_runtime->documentRoot()==originalRoot.data() &&
+                originalRoot->currentDocument().data()==guardedDocument.data();
+        };
         const QString currentPath=guardedDocument->path();
+        if(!stillSelected())return false;
         const QByteArray currentMime=guardedDocument->mimeType();
+        if(!stillSelected())return false;
         const auto formats=KisImportExportManager::supportedMimeTypes(
             KisImportExportManager::Export);
+        if(!stillSelected())return false;
         const bool unsupportedMime=!formats.contains(
             QString::fromLatin1(currentMime));
+        const bool recovered=guardedDocument->isRecovered();
+        if(!stillSelected())return false;
         const bool choosePath=MobileNativeDocumentPathPolicy::needsSaveAs(
-            currentPath,saveAs,guardedDocument->isRecovered(),
-            unsupportedMime);
+            currentPath,saveAs,recovered,unsupportedMime);
 
         QString target=currentPath;
         QByteArray targetMime=currentMime;
@@ -356,8 +368,10 @@ private:
                     QStandardPaths::writableLocation(
                         QStandardPaths::PicturesLocation));
             if(!proposed.isEmpty())dialog.setDefaultDir(proposed,true);
+            if(!stillSelected())return false;
             const QString nativeMime=QString::fromLatin1(
                 guardedDocument->nativeFormatMimeType());
+            if(!stillSelected())return false;
             const QString preferred=unsupportedMime || currentMime.isEmpty()?
                 nativeMime:QString::fromLatin1(currentMime);
             dialog.setMimeTypeFilters(formats,preferred);
