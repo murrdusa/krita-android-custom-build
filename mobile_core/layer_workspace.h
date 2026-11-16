@@ -858,7 +858,10 @@ private:
         auto *view=m_engine.manager();
         const KisImageSP originalImage=view?view->image().toStrongRef():KisImageSP();
         if(!m || !inImage(node,originalImage) || !item)return;
-        QMenu menu(this);
+        // Action definitions live only for this invocation. Do not
+        // QObject-parent a stack QMenu to a panel that can be destroyed
+        // while the nested layer sheet is open.
+        QMenu menu;
         menu.setTitle(i18n("More layer options"));
         QAction *rename=menu.addAction(i18n("Rename layer"));
         QAction *opacityAction=menu.addAction(
@@ -924,7 +927,8 @@ private:
                    inImage(node,originalImage);
         };
         const bool isMask=node->inherits("KisMask");
-        QDialog sheet(this);
+        QDialog sheet;
+        connect(this,&QObject::destroyed,&sheet,&QDialog::reject);
         sheet.setWindowTitle(isMask?i18n("Mask options"):i18n("Layer options"));
         MobileTouchScroll::styleMenuDialog(sheet,QSize(440,620));
         auto *outer=new QVBoxLayout(&sheet);
@@ -1019,14 +1023,15 @@ private:
                      qMin(sheetHeight,qMax(1,window()->height()-24)));
         sheet.setMaximumSize(qMax(1,window()->width()-12),
                              qMax(1,window()->height()-12));
+        const QPointer<KritaMobileLayersPanel> alive(this);
         const int result=sheet.exec();
-        if(result==QDialog::Rejected || !validTarget())return;
+        if(!alive || result==QDialog::Rejected || !validTarget())return;
         if(opacitySlider->value()!=initialOpacity)
             m->setNodeOpacity(node,(opacitySlider->value()*255+50)/100);
         if(result==2)chosen=mobilePickAction(window(),menu);
         else if(chosen==select->menuAction())chosen=mobilePickAction(window(),*select);
         else if(chosen==mask->menuAction())chosen=mobilePickAction(window(),*mask);
-        if(!chosen || !validTarget())return;
+        if(!alive || !chosen || !validTarget())return;
         if(chosen==visibility || chosen==lock) {
             if(chosen==visibility)
                 setLayerProperty(node,KisLayerPropertiesIcons::visible,!node->visible());
@@ -1066,7 +1071,8 @@ private:
             const KisImageSP originalImage=m_engine.manager() ?
                 m_engine.manager()->image().toStrongRef() : KisImageSP();
             if(!originalImage)return;
-            QInputDialog dialog(this);
+            QInputDialog dialog;
+            connect(this,&QObject::destroyed,&dialog,&QDialog::reject);
             dialog.setWindowTitle(i18n("Layer opacity"));
             dialog.setLabelText(i18n("Opacity (0–100%)"));
             dialog.setInputMode(QInputDialog::IntInput);
@@ -1080,7 +1086,7 @@ private:
                 "min-height:42px;}"
                 "QPushButton{background:#446781;color:#f4f9fe;"
                 "min-height:42px;}");
-            if(dialog.exec()!=QDialog::Accepted ||
+            if(dialog.exec()!=QDialog::Accepted || !alive ||
                m_reorderPending || !m_engine.manager() ||
                m_engine.manager()->image().toStrongRef()!=originalImage)
                 return;
@@ -1100,7 +1106,8 @@ private:
             const KoColorSpace *colorSpace=node->colorSpace();
             const auto &registry=KoCompositeOpRegistry::instance();
             const auto modes=registry.getCompositeOps(colorSpace);
-            QDialog dialog(this);
+            QDialog dialog;
+            connect(this,&QObject::destroyed,&dialog,&QDialog::reject);
             MobileTouchScroll::styleMenuDialog(dialog,QSize(420,360));
             dialog.setWindowTitle(i18n("Layer blending mode"));
             auto *layout=new QVBoxLayout(&dialog);
@@ -1149,7 +1156,7 @@ private:
                 dialog.accept();
             });
             dialog.resize(qMin(360,window()->width()),qMin(540,window()->height()));
-            if(dialog.exec()!=QDialog::Accepted || !validTarget() ||
+            if(dialog.exec()!=QDialog::Accepted || !alive || !validTarget() ||
                m_reorderPending || node->colorSpace()!=colorSpace)return;
             if(const KoCompositeOp *mode=colorSpace->compositeOp(selected))
                 m->setNodeCompositeOp(node,mode);
@@ -2587,7 +2594,8 @@ private:
         // clip wrapper is a real Krita group even when hidden in our UI:
         // never pass nodes from different parents to one grouping command.
         const KisNodeSP parent=origin->parent();
-        QDialog dialog(window());
+        QDialog dialog;
+        connect(this,&QObject::destroyed,&dialog,&QDialog::reject);
         MobileTouchScroll::styleMenuDialog(dialog,QSize(440,540));
         dialog.setWindowTitle(i18n("Group layers"));
         auto *layout=new QVBoxLayout(&dialog);
@@ -2625,7 +2633,8 @@ private:
             }
         });
         layout->addWidget(buttons);
-        if(dialog.exec()!=QDialog::Accepted || !manager() ||
+        const QPointer<KritaMobileLayersPanel> alive(this);
+        if(dialog.exec()!=QDialog::Accepted || !alive || !manager() ||
            m_reorderPending || m_clipBusy || m_clipPropertyPending ||
            m_engine.manager()->image().toStrongRef()!=image ||
            !inImage(origin,image) || origin->parent()!=parent)return;
