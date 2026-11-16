@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — native startup callback lifetime
+
+- The independent native boot coordinator invokes a local copy of its launcher function rather than calling `m_launch` from its own storage. A synchronous window teardown during startup can delete the coordinator while the launch callback runs; the local callable survives until its invocation ends.
+- `tests/qt_native_boot_coordinator.cpp` exercises a launcher that deletes its parent window before returning. Code commit `4c076d0ea07865ed6ab3b975ef9b7ac3062f5b33` and test commit `915cfa9bcd2ef251b7ba2b1383449b2ab192bedd`. Exact local build/test results remain unverified; no APK uploaded.
+
 ## November 15 — Android file-intent window ownership
 
 - Android file-intent registration now tags window ownership by generation. A delayed `destroyed()` callback from a previous activity/window can no longer clear a newer window's document host. Reattaching the same window also avoids stacking redundant destroyed observers.
