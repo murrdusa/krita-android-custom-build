@@ -259,6 +259,38 @@ int main(int argc,char **argv)
                 "Open failure warning was suppressed for surviving window");
     }
 
+    // Save As collision comparisons can query Android document providers.
+    // A provider callback may close the runtime/window before the warning
+    // is shown. The collision result never authorizes a stale parent.
+    {
+        auto *runtime=new QObject;
+        auto *window=new QObject(runtime);
+        const QPointer<QObject> guardedRuntime(runtime);
+        const QPointer<QObject> guardedWindow(window);
+        int warnings=0;
+        const auto checkCollision=[runtime]() {
+            delete runtime;
+            return true;
+        };
+        const bool collision=checkCollision();
+        if(guardedRuntime && guardedWindow && collision)++warnings;
+        require(collision && !guardedRuntime && !guardedWindow &&
+                warnings==0,
+                "Save collision warning used a destroyed runtime");
+    }
+    {
+        QObject runtime;
+        QObject window(&runtime);
+        const QPointer<QObject> guardedRuntime(&runtime);
+        const QPointer<QObject> guardedWindow(&window);
+        int warnings=0;
+        const auto checkCollision=[]() {return true;};
+        const bool collision=checkCollision();
+        if(guardedRuntime && guardedWindow && collision)++warnings;
+        require(warnings==1,
+                "Save collision warning was skipped for a surviving owner");
+    }
+
     qInfo()<<"PASS: attach failure rollback, duplicate prevention and"
               "ownership isolation";
     return 0;
