@@ -1141,12 +1141,22 @@ private:
         QHash<QString,QString> draftProjects;
         for(const auto &draft:drafts) {
             const QString path=draft.absoluteFilePath();
-            if(!MobileDraftRecovery::hasReadableProject(path))continue;
+            // Enumerating the recovery gallery runs on the UI thread.
+            // A ZIP/KoStore open for every untitled draft can stall Home
+            // for seconds after an app crash or with a large draft backlog.
+            // The cheap bounded ZIP-header check is enough to *list* a
+            // private draft; opening it still uses Krita's normal loader.
+            if(!MobileDraftRecovery::hasKraHeader(path))continue;
             const auto project=MobileDraftRecovery::projectFor(path);
             if(project.isEmpty()) {
                 unnamed.append({path,draftTitle(draft),
                                 draft.lastModified().toMSecsSinceEpoch(),{}});
             } else {
+                // The newest *valid* checkpoint must win for named
+                // projects. Preserve full archive verification here so
+                // one damaged recent draft cannot mask an older usable
+                // checkpoint for the same document.
+                if(!MobileDraftRecovery::hasReadableProject(path))continue;
                 const QString key=projectKey(project);
                 if(m_latestDrafts.contains(key))continue;
                 m_latestDrafts.insert(key,draft);
