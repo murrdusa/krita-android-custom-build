@@ -99,7 +99,10 @@ public:
 #endif
     }
 
-    static QFileInfoList list()
+    // maxResults limits *only* the retained published-draft snapshot.
+    // Recovery searches use the default unlimited list so older
+    // recoverable checkpoints are never silently excluded.
+    static QFileInfoList list(int maxResults=0)
     {
         const QString folder=directory();
         if(folder.isEmpty())return {};
@@ -160,25 +163,35 @@ public:
             // False prevents replacing the previous published draft.
             publish(draft,false);
         }
-        // Avoid holding Qt's full sorted directory snapshot *and* a
-        // second filtered list of completed KRAs in memory. Enumerate
-        // once and sort only the valid published draft entries.
+        // For the gallery, retain only the newest maxResults entries
+        // while streaming directory contents. A damaged recovery folder
+        // may contain far more files than the UI's 20k-project limit.
+        // Other recovery callers keep the complete newest-first list.
         QFileInfoList drafts;
+        const auto newer=[](const QFileInfo &a,const QFileInfo &b) {
+            if(a.lastModified()!=b.lastModified())
+                return a.lastModified()>b.lastModified();
+            return a.fileName()>b.fileName();
+        };
         QDirIterator completed(folder,{QStringLiteral("*.kra")},
                                QDir::Files|QDir::Readable|QDir::NoSymLinks);
         while(completed.hasNext()) {
             completed.next();
             const QFileInfo file=completed.fileInfo();
-            if(isDraft(file.absoluteFilePath()))drafts.append(file);
+            if(!isDraft(file.absoluteFilePath()))continue;
+            if(maxResults<=0 || drafts.size()<maxResults) {
+                drafts.append(file);
+                if(maxResults>0)
+                    std::push_heap(drafts.begin(),drafts.end(),newer);
+            } else if(newer(file,drafts.front())) {
+                std::pop_heap(drafts.begin(),drafts.end(),newer);
+                drafts.last()=file;
+                std::push_heap(drafts.begin(),drafts.end(),newer);
+            }
         }
         // checkpointsFor() relies on newest-first order to stop once
         // entries are older than the saved project's modification time.
-        std::sort(drafts.begin(),drafts.end(),
-                  [](const QFileInfo &a,const QFileInfo &b) {
-            if(a.lastModified()!=b.lastModified())
-                return a.lastModified()>b.lastModified();
-            return a.fileName()>b.fileName();
-        });
+        std::sort(drafts.begin(),drafts.end(),newer);
         return drafts;
     }
 
