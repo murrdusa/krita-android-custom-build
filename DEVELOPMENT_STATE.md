@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — prevent native settings modal destruction on Android host teardown
+
+- Audited `MobileKritaNativeWorkspace` and found three stack-owned dialogs parented to the Android host: Touch/Pressure/Input, Workspace Settings, and Keyboard Shortcuts. If the host closes while `QDialog::exec()` runs, Qt can delete these stack objects through parent ownership. Changed all three to independent application-modal stack dialogs that reject when the host or workspace is destroyed (`0ff8d73`). Nested finger-pressure calibration now uses the live outer dialog as its parent and rejects when that outer dialog is dismissed.
+- Added Qt regression covering host deletion during nested calibration and ensuring both event loops reject without double-destroying stack dialogs (`2ff0f7c`). Exact-revision WSL watcher build is pending, and the native Qt host suite still requires Qt5Widgets host development libraries. No APK uploaded.
+
+
 ## November 16 — fix stack-owned Quick Actions modal dialog teardown
 
 - Found a Qt lifetime risk in `MobileQuickActions::choose()` and `editActions()`: both created stack-allocated `QDialog` children of an Android toolbar/dialog owner while entering `exec()`. A synchronous parent destruction during the nested modal event loop would make Qt delete the stack-owned dialog and then its stack frame destruct it again. These dialogs are now unparented, application-modal, and connected to their original owners' `destroyed` signals to reject safely; the editor revalidates its `QPointer` before applying changes (`bbf0e2e`).
