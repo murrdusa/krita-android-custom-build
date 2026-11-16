@@ -199,6 +199,28 @@ int main(int argc,char **argv)
                 original.data()!=replacement,
                 "stale native document root was not invalidated by Qt");
     }
+    // A reentrant save-ownership query can destroy the selected canvas
+    // and original root before the render-wait dialog is constructed.
+    // Guard both identities before touching document->image().
+    {
+        QWidget owner;
+        QPointer<MobileNativeViewStack> root(
+            new MobileNativeViewStack(&owner));
+        auto *document=new QObject;
+        QPointer<QObject> guardedDocument(document);
+        int renderImageReads=0;
+        const auto ownsDocument=[&]() {
+            delete document;
+            delete root.data();
+            return true; // A stale result must never authorize saving.
+        };
+        const bool owns=ownsDocument();
+        if(owns && guardedDocument && root)
+            ++renderImageReads;
+        require(owns && !guardedDocument && !root &&
+                renderImageReads==0,
+                "save ownership callback read a destroyed document image");
+    }
     // Save completion can arrive after a nested Qt loop replaces the
     // original native root. A successful I/O notification alone must
     // not authorize post-save history publication on that stale host.
