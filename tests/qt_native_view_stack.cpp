@@ -1189,6 +1189,37 @@ int main(int argc,char **argv)
         delete document;
     }
 
+    // Engine-session bootstrap may synchronously delete its Qt host
+    // before returning failure. The pilot must not delete the stale
+    // raw host a second time; a surviving failed host is still cleaned.
+    {
+        auto *host=new MobileLightweightCanvasHost;
+        const QPointer<MobileLightweightCanvasHost> guardedHost(host);
+        int destructions=0;
+        QObject::connect(host,&QObject::destroyed,
+                         [&destructions]() {++destructions;});
+        const auto attachSession=[host]() -> bool {
+            delete host;
+            return false;
+        };
+        const bool attached=attachSession();
+        if(!attached && guardedHost)delete guardedHost.data();
+        require(!attached && !guardedHost && destructions==1,
+                "failed engine bootstrap deleted destroyed host twice");
+    }
+    {
+        auto *host=new MobileLightweightCanvasHost;
+        const QPointer<MobileLightweightCanvasHost> guardedHost(host);
+        int destructions=0;
+        QObject::connect(host,&QObject::destroyed,
+                         [&destructions]() {++destructions;});
+        const auto attachSession=[]() {return false;};
+        const bool attached=attachSession();
+        if(!attached && guardedHost)delete guardedHost.data();
+        require(!attached && !guardedHost && destructions==1,
+                "failed engine bootstrap leaked a surviving host");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
