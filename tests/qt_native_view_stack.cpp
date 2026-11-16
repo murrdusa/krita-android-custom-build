@@ -1678,6 +1678,54 @@ int main(int argc,char **argv)
                 "old close handler destroyed the receiving owner's widget");
     }
 
+    // An engine can forget an existing native view without issuing a
+    // Close command. A still-live widget must not remain as a hidden
+    // child of the stack after Qt has processed its retirement.
+    {
+        MobileNativeViewStack stack;
+        QObject document;
+        auto *canvas=new QWidget;
+        const QPointer<QWidget> orphan(canvas);
+        int destroyed=0;
+        QObject::connect(canvas,&QObject::destroyed,&stack,
+                         [&destroyed]() {++destroyed;});
+        require(stack.adoptView(canvas,&document,
+                    QStringLiteral("external forget"),[](){return false;}),
+                "external-forget fixture failed to adopt a view");
+        require(stack.forgetView(QPointer<QObject>(canvas)) &&
+                stack.openViews().isEmpty(),
+                "external forget did not remove the view registration");
+        QCoreApplication::sendPostedEvents(nullptr,0);
+        QApplication::processEvents();
+        require(!orphan && destroyed==1 &&
+                stack.findChildren<QWidget*>().isEmpty(),
+                "external forget retained an orphaned canvas");
+    }
+    // An explicitly forgotten widget can be transferred immediately.
+    // Deferred cleanup by the original stack must never delete it.
+    {
+        MobileNativeViewStack original;
+        MobileNativeViewStack receiving;
+        QObject firstDocument;
+        QObject secondDocument;
+        auto *canvas=new QWidget;
+        const QPointer<QWidget> transferred(canvas);
+        require(original.adoptView(canvas,&firstDocument,
+                    QStringLiteral("external handoff"),[](){return false;}),
+                "external-handoff fixture failed to adopt view");
+        require(original.forgetView(QPointer<QObject>(canvas)),
+                "external handoff failed to unregister original view");
+        canvas->setParent(nullptr);
+        require(receiving.adoptView(canvas,&secondDocument,
+                    QStringLiteral("received handoff"),[](){return false;}),
+                "receiving stack rejected externally forgotten canvas");
+        QCoreApplication::sendPostedEvents(nullptr,0);
+        QApplication::processEvents();
+        require(transferred && receiving.openViews().size()==1 &&
+                original.openViews().isEmpty(),
+                "external forget destroyed a transferred native canvas");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
