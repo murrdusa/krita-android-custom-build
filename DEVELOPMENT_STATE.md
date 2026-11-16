@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — guard standalone host after destructive native/document callbacks
+
+- Audited `MobileStandaloneWindow::runQuickAction()` and its More-menu deferred actions. After native actions, Open/New/Save/Save As/Close, or modal document/tool browsers, the host unconditionally invoked `refresh()`. These operations can synchronously close the standalone window (including while a nested dialog is running), leaving a dangling `this` and causing use-after-free on the final refresh.
+- Added a `QPointer<MobileStandaloneWindow>` lifetime witness around the Quick Actions dispatcher and deferred More-menu Tool Browser, Close, and Save As callbacks; each calls `refresh()` only if the host still exists (`96403a5`). The delayed callbacks remain Qt-owned by the host and are canceled if it is destroyed before dispatch. This is a preventative source-level fix, not a demonstrated device crash fix. Latest WSL exact-revision build and native Qt lifecycle test outcomes must be checked; no APK uploaded.
+
+
 ## November 16 — reduce redundant recovery validation during gallery navigation
 
 - Audited orphaned draft rescue in `MobileDraftRecovery::rescueOrphanStaging()`. Each older `.pending.kra` was validated with `hasReadableProject()` and checked for changes, then immediately passed to `publish(draft,false)` which performed the same expensive ZIP/KoStore validation and change checks again. Removed the first redundant archive decode/check; retained the cheap initial `unchangedStaging()` gate. `publish()` remains the sole authority for full ZIP validation and rechecks size/mtime before publishing or rescuing a draft (`3eb7eee`).
