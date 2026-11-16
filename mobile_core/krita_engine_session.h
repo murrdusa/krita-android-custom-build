@@ -24,15 +24,20 @@ public:
     static MobileKritaEngineSession *attach(
         MobileLightweightCanvasHost *host)
     {
-        if(!host || host->centralWidget() || host->nativeViewPort())
-            return nullptr;
+        if(!host)return nullptr;
+        // Installing the central native canvas can emit synchronous Qt
+        // notifications that close and destroy this host. Establish its
+        // guard before the first QWidget operation, not after creation.
+        const QPointer<MobileLightweightCanvasHost> window(host);
+        const bool occupied=window->centralWidget() || window->nativeViewPort();
+        if(!window || occupied)return nullptr;
         // The canvas is newly allocated and belongs to this host, never
         // transferred from a Krita desktop MDI window.
-        if(!host->createNativeDocumentRoot())
-            return nullptr;
+        const QPointer<MobileNativeViewStack> root=
+            window->createNativeDocumentRoot();
+        if(!window || !root)return nullptr;
 
-        const QPointer<MobileLightweightCanvasHost> window(host);
-        auto *runtime=MobileKritaStandaloneRuntime::create(host);
+        auto *runtime=MobileKritaStandaloneRuntime::create(window.data());
         if(!window)return nullptr;
         if(!runtime) {
             window->discardEmptyNativeDocumentRoot();
