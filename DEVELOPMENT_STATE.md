@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — bounded native chrome snapshot lifetime
+
+- `MobileNativeCanvasChrome` now prunes dead `QPointer` entries from desktop toolbar/dock and tabbar visibility snapshots during its existing active-mode discovery pass. Replacing widgets while Mobile Studio remains active previously retained an entry for every destroyed Qt control until mode exit, allowing memory growth over extended document/workspace churn. Live controls keep their original restoration state.
+- `tests/qt_native_canvas_chrome.cpp` exercises 120 sequential native toolbar, docker, and tabbar replacements in a single mobile session and checks restoration of the original canvas and desktop UI afterward. Source commit `ac4b981e7c110057e44474d25143d54da543d468`, test commit `ab6e32e0f354e887194d6881c78ce1c5b4b2c46d`. Exact Android compile and Qt host regression execution have not yet been confirmed; no APK uploaded.
+
 ## November 15 — Quick Actions dispatch and refresh lifetime
 
 - Quick Actions button dispatch now copies its external command callable and checks the toolbar's QObject lifetime before refreshing. A command that closes a document, changes workspaces, or tears down mobile chrome can synchronously delete its own Quick Actions strip; the old clicked handler unconditionally called `refresh()` after dispatch.
