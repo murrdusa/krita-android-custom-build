@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — guard host before native canvas root installation
+
+- Audited `MobileKritaEngineSession::attach()`. The original flow queried the host, called `createNativeDocumentRoot()` (which installs a central QWidget and can dispatch Qt notifications), then created a `QPointer` from the original raw host. If a notification destroyed the window during root creation, even constructing that post-call guard would access a dangling QObject pointer. The host is now guarded before any QWidget queries; each readiness check revalidates the host, and root creation retains a guarded `MobileNativeViewStack` identity before runtime initialization. Source `a3040bd`, initial readiness recheck `43ea8cc`.
+- Added a Qt-only test modeling host destruction during root installation and an intact root installation with explicit cleanup (`bf8ddf7`). The teardown case models the lifetime boundary, not synchronous deletion within Qt's real `setCentralWidget()`. Exact-revision local build and test execution pending; no APK uploaded.
+
 ## November 16 — guard native workspace initialization after engine/status callbacks
 
 - Audited `MobileKritaStandalonePilot::launch()` immediately after successful `MobileKritaEngineSession::attach()`. Suppressing the Krita status bar and writing the next startup checkpoint can dispatch synchronous Qt notifications that destroy the host or its QObject child session. The pilot previously continued dereferencing raw `window` and `engineSession` pointers to acquire services, view manager, and construct mobile workspace. It now guards the original host, engine session, and view manager through those boundaries and returns without constructing workspace if any dependency is destroyed. Source `86cd123`.
