@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — guard queued native canvas bootstrap after Qt property callbacks
+
+- `MobileKritaNativeViewFactory::scheduleActivation()` now revalidates the selected `KisView`, original view manager, canvas root, current document and active tab immediately after querying `_mobileStudioKritaCanvasBootstrapped`. Previously a synchronous Qt property observer could destroy/switch the selected canvas, and the next line would access its `canvasBase()`.
+- The direct `bootstrapFinished` invocation now uses a guarded `QPointer<QObject>` canvas identity. Following the synchronous invocation and the `_mobileStudioKritaCanvasBootstrapped` property write, attachment identities are rechecked before tool initialization resumes. This addresses possible native view teardown in the first-frame/Android resume path without restarting tools or changing painting behavior.
+- Commit `43f8ccfc624e22272c6b06fd6045fad747ec428d`. Exact-revision Android compilation and actual crash reduction remain unverified; the latest reported successful build at the start of this batch was `fe90e1dc`. No APK uploaded.
+
 ## November 16 — protect native canvas title/dirty refresh from document teardown
 
 - `MobileKritaNativeViewFactory::attach()` now queries the initial document path only once and checks the original document, manager, view and stack lifetimes before passing the view into the native stack. Previously a reentrant document close during the first `path()` read could lead to a second read on a destroyed `KisDocument`.
