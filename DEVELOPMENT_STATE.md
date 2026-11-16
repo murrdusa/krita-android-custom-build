@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — retire native canvas leaked by reentrant failed adoption
+
+- Audited `MobileNativeViewStack::adoptView()` failure handling. A `currentChanged` observer may call `forgetView()` after `addWidget()` parents the new painting widget but before adoption completes. `forgetToken()` removes the logical registration and `QStackedWidget::removeWidget()` removes its layout slot without releasing QWidget parentage. Previously, `adoptView()` could return false while the unregistered canvas/GL surface remained alive as a child of the root until the whole window closed. After failed adoption, it now schedules `retireDetachedView()`, whose queued callback checks that the widget still lives under this root and has not been re-registered before deleting it. Source `b4f96a2`.
+- Added actual Qt native-stack tests that cancel adoption inside `currentChanged` and verify queued destruction of the resulting orphan, plus transfer of the rejected canvas to another stack before retirement to confirm the old owner does not delete it (`b103e53`). Exact-revision PC compile/tests pending; no APK uploaded.
+
 ## November 16 — revalidate native Save before showing collision warnings
 
 - Audited `MobileKritaStandaloneDocuments::writeDocument()` for Save As/Export Copy destination conflicts. `MobileOpenDocumentDestinationPolicy::conflictsWithBackingFile()` and `conflictsWithOwnBackingFile()` can canonicalize Android SAF identities, potentially dispatching nested Qt/provider callbacks that close the runtime or its root. The old conflict branches immediately used `m_runtime->window()` to parent a modal warning with no intervening lifetime validation; this could dereference a cleared `QPointer`. The result is now captured separately and `stillSaving()` rechecks runtime, root and selected document before any warning-parent lookup. Source `36b7b90`.
