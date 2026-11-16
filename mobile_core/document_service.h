@@ -198,9 +198,15 @@ public:
         if(path.isEmpty() || !window || !host->available())return 0;
         const bool opened=host->openFile(path);
         if(!opened && window) {
-            QMessageBox::warning(window.data(),QObject::tr("Drawing not opened"),
-                QObject::tr("Could not open %1.").arg(
-                    MobileSavedVersionArchive::projectName(path)));
+            // Resolving an Android SAF display name can deliver Qt
+            // lifecycle callbacks and destroy the originating window.
+            // Resolve the name first; never pass a stale parent to a
+            // modal warning after the provider has run.
+            const QString name=MobileSavedVersionArchive::projectName(path);
+            if(window)
+                QMessageBox::warning(window.data(),
+                    QObject::tr("Drawing not opened"),
+                    QObject::tr("Could not open %1.").arg(name));
         }
         return opened?1:0;
     }
