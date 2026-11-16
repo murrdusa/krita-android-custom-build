@@ -221,6 +221,31 @@ int main(int argc,char **argv)
                 renderImageReads==0,
                 "save ownership callback read a destroyed document image");
     }
+    // Publishing successful Save metadata can notify Recent Files
+    // listeners which synchronously close the document/root. Capture
+    // the draft identity first and never query the document again after
+    // a reentrant publication callback.
+    {
+        QWidget owner;
+        QPointer<MobileNativeViewStack> root(new MobileNativeViewStack(&owner));
+        auto *document=new QObject;
+        const QPointer<QObject> guardedDocument(document);
+        const QString savedDraft=QStringLiteral("private-draft.kra");
+        int documentReadsAfterPublication=0;
+        bool publishedHistory=false;
+        const auto publishPreview=[&]() {
+            delete document;
+            delete root.data();
+        };
+        publishPreview();
+        if(guardedDocument && root)
+            ++documentReadsAfterPublication;
+        if(guardedDocument && root)
+            publishedHistory=!savedDraft.isEmpty();
+        require(!guardedDocument && !root &&
+                documentReadsAfterPublication==0 && !publishedHistory,
+                "save metadata callback continued after document/root teardown");
+    }
     // Save completion can arrive after a nested Qt loop replaces the
     // original native root. A successful I/O notification alone must
     // not authorize post-save history publication on that stale host.
