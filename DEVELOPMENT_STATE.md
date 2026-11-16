@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — guard native bootstrap readiness during window teardown
+
+- Audited `MobileNativeBootCoordinator::poll()`: its readiness test previously chained `QMainWindow::isVisible()`, `centralWidget()`, and the active-modal query, then launched the engine without guarding the original Qt window/root against nested lifecycle callbacks. It now tracks the original coordinator/window/central-widget identities and verifies them between the queries and before the launch callback. Source `0dd31a7`, final readiness recheck `32973f5`.
+- Added Qt-only lifecycle-pattern tests for window teardown during readiness and a replaced central widget (`6a5773d`). Existing native coordinator integration tests continue to cover successful, failed, and deferred startup. This does not demonstrate an actual device crash fix. Exact-revision PC compilation and Qt test execution pending; no APK uploaded.
+
 ## November 16 — validate recovery checksum before staging an output
 
 - Audited `MobileSavedVersionArchive::materializeRecovery()` after its bounded copy/sidecar checks. It opened a new `QSaveFile` temporary recovery output before validating the SHA-256 metadata. Malformed history sidecars caused avoidable temporary filesystem work on every recovery attempt. Moved metadata validation ahead of destination creation, retaining the same checksum rules, cancellation, streaming copy and publication semantics. Source `5861953`.
