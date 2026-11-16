@@ -108,7 +108,10 @@ public:
         if(identity.isEmpty())return;
         auto revisions=previewRevisions();
         revisions.insert(identity,QDateTime::currentMSecsSinceEpoch());
-        if(revisions.size()>128) {
+        // A restored or older settings file can already exceed the cap.
+        // Removing only one entry per Save leaves the oversized map in
+        // memory and on disk for many sessions.
+        while(revisions.size()>128) {
             const auto oldest=std::min_element(revisions.cbegin(),revisions.cend(),
                 [](const QVariant &a,const QVariant &b) {return a.toLongLong()<b.toLongLong();});
             revisions.remove(oldest.key());
