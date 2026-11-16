@@ -330,7 +330,7 @@ private:
                                                  request,generation->load(std::memory_order_relaxed))) {
                     preview->m_mask=overlay;
                     preview->update();
-                } else {
+                } else if(preview->isVisible()) {
                     preview->m_delay.start();
                 }
             },Qt::QueuedConnection);
