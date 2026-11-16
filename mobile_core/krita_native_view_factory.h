@@ -490,6 +490,15 @@ private:
                             surface->update();
                             return;
                         }
+                        // The GL widget may become valid on resume before
+                        // frameSwapped fires. Do not carry a stale 16-second
+                        // timeout into an unrelated future context loss.
+                        if(gl->property("_mobileFirstSwapRetryCount").toInt()!=0) {
+                            gl->setProperty("_mobileFirstSwapRetryCount",
+                                            MobileFirstSwapRetryPolicy::afterSurfaceReady());
+                            if(!isCurrent() || !canvas || !surface ||
+                               canvas->canvasWidget()!=surface)return;
+                        }
                     }
                     const QRectF viewport(surface->rect());
                     const QRectF image=selected->viewConverter()->imageRectInWidgetPixels();
