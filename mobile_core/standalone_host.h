@@ -65,6 +65,7 @@
 #include "command_browser.h"
 #include "tool_browser.h"
 #include "quick_actions.h"
+#include "crash_report.h"
 #include "finger_pressure_calibration.h"
 #include "brush_workspace.h"
 #include "layer_workspace.h"
@@ -703,6 +704,7 @@ private:
                     QSettings());
                 const QString report=QStringList({
                     QStringLiteral("Krita Mobile Studio diagnostics v1"),
+                    MobileCrashReport::memorySnapshot(),
                     QStringLiteral("Host: embedded Qt widget"),
                     QStringLiteral("Canvas attached: %1").arg(canvasPresent),
                     QStringLiteral("Canvas shares native window: %1")
