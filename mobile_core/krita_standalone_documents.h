@@ -387,32 +387,49 @@ private:
         // Compare canonical KRA identities, including equivalent SAF
         // document URI forms, before initiating any native disk write.
         const auto open=originalRoot->openViews();
+        // A path or draft-property lookup can synchronously close the
+        // other document or replace the native workspace. Do not continue
+        // scanning with a stale QObject or skip an unknown destination:
+        // failing closed avoids overwriting another open drawing.
+        const auto stillSaving=[this,originalRoot,guardedDocument]() {
+            return guardedDocument && m_runtime && originalRoot &&
+                m_runtime->documentRoot()==originalRoot.data() &&
+                originalRoot->currentDocument()==guardedDocument;
+        };
+        if(!stillSaving())return false;
         int activeViews=0;
         int ownerViews=0;
         for(const auto &view:open) {
+            if(!stillSaving())return false;
             // Do not save while the native tab stack is transitioning or
             // holds a view whose document cannot be inspected. Skipping
             // such a view would bypass the cross-canvas overwrite check.
-            const auto *other=qobject_cast<KisDocument*>(view.document.data());
+            const QPointer<KisDocument> other=
+                qobject_cast<KisDocument*>(view.document.data());
             if(!view.nativeView || !other)return false;
-            if(other==guardedDocument.data())++ownerViews;
+            if(other==guardedDocument)++ownerViews;
             if(view.active) {
                 ++activeViews;
-                if(other!=guardedDocument.data())return false;
+                if(other!=guardedDocument)return false;
             }
-            if(other==guardedDocument.data())continue;
+            if(other==guardedDocument)continue;
             const QString otherPath=other->path();
+            if(!stillSaving() || !other || !view.nativeView)return false;
             const QString otherDraft=other->property(
                 "_mobileDraftPath").toString();
+            if(!stillSaving() || !other || !view.nativeView)return false;
             if(MobileOpenDocumentDestinationPolicy::conflictsWithBackingFile(
                    target,otherPath,otherDraft)) {
-                QMessageBox::warning(m_runtime->window(),
-                    exporting?QObject::tr("Export a copy"):QObject::tr("Save drawing"),
-                    QObject::tr("That file is already open in another canvas. "
-                                "Choose a different destination to avoid overwriting it."));
+                const QPointer<QWidget> owner=m_runtime->window();
+                if(owner)
+                    QMessageBox::warning(owner.data(),
+                        exporting?QObject::tr("Export a copy"):QObject::tr("Save drawing"),
+                        QObject::tr("That file is already open in another canvas. "
+                                    "Choose a different destination to avoid overwriting it."));
                 return false;
             }
         }
+        if(!stillSaving())return false;
         // A save is authorized only by one uniquely selected native
         // canvas. Engine currentDocument alone can lag behind a tab
         // switch and must not authorize writes during that gap.
