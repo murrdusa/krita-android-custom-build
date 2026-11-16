@@ -1862,6 +1862,28 @@ int main(int argc,char **argv)
                 "host teardown failed to reject independent settings modal");
     }
 
+    // When the native host closes inside Keyboard Shortcuts' nested
+    // editor, both modal event loops must reject. No stale settings
+    // callback may resume through the destroyed workspace.
+    {
+        auto *host=new QWidget;
+        const QPointer<QWidget> liveHost(host);
+        QDialog settings;
+        QObject::connect(host,&QObject::destroyed,
+                         &settings,&QDialog::reject);
+        bool nestedRejected=false;
+        QTimer::singleShot(0,&settings,[&]() {
+            QDialog editor(&settings);
+            QObject::connect(&settings,&QDialog::rejected,
+                             &editor,&QDialog::reject);
+            QTimer::singleShot(0,&editor,[host]() {delete host;});
+            nestedRejected=editor.exec()==QDialog::Rejected;
+        });
+        require(settings.exec()==QDialog::Rejected &&
+                nestedRejected && !liveHost,
+                "host teardown stranded nested keyboard shortcut modal");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
