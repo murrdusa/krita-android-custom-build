@@ -184,7 +184,7 @@ def qt_lifecycle_section(report):
     if not relevant:
         return "\n## Native Qt lifecycle tests\n\nNOT REPORTED: this run did not record a native Qt test result.\n"
     return ("\n## Native Qt lifecycle tests\n\n```text\n" +
-            "\n".join(relevant[-12:]) + "\n```\n")
+            "\n".join(relevant) + "\n```\n")
 
 
 def report_completed(watcher):
