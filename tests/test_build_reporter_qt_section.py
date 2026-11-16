@@ -24,7 +24,7 @@ class QtLifecycleReportTests(unittest.TestCase):
                     log.write(f"compiler output {i}\n")
                     if i % 1000 == 0:
                         log.write(f"Native Qt lifecycle tests: test {i}\n")
-                log.write("Native Qt lifecycle tests: PASS (4 executables)\n")
+                log.write("Native Qt lifecycle tests: PASS (5 executables)\n")
             with patch.object(reporter, "BASE", base):
                 section = reporter.qt_lifecycle_section(f"Full local log: `{path}`")
             self.assertIn("Native Qt lifecycle tests: PASS", section)
