@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — protect native canvas title/dirty refresh from document teardown
+
+- `MobileKritaNativeViewFactory::attach()` now queries the initial document path only once and checks the original document, manager, view and stack lifetimes before passing the view into the native stack. Previously a reentrant document close during the first `path()` read could lead to a second read on a destroyed `KisDocument`.
+- The engine's title/modified-state refresh lambda now guards its document, native view and stack after `path()`, title conversion and `isModified()`. Qt path/dirty signal delivery can close the canvas while native tab labels are refreshed; the lambda must not dereference a stale source document or stack after such callbacks.
+- Source commit `89541944d4a1a21e508b4a6884a2b81a7a67bab7`. Native Krita integration has not been compiled at this exact revision or runtime-tested on Android. The last reported successful local build was `7f08cdd5`. No APK uploaded.
+
 ## November 16 — native draft metadata attachment lifetime guard
 
 - In `MobileKritaStandaloneRuntime::attachDocument()`, early recovery-draft setup now captures the original runtime, document, manager and canvas root before reading `_mobileDraftPath`. It revalidates those identities between reading the document path, accessing document title metadata, allocating the private draft name and writing the resulting property. A synchronous teardown during any of those operations now aborts attachment instead of using a destroyed `KisDocument`. An unavailable `documentInfo()` is treated as an empty title, avoiding a null dereference.
