@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — resolve interrupted native readiness instead of hanging startup
+
+- Followed up on the new `MobileNativeBootCoordinator::poll()` root-identity check. If `centralWidget()` changed or disappeared during the final readiness query, the code returned without calling `finish()` or queuing another poll. The boot attempt therefore remained pending indefinitely despite the coordinator/window still being alive. It now explicitly calls `finish(false)` to clear the pending state and preserve the existing safe desktop fallback. Source `d3f885e`.
+- Existing Qt native boot coordinator tests cover normal launch, failed launch and absent host; this specific mid-query widget replacement is difficult to induce deterministically using QWidget's nonvirtual `centralWidget()` access. No synthetic success claim or new test added. Exact-revision Android build pending; no APK uploaded.
+
 ## November 16 — guard native bootstrap readiness during window teardown
 
 - Audited `MobileNativeBootCoordinator::poll()`: its readiness test previously chained `QMainWindow::isVisible()`, `centralWidget()`, and the active-modal query, then launched the engine without guarding the original Qt window/root against nested lifecycle callbacks. It now tracks the original coordinator/window/central-widget identities and verifies them between the queries and before the launch callback. Source `0dd31a7`, final readiness recheck `32973f5`.
