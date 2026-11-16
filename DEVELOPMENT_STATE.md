@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — fix stack-owned Quick Actions modal dialog teardown
+
+- Found a Qt lifetime risk in `MobileQuickActions::choose()` and `editActions()`: both created stack-allocated `QDialog` children of an Android toolbar/dialog owner while entering `exec()`. A synchronous parent destruction during the nested modal event loop would make Qt delete the stack-owned dialog and then its stack frame destruct it again. These dialogs are now unparented, application-modal, and connected to their original owners' `destroyed` signals to reject safely; the editor revalidates its `QPointer` before applying changes (`bbf0e2e`).
+- Added a Qt-only owner-destruction/modal-rejection regression (`855da09`). Exact-revision local Android watcher validation pending; native host Qt tests have remained blocked by missing Qt5Widgets development libraries. No APK uploaded.
+
+
 ## November 16 — prevent native attachment rollback from deleting re-registered canvas
 
 - Found a native crash risk in `MobileKritaNativeViewFactory::abortRegistered()`: after `forgetView()`, synchronous Qt removal callbacks can re-register the same canvas under a different document and temporarily remove its layout slot. Its old deletion condition checked only widget parentage and `indexOf()<0`, risking deletion of the new document's still-owned painting view. Added `MobileNativeViewStack::hasViewRegistration()` to check a live registration independently of layout and used it in the factory deletion guard (`b9ec271`, `d61f04a`).
