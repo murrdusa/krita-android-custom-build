@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — native canvas input tracking on failed attachment
+
+- Native KisView factory now unregisters a canvas from the Krita input manager when view initialization aborts after `addTrackedCanvas()` but before `setViewManager()` establishes the view's manager. The existing native KisView destructor deregisters canvases with an assigned manager; without this partial-initialization cleanup, the tracker could retain a stale canvas pointer after the failed view was deleted. The fallback does not duplicate cleanup for fully attached views and does not alter document save/close behavior.
+- Source commit `7b6bf1b40323a63468dc83a8c474bababa78345a`. This path depends on the Android Krita engine and has no standalone Qt fixture; exact-revision local Android build and runtime behavior remain unverified. No APK uploaded.
+
 ## November 15 — bounded native chrome snapshot lifetime
 
 - `MobileNativeCanvasChrome` now prunes dead `QPointer` entries from desktop toolbar/dock and tabbar visibility snapshots during its existing active-mode discovery pass. Replacing widgets while Mobile Studio remains active previously retained an entry for every destroyed Qt control until mode exit, allowing memory growth over extended document/workspace churn. Live controls keep their original restoration state.
