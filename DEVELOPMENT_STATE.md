@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — disabled thumbnail cache when app-private storage is unavailable
+
+- Gallery preview loading now passes an empty cache directory if `QStandardPaths::AppDataLocation` is missing. The cache already treats an empty root as disabled; the previous caller accidentally built a CWD-relative `project-thumbs` directory and could write thumbnails outside app-private storage. Preview extraction remains available without persistent disk caching.
+- Source commit `c3bde22fd0c53850119dd969507c8c42d4d71bc4`. Existing `tests/qt_project_preview_cache.cpp` covers empty-cache-root no-write/no-read behavior. Exact Android compile for this commit remains unverified; no APK uploaded.
+
 ## November 15 — native startup callback lifetime
 
 - The independent native boot coordinator invokes a local copy of its launcher function rather than calling `m_launch` from its own storage. A synchronous window teardown during startup can delete the coordinator while the launch callback runs; the local callable survives until its invocation ends.
