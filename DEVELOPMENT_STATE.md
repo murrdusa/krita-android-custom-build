@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — capture current Android process memory in crash diagnostics
+
+- Following repeated successful Android builds but absent host Qt5Widgets testing, shifted from speculative crash guards to measurable memory diagnostics. Added `MobileCrashReport::memorySnapshot()` in `mobile_core/crash_report.h`: one read capped at 16 KiB from the app's own `/proc/self/status`, emitting kernel-reported `VmRSS` (current resident memory), `VmHWM` (peak RSS), and `VmSwap` (swap) when present, or an unavailable label. No drawing bytes, file paths, or extra Android permissions.
+- Both the copied native crash report and the standalone More > Copy Mobile Studio diagnostics now include that snapshot (`be92613`, `383547d`, `09d5116`). Repeated snapshots across similar workflows can distinguish rising resident memory from unrelated crashes, but do **not** prove a leak by themselves; the existing Android exit-history section still records prior process-exit reasons and RSS.
+- Android WSL exact-revision compile is pending. Qt host lifecycle tests are still NOT RUN because Qt5Widgets host development libraries are absent. No APK uploaded.
+
+
 ## November 16 — add saved-version recovery correctness regression to WSL smoke tests
 
 - The repository already maintained a large self-contained Qt regression in `tests/qt_saved_version_archive.cpp` covering checkpoint snapshot, deduplication, atomic recovery, quota/retention, path identity, SAF normalization, and legacy archive migration, but the local watcher only attempted four other Qt tests. Added the saved-version test as a fifth executable in `tests/run_mobile_lifecycle_smoke.sh` (`b13aec5`), and fingerprinted its source plus `mobile_core/saved_version_archive.h` and `mobile_core/mobile_draft_recovery.h` so recovery-code changes invalidate cached PASS results.
