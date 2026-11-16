@@ -332,7 +332,10 @@ private:
     void showMore(QWidget *anchor)
     {
         if(!m_backend)return;
-        QMenu menu(anchor?anchor:m_backend.data());
+        // exec() runs a nested event loop. The anchor or Android host
+        // may be destroyed while the popup is open; a stack QMenu must
+        // not also be owned/deleted by that QWidget's QObject tree.
+        QMenu menu;
         auto *browser=menu.addAction(i18n("Menus — File, Edit, View and more"));
         QObject::connect(browser,&QAction::triggered,browser,[this]() {
             QTimer::singleShot(0,&m_refresh,[this]() {
