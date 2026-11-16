@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — remove redundant recovery enumeration on project deletion
+
+- Reviewed `MobileDraftRecovery::hasProjectDraft()` after the prior streaming-lookup optimization. To preserve orphaned, completed `.pending.kra` rescue it called `list(1)` first, which still enumerated all published drafts and performed bounded heap selection. It then enumerated the same published drafts again for the actual existence check. On an unusually large recovery directory, the unnecessary first traversal increases main-thread disk work and latency.
+- Extracted the existing orphan-candidate cursor and rescue logic unchanged into `rescueOrphanStaging(folder)`. Full `list()` and `hasProjectDraft()` both invoke it, but the latter now performs only a single streaming enumeration of published drafts, ending at the first matching canonical project association. There is no change to rescue batch limits, artwork data, or the contents of recovery history.
+- Added a Qt regression creating an old interrupted `.pending.kra` associated with a project and checking `hasProjectDraft()` still rescues and discovers it, then cleans up the staged and rescued fixtures. Source commit `673e2f0828898093833b01e66b3b0cf8b50ec522`; regression commit `526d5427bbe6b12ade669fb04b14148d1e4f61d1`. Latest exact-revision Android compile and Qt test outcomes need watcher confirmation; no APK uploaded.
+
 ## November 16 — saturate saved-version retention accounting for corrupt sparse archives
 
 - Audited asynchronous saved-version checkpoint requests and retention. The request queues coalesce duplicate saves, while `MobileSavedVersionArchive::prune()` could add the file size of an older verified fallback to an already oversized newest archive using unchecked signed `qint64` arithmetic. Abnormal sparse files can report very large sizes; overflowing the accumulator is undefined behavior and could misapply the history size quota.
