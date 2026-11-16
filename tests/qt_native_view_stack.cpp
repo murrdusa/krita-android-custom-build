@@ -244,6 +244,33 @@ int main(int argc,char **argv)
                 replacement->openViews().isEmpty(),
                 "stale import leaked document into a replacement root");
     }
+    // Creating an import can invoke an engine/plugin callback before
+    // openPath() begins. If that callback replaces the native root,
+    // dispose of the unregistered document without allocating a KRA
+    // image or proceeding into any recovery attempt.
+    {
+        QWidget owner;
+        QPointer<MobileNativeViewStack> initial(new MobileNativeViewStack(&owner));
+        MobileNativeViewStack *activeRoot=initial.data();
+        QPointer<QObject> created;
+        bool startedLoad=false;
+        const auto createDocument=[&]() -> QObject* {
+            auto *document=new QObject;
+            created=document;
+            delete initial.data();
+            activeRoot=new MobileNativeViewStack(&owner);
+            return document;
+        };
+        QObject *candidate=createDocument();
+        QPointer<QObject> pending(candidate);
+        const bool validImport=initial && activeRoot==initial.data() &&
+                               pending;
+        if(!validImport)delete pending.data();
+        else startedLoad=true;
+        require(!initial && !created && !startedLoad &&
+                activeRoot && activeRoot->openViews().isEmpty(),
+                "document constructor teardown allowed a stale KRA load");
+    }
     // Recovery Open may try several checkpoints before the original
     // project. A failed first load which tears down the native root
     // must abort retries rather than construct a second stale document.
