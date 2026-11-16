@@ -27,16 +27,20 @@ public:
                          Command command)
     {
         if(!context || !views || !command)return false;
+        // Engine lookups may synchronously close the initiating window.
+        // Capture its lifetime before the first reentrant callback.
+        const QPointer<QObject> owner=context;
         const auto snapshot=views->openViews();
+        if(!owner)return false;
         const QPointer<QObject> view=
             MobileViewIdentityGuard::uniqueActive(snapshot);
         const QPointer<QObject> document=views->currentDocument();
-        if(!MobileViewIdentityGuard::maySave(snapshot,view,document))
+        if(!owner || !view || !document ||
+           !MobileViewIdentityGuard::maySave(snapshot,view,document))
             return false;
         // Qt cancels the timer if the owning window is destroyed.
         // QPointers also guard deletion of the view or its document.
-        QPointer<QObject> owner=context;
-        QTimer::singleShot(0,context,
+        QTimer::singleShot(0,owner.data(),
             [owner,views,view,document,command=std::move(command)]() {
                 if(!owner || !view || !document || !views)return;
                 // A host may process pending document removal while a
@@ -44,14 +48,18 @@ public:
                 // and recheck both the document and live view ownership
                 // before dispatching a potentially destructive command.
                 const auto before=views->openViews();
-                if(!MobileViewIdentityGuard::maySave(before,view,document) ||
-                   views->currentDocument()!=document || !owner ||
-                   !view || !document)return;
+                if(!owner || !view || !document ||
+                   !MobileViewIdentityGuard::maySave(before,view,document))
+                    return;
+                if(views->currentDocument()!=document ||
+                   !owner || !view || !document)return;
                 const auto after=views->openViews();
-                if(!MobileViewIdentityGuard::sameRecoveryWorkspace(before,after) ||
-                   !MobileViewIdentityGuard::maySave(after,view,document) ||
-                   views->currentDocument()!=document || !owner ||
-                   !view || !document)return;
+                if(!owner || !view || !document ||
+                   !MobileViewIdentityGuard::sameRecoveryWorkspace(before,after) ||
+                   !MobileViewIdentityGuard::maySave(after,view,document))
+                    return;
+                if(views->currentDocument()!=document ||
+                   !owner || !view || !document)return;
                 command(view);
             });
         return true;
