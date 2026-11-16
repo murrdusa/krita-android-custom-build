@@ -205,6 +205,11 @@ private:
         QTimer::singleShot(0,host.data(),[host,view]() {
             if(!host || !view || view->parentWidget()!=host.data() ||
                host->indexOf(view.data())>=0)return;
+            // A new native registration can exist even while Qt has
+            // temporarily removed its QWidget from the layout (for
+            // example during a reentrant handoff). Its absence from
+            // QStackedWidget is not proof that the view is unowned.
+            if(host->uniqueRow(QPointer<QObject>(view.data())))return;
             delete view.data();
         });
     }
