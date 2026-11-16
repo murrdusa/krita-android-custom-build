@@ -6,6 +6,8 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QEvent>
+#include <QHideEvent>
+#include <QShowEvent>
 #include <QImage>
 #include <QPainter>
 #include <QPointer>
@@ -81,6 +83,28 @@ public:
     }
 
 protected:
+    void hideEvent(QHideEvent *event) override
+    {
+        // A hidden Android canvas does not need the sampled pixel window,
+        // selection copy or rendered tolerance overlay. They can consume
+        // substantial RAM while the user works in another document.
+        m_delay.stop();
+        m_requestGeneration->fetch_add(1,std::memory_order_relaxed);
+        m_pixels.clear();
+        m_selectionPixels.clear();
+        m_colorSpace=nullptr;
+        m_mask=QImage();
+        QWidget::hideEvent(event);
+    }
+
+    void showEvent(QShowEvent *event) override
+    {
+        QWidget::showEvent(event);
+        // The hidden generation was invalidated. A still-running worker
+        // schedules this retry when it completes; otherwise start now.
+        if(m_threshold>=0 && !m_running)m_delay.start();
+    }
+
     bool eventFilter(QObject *watched,QEvent *event) override
     {
         if(watched==parentWidget() && event->type()==QEvent::Resize) {
@@ -116,7 +140,7 @@ private:
         // The preview may outlive the current engine selection while
         // a tool or canvas is being changed. Never sample an empty
         // window or an unavailable paint source.
-        if(!m_image || !m_source || m_window.isEmpty() || m_threshold<0)
+        if(!isVisible() || !m_image || !m_source || m_window.isEmpty() || m_threshold<0)
             return;
         if(!m_pixels.size()) {
             const int bytes=mobileFillPreviewBufferBytes(
@@ -185,7 +209,7 @@ private:
                 QMetaObject::invokeMethod(application.data(),[preview]() {
                     if(!preview)return;
                     preview->m_running=false;
-                    preview->m_delay.start();
+                    if(preview->isVisible())preview->m_delay.start();
                 },Qt::QueuedConnection);
             };
             if(generation->load(std::memory_order_relaxed)!=request) {
@@ -241,7 +265,7 @@ private:
                     // not mean this worker still owns the latest request.
                     if(!mobileFillPreviewResultCurrent(threshold,preview->m_threshold,
                                                       request,generation->load(std::memory_order_relaxed)))
-                        preview->m_delay.start();
+                        if(preview->isVisible())preview->m_delay.start();
                 },Qt::QueuedConnection);
                 return;
             }
@@ -256,7 +280,7 @@ private:
                             if(!mobileFillPreviewResultCurrent(
                                    threshold,preview->m_threshold,request,
                                    generation->load(std::memory_order_relaxed)))
-                                preview->m_delay.start();
+                                if(preview->isVisible())preview->m_delay.start();
                         },Qt::QueuedConnection);
                 }
                 return;
@@ -279,7 +303,7 @@ private:
                             if(!mobileFillPreviewResultCurrent(
                                    threshold,preview->m_threshold,request,
                                    generation->load(std::memory_order_relaxed)))
-                                preview->m_delay.start();
+                                if(preview->isVisible())preview->m_delay.start();
                         },Qt::QueuedConnection);
                 }
                 return;
