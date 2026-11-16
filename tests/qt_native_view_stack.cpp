@@ -1745,15 +1745,17 @@ int main(int argc,char **argv)
                     QStringLiteral("replacement"),[](){return false;}),
                 "registered-detach fixture could not re-adopt canvas");
         stack.removeWidget(canvas);
-        require(stack.indexOf(canvas)<0,
-                "registered-detach fixture retained Qt layout slot");
+        require(stack.indexOf(canvas)<0 &&
+                stack.hasViewRegistration(QPointer<QObject>(canvas)),
+                "registered-detach fixture lost ownership without Qt layout slot");
         QCoreApplication::sendPostedEvents(nullptr,0);
         QApplication::processEvents();
         require(retained && stack.findChildren<QWidget*>().contains(canvas),
                 "orphan retirement deleted a canvas still registered to a document");
         // Remove the registration and let the stack own final cleanup.
-        require(stack.forgetView(QPointer<QObject>(canvas)),
-                "registered-detach fixture could not unregister replacement");
+        require(stack.forgetView(QPointer<QObject>(canvas)) &&
+                !stack.hasViewRegistration(QPointer<QObject>(canvas)),
+                "registered-detach fixture could not release replacement");
         QCoreApplication::sendPostedEvents(nullptr,0);
         QApplication::processEvents();
         require(!retained,"registered-detach fixture retained an unowned canvas");
