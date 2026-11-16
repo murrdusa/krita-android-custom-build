@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — guard native first-frame retry across document ownership queries
+
+- Reviewed the first-frame OpenGL timeout path following the earlier reentrant surface-destruction fix. It checked `selected->document()`, then queried `root->currentDocument()`, then read `selected->document()` a second time. Krita host/document observers can close or replace the selected document while resolving ownership, so the second raw lookup could use stale view/document state during graphics recovery.
+- The timeout callback now captures the original `KisDocument` as a `QPointer`, validates it and the selected root/view after the first lookup, obtains the host's current document once, and revalidates everything before scheduling canvas activation. Normal retry delays and the GL context backoff policy remain unchanged.
+- Added a Qt-only native view-stack regression modeling synchronous document closure while reading the current host document and checking the retry does not activate a destroyed identity. Source commit `42a29d8a2109b6a30549b85f8d79f86f1f8be6a4`; test commit `e1eba68ca073eda78d720bcde2987e28ad98cad3`. The preceding `a59aff0d` Android build was successful; exact-revision compilation and execution of the new regression remain pending. No APK uploaded.
+
 ## November 16 — prevent GL first-frame callback null dereference after property notification
 
 - Inspected native first-swap GL callback lifetime. The `frameSwapped` handler cleared `_mobileWaitingForFirstSwap` on the `QPointer<QOpenGLWidget>` and immediately dereferenced `watched->isValid()` without rechecking the guarded pointer. Qt dynamic-property notifications can synchronously tear down the watched surface. In that case the QPointer clears during `setProperty()`, and the subsequent dereference could crash.
