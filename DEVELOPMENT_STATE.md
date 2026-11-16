@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — prevent brush rename from using destroyed workspace after modal editor
+
+- Audited `KritaMobileBrushWorkspace::showPresetActions()`: Duplicate already checked its workspace `QPointer` after the modal name prompt, but Rename did not. If the Android host closed while that nested `QInputDialog::getText()` event loop was running, Rename could access `parentWidget()` or member helpers on a freed workspace. Added the missing lifetime check before the rename operation and recheck after the Krita resource rename callback returns (`2312963`).
+- No functional UI or save behavior intentionally changed. Regression requires an Android/Qt modal teardown fixture; native Qt lifecycle smoke tests remain blocked by missing Qt5Widgets host libraries. Exact-revision WSL build is pending; no APK uploaded.
+
+
 ## November 16 — guard standalone host after destructive native/document callbacks
 
 - Audited `MobileStandaloneWindow::runQuickAction()` and its More-menu deferred actions. After native actions, Open/New/Save/Save As/Close, or modal document/tool browsers, the host unconditionally invoked `refresh()`. These operations can synchronously close the standalone window (including while a nested dialog is running), leaving a dangling `this` and causing use-after-free on the final refresh.
