@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — clear first-swap retry state after every signal
+
+- The first-frame `QOpenGLWidget::frameSwapped` one-shot callback in `MobileKritaNativeViewFactory::scheduleActivation()` previously disconnected its receiver but only cleared the surface's `_mobileWaitingForFirstSwap` flag when the GL surface was invalid. A valid swap followed by hidden-window or superseded deferred activation could leave the now-unobserved surface permanently marked as waiting, preventing subsequent retry registration.
+- The callback now clears the waiting flag on the **owning QOpenGLWidget** for *every* frame-swapped signal, before checking the selected view and initial-projection state. This makes each observer's bookkeeping symmetrical: it arms once, disconnects on the swap, disarms once, and may queue the existing guarded activation. The destroyed-surface path remains handled by QObject destruction. No painting-state, zoom, or toolbar changes.
+- Source commit `59bb30b9ab0fd544fc3b8e8a293bb90c8ff7b6bf`. This is a logic correction in Android/Krita GL integration; exact-revision Android compilation and GL-resume tests remain pending, and no APK was uploaded.
+
 ## November 16 — fix GL first-frame retry flag ownership
 
 - Identified an inconsistent state transition in `MobileKritaNativeViewFactory::scheduleActivation()`: `_mobileWaitingForFirstSwap` is set and checked on the QOpenGLWidget surface, but the invalid-frame and surface-destruction callbacks were clearing a property of the same name on the parent `KisView`. On a still-live but invalid GL surface, this leaves the original surface's retry flag set and prevents a new `frameSwapped` listener from being armed after context loss.
