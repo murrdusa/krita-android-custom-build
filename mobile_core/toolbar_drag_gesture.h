@@ -5,6 +5,7 @@
 #include <QApplication>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPointer>
 #include <QSettings>
 #include <QToolButton>
 #include <QTimer>
@@ -93,8 +94,13 @@ public:
         m_holdTimer.setSingleShot(true);
         connect(&m_holdTimer,&QTimer::timeout,this,[this]() {
             m_held=true;
+            const QPointer<MobileToolbarGestureButton> alive(this);
             setDown(false);
-            m_hold();
+            if(!alive)return;
+            // The hold action may close this workspace and delete its
+            // toolbar. Invoke a copy rather than a member callable.
+            const auto hold=m_hold;
+            if(hold)hold();
         });
     }
 
@@ -205,26 +211,37 @@ private:
             }
             setDown(false);
         }
+        const QPointer<MobileToolbarGestureButton> alive(this);
         if(m_dragged)dispatch(pos,MobileToolbarDrag::Phase::Preview);
-        m_last=pos;
+        if(alive)alive->m_last=pos;
     }
 
     void dispatch(const QPoint &pos,MobileToolbarDrag::Phase phase)
     {
-        if(m_axis==1 && m_adjust && !m_parameter.isEmpty())
-            m_adjust(m_parameter,m_vertical?m_start.y()-pos.y():pos.x()-m_start.x(),
-                     pos,phase);
-        if(m_axis==2 && m_sample)m_sample(pos,phase);
+        // A gesture callback may rebuild the toolbar and delete this
+        // button while its std::function is executing.
+        const int axis=m_axis;
+        if(axis==1 && m_adjust && !m_parameter.isEmpty()) {
+            const auto adjust=m_adjust;
+            const QString parameter=m_parameter;
+            const qreal delta=m_vertical?m_start.y()-pos.y():pos.x()-m_start.x();
+            adjust(parameter,delta,pos,phase);
+        } else if(axis==2 && m_sample) {
+            const auto sample=m_sample;
+            sample(pos,phase);
+        }
     }
 
     void finish(const QPoint &pos,bool cancelled)
     {
         if(!m_active)return;
         m_holdTimer.stop();
+        const QPointer<MobileToolbarGestureButton> alive(this);
         if(!cancelled && !m_dragged && pos!=m_last)update(pos);
+        if(!alive)return;
         m_active=false;
         setDown(false);
-        if(m_held)return;
+        if(!alive || m_held)return;
         if(m_dragged) {
             dispatch(pos,cancelled?MobileToolbarDrag::Phase::Cancel:MobileToolbarDrag::Phase::Commit);
         } else if(!cancelled && rect().contains(mapFromGlobal(pos)) &&
