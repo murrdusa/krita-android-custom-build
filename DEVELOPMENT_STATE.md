@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — opt-in native memory retention telemetry
+
+- `MobileKritaStandaloneRuntime` now accepts the disabled-by-default `QSettings` key `MobileStudio/memoryDiagnosticsV1`. When enabled, the independent engine emits structured `MobileStudioMemory` lines to Qt/Android logs on startup, immediately after successful document attachment, on the next event-loop turn after document destruction (allowing queued view retirement to finish), and every 60 seconds. There is no extra timer or file I/O when disabled.
+- Snapshots read process `VmRSS`, `VmHWM`, `RssAnon`, and `VmSwap` from `/proc/self/status`, in KiB; they include counts of live native view registrations and associated document identities. They do not record filenames or drawing contents, write new log files, or allocate GPU resources. Missing proc fields report -1. For diagnostic runs, enable the Qt setting before engine initialization and filter Android logcat for `MobileStudioMemory`. Compare repeated steady-state cycles with the same canvas size and open-view count; RSS growth alone is not proof of a leak because allocators and drivers retain caches.
+- Code commit `f39601aab632fa35e214c16c47b73fcef5f9ee87`. This is instrumentation, **not** a demonstrated memory leak fix. Compilation for this exact revision, automated stress measurements, and device results remain pending. No APK uploaded.
+
 ## November 16 — revalidate document metadata before native Save As picker
 
 - `MobileKritaStandaloneDocuments::writeDocument()` now records an original-document/root identity guard immediately after the image render-wait phase, and rechecks it between source path, MIME type, supported-format registry and recovered-state queries. It also rechecks after reading `nativeFormatMimeType()` before configuring the Save As/Export Copy chooser. These Krita/Qt operations can synchronously notify observers; without revalidation, a closed or switched canvas could be accessed in the next metadata read or used to initialize a picker.
