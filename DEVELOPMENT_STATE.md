@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — coalesce memory samples after closing multiple canvases
+
+- `MobileKritaStandaloneRuntime` no longer schedules a separate zero-delay memory snapshot for every document destruction. In a bulk close, each document's signal can arrive before the corresponding Qt native view retirement timer and `DeferredDelete` cleanup have finished, producing misleading `detachedKisViews` counts and a burst of `/proc/self/status` reads.
+- The optional `MobileStudio/memoryDiagnosticsV1` path now coalesces all such closures into one runtime-owned `QTimer::singleShot(250ms)` sample. It resets its queued flag before logging; the runtime's QObject lifetime cancels the callback if the native host is destroyed. This reduces diagnostic overhead and makes measurements more comparable after canvas cleanup. Normal document close, autosave, and painting flows are unchanged; no timer is scheduled with diagnostics disabled.
+- Source commit `f6b229a74c3c22786e6be0308a38148f3b3dfbf8`. The earlier memory-instrumentation build has been reported successful at `190f671c`; exact-revision compilation, measured memory data and device behavior for this change remain unverified. No APK uploaded.
+
 ## November 16 — distinguish registered canvases from retained KisView objects
 
 - The opt-in `MobileStudioMemory` log now includes `retainedKisViews` (actual `KisView` QObject widgets below the independent native root) and `detachedKisViews` (those not registered in its `QStackedWidget`). This distinguishes a stale canvas QWidget from process RSS retained by ordinary caches. The `registeredDocuments` counter now counts unique live document identities, not one per view row; `pendingDrafts` provides context about background-save continuations.
