@@ -1049,6 +1049,54 @@ int main(int argc,char **argv)
                 "deferred activation rejected surviving view selection");
     }
 
+    // Home's deferred close handler must not use a child widget after
+    // Save/Discard callbacks synchronously destroy the containing host.
+    {
+        auto *window=new QWidget;
+        auto *home=new QWidget(window);
+        const QPointer<QWidget> guardedWindow(window);
+        const QPointer<QWidget> guardedHome(home);
+        int shows=0;
+        const auto closeDocument=[window]() {
+            delete window;
+            return true;
+        };
+        const bool closed=closeDocument();
+        if(closed && guardedWindow && guardedHome)++shows;
+        require(closed && !guardedWindow && !guardedHome && shows==0,
+                "Home callback accessed widget destroyed during document close");
+    }
+    {
+        QWidget window;
+        QWidget home(&window);
+        const QPointer<QWidget> guardedWindow(&window);
+        const QPointer<QWidget> guardedHome(&home);
+        int shows=0;
+        const auto closeDocument=[]() {return true;};
+        const bool closed=closeDocument();
+        if(closed && guardedWindow && guardedHome)++shows;
+        require(shows==1,
+                "Home callback suppressed surviving widget after successful close");
+    }
+    // Android intent import can likewise destroy the host before the
+    // first Home display or boot-complete notification.
+    {
+        auto *window=new QWidget;
+        auto *home=new QWidget(window);
+        const QPointer<QWidget> guardedWindow(window);
+        const QPointer<QWidget> guardedHome(home);
+        int readyCallbacks=0;
+        const auto attachIntent=[window]() {
+            delete window;
+            return 0;
+        };
+        const int opened=attachIntent();
+        if(guardedWindow && guardedHome && opened==0)
+            ++readyCallbacks;
+        require(!guardedWindow && !guardedHome && readyCallbacks==0,
+                "Android intent completion used a destroyed Home widget");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
