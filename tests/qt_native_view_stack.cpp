@@ -1505,6 +1505,60 @@ int main(int argc,char **argv)
                 "rollback retained root after its owning host was destroyed");
     }
 
+    // A currentChanged observer can cancel adoption after addWidget()
+    // has already parented the painting widget. Failed adoption must
+    // retire that unregistered child without waiting for host teardown.
+    {
+        MobileNativeViewStack stack;
+        QObject document;
+        auto *canvas=new QWidget;
+        QPointer<QWidget> orphan(canvas);
+        int destructions=0;
+        QObject::connect(canvas,&QObject::destroyed,&stack,
+                         [&destructions]() {++destructions;});
+        QObject::connect(&stack,&QStackedWidget::currentChanged,&stack,
+                         [&stack,orphan](int) {
+                             if(orphan)
+                                 stack.forgetView(QPointer<QObject>(orphan.data()));
+                         });
+        require(!stack.adoptView(canvas,&document,
+                    QStringLiteral("canceled adoption"),[](){return false;}) &&
+                stack.openViews().isEmpty(),
+                "reentrant cancellation retained a registered view");
+        QCoreApplication::sendPostedEvents(nullptr,0);
+        QApplication::processEvents();
+        require(!orphan && destructions==1 &&
+                stack.findChildren<QWidget*>().isEmpty(),
+                "failed adoption leaked an unregistered canvas widget");
+    }
+    // A canceled adoption may be transferred before deferred retirement.
+    // The old owner must not destroy a canvas adopted by another stack.
+    {
+        MobileNativeViewStack original;
+        MobileNativeViewStack receiving;
+        QObject sourceDoc;
+        QObject receivingDoc;
+        auto *canvas=new QWidget;
+        QPointer<QWidget> transferred(canvas);
+        QObject::connect(&original,&QStackedWidget::currentChanged,&original,
+                         [&original,transferred](int) {
+                             if(transferred)
+                                 original.forgetView(
+                                     QPointer<QObject>(transferred.data()));
+                         });
+        require(!original.adoptView(canvas,&sourceDoc,
+                    QStringLiteral("transfer"),[](){return false;}),
+                "transfer fixture unexpectedly accepted source adoption");
+        canvas->setParent(nullptr);
+        require(receiving.adoptView(canvas,&receivingDoc,
+                    QStringLiteral("received"),[](){return false;}),
+                "receiving stack rejected detached canvas");
+        QCoreApplication::sendPostedEvents(nullptr,0);
+        QApplication::processEvents();
+        require(transferred && receiving.openViews().size()==1,
+                "failed-adoption retirement deleted a transferred canvas");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
