@@ -354,12 +354,25 @@ private:
 
     bool attachCanvas(KisDocument *document) const
     {
-        if(!available() || m_replacing || m_saving || !document ||
-           !document->image() || !isRegistered(document))return false;
+        if(!available() || m_replacing || m_saving || !document)return false;
+        const QPointer<KisDocument> guardedDocument(document);
+        const QPointer<MobileKritaStandaloneRuntime> runtime=m_runtime;
+        const QPointer<MobileNativeViewStack> root=runtime?
+            runtime->documentRoot():nullptr;
+        if(!guardedDocument || !runtime || !root)return false;
+        // Image and registry queries can run Qt observers. Do not pass
+        // a document or native root destroyed during those callbacks to
+        // the engine's view factory.
+        const auto image=guardedDocument->image();
+        if(!image || !guardedDocument || !runtime || !root ||
+           runtime->documentRoot()!=root.data())return false;
+        const bool registered=isRegistered(guardedDocument.data());
+        if(!registered || !guardedDocument || !runtime || !root ||
+           runtime->documentRoot()!=root.data() || !m_saver)return false;
         const QScopedValueRollback<bool> attaching(m_replacing,true);
         // New/Open must preserve every other canvas and its unsaved edits.
         // Native tab selection and close ownership live in the view stack.
-        return m_runtime->attachDocument(document,m_saver)!=nullptr;
+        return runtime->attachDocument(guardedDocument.data(),m_saver.data())!=nullptr;
     }
 
     bool writeDocument(KisDocument *document,bool saveAs,bool exporting) const
