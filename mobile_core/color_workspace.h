@@ -262,6 +262,10 @@ protected:
         if(m_image.isNull()) {
             constexpr int extent=192;
             m_image=QImage(extent,extent,QImage::Format_ARGB32_Premultiplied);
+            // Android can refuse even this small raster allocation when
+            // Krita canvases have exhausted the process memory budget.
+            // A null QImage has no writable scan lines.
+            if(m_image.isNull())return;
             for(int y=0;y<extent;++y) {
                 auto *row=reinterpret_cast<QRgb*>(m_image.scanLine(y));
                 for(int x=0;x<extent;++x) {
