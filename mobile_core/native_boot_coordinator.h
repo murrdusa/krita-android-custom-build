@@ -67,11 +67,16 @@ private:
             return;
         }
         QPointer<MobileNativeBootCoordinator> alive=this;
-        const bool launched=m_launch(
-            m_window.data(),[alive](bool successful) {
+        // A native launch can synchronously destroy the Qt window and
+        // this child coordinator. Never execute the std::function stored
+        // in the coordinator: its storage may be freed mid-invocation.
+        const Launch launch=m_launch;
+        const QPointer<QMainWindow> window=m_window;
+        const bool launched=launch(
+            window.data(),[alive](bool successful) {
                 if(alive)alive->finish(successful);
             });
-        if(!launched && alive)finish(false);
+        if(!launched && alive)alive->finish(false);
     }
 
     void finish(bool success)
