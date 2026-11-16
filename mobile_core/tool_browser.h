@@ -289,9 +289,13 @@ public:
                     button->setChecked(tile.action?tile.action->isChecked():tile.tool==current);
                     button->setEnabled(!tile.action || tile.action->isEnabled());
                     QObject::connect(button,&QToolButton::clicked,panel,[panel,engine,view,tile]() {
-                        auto *host=panel->parentWidget();
+                        // Closing a transient panel can synchronously tear down
+                        // its owning canvas/window. Never pass a dangling raw
+                        // parent pointer to Qt's deferred command dispatcher.
+                        const QPointer<QWidget> host(panel->parentWidget());
                         panel->close();
-                        QTimer::singleShot(0,host,[engine,view,tile]() {
+                        if(!host)return;
+                        QTimer::singleShot(0,host.data(),[engine,view,tile]() {
                             if(!view || view!=MobileViewIdentityGuard::uniqueActive(engine.openDocuments()))return;
                             if(tile.action && tile.action->isEnabled())tile.action->trigger();
                             else if(!tile.tool.isEmpty())engine.selectTool(tile.tool);
