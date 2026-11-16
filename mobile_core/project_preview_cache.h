@@ -21,6 +21,15 @@ class MobileProjectPreviewCache
 public:
     static constexpr qint64 maxEncodedBytes() {return 32LL*1024*1024;}
     static constexpr qint64 maxCacheBytes() {return 128LL*1024*1024;}
+    // QImageReader plugins are allowed to ignore requested scaling.
+    // Cap original gallery preview dimensions before decode so a
+    // malformed embedded PNG or large imported image cannot force
+    // a 160 MiB bitmap allocation on each thumbnail worker.
+    static bool safePreviewDecodeSize(const QSize &size)
+    {
+        return size.isValid() && size.width()<=8192 && size.height()<=8192 &&
+            qint64(size.width())*size.height()<=16LL*1024*1024;
+    }
     // Gallery preview extraction must reject unsuitable local KRAs
     // before invoking Krita's ZIP parser. Keep this check Qt-only so
     // malformed files can be covered by host-side regression tests.
