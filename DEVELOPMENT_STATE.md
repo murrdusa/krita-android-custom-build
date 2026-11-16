@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — bound GitHub reporter memory while scanning Android compiler logs
+
+- Found a concrete non-app memory issue in `krita_build_reporter.py::qt_lifecycle_section()`: it previously called `Path.read_text().splitlines()` on the complete Android/Qt compiler log to find the latest 12 native Qt smoke-test messages. Large incremental or failed Android builds can produce very large logs and make the long-running reporter allocate a second full in-memory copy, risking slow updates or out-of-memory. The parser now streams the file line by line, retaining only 12 matching lines in a `collections.deque(maxlen=12)`; the build-log path is still constrained to the known watcher logs directory. Source `d9cf0bd`.
+- Added a dependency-free Python regression with a 20,000-line simulated compiler log, an outside-directory path rejection, and missing-verdict handling (`18a5f2a`, fixture escaping corrected `f038ce1`). `local-build.sh` executes this suite in build mode before APK-cache short circuit, even without host Qt development libraries (`9496847`). This improves diagnostic reliability, not the Android painting engine itself. Await exact-revision watcher run; previous Qt lifecycle suite is still blocked by unavailable host Qt5Widgets packages. No APK uploaded.
+
 ## November 16 — fix stale PASS reuse in native Qt lifecycle test cache
 
 - Audited the local WSL native lifecycle regression runner following the latest canvas-retirement changes. Its fingerprint included test files and several headers but omitted the transitively included `view_host_port.h`, `host_services.h`, and `native_canvas_chrome.h`. A change to one of those files could otherwise be reported as an unchanged cached PASS without recompiling the affected tests. The runner now includes those headers and the active Qt5Core/Qt5Widgets development-kit versions in its cache fingerprint (`17840d3`). Source/test execution is still gated by the host Qt5Widgets development libraries, absent in the latest watcher report.
