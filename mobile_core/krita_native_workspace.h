@@ -1247,6 +1247,7 @@ public:
         QTimer::singleShot(0,this,[this]() {
             if(!m_host)return;
             const QPointer<MobileLightweightCanvasHost> host=m_host;
+            const QPointer<MobileKritaNativeWorkspace> alive(this);
             QDialog dialog;
             dialog.setWindowModality(Qt::ApplicationModal);
             QObject::connect(host.data(),&QObject::destroyed,
@@ -1377,7 +1378,10 @@ public:
             auto *done=new QPushButton(QObject::tr("Done"),&dialog);
             connect(done,&QPushButton::clicked,&dialog,&QDialog::accept);
             outer->addWidget(done);
-            if(dialog.exec()!=QDialog::Accepted)return;
+            // Android can destroy the workspace while exec() is open.
+            // Closing the dialog must not resume settings writes through
+            // a deleted this pointer after the nested event loop exits.
+            if(dialog.exec()!=QDialog::Accepted || !alive || !host)return;
             const int panelMode=persistentPanels->currentData().toInt();
             m_keepLayers=bool(panelMode&1);
             m_keepColor=bool(panelMode&2);
@@ -1477,6 +1481,11 @@ public:
             const auto action=m_keyboardCommands.value(id);
             if(!action)return;
             QDialog editor(&dialog);
+            // An Android host teardown rejects the outer dialog while
+            // this nested editor may be running its own event loop.
+            // Reject both levels so neither modal remains stranded.
+            QObject::connect(&dialog,&QDialog::rejected,
+                             &editor,&QDialog::reject);
             editor.setWindowTitle(caption(action));
             MobileTouchScroll::styleMenuDialog(editor,QSize(390,260));
             auto *body=new QVBoxLayout(&editor);
