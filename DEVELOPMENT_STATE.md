@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — prevent toolbar customization modal teardown crashes
+
+- `MobileNativeCommandLayout::editToolbar()` and its nested `chooseCommand()` previously used stack `QDialog`s parented to a window or editor dialog. Destroying the Android host during `exec()` could make Qt parent ownership delete those C++ stack objects before their functions returned. The outer toolbar editor is now parentless and rejected on native-window destruction; the nested picker is independently stack-owned and rejected if its enclosing toolbar editor is rejected or destroyed. The controller's scoped edit flag now uses a `QPointer`-guarded scope exit, so it does not write to a destroyed controller if the window disappears during a modal operation. A completed dialog commits toolbar changes only while both the owner and controller remain live.
+- `tests/qt_native_command_layout.cpp` adds a Qt-only nested-modal regression that deletes the window during the inner picker and verifies that both modal loops reject while their stack objects remain intact. Source commit `3ec5eabcc8632171c204f296c40355efef15698a`; regression commit `742d3867ff21708311a7135a97819552b09753ae`. Exact-revision Android compilation and host Qt execution not yet verified; no APK uploaded.
+
 ## November 15 — avoid stack calibration dialog deletion on native window close
 
 - `MobileNativeCanvasPilot` opened `MobileFingerPressureCalibrationDialog dialog(m_backend); dialog.exec()` as a stack variable with the Android native window as its QObject parent. If that window was destroyed while the modal dialog's nested Qt loop was running, Qt could delete the child dialog before stack unwinding, leaving a double-delete/use-after-free risk. The calibration dialog is now a parentless stack object, sized relative to the original window and rejected on its owner's `destroyed()` signal. The calibration controls and saved pressure settings are unchanged.
