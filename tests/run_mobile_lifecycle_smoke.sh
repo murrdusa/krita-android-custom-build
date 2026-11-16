@@ -26,8 +26,17 @@ inputs=(
     "$repo/mobile_core/native_document_rollback.h"
     "$repo/mobile_core/canvas_resume_observer.h"
     "$repo/mobile_core/view_identity_guard.h"
+    "$repo/mobile_core/view_host_port.h"
+    "$repo/mobile_core/host_services.h"
+    "$repo/mobile_core/native_canvas_chrome.h"
 )
-fingerprint="$(sha256sum "${inputs[@]}" | sha256sum | cut -d ' ' -f 1)"
+# These headers are included transitively by the tested native host.
+# Include the host Qt version too: a previously passing binary is not
+# evidence of compatibility after WSL upgrades its Qt development kit.
+fingerprint="$(
+    { sha256sum "${inputs[@]}"; pkg-config --modversion Qt5Core Qt5Widgets; } |
+        sha256sum | cut -d ' ' -f 1
+)"
 stamp="$state_dir/.native-qt-lifecycle-pass"
 if [[ -s "$stamp" && "$(cat "$stamp")" == "$fingerprint" ]]; then
     echo "Native Qt lifecycle tests: PASS (cached identical sources)"
