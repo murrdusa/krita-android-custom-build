@@ -100,7 +100,16 @@ public:
            registered->token==token &&
            registered->document==guardedDocument)
             return true;
+        // A currentChanged observer can cancel adoption without
+        // destroying the proposed QWidget. removeWidget() detaches it
+        // from the stack but retains its QWidget parent, leaving an
+        // unregistered GL canvas alive until host shutdown. Schedule
+        // the same ownership-checked retirement used by native Close.
+        // A caller may still delete, reparent or re-adopt the view
+        // before this queued callback; QPointer and indexOf protect it.
         forgetToken(token);
+        if(host && guardedView)
+            retireDetachedView(host,guardedView);
         return false;
     }
 
