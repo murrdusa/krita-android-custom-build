@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — bound stalled OpenGL first-swap observers
+
+- A native `QOpenGLWidget` could remain invalid and never emit `frameSwapped` after Android backgrounding or context loss. The first-frame handler used to retain its one-shot QObject receiver and keep the surface's `_mobileWaitingForFirstSwap` flag true until the entire view was destroyed, preventing a replacement retry on the same surface.
+- The first-frame observer now has a two-second Qt-owned deadline. If no frame signal arrives, its timeout disconnects the original watched widget from the observer, schedules receiver deletion, and clears the waiting flag on the actual surface. It only schedules native activation when the original document/view/root remain selected and visible, and never invokes GL painting directly from the timeout. If the surface or view was destroyed, QPointers and the receiver's QObject lifetime prevent stale callbacks. No new timers run without a pending invalid first-frame GL surface.
+- Source commit `78438fb995a49f6657572bc148c0f828d10c839b`. Exact-revision Android compilation, context-loss/device validation, and memory measurements remain pending; no APK uploaded. This bounds listener lifetime, not a demonstrated heap leak reduction.
+
 ## November 16 — clear first-swap retry state after every signal
 
 - The first-frame `QOpenGLWidget::frameSwapped` one-shot callback in `MobileKritaNativeViewFactory::scheduleActivation()` previously disconnected its receiver but only cleared the surface's `_mobileWaitingForFirstSwap` flag when the GL surface was invalid. A valid swap followed by hidden-window or superseded deferred activation could leave the now-unobserved surface permanently marked as waiting, preventing subsequent retry registration.
