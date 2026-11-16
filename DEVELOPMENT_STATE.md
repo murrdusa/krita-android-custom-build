@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — stress test repeated failed native canvas adoption
+
+- Extended the new reentrant native adoption failure regression to run 128 consecutive canceled registrations with a long-lived `MobileNativeViewStack`. Each cycle checks that the row is removed, the detached QWidget is destroyed after queued Qt cleanup, and no QWidget children accumulate across attempts (`85ef374`). This specifically exercises the GL-capable widget ownership leak fixed by `b4f96a2`; no additional speculative engine changes were made. The existing ownership-transfer regression still verifies that a canvas adopted by another host is not deleted by the original host.
+- Exact-revision Android build and Qt tests pending at this commit. Do not equate the previous successful build with validation of these changes.
+
 ## November 16 — retire native canvas leaked by reentrant failed adoption
 
 - Audited `MobileNativeViewStack::adoptView()` failure handling. A `currentChanged` observer may call `forgetView()` after `addWidget()` parents the new painting widget but before adoption completes. `forgetToken()` removes the logical registration and `QStackedWidget::removeWidget()` removes its layout slot without releasing QWidget parentage. Previously, `adoptView()` could return false while the unregistered canvas/GL surface remained alive as a child of the root until the whole window closed. After failed adoption, it now schedules `retireDetachedView()`, whose queued callback checks that the widget still lives under this root and has not been re-registered before deleting it. Source `b4f96a2`.
