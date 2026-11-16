@@ -1726,6 +1726,39 @@ int main(int argc,char **argv)
                 "external forget destroyed a transferred native canvas");
     }
 
+    // Deferred orphan cleanup must not mistake a temporarily detached
+    // layout widget for an unowned view after reentrant re-registration.
+    // The new registration remains live even with indexOf() == -1.
+    {
+        MobileNativeViewStack stack;
+        QObject originalDocument;
+        QObject replacementDocument;
+        auto *canvas=new QWidget;
+        const QPointer<QWidget> retained(canvas);
+        require(stack.adoptView(canvas,&originalDocument,
+                    QStringLiteral("original"),[](){return false;}),
+                "registered-detach fixture could not adopt original");
+        require(stack.forgetView(QPointer<QObject>(canvas)),
+                "registered-detach fixture failed to forget original");
+        canvas->setParent(nullptr);
+        require(stack.adoptView(canvas,&replacementDocument,
+                    QStringLiteral("replacement"),[](){return false;}),
+                "registered-detach fixture could not re-adopt canvas");
+        stack.removeWidget(canvas);
+        require(stack.indexOf(canvas)<0,
+                "registered-detach fixture retained Qt layout slot");
+        QCoreApplication::sendPostedEvents(nullptr,0);
+        QApplication::processEvents();
+        require(retained && stack.findChildren<QWidget*>().contains(canvas),
+                "orphan retirement deleted a canvas still registered to a document");
+        // Remove the registration and let the stack own final cleanup.
+        require(stack.forgetView(QPointer<QObject>(canvas)),
+                "registered-detach fixture could not unregister replacement");
+        QCoreApplication::sendPostedEvents(nullptr,0);
+        QApplication::processEvents();
+        require(!retained,"registered-detach fixture retained an unowned canvas");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
