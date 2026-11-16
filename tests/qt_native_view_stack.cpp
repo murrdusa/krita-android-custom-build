@@ -12,6 +12,7 @@
 #include <QScopeGuard>
 #include <QSharedPointer>
 #include <QVBoxLayout>
+#include <memory>
 #include "mobile_core/native_view_stack.h"
 #include "mobile_core/lightweight_canvas_host.h"
 #include "mobile_core/view_identity_guard.h"
@@ -1457,7 +1458,7 @@ int main(int argc,char **argv)
             const auto target=MobileViewIdentityGuard::safeCloseTarget(
                 snapshot,current);
             require(target && port->closeView(target) &&
-                    !owner && !guardedCanvas && weakPort &&
+                    !owner && !guardedCanvas && !weakPort.isNull() &&
                     port->openViews().isEmpty(),
                     "native close used an expired view backend after owner teardown");
         }
