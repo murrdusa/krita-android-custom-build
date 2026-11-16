@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — Qt regression for bounded GL first-swap retries
+
+- Audited the Android home gallery and background index writers for unbounded memory growth. Gallery decode size, in-memory icons, pending requests, scanner delivery and index-worker queues already have limits. No confirmed resource leak was found in that audit, so no speculative cache changes were made.
+- Extracted the native canvas's first-swap exponential retry calculation into the Qt-only `MobileFirstSwapRetryPolicy` in `canvas_resume_observer.h`, and wired `MobileKritaNativeViewFactory` to use that shared implementation. The policy clamps stored attempt counts to 0–3 and returns successive retry delays of 2, 4, 8 and capped 16 seconds. This avoids undefined or excessive shifts if a corrupt/stale Qt property contains an out-of-range count.
+- Added assertions to `tests/qt_canvas_resume_observer.cpp` for the delay progression, saturation, negative counts and very large counts. This regression runs without Krita and does not require a phone. Changes: helper `9f39a5f7fd0f2680b7d550a42eb58fff211cfbf5`, Android use `98fa24dedaaab075c383dbdacaa9df74967e9ce5`, regression `4668b3429dc9625848cb044783423ff837b36bec`. Exact-revision compilation and test execution remain unverified at commit time. No APK uploaded.
+
 ## November 16 — back off OpenGL retries while the surface is unavailable
 
 - `MobileKritaNativeViewFactory::scheduleActivation()` formerly retried every two seconds indefinitely when an Android OpenGL surface remained invalid and never emitted `frameSwapped`. Each timeout released its one-shot Qt receiver but could immediately schedule another, generating unnecessary callback, repaint and allocation churn during prolonged context loss.
