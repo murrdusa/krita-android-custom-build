@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — native draft metadata attachment lifetime guard
+
+- In `MobileKritaStandaloneRuntime::attachDocument()`, early recovery-draft setup now captures the original runtime, document, manager and canvas root before reading `_mobileDraftPath`. It revalidates those identities between reading the document path, accessing document title metadata, allocating the private draft name and writing the resulting property. A synchronous teardown during any of those operations now aborts attachment instead of using a destroyed `KisDocument`. An unavailable `documentInfo()` is treated as an empty title, avoiding a null dereference.
+- Commit `d5bc72ed3573e2f24a23be61150adb50df588a54`. This is a narrowly scoped preventative native Krita lifecycle change; source review is complete but exact-revision Android compilation, regression execution and on-device behavior are pending. No APK uploaded.
+
 ## November 16 — coalesce memory samples after closing multiple canvases
 
 - `MobileKritaStandaloneRuntime` no longer schedules a separate zero-delay memory snapshot for every document destruction. In a bulk close, each document's signal can arrive before the corresponding Qt native view retirement timer and `DeferredDelete` cleanup have finished, producing misleading `detachedKisViews` counts and a burst of `/proc/self/status` reads.
