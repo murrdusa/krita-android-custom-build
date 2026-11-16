@@ -5,6 +5,7 @@
 #include <QDebug>
 #include <QMainWindow>
 #include <QPixmap>
+#include <QPointer>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSettings>
@@ -242,5 +243,28 @@ int main(int argc,char **argv)
     const auto layouts=stored.value(MobileWorkspaceProfiles::group(id)+QStringLiteral("toolbars")).toList();
     verify(!layouts.isEmpty() && layouts.first().toMap().value(QStringLiteral("placement")).toRectF().isValid(),
            "edited toolbar placement did not persist");
+
+    // Workspace callbacks are allowed to synchronously destroy the
+    // editor. Closing must not access its members or call deleteLater()
+    // after the completion callback has deleted the QObject.
+    QWidget teardownCanvas;
+    teardownCanvas.resize(300,240);
+    auto *teardownControl=new QPushButton(QStringLiteral("Control"),&teardownCanvas);
+    teardownControl->setGeometry(20,20,80,45);
+    teardownCanvas.show();
+    teardownControl->show();
+    QPointer<MobileCanvasLayoutEditor> teardownEditor;
+    int finishedCount=0;
+    teardownEditor=new MobileCanvasLayoutEditor(&teardownCanvas,
+        {{teardownControl,QSize(40,40),false,{}}},
+        [&]() {
+            ++finishedCount;
+            delete teardownEditor.data();
+        });
+    verify(teardownEditor && !teardownControl->isVisible(),
+           "layout teardown fixture did not hide the target control");
+    teardownEditor->closeEditor(false);
+    verify(!teardownEditor && finishedCount==1 && teardownControl->isVisible(),
+           "synchronous layout completion destroyed the editor unsafely");
     return 0;
 }
