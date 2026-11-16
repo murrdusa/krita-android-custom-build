@@ -1294,6 +1294,47 @@ int main(int argc,char **argv)
                 "bounded checkpoint cutoff lost a newer recovery draft");
     for(const QString &draft:galleryFixtures)QFile::remove(draft);
 
+    // Exercise bounded enumeration under an out-of-order directory,
+    // rather than only five newest-first fixture writes. A heap with an
+    // inverted comparator can appear correct for a tiny input while
+    // silently excluding the newest checkpoint in a larger gallery.
+    QStringList stressDrafts;
+    const QDateTime stressBase=QDateTime::currentDateTime().addDays(-2);
+    constexpr int stressCount=192;
+    for(int i=0;i<stressCount;++i) {
+        const QString draft=MobileDraftRecovery::allocate(
+            QStringLiteral("bounded-stress-")+QString::number(i));
+        require(!draft.isEmpty(),"cannot allocate bounded stress fixture");
+        save(draft,QByteArray::fromHex("504b0304")+"stress");
+        QFile item(draft);
+        // Pseudorandom timestamp order, but deterministic across runs.
+        const int rank=(i*73)%stressCount;
+        require(item.open(QIODevice::ReadWrite) &&
+                item.setFileTime(stressBase.addSecs(rank*5),
+                                 QFileDevice::FileModificationTime),
+                "cannot timestamp bounded stress fixture");
+        item.close();
+        stressDrafts.append(draft);
+    }
+    const auto stressFull=MobileDraftRecovery::list();
+    const auto stressBounded=MobileDraftRecovery::list(7);
+    require(stressBounded.size()==7,
+            "stress gallery did not obey its seven-item memory bound");
+    for(int i=0;i<stressBounded.size();++i)
+        require(stressBounded.at(i).absoluteFilePath()==
+                    stressFull.at(i).absoluteFilePath(),
+                "stress gallery lost a newest entry during bounded heap selection");
+    const qint64 stressCutoff=stressBase.addSecs(150*5).toMSecsSinceEpoch();
+    const auto stressFiltered=MobileDraftRecovery::list(0,stressCutoff);
+    const auto stressBoundedFiltered=MobileDraftRecovery::list(7,stressCutoff);
+    require(stressBoundedFiltered.size()==7,
+            "stress cutoff unexpectedly lost the newest draft entries");
+    for(int i=0;i<stressBoundedFiltered.size();++i)
+        require(stressBoundedFiltered.at(i).absoluteFilePath()==
+                    stressFiltered.at(i).absoluteFilePath(),
+                "stress cutoff and heap produced inconsistent newest-first order");
+    for(const QString &draft:stressDrafts)QFile::remove(draft);
+
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
                " provider identity, SAF tree normalization and legacy migration";
     return 0;
