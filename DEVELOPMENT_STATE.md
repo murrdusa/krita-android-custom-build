@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — require selected live canvas for active-document identity
+
+- Hardened `MobileNativeViewStack::currentDocument()` to reject a missing selected QWidget and require a live view/document and a current stack layout slot before exposing the document identity (`ed898a4`). This keeps active-document queries aligned with `openViews()` during Qt removal and reentrant teardown; it is a preventative consistency guard, not a demonstrated on-device crash fix.
+- Added Qt native-view regression covering layout-slot detachment, empty current selection and final widget retirement (`993df9e`). Native Qt host tests remain unverified while Qt5Widgets development libraries are unavailable in the WSL runner. No APK uploaded.
+
+
 ## November 16 — preserve visibility of re-registered canvas during removal signals
 
 - Audited `MobileNativeViewStack::forgetToken()`: after emitting `widgetRemoved`, its final cleanup hid a widget solely because it was parented to the original stack and absent from the `QStackedWidget` layout. A synchronous observer can re-register that same canvas under a new document and temporarily remove its layout slot, leaving an active registered canvas incorrectly hidden. The final hide now also checks `uniqueRow()` and only hides an actually unregistered widget (`b62feb8`).
