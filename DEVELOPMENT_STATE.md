@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — cap Android gallery recovery-draft enumeration
+
+- Audited the native painting view lifetime and recovery workers. The home gallery's ordinary thumbnail and project index queues are already bounded, but `MobileDraftRecovery::list()` still materialized and sorted **every** published private draft before `MobileDocumentHome::showList()` could apply its 20,000-project UI limit. An anomalously large recovery directory could transiently allocate a very large `QFileInfoList` and trigger Android memory pressure.
+- `MobileDraftRecovery::list(int maxResults=0)` now supports a bounded newest-first snapshot via a streaming maxResults-sized heap. The default remains **unlimited**, preserving complete data for `checkpointsFor()`, `hasProjectDraft()` and other recovery searches. The Android home gallery requests only the newest 20,000 drafts; older files are **not deleted**.
+- `tests/qt_saved_version_archive.cpp` now creates five timestamped published draft fixtures and checks that `list(2)` retains the two newest files from the full list, before cleaning up the fixtures. Code commits: `2a87f4755819a501ceccf339d5903039784bd73d`, `ca76516cf2a90fb73890ef358a1d662f7023cbba`; regression `bfe269ebb7f5182ab9076fd20beeefbbbf467b53`. Exact-revision compilation and test execution remain pending. No APK uploaded.
+
 ## November 16 — reset GL retry backoff on confirmed context recovery
 
 - The first-frame backoff counter was reset on `frameSwapped` but not when `QOpenGLWidget::isValid()` became true before a frame signal. A recovered surface could therefore retain a saturated 16-second delay and use it during a later, unrelated OpenGL context loss.
