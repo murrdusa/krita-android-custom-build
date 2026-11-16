@@ -29,8 +29,10 @@ public:
         // notifications that close and destroy this host. Establish its
         // guard before the first QWidget operation, not after creation.
         const QPointer<MobileLightweightCanvasHost> window(host);
-        const bool occupied=window->centralWidget() || window->nativeViewPort();
-        if(!window || occupied)return nullptr;
+        const bool occupiedCanvas=window->centralWidget()!=nullptr;
+        if(!window || occupiedCanvas)return nullptr;
+        const bool occupiedPort=bool(window->nativeViewPort());
+        if(!window || occupiedPort)return nullptr;
         // The canvas is newly allocated and belongs to this host, never
         // transferred from a Krita desktop MDI window.
         const QPointer<MobileNativeViewStack> root=
