@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — touch dropdown model lifetime
+
+- Touch combo initial-selection scrolling now captures a `QPersistentModelIndex` and verifies it still belongs to the list's displayed model before a queued scroll executes. A resource/model reset while a popup opens invalidates the saved row instead of passing a stale index into Qt's item view.
+- `tests/qt_mobile_touch_scroll.cpp` now covers invalidation of the previously selected row after `QStringListModel::setStringList()` resets the model. Source commits `09af5dfbaad7c29e0fd3dd68e049d9a8189e5230` and `1fa6477e905443b5491072dfad4658c003fffd32`; exact-revision WSL compile and host Qt test execution still need confirmation. No APK uploaded.
+
 ## November 15 — tool browser refresh teardown guards
 
 - Tool browser panel and scroll references are guarded during menu reconstruction. Showing the panel, replacing its tile tree, and writing favorite-tool settings can dispatch synchronous Qt layout/window callbacks; refresh now stops when its owning panel or scroll area has been destroyed, instead of accessing stale widget pointers. Existing favorites, tool selection, scrolling, and active-document validation are unchanged.
