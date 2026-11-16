@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — preserve unvalidated recovery staging on reported export success
+
+- Audited `MobileDraftRecovery::publish()`. Its invalid-KRA branch deleted `.pending.kra` whenever the exporter reported success, even though validation may have observed an incomplete flush or a concurrent writer. This could destroy the only remaining partial unsaved artwork while providing no benefit to the last published checkpoint.
+- Preserve invalid staging for inspection/recovery regardless of exporter success, without publishing it. A subsequent export can replace the same pending pathname. Updated `tests/qt_saved_version_archive.cpp` to assert retained staging bytes and an untouched published checkpoint. Source `4312d65`; regression `6d17285`. This is a data-retention safeguard, not proof of a crash-frequency reduction. Exact Android source build and Qt regression execution pending; no APK uploaded.
+
 ## November 16 — retire detached documents from deferred autosave watchdog
 
 - Audited the pending-draft retry added in `136ad7c4` and refined by `710c8561`. `MobileKritaStandaloneRuntime::continueDrafts()` previously called `document->isSaving()` *before* checking whether it still belonged to the native runtime. If a live KisDocument had been detached (e.g., moved to another host) but continued saving, its queued identity could remain indefinitely and repeatedly schedule delayed retries despite no longer being owned by the mobile canvas.
