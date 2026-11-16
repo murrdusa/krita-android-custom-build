@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — Quick Actions dispatch and refresh lifetime
+
+- Quick Actions button dispatch now copies its external command callable and checks the toolbar's QObject lifetime before refreshing. A command that closes a document, changes workspaces, or tears down mobile chrome can synchronously delete its own Quick Actions strip; the old clicked handler unconditionally called `refresh()` after dispatch.
+- `MobileQuickActions::refresh()` uses a snapshot of guarded button pointers and checks the containing strip after show/enabled-state callbacks, so a synchronous toolbar rebuild does not invalidate the iteration or continue accessing deleted widgets.
+- Code commit `ee3d3702d2585f23558efd3b7029c12c53c473e1`. This Android-only quick-action path has no standalone Qt regression in the current suite; exact SHA local build and Fold 6 runtime remain unverified. No APK uploaded.
+
 ## November 15 — toolbar gesture callback teardown
 
 - `MobileToolbarGestureButton` now checks its lifetime after drag-preview callbacks, synthetic completion transitions and down-state changes; the gesture's inline-adjustment, color-sampling and long-hold callables are invoked from copies instead of potentially destroyed member function storage. A workspace rebuild during a preview/commit/hold must not continue dereferencing its deleted toolbar button.
