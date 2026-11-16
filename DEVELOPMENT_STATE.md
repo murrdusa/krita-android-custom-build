@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — deferred tool menu lifetime
+
+- The tool browser now captures its parent canvas/window with `QPointer` before closing the transient tool panel. It cancels deferred tool activation if closing that panel synchronously destroys the parent; a surviving parent remains the Qt timer context, and the existing active document check still prevents retargeting tool actions to a different painting.
+- Source commit `d3dfc0717b45c9465cbe676d2d1dde0ab6fb878c`. Android compilation and device behavior for this change remain unverified; no APK uploaded.
+
 ## November 15 — one-shot first GL frame activation
 
 - The first-frame OpenGL `frameSwapped` listener is now a one-shot child receiver. It disconnects before scheduling the existing deferred activation and deletes itself after the callback, avoiding perpetual startup checks on every subsequent painting frame. The listener is also destroyed with its owning view if startup aborts.
