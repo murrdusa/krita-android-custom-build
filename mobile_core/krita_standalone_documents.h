@@ -148,8 +148,18 @@ public:
                 document=KisPart::instance()->createDocument();
                 if(!document)return false;
                 const QPointer<KisDocument> candidate(document);
+                // Creating a Krita document can dispatch plugin/Qt
+                // callbacks before we start the expensive KRA read.
+                // Never load into an import whose original native host
+                // was replaced during construction.
+                if(!m_runtime || !originalRoot ||
+                   m_runtime->documentRoot()!=originalRoot.data() ||
+                   !KisPart::instance()) {
+                    if(candidate)delete candidate.data();
+                    return false;
+                }
                 const bool opened=openProjectSource(
-                    document,checkpoint.absoluteFilePath(),true);
+                    candidate.data(),checkpoint.absoluteFilePath(),true);
                 if(!candidate)return false;
                 if(!m_runtime || !originalRoot ||
                    m_runtime->documentRoot()!=originalRoot.data() ||
@@ -174,8 +184,18 @@ public:
             document=KisPart::instance()->createDocument();
             if(!document)return false;
             const QPointer<KisDocument> candidate(document);
+            // The host may be closed by an observer of createDocument()
+            // even though the new, unregistered KisDocument survives.
+            // Dispose of it before openPath rather than reading a large
+            // artwork into a stale Android window.
+            if(!m_runtime || !originalRoot ||
+               m_runtime->documentRoot()!=originalRoot.data() ||
+               !KisPart::instance()) {
+                if(candidate)delete candidate.data();
+                return false;
+            }
             const bool opened=openProjectSource(
-                document,path,privateDraft || savedVersion);
+                candidate.data(),path,privateDraft || savedVersion);
             if(!candidate || !opened || !m_runtime || !originalRoot ||
                m_runtime->documentRoot()!=originalRoot.data() ||
                !KisPart::instance()) {
