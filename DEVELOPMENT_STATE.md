@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — stream draft-association lookups to avoid large snapshots
+
+- `MobileDraftRecovery::hasProjectDraft()` previously called unrestricted `list()`, allocating and sorting every private recovery draft, before doing an existence test for one project. That check can run in deletion workflows and may create a large, unnecessary temporary allocation if storage contains many drafts.
+- The check now invokes `list(1)` to retain the existing bounded rescue of old publishable `.pending.kra` files, then scans published drafts directly through `QDirIterator`, returning on the first matching canonical project identity. The result no longer requires a complete in-memory/sorted `QFileInfoList`. No drafts are deleted, and full list/checkpoint discovery remains unchanged. This trades a second streaming directory traversal for bounded peak memory.
+- Extended the existing 192-draft Qt stress test to associate one non-newest draft with a project, verify the streamed existence check finds it, remove that association, then verify absence. Source commit `b1381989914b0a03da2c59417f791202fd03f71e`, test commit `e414f7560a0d160417faeed149bed8f6ac26c8d2`. Exact-revision compilation and test execution remain pending; no APK uploaded.
+
 ## November 16 — bound routine saved-version checks to newest archive
 
 - Investigated autosave memory pressure in `MobileSavedVersionArchive::snapshotFrom()`. Its rate-limit check and deduplication pass previously each called `scan(folder)`, materializing and sorting the entire history even though each uses only the newest completed KRA. A damaged/interrupted history directory can contain far more files than normal retention permits, causing avoidable temporary allocations on an autosave path.
