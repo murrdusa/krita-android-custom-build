@@ -764,6 +764,17 @@ private:
             });
     }
 
+    // Recovery copies may involve large KRA archives. Keep those
+    // disk-bound jobs away from Qt's global pool, which also serves
+    // interactive paint/fill work. Only one copy runs at a time.
+    static QThreadPool &recoveryPool()
+    {
+        static QThreadPool pool;
+        static const int configured=(pool.setMaxThreadCount(1),1);
+        (void)configured;
+        return pool;
+    }
+
     void openCopy(const MobileSavedVersionArchive::Version &version)
     {
         if(m_restoringVersion || !isVisible())return;
@@ -783,7 +794,7 @@ private:
         }
         QPointer<MobileDocumentHome> home(this);
         const QPointer<QCoreApplication> application(qApp);
-        QThreadPool::globalInstance()->start([home,application,version,expected,generation,cancellation]() {
+        recoveryPool().start([home,application,version,expected,generation,cancellation]() {
             if(!home || !application || cancellation->load())return;
             const QString copy=MobileSavedVersionArchive::materializeRecovery(
                 version,QString(),cancellation.get());
