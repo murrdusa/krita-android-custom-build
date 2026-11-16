@@ -28,5 +28,21 @@ public:
         remove(document);
         return true;
     }
+
+    // A Krita observer can unregister an imported document without
+    // destroying its QObject. After a failed view attachment, that
+    // unowned image would retain its layers and pixel buffers. Only
+    // dispose of an identity confirmed absent from the live registry;
+    // never delete a still-registered document or an already dead one.
+    template<class T,class Registered>
+    static bool disposeUnregistered(const QPointer<T> &original,
+                                    Registered &&registered)
+    {
+        if(!original)return false;
+        const bool inRegistry=registered(original.data());
+        if(!original || inRegistry)return false;
+        delete original.data();
+        return true;
+    }
 };
 #endif
