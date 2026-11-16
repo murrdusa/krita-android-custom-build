@@ -187,7 +187,9 @@ public:
             // destroy the detached view if that manager still exists.
             if(guarded && guardedManager && guardedStack &&
                guarded->parentWidget()==guardedStack.data() &&
-               guardedStack->indexOf(guarded.data())<0)
+               guardedStack->indexOf(guarded.data())<0 &&
+               !guardedStack->hasViewRegistration(
+                   QPointer<QObject>(guarded.data())))
                 delete guarded.data();
             return nullptr;
         };
