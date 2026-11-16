@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — track pending OpenGL swap observers in opt-in memory diagnostics
+
+- The existing native close-churn regression already exercises 128 consecutive view/document retirements, and `MobileNativeViewStack` uses deferred deletion with ownership checks. The archive history migration also uses a recursive mutex intentionally. No additional confirmed orphan-view leak was established in this pass.
+- To distinguish a genuine retained first-frame callback from normal GL/allocator caching, named the short-lived QObject created for each native `frameSwapped` retry `_mobileFirstSwapObserver` and added `pendingFirstSwapObservers` to the existing opt-in `MobileStudioMemory` snapshots. Counts come from objects that remain under the native document root, so they can be compared to `nativeViews`, `retainedKisViews`, and `detachedKisViews` after the existing deferred close-snapshot grace period.
+- Diagnostics remain **off by default** under `MobileStudio/memoryDiagnosticsV1`; no image content, file paths, or art data are collected. Normal observer connection, timeout, deletion, and rendering behavior are unchanged. Source commits: `c070177710fbf450935c97332ab2a80d0af2e109`, `2777e65fe52a541675a8b2920cf67530b63c88d9`. Compilation and device memory sampling of these revisions remain pending; no APK uploaded.
+
 ## November 16 — stream draft-association lookups to avoid large snapshots
 
 - `MobileDraftRecovery::hasProjectDraft()` previously called unrestricted `list()`, allocating and sorting every private recovery draft, before doing an existence test for one project. That check can run in deletion workflows and may create a large, unnecessary temporary allocation if storage contains many drafts.
