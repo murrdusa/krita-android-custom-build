@@ -397,6 +397,35 @@ private:
                                         // replacement surface starts unarmed.
                                         if(receiver)receiver->deleteLater();
                                     });
+                                // Android can suspend or lose the GL context
+                                // before any frameSwapped signal occurs.
+                                // A listener without a deadline would remain
+                                // attached for the entire canvas lifetime and
+                                // leave this surface permanently marked as
+                                // waiting. Bound the observation and retry
+                                // only for the still-selected visible canvas.
+                                QTimer::singleShot(2000,firstSwap,
+                                    [manager,root,selected,watched,receiver]() {
+                                        if(!receiver)return;
+                                        if(watched)
+                                            QObject::disconnect(
+                                                watched.data(),nullptr,
+                                                receiver.data(),nullptr);
+                                        receiver->deleteLater();
+                                        if(watched)
+                                            watched->setProperty(
+                                                "_mobileWaitingForFirstSwap",false);
+                                        if(!manager || !root || !selected ||
+                                           !watched || !selected->isVisible() ||
+                                           root->currentWidget()!=selected.data() ||
+                                           !selected->document() ||
+                                           root->currentDocument()!=selected->document())
+                                            return;
+                                        // The root's existing activation
+                                        // timer rechecks GL readiness. Do not
+                                        // touch the canvas from this timeout.
+                                        scheduleActivation(manager,root,selected);
+                                    });
                                 QObject::connect(watched.data(),&QOpenGLWidget::frameSwapped,firstSwap,
                                     [manager,root,selected,receiver,watched]() {
                                         if(receiver && watched)
