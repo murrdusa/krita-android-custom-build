@@ -364,25 +364,39 @@ private:
 
     bool writeDocument(KisDocument *document,bool saveAs,bool exporting) const
     {
-        if(!available() || m_saving || !document ||
-           !m_runtime->ownsDocument(document) ||
-           m_runtime->documentRoot()->currentDocument().data()!=document)
-            return false;
-        const QScopedValueRollback<bool> transaction(m_saving,true);
-        QPointer<KisDocument> guardedDocument(document);
+        if(!available() || m_saving || !document)return false;
+        const QPointer<KisDocument> guardedDocument(document);
+        const QPointer<MobileKritaStandaloneRuntime> runtime=m_runtime;
+        if(!guardedDocument || !runtime)return false;
+        // ownsDocument() traverses Krita's native view/document registry.
+        // An observer may close the selected canvas while that ownership
+        // query runs. Never dereference the old runtime or document to
+        // obtain its root after such a reentrant teardown.
+        const bool owned=runtime->ownsDocument(guardedDocument.data());
+        if(!runtime || !guardedDocument || !owned)return false;
         // Save As and render-wait dialogs can reenter Qt event handling;
         // the runtime may survive while its native view stack is replaced.
         const QPointer<MobileNativeViewStack> originalRoot(
-            m_runtime->documentRoot());
+            runtime->documentRoot());
+        if(!originalRoot || !runtime || !guardedDocument ||
+           runtime->documentRoot()!=originalRoot.data() ||
+           originalRoot->currentDocument().data()!=guardedDocument.data())
+            return false;
+        const QScopedValueRollback<bool> transaction(m_saving,true);
 
         // Match Krita's native render-completion protection. Refuse
         // Ignore instead of allowing a potentially corrupt overwrite.
         // The Android host may be destroyed while the render-completion
         // dialog processes a nested event loop. A stack-allocated child
         // would otherwise be deleted by Qt's parent teardown.
+        const auto image=guardedDocument->image();
+        if(!runtime || !guardedDocument || !originalRoot ||
+           runtime->documentRoot()!=originalRoot.data() ||
+           originalRoot->currentDocument().data()!=guardedDocument.data())
+            return false;
         QPointer<KisDelayedSaveDialog> idle(new KisDelayedSaveDialog(
-            document->image(),KisDelayedSaveDialog::SaveDialog,0,
-            m_runtime->window()));
+            image,KisDelayedSaveDialog::SaveDialog,0,runtime->window()));
+        if(!idle)return false;
         idle->blockIfImageIsBusy();
         const bool renderReady=idle &&
             idle->result()==KisDelayedSaveDialog::Accepted;
