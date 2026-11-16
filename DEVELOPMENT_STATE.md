@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — safely unwind touch gesture modals during Android teardown
+
+- `MobileKritaNativeWorkspace::openTouchGestures()` used a stack `QDialog` parented to the native window; its nested "More actions" picker was another stack dialog parented to the combo box. Window teardown during either `exec()` could destroy a stack dialog through QObject parenting, then resume code referencing destroyed controls. Both dialogs now use independent stack ownership. Native-window destruction rejects the outer dialog, whose rejection also rejects any running inner picker; the combo's destruction directly rejects its picker as well. `QPointer` checks prevent accessing the disappeared combo or committing settings when the workspace/owner no longer exists. A call with no parent still supports accepted changes.
+- Source commits `29bbe203f823642bd0b3d174eda6a492918129bf`, `1f8a4f88403895b52ec4075c18ea5b24a97efa14`, and `108d9f850ad319c6af8ef5ce6612c3c65b06631e`. The nested-modal destruction regression in `tests/qt_native_command_layout.cpp` covers the analogous Qt ownership/event-loop pattern, not the Krita input profile itself. Exact-revision Android compilation and device behavior unverified; no APK uploaded.
+
 ## November 15 — prevent toolbar customization modal teardown crashes
 
 - `MobileNativeCommandLayout::editToolbar()` and its nested `chooseCommand()` previously used stack `QDialog`s parented to a window or editor dialog. Destroying the Android host during `exec()` could make Qt parent ownership delete those C++ stack objects before their functions returned. The outer toolbar editor is now parentless and rejected on native-window destruction; the nested picker is independently stack-owned and rejected if its enclosing toolbar editor is rejected or destroyed. The controller's scoped edit flag now uses a `QPointer`-guarded scope exit, so it does not write to a destroyed controller if the window disappears during a modal operation. A completed dialog commits toolbar changes only while both the owner and controller remain live.
