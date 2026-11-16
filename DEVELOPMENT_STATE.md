@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — guard native central widget installation and failed-root cleanup
+
+- Audited `MobileLightweightCanvasHost::installNativeCanvas()` and `createNativeDocumentRoot()`. The former passed an unguarded widget to `setCentralWidget()`, then assigned that raw pointer to `m_canvas`. Qt can issue synchronous ownership/parenting notifications during central-widget installation; an observer can destroy the candidate or host. The caller's failed-installation branch also unconditionally deleted the original `root` raw pointer, risking a second deletion. Installation now tracks the host and candidate with `QPointer` before reparenting and only publishes a surviving central widget; failed-root cleanup deletes a still-live, unowned candidate, and preserves a widget already reparented to its host. Source `fbab3b5`.
+- Extended the Qt-only native stack test with rejected external-widget ownership, single-root installation, and empty-root rollback with no retained adapter (`6ea64e0`). These tests exercise normal and rejected ownership paths, not synthetic deletion inside `setCentralWidget()` (which would itself risk invalidating Qt internals). Exact-revision PC compilation/test execution pending; no APK uploaded.
+
 ## November 16 — reject closing an obsolete native view adapter
 
 - Audited `MobileLightweightCanvasHost::closeEvent()`. It snapshots `m_nativeViewPort` and closes each document through that shared backend, but native Save/Discard callbacks can run nested Qt event loops that replace or clear the host's native root and its view adapter. A still-live host could finish closing every view from the old adapter and then accept window closure even though the current adapter owned different artwork. The host now verifies that its installed port still matches the original snapshot after `openViews()`, `closeView()`, and the refreshed view list; a replacement cancels window shutdown. Source `8e6307c`.
