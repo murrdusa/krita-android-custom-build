@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — guard toolbar event forwarding after gesture cancellation
+
+- `MobileToolbarGestureButton::event()` now checks whether the button survived cancellation triggered by Hide, UngrabMouse, WindowDeactivate or disabling. Cancellation callbacks may synchronously rebuild the Android workspace and delete the button; the old event handler then forwarded the event to `QToolButton::event()` on deleted memory. Drag preview also rechecks the button after `setDown(false)` before accessing its state.
+- `tests/qt_mobile_toolbar_drag.cpp` adds an active size-drag fixture whose Cancel callback deletes the button during WindowDeactivate delivery. Code commit `ebae2a7f0305697f2e99bda29d55f3d34b9f7db3`, regression commit `d1c4d2847740ee8426c05a413fcc77856b9abe52`. Exact-revision Android compilation and Qt host regression results remain unverified; no APK uploaded.
+
 ## November 15 — isolate saved-version recovery I/O from painting workers
 
 - `MobileDocumentHome::openCopy()` now submits potentially large KRA recovery materialization to a dedicated single-thread Qt pool instead of Qt's global pool. This prevents recovery disk I/O from consuming the workers shared with interactive drawing/fill tasks and limits concurrent recovery materializations to one. Existing cancellation tokens, weak gallery/application references, and temporary copy ownership are unchanged; the gallery continues to refuse overlapping recovery requests.
