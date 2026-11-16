@@ -641,7 +641,15 @@ public:
                 moreCommands.insert(mode.key(),binding(action->id(),mode.value()));
         }
 
-        QDialog dialog(parent);
+        // Qt can destroy an Android window while exec() is nested.
+        // Keep the stack dialog independent of parent ownership and
+        // reject it if its originating window disappears.
+        const QPointer<QWidget> owner(parent);
+        const QPointer<MobileKritaNativeWorkspace> alive(this);
+        QDialog dialog;
+        if(owner)
+            QObject::connect(owner.data(),&QObject::destroyed,
+                             &dialog,&QDialog::reject);
         dialog.setWindowTitle(QObject::tr("Touch gestures"));
         MobileTouchScroll::styleMenuDialog(dialog,QSize(480,640));
         auto *layout=new QVBoxLayout(&dialog);
@@ -715,7 +723,16 @@ public:
                     }
                     QSignalBlocker blocker(combo);
                     combo->setCurrentIndex(*previous);
-                    QDialog picker(combo);
+                    // The outer dialog can be rejected while this
+                    // secondary picker is running. A parented stack
+                    // picker would otherwise be deleted by Qt as its
+                    // combo box is torn down with the Android window.
+                    const QPointer<MobileTouchComboBox> liveCombo(combo);
+                    QDialog picker;
+                    QObject::connect(combo,&QObject::destroyed,
+                                     &picker,&QDialog::reject);
+                    QObject::connect(&dialog,&QDialog::rejected,
+                                     &picker,&QDialog::reject);
                     picker.setWindowTitle(label);
                     MobileTouchScroll::styleMenuDialog(picker,QSize(qMax(260,combo->width()),400));
                     auto *pickerLayout=new QVBoxLayout(&picker);
@@ -732,9 +749,10 @@ public:
                     auto *cancel=new QPushButton(QObject::tr("Cancel"),&picker);
                     pickerLayout->addWidget(cancel);
                     connect(cancel,&QPushButton::clicked,&picker,&QDialog::reject);
-                    if(picker.exec()==QDialog::Accepted && list->currentItem()) {
+                    if(picker.exec()==QDialog::Accepted && liveCombo &&
+                       list->currentItem()) {
                         setChoice(list->currentItem()->data(Qt::UserRole));
-                        *previous=combo->currentIndex();
+                        if(liveCombo)*previous=liveCombo->currentIndex();
                     }
                 });
             form->addRow(label,combo);
@@ -744,7 +762,7 @@ public:
         layout->addWidget(buttons);
         connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);
         connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
-        if(dialog.exec()!=QDialog::Accepted)return;
+        if(dialog.exec()!=QDialog::Accepted || !owner || !alive)return;
         for(const auto &row:rows) {
             if(row.second->currentIndex()==0)settings.remove(row.first);
             else settings.setValue(row.first,row.second->currentData());
