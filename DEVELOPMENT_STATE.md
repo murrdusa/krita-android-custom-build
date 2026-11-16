@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — preserve visibility of re-registered canvas during removal signals
+
+- Audited `MobileNativeViewStack::forgetToken()`: after emitting `widgetRemoved`, its final cleanup hid a widget solely because it was parented to the original stack and absent from the `QStackedWidget` layout. A synchronous observer can re-register that same canvas under a new document and temporarily remove its layout slot, leaving an active registered canvas incorrectly hidden. The final hide now also checks `uniqueRow()` and only hides an actually unregistered widget (`b62feb8`).
+- Added a real Qt regression where a `widgetRemoved` observer re-adopts the canvas, removes its layout slot, explicitly shows it, and verifies the original removal does not hide or delete it; final deregistration still retires the orphan (`06e65fc`). Exact-revision watcher result pending; native Qt execution remains blocked if the WSL host lacks Qt5Widgets development libraries. No APK uploaded.
+
+
 ## November 16 — bound GitHub reporter memory while scanning Android compiler logs
 
 - Found a concrete non-app memory issue in `krita_build_reporter.py::qt_lifecycle_section()`: it previously called `Path.read_text().splitlines()` on the complete Android/Qt compiler log to find the latest 12 native Qt smoke-test messages. Large incremental or failed Android builds can produce very large logs and make the long-running reporter allocate a second full in-memory copy, risking slow updates or out-of-memory. The parser now streams the file line by line, retaining only 12 matching lines in a `collections.deque(maxlen=12)`; the build-log path is still constrained to the known watcher logs directory. Source `d9cf0bd`; the first dependency-free watcher test exposed a `deque` slicing error in the summary formatter (GitHub failure issue #96), corrected in `1c99f14` by iterating the already size-bounded deque directly.
