@@ -220,42 +220,73 @@ private:
     void refresh()
     {
         if(!m_ready || !m_chrome.active())return;
-        const bool has=m_engine.hasDocument();
+        // Qt setters and Krita document queries can synchronously notify
+        // listeners that close the native window (and destroy this pilot).
+        // The timer is a member, so its QPointer is a safe lifetime witness
+        // without dereferencing the pilot after destruction.
+        const QPointer<QTimer> alive(&m_refresh);
+        const MobileEngineBridge engine=m_engine;
+        const bool has=engine.hasDocument();
+        if(!alive)return;
         // A blank document workspace should show only navigation/creation,
         // not an empty brush-and-actions dock consuming the canvas height.
-        // Opening the first document restores the same controls in place.
         m_chrome.setBottomPanelVisible(has);
-        if(m_layersToggle)m_layersToggle->setEnabled(has);
-        if(m_colorToggle)m_colorToggle->setEnabled(has);
-        if(m_document) {
-            const QString title=m_engine.activeDocumentTitle();
+        if(!alive)return;
+        const QPointer<QToolButton> layersToggle=m_layersToggle;
+        if(layersToggle)layersToggle->setEnabled(has);
+        if(!alive)return;
+        const QPointer<QToolButton> colorToggle=m_colorToggle;
+        if(colorToggle)colorToggle->setEnabled(has);
+        if(!alive)return;
+        const QPointer<QToolButton> document=m_document;
+        if(document) {
+            const QString title=engine.activeDocumentTitle();
+            if(!alive || !document)return;
+            const bool modified=has && engine.documentModified();
+            if(!alive || !document)return;
             const QString fullTitle=has?
                 (title.isEmpty()?i18n("Canvases"):title)+
-                (m_engine.documentModified()?QStringLiteral(" *"):QString()):
+                (modified?QStringLiteral(" *"):QString()):
                 i18n("No document");
-            const int available=qMax(38,m_document->width()-18);
-            const QString fitted=m_document->fontMetrics().elidedText(
+            const int available=qMax(38,document->width()-18);
+            const QString fitted=document->fontMetrics().elidedText(
                 fullTitle,Qt::ElideMiddle,available);
-            if(m_document->text()!=fitted)m_document->setText(fitted);
-            m_document->setToolTip(fullTitle);
+            if(document->text()!=fitted)document->setText(fitted);
+            if(!alive || !document)return;
+            document->setToolTip(fullTitle);
+            if(!alive)return;
         }
-        if(m_brush) {
-            m_brush->setVisible(has);
-            if(has)m_brush->refresh();
+        const QPointer<KritaMobileBrushWorkspace> brush=m_brush;
+        if(brush) {
+            brush->setVisible(has);
+            if(!alive)return;
+            if(has && brush)brush->refresh();
+            if(!alive)return;
         }
-        if(m_quick) {
-            m_quick->setVisible(has);
-            if(has)m_quick->refresh();
+        const QPointer<MobileQuickActions> quick=m_quick;
+        if(quick) {
+            quick->setVisible(has);
+            if(!alive)return;
+            if(has && quick)quick->refresh();
+            if(!alive)return;
         }
         if(!has) {
             m_chrome.setSidePanelVisible(false);
-            if(m_color)m_color->hide();
+            if(!alive)return;
+            const QPointer<MobileColorWorkspace> color=m_color;
+            if(color)color->hide();
+            if(!alive)return;
         }
-        if(m_layers && m_chrome.sidePanelVisible())
-            m_layers->refreshFromEngine();
-        if(m_color && m_color->isVisible()) {
-            m_color->raise();
-            m_color->refresh();
+        const QPointer<KritaMobileLayersPanel> layers=m_layers;
+        const bool sideVisible=m_chrome.sidePanelVisible();
+        if(!alive)return;
+        if(layers && sideVisible)layers->refreshFromEngine();
+        if(!alive)return;
+        const QPointer<MobileColorWorkspace> color=m_color;
+        if(color && color->isVisible()) {
+            color->raise();
+            if(!alive || !color)return;
+            color->refresh();
         }
     }
 
