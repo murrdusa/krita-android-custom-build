@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — saturate saved-version retention accounting for corrupt sparse archives
+
+- Audited asynchronous saved-version checkpoint requests and retention. The request queues coalesce duplicate saves, while `MobileSavedVersionArchive::prune()` could add the file size of an older verified fallback to an already oversized newest archive using unchecked signed `qint64` arithmetic. Abnormal sparse files can report very large sizes; overflowing the accumulator is undefined behavior and could misapply the history size quota.
+- `prune()` now caps the initial retained-byte count at `maxBytes()+1` and saturates rather than adds when reserving an older verified fallback would exceed the quota. Full historical enumeration and the explicit guarantee to retain a valid older recovery when the newest is corrupt are unchanged.
+- Extended `tests/qt_saved_version_archive.cpp` with a sparse newest archive and older verified fallback; creating another checkpoint triggers retention and verifies the fallback survives. Source commit `07282eaf1a140c719ae826fa9e848d659aed55af`; test commit `e89b0d4bdf24b779378f6a84f34380436ab464c1`. Exact-revision Android build and regression execution are pending. No APK uploaded.
+
 ## November 16 — avoid stale document reads during save metadata publication
 
 - Reviewed `MobileKritaStandaloneDocuments::writeDocument()` after completed background-save confirmation. It previously called `MobileSavedVersionArchive::recordPreviewRevision()` and `rememberPath()` before reading `guardedDocument->nativeFormatMimeType()` and its private draft property. Qt recent-file/metadata observers can synchronously close the document or replace the native root, so those later reads risk stale ownership during a completed Save.
