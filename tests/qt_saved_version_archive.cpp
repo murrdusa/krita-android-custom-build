@@ -467,6 +467,23 @@ int main(int argc,char **argv)
     require(MobileDraftRecovery::setProject(draft,QString()),
             "clear failed exporter fixture association");
     save(staging,QByteArray::fromHex("504b0304")+"replacement");
+    // A staged export can change while ZIP verification is in
+    // progress. The same pre/post metadata check used by publish()
+    // must detect that change before overwriting the last good draft.
+    const QFileInfo beforePublication(staging);
+    require(MobileDraftRecovery::unchangedStaging(beforePublication),
+            "unchanged recovery staging failed identity validation");
+    {
+        QFile interrupted(staging);
+        require(interrupted.open(QIODevice::WriteOnly|QIODevice::Append) &&
+                interrupted.write("changed-after-verification")==
+                    qint64(sizeof("changed-after-verification")-1),
+                "could not mutate staged recovery fixture");
+    }
+    require(!MobileDraftRecovery::unchangedStaging(beforePublication) &&
+            load(draft)==QByteArray::fromHex("504b0304")+"draft",
+            "modified recovery stage was not distinguished from last good draft");
+    save(staging,QByteArray::fromHex("504b0304")+"replacement");
     require(MobileDraftRecovery::publish(draft,true) &&
             !QFile::exists(staging) && QFileInfo(draft).size()==15,
             "successful publication must replace the draft at its stable path");
