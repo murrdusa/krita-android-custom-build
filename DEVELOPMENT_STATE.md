@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — guard Save canvas after reentrant ownership query
+
+- Audited `MobileKritaStandaloneDocuments::writeDocument()`. Several Save/Save As/Export Copy authorization expressions invoked `ownsDocument()` then read `originalRoot->currentDocument()` without checking that the runtime, document and original view root survived the ownership query. Qt registry callbacks can synchronously tear down or replace that root. A shared `stillOwnedSelected()` guard now validates the original root both before and after querying ownership, including the render-dialog, picker, prewrite and save-completion boundaries. Source `c16e1ec`.
+- Added a Qt-only model test for synchronous root deletion during an ownership query and the intact-root path (`3b90e80`). It validates the lifetime-guard pattern, not the Android-only Krita Save implementation. Local Android compilation and Qt test execution pending; no APK uploaded.
+
 ## November 16 — avoid quadratic preview revision cleanup on Save
 
 - Followed up on the 128-entry revision-map cap from `d423b07`. Trimming one oldest entry at a time repeatedly scanned the entire restored map, which is quadratic if settings contain a large legacy backlog and could stall the UI during Save. `recordPreviewRevision()` now ranks entries once, retaining the newest 128 with deterministic tie ordering; the normal under-cap path is unchanged.
