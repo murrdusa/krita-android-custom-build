@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — release hidden layer rail's retained Krita node references
+
+- `KritaMobileLayersPanel::hideEvent()` now releases cached `KisNodeSP` entries (`m_nodes`, active and selected nodes), layer thumbnail widgets/icons and tree rows when the panel becomes hidden. Previously the panel's refresh path skipped hidden widgets, so closing or switching a canvas while its layer rail was hidden left the rail holding strong references to the previous document's paint nodes until the rail was reopened. Those references could delay destruction of layer pixel data and keep memory resident during subsequent canvases.
+- Release is deferred for active drag, reorder, clip, delete, or reload transactions so this cleanup never clears nodes that an in-flight Krita operation still needs. On `showEvent`, the rail requests a fresh `reload()` from the current engine document rather than reusing old node references. Source commit `23004dbccc7d74932fdbf2cd5ca747ce3113fd68`. Android build and actual heap/RSS reduction are not yet verified; no APK uploaded. This Qt/Krita-integrated widget does not have an executable host-only test fixture.
+
 ## November 15 — handle lighting color-picker raster allocation failure
 
 - `MobileLightingSphere::paintEvent()` now checks `QImage::isNull()` after allocating its 192-by-192 ARGB drawing buffer. Qt can return a null raster when Android denies a memory allocation under pressure; the previous loop unconditionally wrote through `scanLine(y)` and could dereference null. If allocation fails, only this decorative color-sphere paint is skipped for that frame; its raster is retried on the next repaint, with no effect on artwork or document saving.
