@@ -394,7 +394,7 @@ private:
         const auto stillSaving=[this,originalRoot,guardedDocument]() {
             return guardedDocument && m_runtime && originalRoot &&
                 m_runtime->documentRoot()==originalRoot.data() &&
-                originalRoot->currentDocument()==guardedDocument;
+                originalRoot->currentDocument().data()==guardedDocument.data();
         };
         if(!stillSaving())return false;
         int activeViews=0;
