@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — prevent native attachment rollback from deleting re-registered canvas
+
+- Found a native crash risk in `MobileKritaNativeViewFactory::abortRegistered()`: after `forgetView()`, synchronous Qt removal callbacks can re-register the same canvas under a different document and temporarily remove its layout slot. Its old deletion condition checked only widget parentage and `indexOf()<0`, risking deletion of the new document's still-owned painting view. Added `MobileNativeViewStack::hasViewRegistration()` to check a live registration independently of layout and used it in the factory deletion guard (`b9ec271`, `d61f04a`).
+- Extended the Qt native stack regression to check that the view remains registered even with no layout slot, and is unregistered after final forget (`e57e46c`). The host Qt5Widgets test remains NOT RUN until WSL host dependencies are available; exact-revision local build pending. No APK uploaded.
+
+
 ## November 16 — limit concurrent gallery thumbnail decode memory
 
 - `MobileDocumentHome` used two concurrent thumbnail workers, each potentially decoding a 16 MP image despite a requested 124 px thumbnail (Qt plugins may ignore decoder scaling). Serialized the existing thumbnail pool to one worker (`2e9ce59`), reducing simultaneous full-bitmap allocations and peak Android gallery memory pressure while retaining background decoding. This may reduce gallery thumbnail throughput, and is not evidence of a phone crash fix. Exact-revision local watcher result pending. No APK uploaded.
