@@ -67,6 +67,13 @@ if [[ "$MODE" == status ]]; then
     [[ ! -d "$OUT" ]] || find "$OUT" -maxdepth 1 -name '*.apk' -print
     exit 0
 fi
+# The Android cache can legitimately reuse an existing APK when only
+# Qt-only regression sources change. Exercise the native lifecycle
+# smoke tests before that early exit, recording an explicit NOT RUN if
+# desktop Qt is unavailable in this WSL environment.
+if [[ "$MODE" == build ]]; then
+    bash "$REPO/tests/run_mobile_lifecycle_smoke.sh" "$ROOT/persistent"
+fi
 if [[ ! -d "$ROOT/.git" ]]; then
     if [[ -d "$ROOT" ]] && [[ -n "$(ls -A "$ROOT")" ]]; then die "Build root is nonempty and unmanaged: $ROOT"; fi
     say "First run: clone KDE's Android Docker environment"
