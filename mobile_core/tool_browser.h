@@ -242,7 +242,12 @@ public:
         MobileTouchScroll::configure(scroll);
         scroll->setProperty("_mobileScrollGaps",true);
         layout->addWidget(scroll);
-        const auto refill=[panel,scroll,groups,current,engine,view]() {
+        const QPointer<MobileTransientPanel> livePanel(panel);
+        const QPointer<QScrollArea> liveScroll(scroll);
+        const auto refill=[livePanel,liveScroll,groups,current,engine,view]() {
+            if(!livePanel || !liveScroll)return;
+            auto *panel=livePanel.data();
+            auto *scroll=liveScroll.data();
             const QString settingsKey=QStringLiteral("MobileStudio/favoriteTools");
             const auto favorites=QSettings().value(settingsKey).toStringList();
             const int offset=scroll->verticalScrollBar()->value();
@@ -311,13 +316,13 @@ public:
                     star->setAccessibleName(pinned?i18n("Remove %1 from favorites",tile.label):
                                                    i18n("Favorite %1",tile.label));
                     star->setFixedWidth(32);
-                    QObject::connect(star,&QToolButton::clicked,panel,[panel,id,settingsKey](bool checked) {
+                    QObject::connect(star,&QToolButton::clicked,panel,[livePanel,id,settingsKey](bool checked) {
                         QSettings settings;
                         auto saved=settings.value(settingsKey).toStringList();
                         saved.removeAll(id);
                         if(checked)saved.prepend(id);
                         settings.setValue(settingsKey,saved);
-                        panel->requestRefresh();
+                        if(livePanel)livePanel->requestRefresh();
                     });
                     row->addWidget(star);
                     grid->addWidget(cell,count/columns,count%columns);
@@ -349,11 +354,15 @@ public:
             for(const auto &group:groups)addTiles(group,false);
             sections->addStretch();
             scroll->setWidget(content);
-            scroll->verticalScrollBar()->setValue(offset);
+            // setWidget() replaces the old tile tree and can trigger
+            // synchronous layout/window callbacks. Do not access a
+            // disposed browser or scroll area after replacement.
+            if(livePanel && liveScroll)
+                liveScroll->verticalScrollBar()->setValue(offset);
         };
         panel->onRefresh=refill;
         panel->present();
-        refill();
+        if(livePanel && liveScroll)refill();
     }
 
 private:
