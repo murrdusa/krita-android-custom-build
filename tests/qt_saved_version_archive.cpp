@@ -435,8 +435,9 @@ int main(int argc,char **argv)
     const QString staging=draft+QStringLiteral(".pending.kra");
     require(MobileDraftRecovery::list().size()==1 &&
             !MobileDraftRecovery::publish(draft,true) &&
-            !QFile::exists(staging) && QFileInfo(draft).size()==9,
-            "interrupted staging must never replace the last completed checkpoint");
+            load(staging)==QByteArray("incomplete") &&
+            QFileInfo(draft).size()==9,
+            "invalid successful export must preserve staging without replacing the last checkpoint");
     // A failed exporter can leave a nonparseable partial KRA. Its
     // bytes must not be destroyed by the failure cleanup path.
     const QByteArray partialExport("partial-user-data");
