@@ -89,10 +89,18 @@ public:
         // Reopening any already-open project preserves its unsaved edits
         // and activates the existing native tab. Equivalent Android SAF
         // tree/document URIs must also resolve to that same project.
-        const QString identity=MobileSavedVersionArchive::canonicalIdentity(path);
+        // Android provider canonicalization may dispatch a nested event
+        // loop and destroy the original runtime. Capture the root before
+        // that callback rather than dereferencing m_runtime afterward.
+        const QPointer<MobileKritaStandaloneRuntime> runtime=m_runtime;
+        if(!runtime)return false;
         const QPointer<MobileNativeViewStack> originalRoot(
-            m_runtime->documentRoot());
-        if(!originalRoot)return false;
+            runtime->documentRoot());
+        if(!runtime || !originalRoot)return false;
+        const QString identity=MobileSavedVersionArchive::canonicalIdentity(path);
+        if(!runtime || !originalRoot ||
+           m_runtime!=runtime ||
+           runtime->documentRoot()!=originalRoot.data())return false;
         const auto openViews=originalRoot->openViews();
         for(const auto &view:openViews) {
             if(!m_runtime || !originalRoot ||
