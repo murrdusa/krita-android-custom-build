@@ -1152,13 +1152,14 @@ private:
                 unnamed.append({path,draftTitle(draft),
                                 draft.lastModified().toMSecsSinceEpoch(),{}});
             } else {
-                // The newest *valid* checkpoint must win for named
-                // projects. Preserve full archive verification here so
-                // one damaged recent draft cannot mask an older usable
-                // checkpoint for the same document.
-                if(!MobileDraftRecovery::hasReadableProject(path))continue;
+                // list() is newest-first. Once a valid checkpoint has
+                // been chosen for this project, older drafts cannot
+                // replace it; skip their costly ZIP/KoStore validation.
+                // Do not mark a key before validation, since a damaged
+                // recent draft must not hide an older usable checkpoint.
                 const QString key=projectKey(project);
                 if(m_latestDrafts.contains(key))continue;
+                if(!MobileDraftRecovery::hasReadableProject(path))continue;
                 m_latestDrafts.insert(key,draft);
                 draftProjects.insert(key,project);
             }
