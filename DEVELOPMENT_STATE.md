@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — protect parent-owned Save adapter during native services bootstrap
+
+- Audited `MobileKritaStandaloneDocumentsBootstrap::create()`. It constructed a `MobileKritaNativeSavePortAdapter` as a QObject child of the Krita runtime, then used raw runtime/window pointers through service acquisition and attachment, and unconditionally `delete saver` on failure. If a nested Qt callback destroyed the runtime, its child adapter would be auto-deleted first; the failure cleanup could double-delete that stale pointer. The bootstrap now tracks runtime, original window/root and Save adapter with `QPointer`, rechecks them after acquiring ports and attaching services, and deletes only a still-live adapter on failure. Source `60e30c3`.
+- Added Qt-only parent/child QObject tests for runtime teardown during failed attachment and a surviving parent requiring adapter cleanup (`d34ef7c`). These model the QObject ownership boundary rather than Android Krita session initialization. Exact-revision local build and regression execution pending; no APK uploaded.
+
 ## November 16 — avoid double-delete on failed engine-session startup
 
 - Audited `MobileKritaStandalonePilot::launch()` against `MobileKritaEngineSession::attach()`. Session attachment creates the native root, Krita runtime and documents; several calls can invoke Qt callbacks and destroy the original host before attachment returns null. The failure branch previously unconditionally executed `delete window` on the raw pointer, potentially deleting an already destroyed QWidget. Pilot now captures `QPointer<MobileLightweightCanvasHost>` before attachment, returns if the host was destroyed, and only deletes a surviving host on failure. Source `4be9590`.
