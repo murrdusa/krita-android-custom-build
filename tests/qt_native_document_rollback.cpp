@@ -229,6 +229,36 @@ int main(int argc,char **argv)
                 "deferred Save used a document destroyed during selection");
     }
 
+    // The Android provider display-name lookup used to be evaluated
+    // in the QMessageBox argument list along with a raw window parent.
+    // A provider callback may destroy the window before the warning
+    // starts. The warning is permitted only after a fresh guard check.
+    {
+        auto *window=new QObject;
+        const QPointer<QObject> guardedWindow(window);
+        int warnings=0;
+        const auto resolveName=[window]() {
+            delete window;
+            return QStringLiteral("lost drawing.kra");
+        };
+        const QString name=resolveName();
+        if(guardedWindow && !name.isEmpty())++warnings;
+        require(!guardedWindow && warnings==0,
+                "Open failure warning used a parent destroyed by filename lookup");
+    }
+    {
+        QObject window;
+        const QPointer<QObject> guardedWindow(&window);
+        int warnings=0;
+        const auto resolveName=[]() {
+            return QStringLiteral("surviving drawing.kra");
+        };
+        const QString name=resolveName();
+        if(guardedWindow && !name.isEmpty())++warnings;
+        require(guardedWindow && warnings==1,
+                "Open failure warning was suppressed for surviving window");
+    }
+
     qInfo()<<"PASS: attach failure rollback, duplicate prevention and"
               "ownership isolation";
     return 0;
