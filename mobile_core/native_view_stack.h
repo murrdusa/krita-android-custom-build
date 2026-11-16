@@ -139,8 +139,11 @@ public:
 
     QPointer<QObject> currentDocument() const override
     {
+        QWidget *selected=currentWidget();
+        if(!selected)return {};
         for(const Row &row:m_rows) {
-            if(row.view.data()==currentWidget() && row.document)
+            if(row.view && row.document && row.view.data()==selected &&
+               indexOf(selected)>=0)
                 return row.document;
         }
         return {};
