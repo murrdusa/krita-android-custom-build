@@ -125,6 +125,40 @@ int main(int argc,char **argv)
     drain();
     ensure(teardownLaunches==1 && !transientGuard,
            "synchronous parent teardown must not outlive the startup callback");
+    // The native window can disappear in a nested readiness query
+    // before an engine launch begins. Check guarded identities after
+    // each query, including a replaced central widget.
+    {
+        auto *host=new QMainWindow;
+        host->setCentralWidget(new QWidget);
+        const QPointer<QMainWindow> guardedHost(host);
+        const bool visible=true;
+        const auto queryCanvas=[host]() -> QWidget* {
+            delete host;
+            return nullptr;
+        };
+        const QPointer<QWidget> canvas=queryCanvas();
+        int launches=0;
+        if(visible && guardedHost && canvas)++launches;
+        ensure(!guardedHost && !canvas && launches==0,
+               "native readiness launched after parent window teardown");
+    }
+    {
+        QMainWindow host;
+        host.setCentralWidget(new QWidget);
+        const QPointer<QMainWindow> guardedHost(&host);
+        const QPointer<QWidget> originalCanvas(host.centralWidget());
+        host.setCentralWidget(new QWidget);
+        // Qt may defer destruction of the previous central widget;
+        // identity must be checked, not only whether a canvas exists.
+        const QPointer<QWidget> currentCanvas(host.centralWidget());
+        int launches=0;
+        if(guardedHost && originalCanvas &&
+           currentCanvas==originalCanvas)++launches;
+        ensure(launches==0,
+               "native readiness launched against a replaced central widget");
+    }
+
     qInfo()<<"PASS: Android native engine Qt boot, retries,"
               " failure recovery and MDI-independent host";
     return 0;
