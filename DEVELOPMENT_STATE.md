@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — finish workspace settings and nested keyboard modal teardown
+
+- Follow-up audit found that `MobileKritaNativeWorkspace::openSettings()` resumes from `QDialog::exec()` and then reads/writes workspace members without confirming the workspace survived an Android host teardown. Added an explicit `QPointer` lifetime check before any accepted-settings mutations; also require the host still exists (`7d0c763`).
+- The Keyboard Shortcuts modal opens a nested shortcut editor. If Android closes the host during that nested editor, the outer modal is rejected but the inner editor had no dismissal signal and could remain open. Connected outer rejection to nested editor rejection (`7d0c763`) and added a Qt nested-event-loop regression (`e1c8d1c`). The host Qt suite remains blocked until WSL has Qt5Widgets development libraries. No APK uploaded.
+
+
 ## November 16 — prevent native settings modal destruction on Android host teardown
 
 - Audited `MobileKritaNativeWorkspace` and found three stack-owned dialogs parented to the Android host: Touch/Pressure/Input, Workspace Settings, and Keyboard Shortcuts. If the host closes while `QDialog::exec()` runs, Qt can delete these stack objects through parent ownership. Changed all three to independent application-modal stack dialogs that reject when the host or workspace is destroyed (`0ff8d73`). Nested finger-pressure calibration now uses the live outer dialog as its parent and rejects when that outer dialog is dismissed.
