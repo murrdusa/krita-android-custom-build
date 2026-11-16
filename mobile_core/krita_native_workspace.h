@@ -716,7 +716,7 @@ public:
             setChoice(settings.value(key));
             auto previous=std::make_shared<int>(combo->currentIndex());
             connect(combo,QOverload<int>::of(&QComboBox::currentIndexChanged),
-                &dialog,[combo,moreIndex,more,setChoice,previous,label](int index) {
+                &dialog,[combo,moreIndex,more,setChoice,previous,label,&dialog](int index) {
                     if(index!=moreIndex) {
                         *previous=index;
                         return;
