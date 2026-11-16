@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — verified host Qt dependency blocker
+
+- Issue #1 now explicitly shows `Native Qt lifecycle tests: NOT RUN (Qt5Widgets host development libraries unavailable)` for the watcher revision `4172e93`. This is **not** a passing Qt regression result, even though the Android APK watcher outcome says SUCCESS. The three desktop Qt lifecycle executables, including the 128-cycle successful close and 128-cycle failed adoption tests, remain unexecuted on WSL. The runner deliberately avoids an automatic privileged `apt install` and does not change Android build dependencies. Installing Linux host packages `g++`, `pkg-config`, and `qtbase5-dev` in the WSL distribution would enable the runner. No user/device test is required for subsequent commits once those dependencies are present.
+- The GitHub issue is currently surfacing the NOT RUN lines in its ordinary excerpt; the newly added reporter summary will preserve them more visibly once the running reporter loads its updated script.
+
 ## November 16 — expose Qt test verdict independently of Android APK success
 
 - Audited the local watcher report. Even after the native Qt smoke runner was integrated, Issue #1's report could truncate the test lines because its diagnostic excerpt only retains the end of the Android log. Added `qt_lifecycle_section()` to `krita_build_reporter.py` to read only the recorded watcher log inside `.build-watcher/logs`, extract up to 12 `Native Qt lifecycle tests:` messages and prominently show them in the GitHub build issue. If the log does not contain the test verdict, the report explicitly says `NOT REPORTED`, not PASS. Source `71b5331`, corrected Python escaping `4172e93`.
