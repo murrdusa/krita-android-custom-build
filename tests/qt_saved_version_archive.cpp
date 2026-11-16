@@ -427,6 +427,20 @@ int main(int argc,char **argv)
             load(external)==externalOriginal,
             "draft publication must refuse external project paths");
     QFile::remove(external+QStringLiteral(".pending.kra"));
+    // Recovery header probes must reject a huge sparse file before
+    // handing it to the native KRA reader, without allocating its size.
+    const QString oversizedHeader=QDir(temp.path()).filePath(
+        QStringLiteral("oversized-recovery.kra"));
+    {
+        QFile sparse(oversizedHeader);
+        require(sparse.open(QIODevice::WriteOnly) &&
+                sparse.write(QByteArray::fromHex("504b0304"))==4 &&
+                sparse.resize(8LL*1024*1024*1024+1),
+                "cannot prepare oversized sparse recovery fixture");
+    }
+    require(!MobileDraftRecovery::hasKraHeader(oversizedHeader),
+            "oversized recovery archive bypassed header size guard");
+    QFile::remove(oversizedHeader);
     const QString draft=MobileDraftRecovery::allocate(QStringLiteral("a/b"));
     require(!draft.isEmpty() && draft!=MobileDraftRecovery::allocate(QStringLiteral("a/b")),
             "draft paths must be private and unique");
