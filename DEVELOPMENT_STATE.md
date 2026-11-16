@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — reduce redundant recovery validation during gallery navigation
+
+- Audited orphaned draft rescue in `MobileDraftRecovery::rescueOrphanStaging()`. Each older `.pending.kra` was validated with `hasReadableProject()` and checked for changes, then immediately passed to `publish(draft,false)` which performed the same expensive ZIP/KoStore validation and change checks again. Removed the first redundant archive decode/check; retained the cheap initial `unchangedStaging()` gate. `publish()` remains the sole authority for full ZIP validation and rechecks size/mtime before publishing or rescuing a draft (`3eb7eee`).
+- This removes up to two expensive duplicate KRA reads per gallery recovery scan (the scanner checks at most two orphan candidates), reducing UI-thread I/O and temporary archive allocations. No claim of an observed crash fix; exact-revision watcher validation pending. Qt host tests remain blocked by missing Qt5Widgets development libraries. No APK uploaded.
+
+
 ## November 16 — protect standalone More menu during host destruction
 
 - Audited `MobileStandaloneHost::openMore()`: its stack-allocated `QMenu menu(this)` was owned by the Android host while `menu.exec()` ran a nested event loop. If the host was synchronously destroyed by a document action, Qt could delete the stack menu while its own stack frame remained live. Changed it to an independent `QMenu` that is explicitly closed on host destruction (`aec528d`).
