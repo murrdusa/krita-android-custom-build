@@ -9,6 +9,9 @@
 #ifdef Q_OS_ANDROID
 #include <QAction>
 #include <QFileInfo>
+#include <QFile>
+#include <QDebug>
+#include <QSettings>
 #include <QGuiApplication>
 #include <QMenu>
 #include <QPointer>
@@ -78,6 +81,20 @@ public:
             return nullptr;
 
         auto *runtime=new MobileKritaStandaloneRuntime(host,root);
+        // Diagnostic collection is opt-in and has no effect on painting
+        // or autosave when disabled.
+        runtime->m_memoryDiagnosticsEnabled=QSettings().value(
+            QStringLiteral("MobileStudio/memoryDiagnosticsV1"),false).toBool();
+        if(runtime->m_memoryDiagnosticsEnabled) {
+            runtime->reportMemorySnapshot("startup");
+            auto *memoryTimer=new QTimer(runtime);
+            memoryTimer->setInterval(60000);
+            QObject::connect(memoryTimer,&QTimer::timeout,runtime,
+                             [runtime]() {
+                runtime->reportMemorySnapshot("periodic");
+            });
+            memoryTimer->start();
+        }
         runtime->m_actions=new KisKActionCollection(
             runtime,QStringLiteral("krita-mobile-native"));
         runtime->m_actions->setComponentDisplayName(
@@ -240,12 +257,65 @@ public:
                     if(!alive->m_pendingDrafts.at(i) ||
                        alive->m_pendingDrafts.at(i).data()==document)
                         alive->m_pendingDrafts.removeAt(i);
+                // Native view retirement is queued after the document
+                // destructor. Sample on the next event-loop turn rather
+                // than counting its still-attached GL widget as a leak.
+                if(alive->m_memoryDiagnosticsEnabled)
+                    QTimer::singleShot(0,alive.data(),[alive]() {
+                        if(alive)alive->reportMemorySnapshot("closed");
+                    });
             });
-        return liveDocument && alive && root && manager &&
-            alive->m_root==root && alive->m_manager==manager ? view : nullptr;
+        if(!liveDocument || !alive || !root || !manager ||
+           alive->m_root!=root || alive->m_manager!=manager)return nullptr;
+        if(m_memoryDiagnosticsEnabled) {
+            reportMemorySnapshot("attached");
+            if(!alive)return nullptr;
+        }
+        return view;
     }
 
 private:
+    // Android/Linux process metrics are advisory: Qt/Krita allocators
+    // and GPU drivers may retain caches after a canvas is closed. Never
+    // interpret a single RSS increase as proof of a document memory leak.
+    void reportMemorySnapshot(const char *phase) const
+    {
+        if(!m_memoryDiagnosticsEnabled)return;
+        QFile status(QStringLiteral("/proc/self/status"));
+        if(!status.open(QIODevice::ReadOnly))return;
+        const QByteArray contents=status.read(32768);
+        const auto kib=[&contents](const QByteArray &name) -> qint64 {
+            const QByteArray key=name+':';
+            const int start=contents.indexOf(key);
+            if(start<0 || (start>0 && contents.at(start-1)!='\n'))
+                return -1;
+            const int lineEnd=contents.indexOf('\n',start);
+            const QByteArray line=contents.mid(
+                start+key.size(),lineEnd<0?-1:lineEnd-start-key.size()).trimmed();
+            const QByteArray digits=line.split(' ').value(0);
+            bool ok=false;
+            const qint64 value=digits.toLongLong(&ok);
+            return ok?value:-1;
+        };
+        int nativeViews=0;
+        int documents=0;
+        if(m_root) {
+            const auto views=m_root->openViews();
+            nativeViews=views.size();
+            for(const auto &view:views)
+                if(view.document)++documents;
+        }
+        qInfo().noquote()
+            << "MobileStudioMemory"
+            << phase
+            << "rssKiB" << kib("VmRSS")
+            << "peakRssKiB" << kib("VmHWM")
+            << "anonKiB" << kib("RssAnon")
+            << "swapKiB" << kib("VmSwap")
+            << "nativeViews" << nativeViews
+            << "registeredDocuments" << documents;
+    }
+
     void checkpointDrafts()
     {
         const QPointer<MobileNativeViewStack> originalRoot=m_root;
@@ -397,6 +467,7 @@ private:
     bool m_checkpointing=false;
     bool m_checkpointAgain=false;
     bool m_draftContinuationQueued=false;
+    bool m_memoryDiagnosticsEnabled=false;
     QSharedPointer<MobileCommandRegistryPort> m_commands;
 };
 #endif
