@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — keep Save and Export backends alive across UI teardown
+
+- Audited `MobileDocumentService::saveCurrentDocument()`, `saveDocumentView()`, `exportDocumentView()`, and `documentForView()`. These queried the backend and native selection, which can deliver reentrant Qt/Krita close callbacks, then dereferenced `m_host` or `m_viewHost` through the original service. If the originating UI/service was destroyed inside a callback, that was a use-after-free risk. Save, Save As, and Export Copy now snapshot both `QSharedPointer` backends before external calls and the selection helper is static, using only those retained backends; the selected `KisDocument` is checked through a `QPointer` instead of a raw pointer. Source `b8174b8`.
+- Added Qt-only lifetime-pattern tests demonstrating retained document/view backend objects after a simulated service owner teardown and suppression of Save after its selected document is destroyed (`3266b76`). These model the ownership boundaries, not the Android-only document service itself. Exact-revision PC compilation and tests pending; no APK uploaded.
+
 ## November 16 — guard native Open after Android provider URI canonicalization
 
 - Audited `MobileKritaStandaloneDocuments::openFile()`. The native Open path called `MobileSavedVersionArchive::canonicalIdentity(path)` (which can contact an Android SAF provider and dispatch Qt lifecycle callbacks), then immediately dereferenced `m_runtime->documentRoot()`. If that callback destroyed the runtime, the `QPointer` member was null and this was a direct null dereference. Open now captures its runtime and original root before the provider call and revalidates both identities after canonicalization before inspecting existing views or loading a document. Source `43e5f27`.
