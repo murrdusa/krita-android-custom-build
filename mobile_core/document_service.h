@@ -117,8 +117,23 @@ public:
             return false;
         }
         KisPart::instance()->addDocument(guardedDocument.data());
-        // Document registration notifies observers synchronously.
+        // Registration callbacks can remove the new document from
+        // KisPart without destroying its QObject. Attach must never
+        // proceed with an unregistered image or leak that orphan.
         if(!guardedDocument)return false;
+        bool registered=false;
+        if(KisPart::instance()) {
+            for(const auto &entry:KisPart::instance()->documents()) {
+                if(entry==guardedDocument.data()) {
+                    registered=true;
+                    break;
+                }
+            }
+        }
+        if(!registered) {
+            delete guardedDocument.data();
+            return false;
+        }
         // A failed host attach must not leave an orphaned, registered
         // Krita document with no view. The host port's false result
         // explicitly guarantees that it did not retain a native view.
