@@ -960,6 +960,43 @@ int main(int argc,char **argv)
                 "native title-lookup guard rejected intact attachment");
     }
 
+    // The native close hook may query the active manager canvas before
+    // switching to the view being closed. If the query synchronously
+    // destroys the closing canvas, it must not call setCurrentView()
+    // using the stale view identity.
+    {
+        QObject manager;
+        QObject view;
+        auto *canvas=new QObject(&view);
+        const QPointer<QObject> closingView(&view);
+        const QPointer<QObject> closingManager(&manager);
+        const QPointer<QObject> closingCanvas(canvas);
+        int switches=0;
+        const auto managerCanvas=[canvas]() -> QObject* {
+            delete canvas;
+            return nullptr;
+        };
+        const bool needsActivation=managerCanvas()!=closingCanvas.data();
+        if(closingView && closingManager && closingCanvas && needsActivation)
+            ++switches;
+        require(!closingCanvas && switches==0,
+                "close hook switched to a view with a destroyed canvas");
+    }
+    {
+        QObject manager;
+        QObject view;
+        QObject canvas(&view);
+        const QPointer<QObject> closingView(&view);
+        const QPointer<QObject> closingManager(&manager);
+        const QPointer<QObject> closingCanvas(&canvas);
+        int switches=0;
+        const bool needsActivation=true;
+        if(closingView && closingManager && closingCanvas && needsActivation)
+            ++switches;
+        require(switches==1,
+                "close hook failed to activate a surviving native canvas");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
