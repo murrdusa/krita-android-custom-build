@@ -266,5 +266,29 @@ int main(int argc,char **argv)
     teardownEditor->closeEditor(false);
     verify(!teardownEditor && finishedCount==1 && teardownControl->isVisible(),
            "synchronous layout completion destroyed the editor unsafely");
+
+    // Reopening Edit UI Layout, then rebuilding the workspace when it
+    // closes, may destroy the toolbar layout controller synchronously.
+    // Its completion callback must not restart the controller timer or
+    // read its members after the owner has been destroyed.
+    QPointer<MobileNativeCommandLayout> controller(secondLayout);
+    int controllerTeardowns=0;
+    controller->setLayoutPanels([&]() {
+        return QVector<MobileCanvasLayoutEditor::Target>{{
+            panel,QSize(48,48),false,{}}};
+    },[&](bool value) {
+        if(!value) {
+            ++controllerTeardowns;
+            delete controller.data();
+        }
+    });
+    edit->trigger();
+    QApplication::processEvents();
+    auto *finalEditor=secondCanvas->findChild<MobileCanvasLayoutEditor*>(
+        QStringLiteral("_mobileCanvasLayoutEditor"));
+    verify(finalEditor && controller,"final editor did not open");
+    finalEditor->closeEditor(false);
+    verify(!controller && controllerTeardowns==1,
+           "toolbar controller completion accessed a destroyed owner");
     return 0;
 }
