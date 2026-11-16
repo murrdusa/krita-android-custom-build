@@ -305,18 +305,34 @@ public:
     static QFileInfoList checkpointsFor(const QString &project,qint64 savedModified)
     {
         const QString identity=MobileSavedVersionArchive::canonicalIdentity(project);
-        if(identity.isEmpty())return {};
+        const QString folder=directory();
+        if(identity.isEmpty() || folder.isEmpty())return {};
+        // Preserve bounded recovery of interrupted .pending.kra exports,
+        // but do not materialize and sort every unrelated draft merely
+        // to find checkpoints for one named project.
+        rescueOrphanStaging(folder);
         QFileInfoList result;
-        // Most saved drawings have years of older draft history. Filter
-        // it while scanning instead of materializing and sorting entries
-        // that cannot be offered as recovery candidates.
-        for(const auto &draft:list(0,savedModified)) {
-            if(draft.lastModified().toMSecsSinceEpoch()<=savedModified)break;
+        QDirIterator completed(folder,{QStringLiteral("*.kra")},
+                               QDir::Files|QDir::Readable|QDir::NoSymLinks);
+        while(completed.hasNext()) {
+            completed.next();
+            const QFileInfo draft=completed.fileInfo();
+            if(draft.lastModified().toMSecsSinceEpoch()<=savedModified ||
+               !isDraft(draft.absoluteFilePath()))
+                continue;
             if(MobileSavedVersionArchive::canonicalIdentity(
                    projectFor(draft.absoluteFilePath()))==identity &&
                hasReadableProject(draft.absoluteFilePath()))
                 result.append(draft);
         }
+        // Recovery offers the newest valid project checkpoint first,
+        // breaking timestamp ties deterministically like list().
+        std::sort(result.begin(),result.end(),
+                  [](const QFileInfo &a,const QFileInfo &b) {
+            if(a.lastModified()!=b.lastModified())
+                return a.lastModified()>b.lastModified();
+            return a.fileName()>b.fileName();
+        });
         return result;
     }
 
