@@ -113,13 +113,23 @@ public:
         // A native Android modal popup can leave newly reparented toolbar
         // children explicitly hidden while the scroll area itself remains.
         // These buttons are always displayed while the strip is visible.
+        const QPointer<MobileQuickActions> alive(this);
         if(m_scroll && m_scroll->widget() &&
            m_scroll->widget()->isHidden())
             m_scroll->widget()->show();
-        for(const auto &widget:m_buttons) {
-            if(!widget.second)continue;
-            if(widget.second->isHidden())widget.second->show();
-            widget.second->setEnabled(isEnabled(widget.first));
+        if(!alive)return;
+        // Enabling or showing a button can synchronously emit Qt
+        // callbacks that rebuild or remove this strip.
+        const auto buttons=m_buttons;
+        for(const auto &widget:buttons) {
+            if(!alive)return;
+            const auto button=widget.second;
+            if(!button)continue;
+            if(button->isHidden())button->show();
+            if(!alive || !button)return;
+            const bool enabled=isEnabled(widget.first);
+            if(!alive || !button)return;
+            button->setEnabled(enabled);
         }
     }
 
@@ -295,8 +305,15 @@ private:
             button->setMaximumWidth(164);
             button->setSizePolicy(QSizePolicy::Preferred,QSizePolicy::Fixed);
             connect(button,&QToolButton::clicked,this,[this,id]() {
-                if(isEnabled(id) && m_dispatch)m_dispatch(id);
-                refresh();
+                const QPointer<MobileQuickActions> alive(this);
+                if(isEnabled(id) && m_dispatch) {
+                    // Opening/closing a document or workspace can delete
+                    // this toolbar during the dispatch callback. Run a
+                    // local copy so its callable stays alive as well.
+                    const auto dispatch=m_dispatch;
+                    dispatch(id);
+                }
+                if(alive)alive->refresh();
             });
             m_row->addWidget(button);
             // Qt Android may temporarily hide the owning window while a
