@@ -342,6 +342,37 @@ int main(int argc,char **argv)
                 "MIME callback allowed import into a replaced native root");
         delete imported;
     }
+    // A first-frame GL retry checks the selected document before
+    // asking the view host for its active document. That host lookup
+    // can synchronously close the document. A QPointer identity must
+    // cancel activation rather than dereference the stale document.
+    {
+        QWidget owner;
+        MobileNativeViewStack root(&owner);
+        auto *document=new QObject;
+        const QPointer<QObject> selectedDocument(document);
+        auto *view=new QWidget;
+        require(root.adoptView(view,document,QStringLiteral("GL retry"),
+                               [](){return true;}),
+                "could not register GL retry identity fixture");
+        const QPointer<QObject> retryDocument(selectedDocument.data());
+        QObject::connect(&root,&QStackedWidget::currentChanged,
+                         &root,[](int){});
+        // Model a reentrant document-close notification while evaluating
+        // the active document; the view remains but is no longer owned.
+        const auto queryActive=[&]() -> QPointer<QObject> {
+            const auto active=root.currentDocument();
+            delete document;
+            return active;
+        };
+        const auto active=queryActive();
+        int activations=0;
+        if(retryDocument && selectedDocument && active==retryDocument &&
+           root.currentDocument()==retryDocument)
+            ++activations;
+        require(!retryDocument && !selectedDocument && activations==0,
+                "GL retry activated a document destroyed during ownership query");
+    }
     // Recovery Open may try several checkpoints before the original
     // project. A failed first load which tears down the native root
     // must abort retries rather than construct a second stale document.
