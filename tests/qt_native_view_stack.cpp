@@ -400,6 +400,48 @@ int main(int argc,char **argv)
                 "canvas widgets accumulated across native document churn");
     }
 
+    // Some save/close adapters accept a close without immediately
+    // destroying the QWidget. The stack must retire only that detached
+    // canvas, and a canceled close must preserve the same live view.
+    {
+        MobileNativeViewStack stack;
+        int deleted=0;
+        constexpr int cycles=128;
+        for(int iteration=0;iteration<cycles;++iteration) {
+            auto *document=new QObject;
+            auto *view=new QWidget;
+            QPointer<QWidget> watched(view);
+            const QPointer<QObject> identity(view);
+            bool approve=false;
+            QObject::connect(view,&QObject::destroyed,&stack,
+                             [&deleted]() {++deleted;});
+            require(stack.adoptView(view,document,
+                        QStringLiteral("close-%1").arg(iteration),
+                        [&approve]() {return approve;}),
+                    "could not register deferred-close canvas");
+            require(!stack.closeView(identity) && watched &&
+                    stack.openViews().size()==1 &&
+                    stack.currentDocument()==document,
+                    "canceled close lost a live painting widget");
+            approve=true;
+            require(stack.closeView(identity) &&
+                    stack.openViews().isEmpty() &&
+                    !stack.currentDocument() &&
+                    !stack.activateView(identity),
+                    "accepted close retained a registered native view");
+            QCoreApplication::sendPostedEvents(nullptr,0);
+            QApplication::processEvents();
+            QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+            QApplication::processEvents();
+            require(!watched && deleted==iteration+1,
+                    "accepted close retained a detached painting widget");
+            delete document;
+        }
+        require(stack.findChildren<QWidget*>().isEmpty() &&
+                deleted==cycles,
+                "native close cycles accumulated orphaned painting widgets");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
