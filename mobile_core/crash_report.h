@@ -28,7 +28,7 @@ inline QString memorySnapshot()
         return QStringLiteral("Process memory: unavailable");
     const QByteArray contents=status.read(16*1024);
     QStringList fields;
-    for(const QByteArray &line:contents.split('\\n')) {
+    for(const QByteArray &line:contents.split('\n')) {
         const int colon=line.indexOf(':');
         if(colon<0)continue;
         const QByteArray key=line.left(colon);
