@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — guard native view attachment after draft setup
+
+- `MobileKritaStandaloneRuntime::attachDocument()` now captures `QPointer` identities for its runtime, Krita document, native stack, and view manager before reading/setting the document's private draft-path property. A QObject dynamic-property notification can synchronously close the originating window or document; previously the factory was then invoked using raw pointers from the possibly destroyed runtime. The method now confirms all identities remain valid and still belong to the original runtime before invoking `MobileKritaNativeViewFactory::attach()`. This does not change draft naming, close behavior, or painting resources.
+- Code commit `8d4224cea7231ef18b3b620171e48df06b48ffad`. The property-notification-to-KisView attachment path requires Krita engine integration and has no standalone Qt-only test; exact-revision local Android compilation and runtime behavior remain unverified. No APK uploaded.
+
 ## November 15 — preserve canvas-create backend across Krita reentrancy
 
 - `MobileDocumentService::createCanvas()` now retains its `QSharedPointer<MobileDocumentHostPort>` in a local variable throughout `KisDocument::newImage()`, `KisPart::addDocument()` and native view attachment. Krita's synchronous document registration and view creation callbacks may destroy the originating mobile document service; accessing its `m_host` afterward previously risked a use-after-free. The newly created `KisDocument` is also guarded before image initialization and dynamic property callbacks, so a callback that destroys it does not leave a dangling pointer for cleanup or registration. Existing failed-attach rollback and Save/Discard/Cancel ownership remain unchanged.
