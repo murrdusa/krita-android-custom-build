@@ -87,13 +87,18 @@ public:
     bool createCanvas(const QString &name,int width,int height,
                       int resolutionDpi,const QColor &backgroundColor) const
     {
-        if(!m_host || !m_host->available() ||
+        // Creating/registering a document emits Krita callbacks which
+        // may close the Android window and destroy this service. Keep
+        // the backend alive locally throughout the attachment transaction.
+        const auto host=m_host;
+        if(!host || !host->available() ||
            width<1 || height<1 || resolutionDpi<1 ||
-           qint64(width)*height>40000000LL)return false;
+           qint64(width)*height>40000000LL || !KisPart::instance())return false;
         const KoColorSpace *space=KoColorSpaceRegistry::instance()->rgb8();
         if(!space)return false;
         KisDocument *document=KisPart::instance()->createDocument();
         if(!document)return false;
+        const QPointer<KisDocument> guardedDocument(document);
         const bool backgroundLayer=backgroundColor.isValid() && backgroundColor.alpha()>0;
         const KoColor background(backgroundLayer?backgroundColor:QColor(Qt::transparent),space);
         const bool created=document->newImage(
@@ -101,19 +106,23 @@ public:
             width,height,space,background,
             backgroundLayer?KisConfig::RASTER_LAYER:KisConfig::CANVAS_COLOR,
             backgroundLayer?2:1,QString(),qreal(resolutionDpi)/72.0);
+        if(!guardedDocument)return false;
         if(!created) {
-            delete document;
+            delete guardedDocument.data();
             return false;
         }
-        document->setProperty("_mobileBlankCanvas",true);
-        const QPointer<KisDocument> guardedDocument(document);
-        KisPart::instance()->addDocument(document);
+        guardedDocument->setProperty("_mobileBlankCanvas",true);
+        if(!guardedDocument || !KisPart::instance()) {
+            if(guardedDocument)delete guardedDocument.data();
+            return false;
+        }
+        KisPart::instance()->addDocument(guardedDocument.data());
         // Document registration notifies observers synchronously.
         if(!guardedDocument)return false;
         // A failed host attach must not leave an orphaned, registered
         // Krita document with no view. The host port's false result
         // explicitly guarantees that it did not retain a native view.
-        if(!m_host->attachNewDocument(guardedDocument.data())) {
+        if(!host->attachNewDocument(guardedDocument.data())) {
             // The last native view may destroy its document when
             // adoption fails. Do not remove that document twice.
             MobileFailedDocumentAttach::rollback(
