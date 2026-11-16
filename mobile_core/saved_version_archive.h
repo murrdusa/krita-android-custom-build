@@ -948,7 +948,12 @@ private:
                 }
             }
         }
-        qint64 keptBytes=versions.first().bytes;
+        // Sparse or malformed archives may report a huge file size.
+        // Retention only needs to know whether its quota is exceeded;
+        // clamp accounting instead of overflowing signed qint64 when
+        // reserving the first verified fallback.
+        qint64 keptBytes=qBound(qint64(0),versions.first().bytes,
+                               maxBytes()+1);
         QStringList retained{versions.first().path};
         if(!fallback.isEmpty()) {
             // Reserve a verified older recovery even if the newest KRA
@@ -956,7 +961,10 @@ private:
             for(const auto &entry:versions) {
                 if(entry.path==fallback) {
                     retained.append(entry.path);
-                    keptBytes+=entry.bytes;
+                    if(entry.bytes<0 || entry.bytes>maxBytes()-keptBytes)
+                        keptBytes=maxBytes()+1;
+                    else
+                        keptBytes+=entry.bytes;
                     break;
                 }
             }
