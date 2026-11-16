@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — revalidate canvas lifetime across deferred layout refresh
+
+- `MobileCanvasTransfer` now rechecks the original native painting widget and its owning QMainWindow after `show()` and `updateGeometry()` in its deferred desktop-return refresh, and after `updateGeometry()` in the persistent-host refresh. Qt geometry updates can notify Krita/host observers synchronously; if they replace the canvas or remove the original central view, subsequent `update()` must not target the stale widget.
+- `refreshDocumentRoot()` now accepts a `QPointer<QWidget>`, rechecks its lifetime after `updateGeometry()` and `update()`, and guards a scroll area's viewport before repainting. This prevents accessing a deleted document-root widget during layout-induced lifecycle transitions without changing any Krita canvas ownership or save behavior.
+- `tests/qt_widget_document_root.cpp` now exercises deleting the native document root while a mobile canvas remains active, then returning the identical canvas to the desktop host after processing pending Qt events. This is a Qt-only ownership/refresh regression, not an actual OpenGL memory measurement.
+- Source commit `43fac771e3fe59036b7e64891c78561903830756`; test commit `1f29ec1a1dc3b7671d92483ae3f2275ecc959bb5`. Exact-revision Android compilation and host test execution are not yet confirmed. No APK uploaded.
+
 ## November 16 — abort deferred Save/Close after reentrant window destruction
 
 - `MobileDeferredViewCommand::schedule()` now captures a `QPointer` to the initiating context **before** its first backend query and checks the owner again after each potentially reentrant `openViews()` / `currentDocument()` lookup, including the queued dispatch path. Previously a synchronous engine observer could destroy the initiating native window during a lookup, yet subsequent code would continue consulting the backend or queue an action using the destroyed context. The updated dispatch refuses to call the captured Save/Close command if the owner, view or document vanishes during the lookup.
