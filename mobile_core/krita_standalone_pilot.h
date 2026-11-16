@@ -672,10 +672,20 @@ public:
         // Native activation already repaints on first exposure. Keep
         // the Android window alive during the Home-to-canvas transition.
         const auto firstCanvas=[alive,stage]() {
-            if(!alive || !alive->nativeViewPort()->currentDocument() ||
-               alive->property("_mobileFirstCanvasAttached").toBool())return;
+            if(!alive)return;
+            // A failed bootstrap may discard its empty native root
+            // while this startup/intent callback is still queued.
+            const auto views=alive->nativeViewPort();
+            if(!alive || !views)return;
+            const auto document=views->currentDocument();
+            if(!alive || !document)return;
+            const bool alreadyReady=alive->property(
+                "_mobileFirstCanvasAttached").toBool();
+            if(!alive || alreadyReady)return;
             alive->setProperty("_mobileFirstCanvasAttached",true);
+            if(!alive)return;
             alive->suppressNativeStatusChrome();
+            if(!alive)return;
             stage("First native Krita canvas ready",false);
         };
         if(auto *stack=dynamic_cast<MobileNativeViewStack*>(window->nativeCanvas())) {
