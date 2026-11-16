@@ -108,13 +108,26 @@ public:
         if(identity.isEmpty())return;
         auto revisions=previewRevisions();
         revisions.insert(identity,QDateTime::currentMSecsSinceEpoch());
-        // A restored or older settings file can already exceed the cap.
-        // Removing only one entry per Save leaves the oversized map in
-        // memory and on disk for many sessions.
-        while(revisions.size()>128) {
-            const auto oldest=std::min_element(revisions.cbegin(),revisions.cend(),
-                [](const QVariant &a,const QVariant &b) {return a.toLongLong()<b.toLongLong();});
-            revisions.remove(oldest.key());
+        // A restored settings map may greatly exceed the normal cap.
+        // Repeated min_element/removal is quadratic for large backlogs
+        // and can freeze the drawing UI during Save. Select the newest
+        // 128 in one sort; preserve deterministic ordering on ties.
+        if(revisions.size()>128) {
+            QVector<QPair<QString,qint64>> ranked;
+            ranked.reserve(revisions.size());
+            for(auto it=revisions.cbegin();it!=revisions.cend();++it)
+                ranked.append(qMakePair(it.key(),it.value().toLongLong()));
+            std::sort(ranked.begin(),ranked.end(),
+                [](const QPair<QString,qint64> &a,
+                   const QPair<QString,qint64> &b) {
+                    return a.second==b.second?a.first>b.first:
+                        a.second>b.second;
+                });
+            QVariantMap trimmed;
+            for(int i=0;i<128;++i)
+                trimmed.insert(ranked.at(i).first,
+                               revisions.value(ranked.at(i).first));
+            revisions.swap(trimmed);
         }
         QSettings().setValue(QStringLiteral("MobileStudio/savedPreviewRevisions"),revisions);
     }
