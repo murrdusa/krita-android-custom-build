@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Publish existing WSL Krita watcher build results to GitHub."""
 import argparse
+from collections import deque
 import datetime
 import json
 import os
@@ -170,11 +171,16 @@ def qt_lifecycle_section(report):
     try:
         if path.resolve().parent != (BASE / "logs").resolve():
             return "\n## Native Qt lifecycle tests\n\nLog path outside watcher directory; outcome unknown.\n"
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        # Android builds can produce very large compiler logs. Never
+        # materialize the entire output to extract a dozen test lines:
+        # retain only the last twelve matches while reading sequentially.
+        relevant = deque(maxlen=12)
+        with path.open("r", encoding="utf-8", errors="replace") as log:
+            for line in log:
+                if "Native Qt lifecycle tests:" in line:
+                    relevant.append(line.strip())
     except OSError:
         return "\n## Native Qt lifecycle tests\n\nLocal build log unavailable; outcome unknown.\n"
-    relevant = [line.strip() for line in lines
-                if "Native Qt lifecycle tests:" in line]
     if not relevant:
         return "\n## Native Qt lifecycle tests\n\nNOT REPORTED: this run did not record a native Qt test result.\n"
     return ("\n## Native Qt lifecycle tests\n\n```text\n" +
