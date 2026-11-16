@@ -282,6 +282,15 @@ public:
                 [](KisDocument *candidate) {
                     KisPart::instance()->removeDocument(candidate);
                 });
+            // Some registry observers unregister a failed import without
+            // deleting its QObject. Retire that now-unowned KRA and its
+            // pixel buffers rather than leaving it alive without a view.
+            if(KisPart::instance())
+                MobileFailedDocumentAttach::disposeUnregistered(
+                    guardedDocument,
+                    [](KisDocument *candidate) {
+                        return isRegistered(candidate);
+                    });
             return false;
         }
         // Factory activation callbacks may close or replace the root
