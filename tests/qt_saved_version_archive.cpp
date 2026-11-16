@@ -1299,7 +1299,9 @@ int main(int argc,char **argv)
     // inverted comparator can appear correct for a tiny input while
     // silently excluding the newest checkpoint in a larger gallery.
     QStringList stressDrafts;
-    const QDateTime stressBase=QDateTime::currentDateTime().addDays(-2);
+    // Keep these fixtures newer than any unrelated app-data drafts so
+    // the assertions necessarily exercise our 192 generated entries.
+    const QDateTime stressBase=QDateTime::currentDateTime().addDays(1);
     constexpr int stressCount=192;
     for(int i=0;i<stressCount;++i) {
         const QString draft=MobileDraftRecovery::allocate(
