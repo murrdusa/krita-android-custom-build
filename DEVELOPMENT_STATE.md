@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — guard native Open after Android provider URI canonicalization
+
+- Audited `MobileKritaStandaloneDocuments::openFile()`. The native Open path called `MobileSavedVersionArchive::canonicalIdentity(path)` (which can contact an Android SAF provider and dispatch Qt lifecycle callbacks), then immediately dereferenced `m_runtime->documentRoot()`. If that callback destroyed the runtime, the `QPointer` member was null and this was a direct null dereference. Open now captures its runtime and original root before the provider call and revalidates both identities after canonicalization before inspecting existing views or loading a document. Source `43e5f27`.
+- Added Qt-only regression patterns for a runtime/root destroyed by canonicalization and a surviving workspace (`19a280a`). These model QObject lifetime after the provider callback; they do not instantiate Android SAF. Exact-revision PC build and test execution pending; no APK uploaded.
+
 ## November 16 — retire orphaned Krita images after failed canvas attachment
 
 - Audited both the native `Open` path in `MobileKritaStandaloneDocuments::openFile()` and the `New Canvas` path in `MobileDocumentService::createCanvas()`. If adding a document to `KisPart` succeeded but a subsequent view attachment failed, a reentrant observer could unregister the document without destroying its QObject. The existing `MobileFailedDocumentAttach::rollback()` would skip the now-unregistered document, retaining a loaded image and its pixel/layer buffers despite having no registered owner. Added `disposeUnregistered()` to retire only a still-live, confirmed-unregistered import; both failed-attachment paths call it after normal rollback while `KisPart` remains available. Helper `ef9fd4a`, Open `4c3f1ed`, New Canvas `e2f771d`.
