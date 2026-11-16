@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — isolate saved-version recovery I/O from painting workers
+
+- `MobileDocumentHome::openCopy()` now submits potentially large KRA recovery materialization to a dedicated single-thread Qt pool instead of Qt's global pool. This prevents recovery disk I/O from consuming the workers shared with interactive drawing/fill tasks and limits concurrent recovery materializations to one. Existing cancellation tokens, weak gallery/application references, and temporary copy ownership are unchanged; the gallery continues to refuse overlapping recovery requests.
+- Source commit `88a3334d92cda6021a379d19ba028fa7978150fa`. Android exact-revision compile and real-device responsiveness have not yet been verified; no APK uploaded.
+
 ## November 15 — bound gallery source image decoding
 
 - KRA embedded PNG previews and imported PNG/JPEG gallery items now use one Qt-only `MobileProjectPreviewCache::safePreviewDecodeSize` guard, rejecting dimensions exceeding 8192 on either side or 16 megapixels total before `QImageReader::read()`. Image plugins may ignore `setScaledSize()`: the previous 40-megapixel allowance could allocate about 160 MiB per worker for a 32-bit source bitmap, versus at most 64 MiB now. Two simultaneous workers amplify the transient memory impact. This affects thumbnails only; the original artwork remains openable and the gallery displays its placeholder for unsupported source dimensions.
