@@ -39,6 +39,7 @@
 #include "native_krita_save_host.h"
 #include "saved_version_archive.h"
 #include "open_document_destination_policy.h"
+#include "view_identity_guard.h"
 
 class MobileKritaStandaloneDocuments final : public MobileDocumentHostPort,
                                             public QEnableSharedFromThis<MobileKritaStandaloneDocuments>
@@ -429,7 +430,10 @@ private:
                 return false;
             }
         }
-        if(!stillSaving())return false;
+        if(!stillSaving() ||
+           !MobileViewIdentityGuard::sameRecoveryWorkspace(
+               open,originalRoot->openViews()) ||
+           !stillSaving())return false;
         // A save is authorized only by one uniquely selected native
         // canvas. Engine currentDocument alone can lag behind a tab
         // switch and must not authorize writes during that gap.
@@ -439,6 +443,7 @@ private:
         // Export Copy may overwrite that source recovery file.
         const QString ownDraft=guardedDocument->property(
             "_mobileDraftPath").toString();
+        if(!stillSaving())return false;
         if(MobileOpenDocumentDestinationPolicy::conflictsWithOwnBackingFile(
                target,currentPath,ownDraft,choosePath,exporting)) {
             QMessageBox::warning(m_runtime->window(),
