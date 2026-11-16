@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — prevent stationary canvas pilot use-after-free during navigation
+
+- `MobileNativeCanvasPilot`'s Canvases button previously called `MobileDocumentSwitcher::open()` and then unconditionally called `refresh()`. The nested switcher can synchronously replace the native workspace or destroy the pilot while closing/opening a drawing, leaving that final refresh as a potential use-after-free. It now copies the engine bridge out of the pilot before entering the dialog, holds a `QPointer` to its lifetime-owned timer, and refreshes only while that timer remains live.
+- The shared deferred mobile-command dispatcher now likewise uses a local engine-bridge copy and guarded window identity for its New/Open/Save/Close/switcher/tool/menu actions. A synchronous native engine callback may destroy the initiating pilot; the local copy prevents its member bridge storage from being freed while its own operation executes. The existing timer guard still controls refresh after dispatch.
+- The Back button copies its exit callback before invocation because exiting Mobile Studio may destroy the pilot that owns the `std::function`.
+- Source commits `044c39a59d79f10c6101834616206d3e72be97af` and `93cebc3d610c802f67e5aed9f2560ee624c95d8b`. This is an Android-only legacy stationary-pilot path; no directly executable host-only Krita fixture was added. Exact-revision Android compilation and Fold 6 behavior remain unverified. No APK uploaded.
+
 ## November 16 — revalidate canvas lifetime across deferred layout refresh
 
 - `MobileCanvasTransfer` now rechecks the original native painting widget and its owning QMainWindow after `show()` and `updateGeometry()` in its deferred desktop-return refresh, and after `updateGeometry()` in the persistent-host refresh. Qt geometry updates can notify Krita/host observers synchronously; if they replace the canvas or remove the original central view, subsequent `update()` must not target the stale widget.
