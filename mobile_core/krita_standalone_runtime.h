@@ -258,13 +258,12 @@ public:
                     if(!alive->m_pendingDrafts.at(i) ||
                        alive->m_pendingDrafts.at(i).data()==document)
                         alive->m_pendingDrafts.removeAt(i);
-                // Native view retirement is queued after the document
-                // destructor. Sample on the next event-loop turn rather
-                // than counting its still-attached GL widget as a leak.
+                // A document-close burst can enqueue several orphan
+                // retirement callbacks. Coalesce diagnostics so we sample
+                // once after those Qt callbacks settle instead of logging
+                // transient GL widgets and scheduling one timer per tab.
                 if(alive->m_memoryDiagnosticsEnabled)
-                    QTimer::singleShot(0,alive.data(),[alive]() {
-                        if(alive)alive->reportMemorySnapshot("closed");
-                    });
+                    alive->scheduleClosedMemorySnapshot();
             });
         if(!liveDocument || !alive || !root || !manager ||
            alive->m_root!=root || alive->m_manager!=manager)return nullptr;
@@ -276,6 +275,21 @@ public:
     }
 
 private:
+    void scheduleClosedMemorySnapshot()
+    {
+        if(!m_memoryDiagnosticsEnabled || m_closedMemorySnapshotQueued)return;
+        m_closedMemorySnapshotQueued=true;
+        const QPointer<MobileKritaStandaloneRuntime> alive(this);
+        // A short grace period keeps the sample after queued native
+        // widget retirement and DeferredDelete events, even when several
+        // documents are closed in one nested Qt event loop.
+        QTimer::singleShot(250,this,[alive]() {
+            if(!alive)return;
+            alive->m_closedMemorySnapshotQueued=false;
+            alive->reportMemorySnapshot("closed");
+        });
+    }
+
     // Android/Linux process metrics are advisory: Qt/Krita allocators
     // and GPU drivers may retain caches after a canvas is closed. Never
     // interpret a single RSS increase as proof of a document memory leak.
@@ -485,6 +499,7 @@ private:
     bool m_checkpointAgain=false;
     bool m_draftContinuationQueued=false;
     bool m_memoryDiagnosticsEnabled=false;
+    bool m_closedMemorySnapshotQueued=false;
     QSharedPointer<MobileCommandRegistryPort> m_commands;
 };
 #endif
