@@ -76,8 +76,16 @@ private:
             return;
         }
         const QPointer<QWidget> currentCanvas=originalWindow->centralWidget();
-        if(!alive || !originalWindow || !currentCanvas ||
-           currentCanvas!=canvas || m_window!=originalWindow)return;
+        if(!alive || !originalWindow)return;
+        if(!currentCanvas || currentCanvas!=canvas ||
+           m_window!=originalWindow) {
+            // The original root was removed or replaced while readiness
+            // was being checked. Silently returning here leaves the
+            // persisted boot attempt pending with no scheduled retry.
+            // Fail explicitly so the next launch uses desktop fallback.
+            finish(false);
+            return;
+        }
         // A native launch can synchronously destroy the Qt window and
         // this child coordinator. Never execute the std::function stored
         // in the coordinator: its storage may be freed mid-invocation.
