@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — ignore expired first-swap deadlines from replaced GL surfaces
+
+- Audited `MobileKritaNativeViewFactory::scheduleActivation()` first-frame recovery. The delayed timeout retained a guarded `QOpenGLWidget` and validated the selected native view/document, but not whether the view's `canvasWidget()` was still the original watched surface. Android can replace the GL widget while keeping the old QObject alive; a timeout belonging to the stale surface could then request redundant activation of the replacement canvas. The timeout now captures the selected canvas and verifies its current QWidget matches the watched GL surface before rescheduling activation. Source `4545a7c`.
+- Added a Qt-only first-swap regression modeling an old live surface with a separate current replacement: the stale timeout leaves the new surface's wait state untouched and skips activation, while a matching timeout allows activation (`e5b952b`, cleanup `3c4923e`). This tests callback policy, not real Android EGL context replacement. Exact-revision PC build/test execution pending; no APK uploaded.
+
 ## November 16 — retain native view backend through switch/close callbacks
 
 - Audited `MobileDocumentService::activateDocument()`, `closeDocument()`, and `closeActiveDocument()`. These methods previously read an open-view snapshot and then called a second service method or `m_viewHost`. If a Qt/Krita selection callback synchronously destroyed the owning UI service during snapshot/current-document lookup, the second member access could use freed memory. Switch and close operations now take one local `QSharedPointer<MobileViewHostPort>` snapshot, use it for selection and action, and retain its lifetime across the native Save/Discard/Cancel callback. The direct view-ID paths and `openDocuments()` also consistently retain the port. Source `411e772`.
