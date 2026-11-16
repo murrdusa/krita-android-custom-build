@@ -292,17 +292,35 @@ private:
                 // desktop Krita. Never re-bootstrap on each tab switch.
                 const bool firstBootstrap=!selected->property(
                     "_mobileStudioKritaCanvasBootstrapped").toBool();
+                // Dynamic-property reads can dispatch Qt callbacks. The
+                // view may have been closed or switched before touching
+                // its painting canvas or invoking bootstrapFinished().
+                if(!selected || !manager || !root ||
+                   root->currentWidget()!=selected.data() ||
+                   !selected->document() ||
+                   root->currentDocument()!=selected->document())return;
                 if(firstBootstrap) {
+                    const QPointer<QObject> bootstrapCanvas=
+                        selected->canvasBase();
+                    if(!bootstrapCanvas)return;
                     const bool bootstrapped=QMetaObject::invokeMethod(
-                        selected->canvasBase(),"bootstrapFinished",
+                        bootstrapCanvas.data(),"bootstrapFinished",
                         Qt::DirectConnection);
-                    if(!selected || !manager || !root)return;
-                    if(bootstrapped)
+                    if(!selected || !manager || !root ||
+                       root->currentWidget()!=selected.data() ||
+                       !selected->document() ||
+                       root->currentDocument()!=selected->document())return;
+                    if(bootstrapped) {
                         selected->setProperty(
                             "_mobileStudioKritaCanvasBootstrapped",true);
-                    else
+                        if(!selected || !manager || !root ||
+                           root->currentWidget()!=selected.data() ||
+                           !selected->document() ||
+                           root->currentDocument()!=selected->document())return;
+                    } else {
                         qWarning() << "Mobile Studio: canvas bootstrap"
                                    << "method unavailable";
+                    }
                 }
                 // WindowActivate/Expose also fire when a popup closes.
                 // A full reconnect deactivates Transform (committing its
