@@ -1128,7 +1128,10 @@ private:
         if(forceScan)m_cache.clear();
         m_recent->setChecked(mode==Recent);
         m_library->setChecked(mode==AllProjects);
-        const auto drafts=MobileDraftRecovery::list();
+        // The gallery displays at most 20k projects; avoid retaining
+        // every historical draft in memory on a damaged recovery folder.
+        // Full checkpoint/discard lookups still use the unlimited list.
+        const auto drafts=MobileDraftRecovery::list(20000);
         m_latestDrafts.clear();
         QVector<Project> unnamed;
         QHash<QString,QString> draftProjects;
