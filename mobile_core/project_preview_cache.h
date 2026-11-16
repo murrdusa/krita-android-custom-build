@@ -115,10 +115,13 @@ public:
     {
         // A queued thumbnail may have been superseded while waiting for
         // its worker. Avoid expensive encoding and filesystem work then.
+        // Decoding already accepts wide/short embedded previews up to
+        // 8192 px within a 16-megapixel budget. Rejecting those here
+        // before downscaling left large-canvas gallery thumbnails
+        // uncached and forced repeat extraction on every revisit.
+        // Reuse the same bounded input policy, then encode only 124 px.
         if(m_directory.isEmpty() || (cancelled && cancelled->load()) ||
-           image.isNull() ||
-           image.width()>4096 || image.height()>4096 ||
-           qint64(image.width())*image.height()>4096*4096 ||
+           image.isNull() || !safePreviewDecodeSize(image.size()) ||
            !QDir().mkpath(m_directory))return;
         // The gallery displays only 124 px previews. Encode the
         // downscaled image instead of a potentially 4096x4096 source:
