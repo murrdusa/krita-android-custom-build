@@ -36,6 +36,12 @@ public:
     {
         return qMin(boundedAttempt(stored)+1,3);
     }
+    static int afterSurfaceReady()
+    {
+        // A restored GL context may be valid before its next swap
+        // notification. Future context losses should start at 2 s.
+        return 0;
+    }
 };
 
 class MobileCanvasResumeObserver final : public QObject
