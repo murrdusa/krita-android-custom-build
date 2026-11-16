@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — avoid quadratic preview revision cleanup on Save
+
+- Followed up on the 128-entry revision-map cap from `d423b07`. Trimming one oldest entry at a time repeatedly scanned the entire restored map, which is quadratic if settings contain a large legacy backlog and could stall the UI during Save. `recordPreviewRevision()` now ranks entries once, retaining the newest 128 with deterministic tie ordering; the normal under-cap path is unchanged.
+- Expanded the Qt-only regression from 300 to 4096 legacy entries, asserting the current Save and exact most-recent boundary survive. Source `0092715`, regression `8c2c2f5`. This prevents an avoidable Save-time latency spike, not a demonstrated memory leak. Exact Android build and Qt test pending; no APK uploaded.
+
 ## November 16 — stop native bootstrap after reentrant host teardown
 
 - Audited `MobileKritaStandaloneRuntime::create()`. Tool-factory `createActions()`, the Qt main-window association, and startup diagnostics can execute Qt callbacks while the runtime and its host are still being initialized. Previously, bootstrap continued dereferencing raw runtime and host pointers without revalidating ownership after these callbacks. It now captures guarded runtime, host and canvas-root identities and exits if they are destroyed or replaced, including between tool registrations. Source commit `d5bee05`.
