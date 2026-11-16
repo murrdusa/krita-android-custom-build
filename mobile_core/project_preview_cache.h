@@ -40,7 +40,14 @@ public:
         if(!entry.isFile() || entry.isSymLink() || !entry.isReadable() ||
            entry.size()<4 || entry.size()>maxKraBytes)return false;
         QFile file(path);
-        return file.open(QIODevice::ReadOnly) &&
+        if(!file.open(QIODevice::ReadOnly))return false;
+        // A gallery scan may race an atomic document replacement. Check
+        // the actual opened handle rather than trusting the earlier
+        // path metadata; never hand a newly linked/oversized source to
+        // Krita's ZIP reader after its safety check was bypassed.
+        const QFileInfo opened(file);
+        return opened.isFile() && !opened.isSymLink() &&
+            file.size()>=4 && file.size()<=maxKraBytes &&
             file.peek(4)==QByteArray::fromHex("504b0304");
     }
     explicit MobileProjectPreviewCache(const QString &directory) : m_directory(directory) {}
