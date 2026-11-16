@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — test deferred retirement after accepted native closes
+
+- Expanded `tests/qt_native_view_stack.cpp` with another 128-cycle cleanup regression. Every iteration opens a canvas, cancels a Close (verifying its canvas and document stay registered), then accepts a Close callback which deliberately does not destroy the QWidget. After draining Qt's queued/deferred events the test checks that the now-detached painting widget has been destroyed, its view registration cleared, and no child widgets accumulate in the native stack. This complements the prior 128-cycle test where the document itself is destroyed before its canvas.
+- Test commit `d55fa30bfee68c2c9a02cabfd4291a30d5c6ef38`. This tests native Qt ownership and deferred retirement rather than Krita GL memory usage. Host test execution and exact-revision Android build not yet independently verified; no APK uploaded.
+
 ## November 15 — regression for native canvas destruction churn
 
 - Added a 128-cycle Qt-only regression to `tests/qt_native_view_stack.cpp`. Each cycle attaches a fresh canvas widget to a new document, destroys that document while the native stack remains alive, drains queued/deferred Qt events, and checks that its view registration, current document and widget have all been released. The test also counts actual `QObject::destroyed` notifications and checks the stack has no accumulated child canvases. This is aimed at catching retained canvas/OpenGL widget lifetimes as the Android app repeatedly opens and closes drawings.
