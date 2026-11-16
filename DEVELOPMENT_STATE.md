@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — guard first canvas readiness after native root rollback
+
+- Audited the deferred `firstCanvas` callback in `MobileKritaStandalonePilot::launch()`. It previously dereferenced `alive->nativeViewPort()->currentDocument()` without checking whether the view port still existed. A failed independent bootstrap may discard its empty native root before a previously queued startup/intent completion runs, leaving a surviving host with a null view port. The callback now snapshots and checks the port and current document, and checks the host after Qt property/status operations before marking launch ready. Source `9723e0c`.
+- Added a Qt native-stack test that creates and then discards an empty root before deferred first-canvas notification, plus a surviving-root normal path (`99503cb`). The test exercises actual Qt native host/port lifecycle, not Krita's Android-only pilot. Exact Android build and test execution pending; no APK uploaded.
+
 ## November 16 — cancel deferred Saved versions gallery after Home teardown
 
 - Audited the `Saved versions…` QAction in `MobileKritaStandalonePilot::launch()`. It previously fetched the active `KisDocument` as a raw pointer, looked up the path (potential Android provider callback), then queued `home->showSavedVersions()` using a raw Home capture. If the provider or a close callback destroyed Home or the document, later dereferences could be invalid. The action now retains `QPointer` identities for document and Home, verifies them after the path lookup, and binds the timer to the guarded Home context so Qt cancels it on destruction. Source `b051ebc`.
