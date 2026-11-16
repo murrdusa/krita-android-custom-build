@@ -303,6 +303,38 @@ int main(int argc,char **argv)
     require(observer.changes>=parentChangesAtInstall,
             "parent observer failed unexpectedly");
 
+    // The independent native host may never create a desktop menubar or
+    // statusbar. Scanning for chrome must not allocate either widget;
+    // QMainWindow::menuBar()/statusBar() are creating accessors.
+    {
+        QMainWindow minimal;
+        minimal.resize(320,520);
+        minimal.setCentralWidget(new QWidget);
+        require(!minimal.findChild<QMenuBar*>(
+                    QString(),Qt::FindDirectChildrenOnly) &&
+                !minimal.findChild<QStatusBar*>(
+                    QString(),Qt::FindDirectChildrenOnly),
+                "minimal Qt host unexpectedly has desktop chrome");
+        MobileNativeCanvasChrome minimalChrome(&minimal);
+        require(minimalChrome.install(new QWidget,new QWidget),
+                "could not install minimal mobile host chrome");
+        minimal.show();
+        QApplication::processEvents();
+        for(int cycle=0;cycle<20;++cycle) {
+            require(minimalChrome.activate(),
+                    "minimal host failed to activate");
+            minimalChrome.enforceMobileChrome();
+            QApplication::processEvents();
+            require(minimalChrome.deactivate(),
+                    "minimal host failed to deactivate");
+        }
+        require(!minimal.findChild<QMenuBar*>(
+                    QString(),Qt::FindDirectChildrenOnly) &&
+                !minimal.findChild<QStatusBar*>(
+                    QString(),Qt::FindDirectChildrenOnly),
+                "chrome discovery allocated an unused desktop menu/status bar");
+    }
+
     qInfo() << "PASS: 25 chrome-only switches, identical canvas identity,"
             << "no reparenting during switches, tab and desktop restoration,"
             << "portrait/landscape layer dock layout, empty-document recovery,"
