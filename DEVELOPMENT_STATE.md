@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — coalesced recent-project index writes
+
+- The gallery's `KisRecentFilesManager::fileAdded` callback previously enqueued an independent JSON index load/merge/save job for every recent-file notification. Rapid file opens could accumulate redundant disk transactions and queued worker allocations while one serialized index pool was busy. The callback now accumulates unique pending paths in a shared, mutex-protected set and schedules only one drainer; each batch merges into the existing persistent index, and notifications arriving during a write are processed by the same worker's next pass. Project deletion and full-scan index work remain serialized on the original pool.
+- Source commit `14ad29e4b27ee729504ef132f93aaf5567587903`. Exact-revision Android build is not yet confirmed; Android recent-notification burst behavior has not been measured on device. No APK uploaded.
+
 ## November 15 — native canvas input tracking on failed attachment
 
 - Native KisView factory now unregisters a canvas from the Krita input manager when view initialization aborts after `addTrackedCanvas()` but before `setViewManager()` establishes the view's manager. The existing native KisView destructor deregisters canvases with an assigned manager; without this partial-initialization cleanup, the tracker could retain a stale canvas pointer after the failed view was deleted. The fallback does not duplicate cleanup for fully attached views and does not alter document save/close behavior.
