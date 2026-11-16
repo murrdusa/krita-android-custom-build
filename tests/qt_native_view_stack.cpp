@@ -516,6 +516,29 @@ int main(int argc,char **argv)
                 "receiving host retained orphan after final document close");
     }
 
+    // Duplicate-file Open scans the path and draft metadata of other
+    // canvases. If a document closes during that work, opening or
+    // activating another file must fail instead of using a stale row.
+    {
+        MobileNativeViewStack stack;
+        auto *firstDocument=new QObject;
+        auto *secondDocument=new QObject;
+        require(stack.adoptView(new QWidget,firstDocument,
+                    QStringLiteral("existing"),[](){return true;}) &&
+                stack.adoptView(new QWidget,secondDocument,
+                    QStringLiteral("other"),[](){return true;}),
+                "could not set up duplicate-open document scan");
+        const auto beforeScan=stack.openViews();
+        // A synchronous document path observer destroys the second
+        // document after Open captured its original tab snapshot.
+        delete secondDocument;
+        require(stack.openViews().size()==1 &&
+                !MobileViewIdentityGuard::sameRecoveryWorkspace(
+                    beforeScan,stack.openViews()),
+                "duplicate-open scan accepted a changed native workspace");
+        delete firstDocument;
+    }
+
     // Save As must reject a destination scan whose set of open drawings
     // changes during a nested callback, even when the selected canvas
     // and original native stack remain alive.
