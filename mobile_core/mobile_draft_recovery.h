@@ -103,10 +103,12 @@ public:
     // modified-time cutoff skips drafts that cannot supersede the saved
     // project, without losing older drafts from unrestricted recovery
     // browsing or deleting any files.
-    static QFileInfoList list(int maxResults=0,qint64 newerThanMs=0)
+    // Rescue only a small batch of old complete staging files. Keep this
+    // separate from published-draft enumeration: project deletion needs
+    // to check whether a draft exists, not build a sorted gallery list.
+    static void rescueOrphanStaging(const QString &folder)
     {
-        const QString folder=directory();
-        if(folder.isEmpty())return {};
+        if(folder.isEmpty())return;
         // If the process terminated between KRA export and publication,
         // a complete .pending.kra would otherwise never appear in the
         // recovery browser. Only rescue old, readable staging files:
@@ -164,6 +166,13 @@ public:
             // False prevents replacing the previous published draft.
             publish(draft,false);
         }
+    }
+
+    static QFileInfoList list(int maxResults=0,qint64 newerThanMs=0)
+    {
+        const QString folder=directory();
+        if(folder.isEmpty())return {};
+        rescueOrphanStaging(folder);
         // For the gallery, retain only the newest maxResults entries
         // while streaming directory contents. A damaged recovery folder
         // may contain far more files than the UI's 20k-project limit.
@@ -312,13 +321,12 @@ public:
     {
         const QString identity=MobileSavedVersionArchive::canonicalIdentity(project);
         if(identity.isEmpty())return false;
-        // list() also rescues a bounded batch of old completed .pending
-        // drafts. Preserve that behavior before checking whether a
-        // project may be deleted, but do not allocate and sort every
-        // published draft just to answer an existence question.
-        list(1);
+        // Keep the same bounded rescue of interrupted exports without
+        // paying for list(1)'s redundant published-draft directory pass.
+        // A single streaming pass below answers this existence query.
         const QString folder=directory();
         if(folder.isEmpty())return false;
+        rescueOrphanStaging(folder);
         QDirIterator completed(folder,{QStringLiteral("*.kra")},
                                QDir::Files|QDir::Readable|QDir::NoSymLinks);
         while(completed.hasNext()) {
