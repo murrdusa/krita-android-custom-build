@@ -3,6 +3,7 @@
 // Does not initialize Krita or the Android drawing engine.
 #define KRITA_MOBILE_QT_TEST
 #include "../mobile_core/native_view_stack.h"
+#include <utility>
 #include "../mobile_core/view_identity_guard.h"
 #include "../mobile_core/deferred_view_command.h"
 #include <QSharedPointer>
@@ -130,9 +131,8 @@ int main(int argc,char **argv)
         auto *destroyedDocument=new QObject;
         auto *candidate=new QWidget;
         QObject::connect(&firstTab,&QStackedWidget::currentChanged,
-                         &firstTab,[&](int) {
-            delete destroyedDocument;
-            destroyedDocument=nullptr;
+                         &firstTab,[&](int index) {
+            if(index>=0)delete std::exchange(destroyedDocument,nullptr);
         });
         if(!require(!firstTab.adoptView(candidate,destroyedDocument,
                         QStringLiteral("Rejected"),[](){return true;}) &&
@@ -149,9 +149,8 @@ int main(int argc,char **argv)
         auto *candidate=new QWidget;
         const QPointer<QWidget> live(candidate);
         QObject::connect(&destroyedOnAttach,&QStackedWidget::currentChanged,
-                         &destroyedOnAttach,[&](int) {
-            delete candidate;
-            candidate=nullptr;
+                         &destroyedOnAttach,[&](int index) {
+            if(index>=0)delete std::exchange(candidate,nullptr);
         });
         if(!require(!destroyedOnAttach.adoptView(
                         candidate,&document,QStringLiteral("Destroyed"),
@@ -268,8 +267,9 @@ int main(int argc,char **argv)
     // Qt changes the visible stack index synchronously, while Krita
     // updates its active document on the next queued event-loop turn.
     // Close/Save must never hit the previous canvas in that interval.
-    if(!require(MobileViewIdentityGuard::safeCloseTarget(
-                    views,QPointer<QObject>(&firstDocument)).isNull(),
+    if(!require(stack.activateView(secondIdentity) &&
+                MobileViewIdentityGuard::safeCloseTarget(
+                    stack.openViews(),QPointer<QObject>(&firstDocument)).isNull(),
                 "reject close while selected and engine document disagree"))
         return 1;
     if(!require(stack.activateView(firstIdentity) &&
