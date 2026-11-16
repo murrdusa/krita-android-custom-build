@@ -1255,6 +1255,40 @@ int main(int argc,char **argv)
                 "bootstrap failure retained an unattached Save adapter");
     }
 
+    // The pilot must not construct mobile UI after a Qt notification
+    // destroys the window (and its child engine session) while status
+    // chrome is being suppressed.
+    {
+        auto *window=new MobileLightweightCanvasHost;
+        auto *session=new QObject(window);
+        const QPointer<MobileLightweightCanvasHost> guardedWindow(window);
+        const QPointer<QObject> guardedSession(session);
+        int workspaceCreations=0;
+        const auto suppressStatus=[window]() {
+            delete window;
+            return true;
+        };
+        const bool hidden=suppressStatus();
+        if(hidden && guardedWindow && guardedSession)
+            ++workspaceCreations;
+        require(hidden && !guardedWindow && !guardedSession &&
+                workspaceCreations==0,
+                "native pilot created workspace after Qt host teardown");
+    }
+    {
+        MobileLightweightCanvasHost window;
+        QObject session(&window);
+        const QPointer<MobileLightweightCanvasHost> guardedWindow(&window);
+        const QPointer<QObject> guardedSession(&session);
+        int workspaceCreations=0;
+        const auto suppressStatus=[]() {return true;};
+        const bool hidden=suppressStatus();
+        if(hidden && guardedWindow && guardedSession)
+            ++workspaceCreations;
+        require(workspaceCreations==1,
+                "native pilot suppressed surviving workspace setup");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
