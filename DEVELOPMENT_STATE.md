@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — retire orphaned Krita images after failed canvas attachment
+
+- Audited both the native `Open` path in `MobileKritaStandaloneDocuments::openFile()` and the `New Canvas` path in `MobileDocumentService::createCanvas()`. If adding a document to `KisPart` succeeded but a subsequent view attachment failed, a reentrant observer could unregister the document without destroying its QObject. The existing `MobileFailedDocumentAttach::rollback()` would skip the now-unregistered document, retaining a loaded image and its pixel/layer buffers despite having no registered owner. Added `disposeUnregistered()` to retire only a still-live, confirmed-unregistered import; both failed-attachment paths call it after normal rollback while `KisPart` remains available. Helper `ef9fd4a`, Open `4c3f1ed`, New Canvas `e2f771d`.
+- Extended `qt_native_document_rollback` to cover disposal of unregistered imports, preservation of documents still registered to another owner, and a registry callback that has already destroyed its candidate (`1ebb0da`). The tests exercise the Qt-only guard and deletion semantics, not Android Krita document loading. Exact-revision PC compilation and test execution pending; no APK uploaded.
+
 ## November 16 — release partially constructed engine runtime on failed startup
 
 - Audited `MobileKritaStandaloneRuntime::create()`. Its plugin action setup and manager initialization have several early failure returns after allocating a runtime under the still-live host. Those paths previously returned null without deleting the surviving runtime, leaving its action collection, view manager, diagnostic timer, or draft checkpoint machinery allocated until host shutdown and potentially preventing subsequent native startup. A `qScopeGuard` now deletes a still-live partial runtime on any failed return; successful construction dismisses that cleanup before returning ownership to the host. Source `02b7db6`.
