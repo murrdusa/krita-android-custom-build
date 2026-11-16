@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — guard document lifetime during MIME setup before KRA loading
+
+- Audited the native import transaction after the earlier `createDocument()` host-lifetime checks. `openProjectSource()` previously invoked `applyProjectMime(document,path)` followed by `document->openPath()` through the original raw pointer. Android provider-name resolution and Krita MIME notification may reenter Qt callbacks and destroy the unregistered document, so this was a potential use-after-free at the handoff to KRA loading.
+- `applyProjectMime()` now returns whether its `QPointer<KisDocument>` survived Android filename resolution, native MIME lookup, and `setMimeType()`. `openProjectSource()` retains a guarded identity and refuses `openPath()` after invalidation. Recovery metadata setup also stops if the MIME helper fails, using its existing pre-registration cleanup. Neither painting UI nor successful file-open semantics are changed.
+- Added a Qt-only regression in `tests/qt_native_document_rollback.cpp` modeling an import destroyed synchronously during metadata setup and checking that no subsequent KRA load is attempted. The Qt fixture validates the lifetime pattern; full Krita callback behavior requires device/integration testing. Source commit `b7e5fa1156dfad9b9fe2c276eaeabc528797bc03`, test commit `81de441984f5b69f00c656cfc1f1e244199f7347`. Exact-revision build/test results pending. No APK uploaded.
+
 ## November 16 — abort loading if native host changes during document construction
 
 - Reviewed pending Qt callbacks, native view-stack retirement, and the new first-swap observer diagnostics. The view-stack already checks detached-widget ownership before destruction and the recovery worker guards its request queues. No confirmed unbounded leak was established from those paths.
