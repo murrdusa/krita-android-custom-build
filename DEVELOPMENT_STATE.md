@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — cap automatic project-recovery inventory
+
+- Audited `MobileDraftRecovery::checkpointsFor()`, called during project Open. It previously appended and sorted all matching saved-project recovery drafts in memory. A project with a large history of autosave/recovery entries could allocate an unbounded candidate list and make startup recovery less responsive. It now streams the directory with a newest-first 32-entry heap, and skips opening older KRA archives that cannot enter that candidate set. Files excluded from automatic Open remain intact and accessible through the unrestricted manual recovery gallery. Source `7f8a757`.
+- Extended the Qt-only saved-version test using the existing out-of-order 192-draft stress fixture. Associate 50 drafts with one project and assert the automatic Open list has exactly the newest 32 in order and the oldest draft still exists. Test `578c460`. This caps candidate-list memory, not total directory scanning or parsing time. Exact Android build and Qt test execution pending; no APK uploaded.
+
 ## November 16 — prevent deferred canvas activation after synchronous view teardown
 
 - Audited `MobileKritaNativeViewFactory::scheduleActivation()`, which compared `manager->canvasBase()` against `selected->canvasBase()` in a single expression. A Qt/Krita observer triggered by the first getter could destroy the selected view before the second getter. The deferred activation now captures its selected `KisCanvas2` in a `QPointer`, obtains the manager canvas separately, and revalidates the selected view and original root before any view switch. Source `cfcf937`.
