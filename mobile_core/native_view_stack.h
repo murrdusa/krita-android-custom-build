@@ -301,9 +301,15 @@ private:
         // can also report an accepted close without doing so: after
         // removing the row, retire only a still-owned, unregistered
         // widget. A reparented canvas belongs to its new host.
-        const bool removed=forgetToken(token);
+        forgetToken(token);
         if(!host)return accepted;
-        if(removed && closingView)
+        // The native close callback may already have unregistered its
+        // view (for example through an engine-side forgetView()) while
+        // leaving the QWidget alive under this stack. Row removal is
+        // not proof of widget retirement: check the actual ownership at
+        // deferred-delete time, including after that reentrant path.
+        // A transferred or re-adopted view is preserved by the helper.
+        if(closingView)
             retireDetachedView(host,closingView);
         m_closing=false;
         return true;
