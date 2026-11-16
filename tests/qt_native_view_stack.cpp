@@ -1759,6 +1759,46 @@ int main(int argc,char **argv)
         require(!retained,"registered-detach fixture retained an unowned canvas");
     }
 
+    // Removal observers can re-register the same canvas under a new
+    // document and temporarily remove its layout slot during handoff.
+    // forgetToken() must not hide a live registered view after observers.
+    {
+        MobileNativeViewStack stack;
+        QObject previousDocument;
+        QObject nextDocument;
+        auto *canvas=new QWidget;
+        const QPointer<QWidget> retained(canvas);
+        require(stack.adoptView(canvas,&previousDocument,
+                    QStringLiteral("old"),[](){return false;}),
+                "visibility handoff could not register original canvas");
+        bool transferred=false;
+        QObject::connect(&stack,&QStackedWidget::widgetRemoved,&stack,
+                         [&](int) {
+            if(transferred)return;
+            transferred=true;
+            canvas->setParent(nullptr);
+            require(stack.adoptView(canvas,&nextDocument,
+                        QStringLiteral("new"),[](){return false;}),
+                    "visibility handoff could not re-register canvas");
+            stack.removeWidget(canvas);
+            canvas->show();
+        });
+        require(stack.forgetView(QPointer<QObject>(canvas)) && transferred,
+                "visibility handoff was not delivered during removal");
+        require(retained && !canvas->isHidden() &&
+                stack.indexOf(canvas)<0,
+                "old registration hid re-adopted canvas outside Qt layout");
+        QCoreApplication::sendPostedEvents(nullptr,0);
+        QApplication::processEvents();
+        require(retained,
+                "old registration deleted re-adopted canvas");
+        require(stack.forgetView(QPointer<QObject>(canvas)),
+                "visibility handoff could not unregister new document");
+        QCoreApplication::sendPostedEvents(nullptr,0);
+        QApplication::processEvents();
+        require(!retained,"visibility handoff retained unregistered canvas");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
