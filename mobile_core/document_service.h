@@ -45,19 +45,26 @@ public:
 
     QVector<OpenDocument> openDocuments() const
     {
-        return m_viewHost?m_viewHost->openViews():QVector<OpenDocument>{};
+        const auto viewsHost=m_viewHost;
+        return viewsHost?viewsHost->openViews():QVector<OpenDocument>{};
     }
 
     // The view provider owns identity validation. Never resolve an
     // outdated creation-order index against a changed MDI document list.
+    // Retain that provider across callbacks that can destroy the UI
+    // service during a tab switch or native Save/Discard/Cancel prompt.
     bool activateDocumentView(const QPointer<QObject> &identity) const
     {
-        return m_viewHost && identity && m_viewHost->activateView(identity);
+        const auto viewsHost=m_viewHost;
+        return viewsHost && identity && viewsHost->activateView(identity);
     }
     bool activateDocument(int nativeIndex) const
     {
-        return activateDocumentView(
-            MobileViewIdentityGuard::byIndex(openDocuments(),nativeIndex));
+        const auto viewsHost=m_viewHost;
+        if(!viewsHost)return false;
+        const auto identity=MobileViewIdentityGuard::byIndex(
+            viewsHost->openViews(),nativeIndex);
+        return identity && viewsHost->activateView(identity);
     }
 
     // Native Krita still owns the Save / Discard / Cancel close prompt.
@@ -65,20 +72,26 @@ public:
     // identity still represents the same live canvas.
     bool closeDocumentView(const QPointer<QObject> &identity) const
     {
-        return m_viewHost && identity && m_viewHost->closeView(identity);
+        const auto viewsHost=m_viewHost;
+        return viewsHost && identity && viewsHost->closeView(identity);
     }
     bool closeDocument(int nativeIndex) const
     {
-        return closeDocumentView(
-            MobileViewIdentityGuard::byIndex(openDocuments(),nativeIndex));
+        const auto viewsHost=m_viewHost;
+        if(!viewsHost)return false;
+        const auto identity=MobileViewIdentityGuard::byIndex(
+            viewsHost->openViews(),nativeIndex);
+        return identity && viewsHost->closeView(identity);
     }
     bool closeActiveDocument() const
     {
-        const auto views=openDocuments();
-        const QPointer<QObject> current=m_viewHost?
-            m_viewHost->currentDocument():QPointer<QObject>();
-        return closeDocumentView(
-            MobileViewIdentityGuard::safeCloseTarget(views,current));
+        const auto viewsHost=m_viewHost;
+        if(!viewsHost)return false;
+        const auto views=viewsHost->openViews();
+        const QPointer<QObject> current=viewsHost->currentDocument();
+        const auto target=MobileViewIdentityGuard::safeCloseTarget(
+            views,current);
+        return target && viewsHost->closeView(target);
     }
 
     // Document I/O and image construction are owned by Krita's engine.
