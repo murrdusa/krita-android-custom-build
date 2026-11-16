@@ -390,16 +390,11 @@ private:
                                 // its first swap. Without clearing this flag,
                                 // a new surface will never install a retry.
                                 QObject::connect(watched.data(),&QObject::destroyed,firstSwap,
-                                    [selected,receiver]() {
-                                        if(selected) {
-                                            const bool ready=selected->property(
-                                                "_mobileInitialProjectionReady").toBool();
-                                            // A dynamic-property observer can
-                                            // synchronously destroy this view.
-                                            if(selected && !ready)
-                                                selected->setProperty(
-                                                    "_mobileWaitingForFirstSwap",false);
-                                        }
+                                    [receiver]() {
+                                        // Waiting-for-swap is stored on the
+                                        // surface, not the KisView. A destroyed
+                                        // surface discards that flag itself; a
+                                        // replacement surface starts unarmed.
                                         if(receiver)receiver->deleteLater();
                                     });
                                 QObject::connect(watched.data(),&QOpenGLWidget::frameSwapped,firstSwap,
@@ -415,9 +410,16 @@ private:
                                         // A swap does not guarantee a usable
                                         // context if Android is tearing it down.
                                         if(!watched || !watched->isValid()) {
-                                            selected->setProperty(
-                                                "_mobileWaitingForFirstSwap",false);
-                                            if(!selected)return;
+                                            // This is the same QWidget whose
+                                            // waiting flag was set when the
+                                            // listener was installed. Clear it
+                                            // here so another valid first-swap
+                                            // listener can be armed if the GL
+                                            // context was lost mid-frame.
+                                            if(watched)
+                                                watched->setProperty(
+                                                    "_mobileWaitingForFirstSwap",false);
+                                            if(!selected || !manager || !root)return;
                                         }
                                         if(manager && root)
                                             scheduleActivation(manager,root,selected);
