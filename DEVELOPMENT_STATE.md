@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — prevent quick-action refresh after native pilot teardown
+
+- `MobileNativeCanvasPilot::runQuickAction()` now tracks the pilot's member `QTimer` through a `QPointer` while dispatching native actions, tool selections, Undo/Redo, and panel changes. In particular, native commands can synchronously close the final canvas or replace the mobile workspace; previously execution continued to `refresh()` on a destroyed pilot. The deferred dialog and Save/Close dispatcher now makes the same lifetime check after its engine command returns. The timer is a member destroyed with the pilot, so no separate QObject ownership scheme was added. Existing document identity guards and Save/Discard/Cancel behavior are unchanged.
+- Source commit `f7f839936a93ef8f2e12acbe853ff2755d3758f9`. This pilot dispatch path requires Android/Krita integration; no standalone Qt-only fixture was added. Exact-revision local Android build and on-device behavior remain unverified. No APK uploaded.
+
 ## November 15 — guard asynchronous crash-report delivery at Android shutdown
 
 - `MobileCrashReport::copy()` now captures a `QPointer<QCoreApplication>` before submitting the Android JNI exit-history worker. If the application is destroyed while the query is pending or executing, the worker skips posting its report instead of calling `QMetaObject::invokeMethod(qApp, ...)` through a potentially stale global pointer. The normal clipboard/report dialog path is unchanged while the application remains active; the queued receiver context also prevents delivery after application destruction.
