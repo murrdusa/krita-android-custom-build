@@ -1468,6 +1468,43 @@ int main(int argc,char **argv)
         delete root;
     }
 
+    // Empty-root rollback must not delete a widget transferred to a new
+    // owner after takeCentralWidget() detaches it. The old native port
+    // stays inert once the original root is eventually destroyed.
+    {
+        MobileLightweightCanvasHost original;
+        QWidget receiving;
+        auto *root=original.createNativeDocumentRoot();
+        require(root && original.nativeViewPort(),
+                "could not create detached-root transfer fixture");
+        const QPointer<MobileNativeViewStack> candidate(root);
+        const QPointer<MobileLightweightCanvasHost> host(&original);
+        auto oldPort=original.nativeViewPort();
+        QWidget *detached=original.takeCentralWidget();
+        require(host && candidate && detached==candidate.data(),
+                "takeCentralWidget unexpectedly destroyed the root");
+        detached->setParent(&receiving);
+        const bool mayRetire=host && candidate &&
+            !candidate->parentWidget();
+        require(!mayRetire && candidate &&
+                candidate->parentWidget()==&receiving,
+                "empty-root rollback could delete a transferred canvas");
+        delete candidate.data();
+        require(!candidate && oldPort && oldPort->openViews().isEmpty(),
+                "retained old native adapter accessed deleted root");
+    }
+    {
+        auto *host=new MobileLightweightCanvasHost;
+        auto *root=host->createNativeDocumentRoot();
+        const QPointer<MobileLightweightCanvasHost> alive(host);
+        const QPointer<MobileNativeViewStack> candidate(root);
+        require(candidate,"could not initialize root for host teardown");
+        delete host;
+        const bool mayRetire=alive && candidate;
+        require(!alive && !candidate && !mayRetire,
+                "rollback retained root after its owning host was destroyed");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
