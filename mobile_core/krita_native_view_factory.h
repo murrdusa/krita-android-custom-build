@@ -358,10 +358,15 @@ private:
                                 // a new surface will never install a retry.
                                 QObject::connect(watched.data(),&QObject::destroyed,firstSwap,
                                     [selected,receiver]() {
-                                        if(selected && !selected->property(
-                                                "_mobileInitialProjectionReady").toBool())
-                                            selected->setProperty(
-                                                "_mobileWaitingForFirstSwap",false);
+                                        if(selected) {
+                                            const bool ready=selected->property(
+                                                "_mobileInitialProjectionReady").toBool();
+                                            // A dynamic-property observer can
+                                            // synchronously destroy this view.
+                                            if(selected && !ready)
+                                                selected->setProperty(
+                                                    "_mobileWaitingForFirstSwap",false);
+                                        }
                                         if(receiver)receiver->deleteLater();
                                     });
                                 QObject::connect(watched.data(),&QOpenGLWidget::frameSwapped,firstSwap,
@@ -393,6 +398,10 @@ private:
                     }
                     const QRectF viewport(surface->rect());
                     const QRectF image=selected->viewConverter()->imageRectInWidgetPixels();
+                    // Krita zoom/view notifications may replace the active
+                    // view even while the first canvas is being laid out.
+                    if(!isCurrent() || !canvas || !surface ||
+                       canvas->canvasWidget()!=surface)return;
                     const bool fitNeeded=!viewport.intersects(image);
                     if(fitNeeded)selected->zoomManager()->slotZoomToFit();
                     if(!isCurrent() || !canvas || canvas->canvasWidget()!=surface)return;
