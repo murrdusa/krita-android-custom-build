@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — stream project-specific recovery without sorting unrelated drafts
+
+- `MobileDraftRecovery::checkpointsFor()` previously invoked `list(0, savedModified)`, which collected and sorted every newer draft in the recovery directory before retaining only those associated with one project. This could allocate a large `QFileInfoList` when a device had many drafts from unrelated paintings.
+- It now performs the same bounded orphan `.pending.kra` rescue, iterates completed drafts once, and retains only files with a matching canonical project association, a modification time newer than the saved artwork, and a readable KRA. Only those matched checkpoints are sorted newest-first with the existing filename tie-breaker.
+- Expanded `tests/qt_saved_version_archive.cpp` using the 192-draft stress fixture: two matching project checkpoints and one other-project checkpoint test newest-first ordering and the modification cutoff. Source commit `7bf62797e210967f988cd25e8788dd52319115fc`; regression commit `97b7fa6ab9747188a55db649600a007cde9a5ebb`. Exact-revision Android compilation and Qt regression execution remain unverified; no APK uploaded.
+
 ## November 16 — bound growing recovery association sidecars
 
 - Audited `MobileDraftRecovery::projectFor()`, which checks an untrusted `.project` sidecar is at most 16 KiB but previously then invoked `QFile::readAll()`. If an external/failed writer expands a sidecar between those operations, the read may allocate based on the changed file size while gallery or project deletion scans many drafts.
