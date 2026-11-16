@@ -1562,6 +1562,38 @@ int main(int argc,char **argv)
                     "failed imports accumulated orphaned painting widgets");
         }
     }
+    // Repeated successful Open/Close cycles must also retire the native
+    // QWidget after its close callback, not just hide it in the stack.
+    // Leaving a detached child around retains its GL-capable viewport.
+    {
+        MobileNativeViewStack stack;
+        int destroyed=0;
+        constexpr int cycles=128;
+        for(int i=0;i<cycles;++i) {
+            QObject document;
+            auto *canvas=new QWidget;
+            const QPointer<QWidget> view(canvas);
+            QObject::connect(canvas,&QObject::destroyed,&stack,
+                             [&destroyed]() {++destroyed;});
+            const bool adopted=stack.adoptView(
+                canvas,&document,QStringLiteral("open-close cycle"),
+                [view]() {
+                    // Model a native close that accepts Save/Discard,
+                    // but relies on the stack to retire its view.
+                    return bool(view);
+                });
+            require(adopted && stack.openViews().size()==1,
+                    "native Open failed in repeated close regression");
+            const QPointer<QObject> target(canvas);
+            require(stack.closeView(target) && stack.openViews().isEmpty(),
+                    "native Close retained a document registration");
+            QCoreApplication::sendPostedEvents(nullptr,0);
+            QApplication::processEvents();
+            require(!view && destroyed==i+1 &&
+                    stack.findChildren<QWidget*>().isEmpty(),
+                    "native close accumulated a retained painting QWidget");
+        }
+    }
     // A canceled adoption may be transferred before deferred retirement.
     // The old owner must not destroy a canvas adopted by another stack.
     {
