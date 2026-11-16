@@ -1345,6 +1345,27 @@ int main(int argc,char **argv)
                 "host close rejected an unchanged native view adapter");
     }
 
+    // A rejected central-canvas installation must not steal or delete
+    // a widget already owned by another host. Failed fresh-root setup
+    // also must not leave a stale adapter registration behind.
+    {
+        MobileLightweightCanvasHost host;
+        QWidget owner;
+        auto *owned=new QWidget(&owner);
+        const QPointer<QWidget> ownedGuard(owned);
+        require(!host.installNativeCanvas(owned) && ownedGuard &&
+                owned->parentWidget()==&owner && !host.nativeViewPort(),
+                "rejected central canvas changed ownership or installed a port");
+        auto *root=host.createNativeDocumentRoot();
+        const QPointer<MobileNativeViewStack> guardedRoot(root);
+        require(root && host.nativeViewPort() &&
+                !host.createNativeDocumentRoot() && guardedRoot,
+                "native root installation did not preserve single ownership");
+        require(host.discardEmptyNativeDocumentRoot() &&
+                !guardedRoot && !host.nativeViewPort(),
+                "empty native root rollback retained a stale canvas or adapter");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
