@@ -597,13 +597,20 @@ private:
             auto *copy=menu.addAction(QObject::tr("Copy layout from %1 × %2").arg(size.width()).arg(size.height()));
             copy->setData(id);
         }
+        const QPointer<MobileNativeCommandLayout> alive(this);
         auto *chosen=mobilePickAction(m_editor,menu);
-        if(!chosen || !m_editor)return;
+        if(!alive || !chosen || !m_editor)return;
+        // Closing the editor calls back into the workspace controller,
+        // potentially rebuilding/destroying it. Resolve the selection
+        // and copy profile identity before that synchronous callback.
+        const QString selected=chosen==reset?QString():chosen->data().toString();
+        const QString profile=m_profile;
+        const QSize profileSize=m_profileSize;
         m_editor->closeEditor(false);
+        if(!alive)return;
         QSettings settings;
-        MobileWorkspaceProfiles::replace(settings,m_profile,m_profileSize,
-            chosen==reset?QString():chosen->data().toString());
-        loadWorkspace();
+        MobileWorkspaceProfiles::replace(settings,profile,profileSize,selected);
+        if(alive)alive->loadWorkspace();
     }
 
     void editCanvasLayout()
