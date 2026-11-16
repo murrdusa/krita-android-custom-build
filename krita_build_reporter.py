@@ -159,6 +159,28 @@ def update_dashboard(body_path):
         raise RuntimeError("Issue update: " + response.stderr[-500:])
     return f"https://github.com/{REPO}/issues/{number}"
 
+def qt_lifecycle_section(report):
+    """Expose host Qt test results even when the build excerpt omits them."""
+    import re
+    match = re.search(r"Full local log:\\s*`([^`]+)`", report)
+    if not match:
+        return "\\n## Native Qt lifecycle tests\\n\\nNo local log path reported; test outcome unknown.\\n"
+    path = Path(match.group(1))
+    # The reporter reads only the watcher's own log directory.
+    try:
+        if path.resolve().parent != (BASE / "logs").resolve():
+            return "\\n## Native Qt lifecycle tests\\n\\nLog path outside watcher directory; outcome unknown.\\n"
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return "\\n## Native Qt lifecycle tests\\n\\nLocal build log unavailable; outcome unknown.\\n"
+    relevant = [line.strip() for line in lines
+                if "Native Qt lifecycle tests:" in line]
+    if not relevant:
+        return "\\n## Native Qt lifecycle tests\\n\\nNOT REPORTED: this run did not record a native Qt test result.\\n"
+    return ("\\n## Native Qt lifecycle tests\\n\\n```text\\n" +
+            "\\n".join(relevant[-12:]) + "\\n```\\n")
+
+
 def report_completed(watcher):
     sha = watcher["revision"]
     success = watcher["result"] == "success"
@@ -167,10 +189,11 @@ def report_completed(watcher):
         body = report_path.read_text(encoding="utf-8", errors="replace")
     else:
         body = f"# Local Android build: {'SUCCESS' if success else 'FAILED'}\n\nRevision: `{sha}`\n"
+    qt_section = qt_lifecycle_section(body)
     body = (f"**Commit:** `{sha}`\n\n"
             f"**Outcome:** {'SUCCESS' if success else 'FAILED'}\n\n"
             f"**Completed UTC:** {watcher.get('completed_at', 'unknown')}\n\n"
-            + (apk_size_section() if success else "") + "\n" + body)
+            + qt_section + (apk_size_section() if success else "") + "\n" + body)
     issue_url = ""
     if not success:
         result = gh("issue", "create", "--repo", REPO,
