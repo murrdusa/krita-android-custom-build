@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — retry deferred background autosaves after a concurrent save
+
+- Audited `MobileKritaStandaloneRuntime::checkpointDrafts()` and `continueDrafts()`. If Android backgrounds the app while a document's Krita save is already in progress, the runtime records that document in `m_pendingDrafts` and queues one immediate continuation. The continuation can still see `isSaving()==true` and leave the document pending without any further wakeup. That can miss the intended private background checkpoint until another app event.
+- `continueDrafts()` now schedules one QObject-owned two-second retry when a pending document remains, guarded by `m_draftRetryQueued` to avoid duplicate timers. When the existing save finishes, a later retry rechecks document ownership and modified state before invoking the usual autosave. If the runtime is deleted, Qt discards the timer automatically. This is a bounded polling cadence, not an immediate recursive retry; the timer may continue while a save remains active.
+- Added a Qt-only model regression to `tests/qt_native_view_stack.cpp` checking that a deferred checkpoint does not run during a save, resumes when saving finishes, and does not fire after its owner is destroyed. It models the retry lifecycle; it does not execute the Android-only `MobileKritaStandaloneRuntime` directly.
+- Source commit `136ad7c4f852fa2e8191fd15bb0c4fc2653aecd4`; regression commit `6d2ca149559c145162eab102519533b91e0596ca`. The last watcher-confirmed successful Android source was `c86d80ec`; exact-revision compilation and Qt test execution for this change are pending. No APK uploaded.
+
 ## November 16 — revalidate autosave staging before publishing recovered artwork
 
 - Audited `MobileDraftRecovery::publish()` after the project-specific streaming optimization. It checked that a `.pending.kra` was readable, then could rename it over the last published draft without checking if another exporter replaced or modified the staging file during ZIP validation. This is particularly dangerous when a large export and Android lifecycle callbacks overlap: an unverified staging file must not overwrite the most recent known-good recovery.
