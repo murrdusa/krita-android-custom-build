@@ -1358,6 +1358,18 @@ int main(int argc,char **argv)
         require(stressBoundedFiltered.at(i).absoluteFilePath()==
                     stressFiltered.at(i).absoluteFilePath(),
                 "stress cutoff and heap produced inconsistent newest-first order");
+    // Project deletion checks must find an associated draft without
+    // constructing the complete sorted recovery list. Choose the first
+    // generated draft, whose timestamp is deliberately not the newest.
+    const QString associationProject=temp.filePath(
+        QStringLiteral("association-existence.kra"));
+    require(MobileDraftRecovery::setProject(
+                stressDrafts.first(),associationProject) &&
+            MobileDraftRecovery::hasProjectDraft(associationProject),
+            "streamed recovery association scan missed an older draft");
+    require(MobileDraftRecovery::setProject(stressDrafts.first(),QString()) &&
+            !MobileDraftRecovery::hasProjectDraft(associationProject),
+            "streamed recovery association scan retained removed metadata");
     for(const QString &draft:stressDrafts)QFile::remove(draft);
 
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
