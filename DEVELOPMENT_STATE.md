@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — avoid destroyed Open-dialog parent after Android display-name lookup
+
+- Audited `MobileDocumentService::openFiles()`' failed-Open warning. It previously evaluated the raw `window.data()` and `MobileSavedVersionArchive::projectName(path)` in the same `QMessageBox::warning()` call. Android SAF/provider display-name resolution can enter Qt callbacks that destroy the originating window before the modal warning is created; the argument evaluation order is not guaranteed. The code now resolves the name separately and rechecks `QPointer<QWidget> window` after the lookup before passing it to `QMessageBox::warning`. Source `f15e313`.
+- Added Qt-only regression checks for a name resolver that destroys the parent and a surviving-parent control (`54b7b01`). These validate callback ordering/lifetime policy without opening a modal Android warning. Exact-revision PC build and test execution pending; no APK uploaded.
+
 ## November 16 — ignore expired first-swap deadlines from replaced GL surfaces
 
 - Audited `MobileKritaNativeViewFactory::scheduleActivation()` first-frame recovery. The delayed timeout retained a guarded `QOpenGLWidget` and validated the selected native view/document, but not whether the view's `canvasWidget()` was still the original watched surface. Android can replace the GL widget while keeping the old QObject alive; a timeout belonging to the stale surface could then request redundant activation of the replacement canvas. The timeout now captures the selected canvas and verifies its current QWidget matches the watched GL surface before rescheduling activation. Source `4545a7c`.
