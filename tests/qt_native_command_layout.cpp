@@ -3,6 +3,8 @@
  */
 #include <QApplication>
 #include <QDebug>
+#include <QDialog>
+#include <QTimer>
 #include <QMainWindow>
 #include <QPixmap>
 #include <QPointer>
@@ -291,5 +293,32 @@ int main(int argc,char **argv)
     finalEditor->closeEditor(false);
     verify(!controller && controllerTeardowns==1,
            "toolbar controller completion accessed a destroyed owner");
+
+    // Android can tear down a drawing window while a toolbar-command
+    // chooser is running inside its editor's nested event loop.
+    // Neither of these stack dialogs is parent-owned; rejection of
+    // the outer editor must also unwind the inner picker.
+    {
+        QPointer<QWidget> dyingOwner(new QWidget);
+        QDialog outer;
+        QDialog picker;
+        QPointer<QDialog> outerAlive(&outer),pickerAlive(&picker);
+        QObject::connect(dyingOwner.data(),&QObject::destroyed,
+                         &outer,&QDialog::reject);
+        QObject::connect(&outer,&QDialog::rejected,
+                         &picker,&QDialog::reject);
+        int pickerResult=QDialog::Accepted;
+        QTimer::singleShot(0,&outer,[&]() {
+            QTimer::singleShot(0,&app,[&]() {
+                delete dyingOwner.data();
+            });
+            pickerResult=picker.exec();
+        });
+        const int outerResult=outer.exec();
+        verify(!dyingOwner && outerAlive && pickerAlive &&
+               outerResult==QDialog::Rejected &&
+               pickerResult==QDialog::Rejected,
+               "owner teardown did not unwind nested stack toolbar dialogs");
+    }
     return 0;
 }
