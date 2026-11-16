@@ -516,6 +516,31 @@ int main(int argc,char **argv)
                 "receiving host retained orphan after final document close");
     }
 
+    // Save As must reject a destination scan whose set of open drawings
+    // changes during a nested callback, even when the selected canvas
+    // and original native stack remain alive.
+    {
+        MobileNativeViewStack stack;
+        auto *activeDocument=new QObject;
+        auto *otherDocument=new QObject;
+        auto *activeCanvas=new QWidget;
+        auto *otherCanvas=new QWidget;
+        require(stack.adoptView(activeCanvas,activeDocument,
+                    QStringLiteral("active.kra"),[](){return true;}) &&
+                stack.adoptView(otherCanvas,otherDocument,
+                    QStringLiteral("other.kra"),[](){return true;}),
+                "could not create two canvases for Save As scan");
+        const auto beforeScan=stack.openViews();
+        const QPointer<QObject> originalActive=stack.currentDocument();
+        delete otherDocument;
+        require(stack.currentDocument()==originalActive &&
+                stack.openViews().size()==1 &&
+                !MobileViewIdentityGuard::sameRecoveryWorkspace(
+                    beforeScan,stack.openViews()),
+                "Save As scan accepted a workspace changed by document teardown");
+        delete activeDocument;
+    }
+
     // Recovery metadata updates emit synchronous QObject change
     // notifications before an imported document is registered with
     // Krita. The first notification may destroy the document, so the
