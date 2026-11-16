@@ -394,7 +394,15 @@ private:
         QObject::connect(calibrate,&QAction::triggered,calibrate,[this]() {
             QTimer::singleShot(0,&m_refresh,[this]() {
                 if(!m_backend)return;
-                MobileFingerPressureCalibrationDialog dialog(m_backend);
+                // exec() runs a nested event loop. Android may destroy
+                // the originating window while the dialog is open;
+                // parenting a stack QDialog to it would delete the
+                // stack object before this function unwinds.
+                const QPointer<QWidget> owner(m_backend);
+                MobileFingerPressureCalibrationDialog dialog;
+                dialog.setMinimumWidth(qMin(280,qMax(1,owner->window()->width()-24)));
+                QObject::connect(owner.data(),&QObject::destroyed,
+                                 &dialog,&QDialog::reject);
                 dialog.exec();
             });
         });
