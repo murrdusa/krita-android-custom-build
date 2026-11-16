@@ -9,6 +9,7 @@
 #include <QTimer>
 #include <QLabel>
 #include <QPointer>
+#include <QScopeGuard>
 #include <QSharedPointer>
 #include <QVBoxLayout>
 #include "mobile_core/native_view_stack.h"
@@ -1364,6 +1365,67 @@ int main(int argc,char **argv)
         require(host.discardEmptyNativeDocumentRoot() &&
                 !guardedRoot && !host.nativeViewPort(),
                 "empty native root rollback retained a stale canvas or adapter");
+    }
+
+    // An aborted engine bootstrap must release the runtime's timers
+    // and manager-like QObject children immediately, even if its host
+    // stays alive. Successful bootstrap transfers ownership to host.
+    {
+        QObject host;
+        int destroyed=0;
+        QPointer<QObject> surviving;
+        {
+            auto *runtime=new QObject(&host);
+            surviving=runtime;
+            auto *timer=new QTimer(runtime);
+            Q_UNUSED(timer);
+            auto *manager=new QObject(runtime);
+            QObject::connect(runtime,&QObject::destroyed,
+                             [&destroyed]() {++destroyed;});
+            const QPointer<QObject> alive(runtime);
+            auto rollback=qScopeGuard([alive]() {
+                if(alive)delete alive.data();
+            });
+            Q_UNUSED(rollback);
+            Q_UNUSED(manager);
+            // Simulate an early return after creating engine children.
+        }
+        require(!surviving && destroyed==1 && host.children().isEmpty(),
+                "failed engine startup retained a runtime and its children");
+    }
+    {
+        QObject host;
+        int destroyed=0;
+        QPointer<QObject> surviving;
+        {
+            auto *runtime=new QObject(&host);
+            surviving=runtime;
+            QObject::connect(runtime,&QObject::destroyed,
+                             [&destroyed]() {++destroyed;});
+            const QPointer<QObject> alive(runtime);
+            auto rollback=qScopeGuard([alive]() {
+                if(alive)delete alive.data();
+            });
+            rollback.dismiss();
+        }
+        require(surviving && destroyed==0 && host.children().size()==1,
+                "successful engine startup destroyed its owned runtime");
+    }
+    {
+        auto *host=new QObject;
+        auto *runtime=new QObject(host);
+        QPointer<QObject> alive(runtime);
+        int destroyed=0;
+        QObject::connect(runtime,&QObject::destroyed,
+                         [&destroyed]() {++destroyed;});
+        {
+            auto rollback=qScopeGuard([alive]() {
+                if(alive)delete alive.data();
+            });
+            delete host;
+        }
+        require(!alive && destroyed==1,
+                "bootstrap rollback double-deleted a runtime retired by its host");
     }
 
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
