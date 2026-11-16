@@ -98,9 +98,12 @@ protected:
         m_dragging=m_dragging || delta.manhattanLength()>=QApplication::startDragDistance();
         if(m_dragging && m_area && m_area->isVisible() &&
            QScroller::scroller(m_area->viewport())->state()==QScroller::Inactive) {
+            const QPointer<MenuPointerFilter> alive(this);
             const auto area=m_area;
             area->horizontalScrollBar()->setValue(m_scrollStart.x()-delta.x());
+            if(!alive)return true;
             if(area)area->verticalScrollBar()->setValue(m_scrollStart.y()-delta.y());
+            if(!alive)return true;
         }
         if(type!=QEvent::MouseButtonRelease)return true;
         const auto target=m_target;
@@ -112,14 +115,17 @@ protected:
            !target->rect().contains(target->mapFromGlobal(mouse->globalPos())))return true;
         QMouseEvent press(m_pressType,target->mapFromGlobal(m_start),m_start,
                           Qt::LeftButton,Qt::LeftButton,mouse->modifiers());
+        const QPointer<MenuPointerFilter> alive(this);
         m_replay=&press;
         QApplication::sendEvent(target,&press);
+        if(!alive)return true;
         m_replay=nullptr;
         if(!target)return true;
         QMouseEvent release(type,target->mapFromGlobal(mouse->globalPos()),mouse->globalPos(),
                             Qt::LeftButton,Qt::NoButton,mouse->modifiers());
         m_replay=&release;
         QApplication::sendEvent(target,&release);
+        if(!alive)return true;
         m_replay=nullptr;
         return true;
     }
@@ -150,7 +156,9 @@ private:
             }
         }
         if(!m_tabletArea)return false;
+        const QPointer<MenuPointerFilter> alive(this);
         m_tabletArea->verticalScrollBar()->setValue(m_tabletOffset+m_tabletStart.y()-global.y());
+        if(!alive)return true;
         if(type==QEvent::TabletRelease)m_tabletArea.clear();
         event->accept();
         return true;
