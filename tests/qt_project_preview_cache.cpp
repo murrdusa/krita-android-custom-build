@@ -24,6 +24,15 @@ int main(int argc,char **argv)
         emptyRoot.load(QStringLiteral("drawing.kra"),1).isNull();
     if(!QDir::setCurrent(originalCwd) || !emptyRootSafe)return 48;
     const MobileProjectPreviewCache cache(directory.path());
+    // KRA embedded previews and direct PNG/JPEG gallery sources share
+    // one dimension policy, limiting full-size allocations when an
+    // image plugin ignores QImageReader's requested scaled decode.
+    if(!MobileProjectPreviewCache::safePreviewDecodeSize(QSize(4096,4096)) ||
+       !MobileProjectPreviewCache::safePreviewDecodeSize(QSize(8192,2048)) ||
+       MobileProjectPreviewCache::safePreviewDecodeSize(QSize(4097,4097)) ||
+       MobileProjectPreviewCache::safePreviewDecodeSize(QSize(8193,100)) ||
+       MobileProjectPreviewCache::safePreviewDecodeSize(QSize(0,124)))
+        return 50;
     // A decoder that ignores setScaledSize() may hand the gallery a
     // full-resolution image; constrain all decoded preview sources.
     QImage unscaled(900,600,QImage::Format_RGB32);
