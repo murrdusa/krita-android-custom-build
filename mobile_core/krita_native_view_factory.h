@@ -220,6 +220,10 @@ public:
         // Connections are scoped to the native manager QObject.
         const bool selectionAlreadyWired=
             stack->property("_mobileStudioKritaSelectionWired").toBool();
+        // Qt dynamic-property observers can synchronously tear down
+        // this view, manager or root before connections are installed.
+        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
+            return abortRegistered();
         if(!selectionAlreadyWired) {
             QPointer<MobileNativeViewStack> root=stack;
             QPointer<KisViewManager> vm=manager;
@@ -247,6 +251,8 @@ public:
             if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
                 return abortRegistered();
             stack->setProperty("_mobileStudioKritaSelectionWired",true);
+            if(!guarded || !guardedDocument || !guardedStack || !guardedManager)
+                return abortRegistered();
         }
 
         if(!guarded || !guardedDocument || !guardedStack || !guardedManager)
