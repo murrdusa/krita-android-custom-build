@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — protect Home and Android intent callbacks after document teardown
+
+- Audited `MobileKritaStandalonePilot::launch()`. The Home command's deferred close handler called `home->showHome()` using a raw widget pointer after `documents->closeDocumentView()`. Native Save/Discard/Cancel can synchronously destroy the window and child Home during the close transaction, producing a use-after-free. The startup Android-intent callback similarly used raw Home immediately after `attachAndOpen()`, which can dispatch Qt/Android lifecycle callbacks. Both paths now capture `QPointer<MobileDocumentHome>`, validate the window and Home after each destructive call, and suppress stale boot completion. Source `ae6a5a7`.
+- Added Qt-only tests modeling window destruction during deferred Home document close and Android-intent attachment, plus the surviving-window close path (`df01bdf`). The tests validate the Qt lifetime boundary, not Android's native Krita dialogs. Exact-revision PC Android build and test execution pending; no APK uploaded.
+
 ## November 16 — resolve interrupted native readiness instead of hanging startup
 
 - Followed up on the new `MobileNativeBootCoordinator::poll()` root-identity check. If `centralWidget()` changed or disappeared during the final readiness query, the code returned without calling `finish()` or queuing another poll. The boot attempt therefore remained pending indefinitely despite the coordinator/window still being alive. It now explicitly calls `finish(false)` to clear the pending state and preserve the existing safe desktop fallback. Source `d3f885e`.
