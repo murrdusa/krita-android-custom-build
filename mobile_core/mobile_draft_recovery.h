@@ -261,11 +261,11 @@ public:
         // replace the last published draft when exportSucceeded is false.
         // A readable staging file may still be the only recoverable copy.
         if(!hasReadableProject(staging)) {
-            // A failed export may have written partial user data before
-            // returning false. Retain its staging bytes for inspection or
-            // future recovery rather than deleting them in the error path.
-            // The next export owns replacing its own staging pathname.
-            if(exportSucceeded)QFile::remove(staging);
+            // Even when the exporter reports success, a failed validation
+            // can mean it raced another writer or observed a partially
+            // flushed archive. Do not delete bytes that may contain the
+            // only surviving unsaved strokes. A later export may replace
+            // this staging pathname; the last published draft stays intact.
             return false;
         }
         // ZIP validation can take significant time for a large draft.
