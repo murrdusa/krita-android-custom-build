@@ -55,9 +55,18 @@ private:
     void poll()
     {
         if(m_finished || !m_window)return;
-        if(!m_window->isVisible() ||
-           !m_window->centralWidget() ||
-           QApplication::activeModalWidget()) {
+        // Readiness checks may dispatch QWidget/Qt callbacks that
+        // destroy this coordinator's parent window. Track the original
+        // identities before checking visibility or the central widget.
+        const QPointer<MobileNativeBootCoordinator> alive(this);
+        const QPointer<QMainWindow> originalWindow=m_window;
+        const bool visible=originalWindow->isVisible();
+        if(!alive || !originalWindow)return;
+        const QPointer<QWidget> canvas=originalWindow->centralWidget();
+        if(!alive || !originalWindow)return;
+        const bool modal=QApplication::activeModalWidget()!=nullptr;
+        if(!alive || !originalWindow)return;
+        if(!visible || !canvas || modal) {
             if(++m_attempts>=m_maxAttempts) {
                 qWarning()<<"Independent Qt host startup was not ready";
                 finish(false);
@@ -66,7 +75,8 @@ private:
             }
             return;
         }
-        QPointer<MobileNativeBootCoordinator> alive=this;
+        if(originalWindow->centralWidget()!=canvas.data() ||
+           m_window!=originalWindow)return;
         // A native launch can synchronously destroy the Qt window and
         // this child coordinator. Never execute the std::function stored
         // in the coordinator: its storage may be freed mid-invocation.
