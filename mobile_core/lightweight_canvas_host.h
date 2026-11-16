@@ -104,12 +104,20 @@ public:
     {
         if(m_canvas || centralWidget())return nullptr;
         auto *root=new MobileNativeViewStack;
-        if(!installNativeCanvas(root)) {
-            delete root;
+        const QPointer<MobileNativeViewStack> candidate(root);
+        const QPointer<MobileLightweightCanvasHost> host(this);
+        const bool installed=installNativeCanvas(root);
+        if(!host)return nullptr;
+        if(!installed || !candidate) {
+            // Qt may synchronously delete the candidate while installing
+            // a central widget. Never delete its stale raw address again.
+            if(candidate && candidate->parentWidget()!=host.data())
+                delete candidate.data();
             return nullptr;
         }
-        m_nativeViewPort=QSharedPointer<MobileNativeViewPortAdapter>::create(root);
-        return root;
+        m_nativeViewPort=QSharedPointer<MobileNativeViewPortAdapter>::create(
+            candidate.data());
+        return candidate.data();
     }
 
     QSharedPointer<MobileViewHostPort> nativeViewPort() const
@@ -156,8 +164,13 @@ public:
         if(!canvas || centralWidget() || m_canvas || m_uiInstalled ||
            canvas->parentWidget() || canvas->window()!=canvas)
             return false;
+        // Reparenting the central widget can notify Qt observers that
+        // close the candidate or the entire host before this call returns.
+        const QPointer<MobileLightweightCanvasHost> host(this);
+        const QPointer<QWidget> candidate(canvas);
         setCentralWidget(canvas);
-        m_canvas=canvas;
+        if(!host || !candidate)return false;
+        m_canvas=candidate;
         return retainsOriginalCanvas();
     }
 
