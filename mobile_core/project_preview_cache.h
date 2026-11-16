@@ -70,7 +70,14 @@ public:
             // make a future-dated thumbnail valid indefinitely.
             if(age>1800 || age < -300)return {};
         }
-        QImageReader reader(entry.absoluteFilePath(),"png");
+        // Pruning may unlink an obsolete cache entry after QFileInfo
+        // validation. Open its inode once and let the decoder read from
+        // that stable handle instead of reopening a disappearing path.
+        // This avoids an unnecessary full-project preview extraction
+        // when a concurrent cache sweep races a gallery thumbnail.
+        QFile source(entry.absoluteFilePath());
+        if(!source.open(QIODevice::ReadOnly))return {};
+        QImageReader reader(&source,"png");
         const QSize size=reader.size();
         // Cache files are untrusted disk input. Reject malformed or very
         // large images before allocating their decoded pixel buffers.
