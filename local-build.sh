@@ -72,6 +72,9 @@ fi
 # smoke tests before that early exit, recording an explicit NOT RUN if
 # desktop Qt is unavailable in this WSL environment.
 if [[ "$MODE" == build ]]; then
+    # Reporter regression runs without desktop Qt, including on WSL
+    # hosts where the native lifecycle suite cannot yet compile.
+    python3 "$REPO/tests/test_build_reporter_qt_section.py"
     bash "$REPO/tests/run_mobile_lifecycle_smoke.sh" "$ROOT/persistent"
 fi
 if [[ ! -d "$ROOT/.git" ]]; then
