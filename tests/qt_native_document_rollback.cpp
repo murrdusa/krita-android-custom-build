@@ -104,6 +104,23 @@ int main(int argc,char **argv)
     app.processEvents();
     require(!canceled->load(),"queued completion survived destroyed document");
 
+    // Import metadata callbacks (including Android provider name and
+    // Krita MIME notification) may synchronously destroy an unregistered
+    // document. A guarded import must never invoke the KRA loader after
+    // that destruction, even when the original raw address was valid.
+    {
+        int loadCalls=0;
+        auto *imported=new FakeDocument;
+        const QPointer<FakeDocument> identity(imported);
+        const auto applyMime=[identity]() {
+            if(identity)delete identity.data();
+        };
+        applyMime();
+        if(identity)++loadCalls;
+        require(!identity && loadCalls==0,
+                "destroyed MIME import was passed to the KRA loader");
+    }
+
     qInfo()<<"PASS: attach failure rollback, duplicate prevention and"
               "ownership isolation";
     return 0;
