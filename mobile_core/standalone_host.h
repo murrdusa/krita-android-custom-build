@@ -447,6 +447,10 @@ private:
     }
     void runQuickAction(const QString &id)
     {
+        // Document workflow dialogs and native actions can destroy the
+        // entire standalone window before dispatch returns. The final
+        // refresh must not dereference a freed host.
+        const QPointer<MobileStandaloneWindow> alive(this);
         if(id.startsWith(QStringLiteral("native:"))) {
             QAction *action=m_engine.action(id.mid(7));
             if(action && action->isEnabled())action->trigger();
@@ -486,7 +490,7 @@ private:
         } else if(id==QStringLiteral("mobile:more")) {
             openMore();
         }
-        refresh();
+        if(alive)refresh();
     }
     void openMore()
     {
@@ -501,8 +505,9 @@ private:
             // Open after the menu closes; tool activation stays on Krita's
             // input manager and never routes pen strokes through this UI.
             QTimer::singleShot(0,this,[this]() {
+                const QPointer<MobileStandaloneWindow> alive(this);
                 MobileToolBrowser::open(m_engine,this);
-                refresh();
+                if(alive)refresh();
             });
         });
         menu.addSeparator();
@@ -632,15 +637,17 @@ private:
         connect(closeCanvas,&QAction::triggered,this,
                 [this,closeTarget]() {
             QTimer::singleShot(0,this,[this,closeTarget]() {
+                const QPointer<MobileStandaloneWindow> alive(this);
                 if(closeTarget)m_engine.closeDocumentView(closeTarget);
-                refresh();
+                if(alive)refresh();
             });
         });
         auto *saveAs=menu.addAction(i18n("Save As..."));
         connect(saveAs,&QAction::triggered,this,[this]() {
             QTimer::singleShot(0,this,[this]() {
+                const QPointer<MobileStandaloneWindow> alive(this);
                 MobileDocumentWorkflow::save(m_engine,this,true);
-                refresh();
+                if(alive)refresh();
             });
         });
         menu.addSeparator();
