@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — bound growing recovery association sidecars
+
+- Audited `MobileDraftRecovery::projectFor()`, which checks an untrusted `.project` sidecar is at most 16 KiB but previously then invoked `QFile::readAll()`. If an external/failed writer expands a sidecar between those operations, the read may allocate based on the changed file size while gallery or project deletion scans many drafts.
+- The reader now calls `read(16385)` and refuses a result larger than 16 KiB, preserving the existing `setProject()` write limit and current normal metadata behavior. The extra byte detects growth past the allowed boundary, without allocating an unbounded buffer.
+- Extended `tests/qt_saved_version_archive.cpp` with normal association round-trip, 16385-byte rejection, and exact 16384-byte acceptance. Source commit `9ebebfa13ffd767bf05da642de5671aa125e4055`; test commit `a7af074dcf7a19444ecf6acc6f1ca8b0f5803867`. Exact-revision Android build and test execution remain unverified. No APK uploaded.
+- Prior cache fix: `c6c66e49` corrected an Android compile error caused by redeclaring the `source` argument as a local `QFile`. The build watcher has so far reported only failures for older revisions `6c284e8e` and `0a16c584`, not the corrected revision.
+
 ## November 16 — fix Android build regression in stable thumbnail-file reads
 
 - The local Android watcher reported a **failed build** for `6c284e8e` (GitHub issue #94): the new `QFile source` inside `MobileProjectPreviewCache::load(const QString &source,...)` redeclared the existing method parameter, producing three clang errors and stopping `kritaui` compilation. This was a build-only regression introduced by the preceding cache-prune/read race patch.
