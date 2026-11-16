@@ -539,8 +539,14 @@ private:
             const QString otherDraft=other->property(
                 "_mobileDraftPath").toString();
             if(!stillSaving() || !other || !view.nativeView)return false;
-            if(MobileOpenDocumentDestinationPolicy::conflictsWithBackingFile(
-                   target,otherPath,otherDraft)) {
+            // Collision checks can canonicalize Android SAF paths and
+            // dispatch lifecycle callbacks that destroy the runtime.
+            // Always revalidate before obtaining the warning's parent.
+            const bool conflicts=
+                MobileOpenDocumentDestinationPolicy::conflictsWithBackingFile(
+                    target,otherPath,otherDraft);
+            if(!stillSaving() || !other || !view.nativeView)return false;
+            if(conflicts) {
                 const QPointer<QWidget> owner=m_runtime->window();
                 if(owner)
                     QMessageBox::warning(owner.data(),
@@ -564,12 +570,17 @@ private:
         const QString ownDraft=guardedDocument->property(
             "_mobileDraftPath").toString();
         if(!stillSaving())return false;
-        if(MobileOpenDocumentDestinationPolicy::conflictsWithOwnBackingFile(
-               target,currentPath,ownDraft,choosePath,exporting)) {
-            QMessageBox::warning(m_runtime->window(),
-                exporting?QObject::tr("Export a copy"):QObject::tr("Save drawing"),
-                QObject::tr("Choose a different file from the open drawing "
-                            "or its private recovery copy."));
+        const bool ownConflict=
+            MobileOpenDocumentDestinationPolicy::conflictsWithOwnBackingFile(
+                target,currentPath,ownDraft,choosePath,exporting);
+        if(!stillSaving())return false;
+        if(ownConflict) {
+            const QPointer<QWidget> owner=m_runtime->window();
+            if(owner)
+                QMessageBox::warning(owner.data(),
+                    exporting?QObject::tr("Export a copy"):QObject::tr("Save drawing"),
+                    QObject::tr("Choose a different file from the open drawing "
+                                "or its private recovery copy."));
             return false;
         }
         // A modeless picker or another UI callback may have activated a
