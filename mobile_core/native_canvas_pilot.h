@@ -63,7 +63,10 @@ public:
             "padding:5px;min-height:43px;font-size:13px;}");
         auto *back=makeButton(i18n("Back"),header);
         QObject::connect(back,&QToolButton::clicked,back,[this]() {
-            if(m_exit)m_exit();
+            // Exiting can synchronously destroy this pilot. Keep the
+            // callback's std::function storage alive during invocation.
+            const auto exit=m_exit;
+            if(exit)exit();
         });
         headerRow->addWidget(back);
         m_document=makeButton(i18n("Canvases"),header);
@@ -78,8 +81,15 @@ public:
             // below a still-dispatching toolbar event.
             QTimer::singleShot(0,&m_refresh,[this]() {
                 if(!m_backend || !m_chrome.active())return;
-                MobileDocumentSwitcher::open(m_engine,m_backend);
-                refresh();
+                // The nested document dialog can close the native window
+                // or switch canvas hosts and destroy this pilot. Copy the
+                // engine bridge out of the pilot before entering it and
+                // never refresh a destroyed pilot on dialog return.
+                const QPointer<QTimer> alive(&m_refresh);
+                const QPointer<QWidget> owner(m_backend);
+                const MobileEngineBridge engine=m_engine;
+                MobileDocumentSwitcher::open(engine,owner.data());
+                if(alive)refresh();
             });
         });
         headerRow->addWidget(m_document,1);
