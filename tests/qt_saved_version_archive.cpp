@@ -1512,6 +1512,26 @@ int main(int argc,char **argv)
             "valid maximum-length association metadata was rejected");
     QFile::remove(metadata);
 
+    // Long-running background saves must not trigger a full pending
+    // checkpoint scan every two seconds indefinitely. Completed-save
+    // signals can still wake the runtime immediately; this is the
+    // bounded watchdog path only.
+    const int retryDelays[]={2000,4000,8000,16000,16000};
+    int retryAttempt=0;
+    for(int delay:retryDelays) {
+        require(MobilePendingDraftRetryPolicy::timeoutMs(retryAttempt)==delay,
+                "pending draft backoff delay was not bounded");
+        retryAttempt=MobilePendingDraftRetryPolicy::afterTimeoutScheduled(
+            retryAttempt);
+    }
+    require(retryAttempt==3 &&
+            MobilePendingDraftRetryPolicy::timeoutMs(-100)==2000 &&
+            MobilePendingDraftRetryPolicy::timeoutMs(1000000)==16000 &&
+            MobilePendingDraftRetryPolicy::afterTimeoutScheduled(1000000)==3 &&
+            MobilePendingDraftRetryPolicy::afterTimeoutScheduled(-1)==1 &&
+            MobilePendingDraftRetryPolicy::timeoutMs(0)==2000,
+            "pending draft retries did not clamp/reset their backoff");
+
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
                " provider identity, SAF tree normalization and legacy migration";
     return 0;
