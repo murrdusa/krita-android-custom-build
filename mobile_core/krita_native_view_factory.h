@@ -232,8 +232,10 @@ public:
                 });
             // Installing the window/surface observer can synchronously
             // deliver Qt events; do not mark a destroyed root as wired.
+            // If the original view remains registered, release that
+            // partial attachment just like the other late failures.
             if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
-                return nullptr;
+                return abortRegistered();
             stack->setProperty("_mobileStudioKritaSelectionWired",true);
         }
 
