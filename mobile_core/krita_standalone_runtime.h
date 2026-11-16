@@ -85,6 +85,15 @@ public:
         const QPointer<MobileKritaStandaloneRuntime> alive(runtime);
         const QPointer<MobileLightweightCanvasHost> guardedHost(host);
         const QPointer<MobileNativeViewStack> guardedRoot(root);
+        // Plugin/action setup can fail after allocating the runtime,
+        // its action collection, manager and checkpoint timers. A
+        // surviving host must not retain these partially initialized
+        // QObject children until its eventual shutdown. All early
+        // returns retire the still-live runtime; an observer that has
+        // already destroyed it leaves only an empty QPointer.
+        auto rollback=qScopeGuard([alive]() {
+            if(alive)delete alive.data();
+        });
         // Diagnostic collection is opt-in and has no effect on painting
         // or autosave when disabled.
         runtime->m_memoryDiagnosticsEnabled=QSettings().value(
@@ -152,6 +161,7 @@ public:
             // and foreground-loss checkpoints remain authoritative.
             runtime->checkpointDrafts();
         });
+        rollback.dismiss();
         return runtime;
     }
 
