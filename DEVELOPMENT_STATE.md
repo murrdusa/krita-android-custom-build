@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — guard recovery hooks during independent canvas attachment
+
+- `MobileKritaStandaloneRuntime::attachDocument()` now revalidates the runtime, document, view root and view manager after each recovery signal connection. A native Qt/Krita callback can replace the host or destroy the document during attachment; subsequent signal registration must not use freed QObject pointers. The final return also verifies that the original root and manager still belong to the runtime.
+- Background-save completion and document-destruction callbacks capture a guarded `QPointer<MobileKritaStandaloneRuntime>` rather than a raw `this`, so callbacks do not dereference an already-destroyed runtime. The existing QObject receiver still disconnects these callbacks during teardown.
+- Commit `706ad8343728b17f68346e6e46f4abc3f1c8e0a3`. This is an Android/Krita engine integration path; no host-only Qt regression fixture can instantiate the required Krita view manager and document signals. Exact-revision Android compilation and device behavior remain unverified; no APK uploaded.
+
 ## November 16 — protect independent background draft checkpoints from document teardown
 
 - `MobileKritaStandaloneRuntime::checkpointDrafts()` now retains each candidate document as a `QPointer<KisDocument>` and checks that the native root, runtime and document still exist between ownership, modified-state, private-draft metadata and active-saving queries. A synchronous document/Qt callback can close the canvas while a background/quit checkpoint is traversing the document list; later operations must not dereference the deleted original pointer.
