@@ -26,6 +26,26 @@ static void drain()
 int main(int argc,char **argv)
 {
     QApplication app(argc,argv);
+    // Validate the same retry policy used by the Android GL surface,
+    // including saturated counts from malformed/stale Qt properties.
+    require(MobileFirstSwapRetryPolicy::timeoutMs(0)==2000 &&
+            MobileFirstSwapRetryPolicy::timeoutMs(1)==4000 &&
+            MobileFirstSwapRetryPolicy::timeoutMs(2)==8000 &&
+            MobileFirstSwapRetryPolicy::timeoutMs(3)==16000 &&
+            MobileFirstSwapRetryPolicy::timeoutMs(1000000)==16000 &&
+            MobileFirstSwapRetryPolicy::timeoutMs(-100)==2000,
+            "first-frame retry delays exceeded the bounded policy");
+    int attempt=0;
+    const int expectedDelays[]={2000,4000,8000,16000,16000};
+    for(int delay:expectedDelays) {
+        require(MobileFirstSwapRetryPolicy::timeoutMs(attempt)==delay,
+                "GL retry progression used an incorrect delay");
+        attempt=MobileFirstSwapRetryPolicy::afterTimeoutScheduled(attempt);
+    }
+    require(attempt==3 &&
+            MobileFirstSwapRetryPolicy::afterTimeoutScheduled(-1)==1 &&
+            MobileFirstSwapRetryPolicy::afterTimeoutScheduled(999)==3,
+            "GL retry progression did not clamp an out-of-range count");
     QWidget window;
     auto *layout=new QVBoxLayout(&window);
     auto *root=new QWidget;
