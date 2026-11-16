@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — fix Android build regression in stable thumbnail-file reads
+
+- The local Android watcher reported a **failed build** for `6c284e8e` (GitHub issue #94): the new `QFile source` inside `MobileProjectPreviewCache::load(const QString &source,...)` redeclared the existing method parameter, producing three clang errors and stopping `kritaui` compilation. This was a build-only regression introduced by the preceding cache-prune/read race patch.
+- Renamed the local reader device to `cachedFile` and updated its `open()` and `QImageReader` references, leaving the stable open-file-handle behavior intact. Source fix `c6c66e49d6e679b5952ec9a2163a00c516d8930e`. The existing Qt regression for unlinking an already-open PNG remains in `tests/qt_project_preview_cache.cpp`. Exact-revision compile and test results must be checked in the watcher; no APK uploaded.
+
 ## November 16 — keep gallery cache PNG decodes stable across concurrent pruning
 
 - Audited `MobileProjectPreviewCache::load()` and `pruneLocked()`. The cache loader previously validated a PNG with `QFileInfo`, then passed the original path to `QImageReader`. Concurrent background gallery cache retention can unlink that file between the two operations, causing a cache miss and unnecessary re-extraction of the source KRA preview (and temporary image allocations).
