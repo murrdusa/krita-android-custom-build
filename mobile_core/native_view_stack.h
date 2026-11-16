@@ -172,12 +172,22 @@ public:
         return const_cast<MobileNativeViewStack*>(this)->closeImpl(identity);
     }
 
-    // Called when a native engine view is destroyed by another route.
-    // This never destroys or reparents the remaining painting views.
+    // Explicit engine-side deregistration can happen independently of
+    // native Close. If the removed view survives, removeWidget() keeps it
+    // parented to this stack; retire that unregistered child after Qt
+    // signals unwind. A view re-adopted or transferred in the meantime
+    // remains owned by its new registration/host.
     bool forgetView(const QPointer<QObject> &identity)
     {
         Row *row=uniqueRow(identity);
-        return row && forgetToken(row->token);
+        if(!row)return false;
+        const quint64 token=row->token;
+        const QPointer<QWidget> original=row->view;
+        const QPointer<MobileNativeViewStack> host(this);
+        const bool removed=forgetToken(token);
+        if(removed && host && original)
+            retireDetachedView(host,original);
+        return removed;
     }
 
 private:
