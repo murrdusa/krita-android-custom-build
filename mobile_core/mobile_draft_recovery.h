@@ -182,9 +182,10 @@ public:
         for(const QFileInfo &pending:candidates) {
             const QString path=pending.absoluteFilePath();
             const QString draft=path.left(path.size()-suffix.size());
-            if(!hasReadableProject(path))continue;
-            // An exporter that resumed writing during validation must
-            // retain ownership of its staging file.
+            // A resumed exporter owns its staging file. Avoid a second
+            // expensive ZIP/KoStore validation here: publish() already
+            // verifies readability and rechecks the file's size/mtime
+            // around that validation before rescuing anything.
             if(!unchangedStaging(pending))continue;
             // False prevents replacing the previous published draft.
             publish(draft,false);
