@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — prevent GL first-frame callback null dereference after property notification
+
+- Inspected native first-swap GL callback lifetime. The `frameSwapped` handler cleared `_mobileWaitingForFirstSwap` on the `QPointer<QOpenGLWidget>` and immediately dereferenced `watched->isValid()` without rechecking the guarded pointer. Qt dynamic-property notifications can synchronously tear down the watched surface. In that case the QPointer clears during `setProperty()`, and the subsequent dereference could crash.
+- The frame-swap completion path now checks `watched && watched->isValid()` after disarming the flag before touching the retry count. Existing first-frame retry behavior, renderer ownership and backoff policy remain unchanged. This fix is confined to the property-change reentrancy boundary.
+- Added a Qt-only regression to `tests/qt_canvas_resume_observer.cpp` that deletes a surface from its `DynamicPropertyChange` event filter when the first-frame flag is cleared, then verifies the guarded follow-up retry reset is skipped. Source commit `eba641bd78c578724a53a798fcd6cb911f6d2d4a`; test commit `226bd7a721ac689bb99a7ff556357bc73fc85185`. Exact-revision compilation and Qt test execution remain pending. No APK uploaded.
+
 ## November 16 — remove redundant recovery enumeration on project deletion
 
 - Reviewed `MobileDraftRecovery::hasProjectDraft()` after the prior streaming-lookup optimization. To preserve orphaned, completed `.pending.kra` rescue it called `list(1)` first, which still enumerated all published drafts and performed bounded heap selection. It then enumerated the same published drafts again for the actual existence check. On an unusually large recovery directory, the unnecessary first traversal increases main-thread disk work and latency.
