@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — protect standalone More menu during host destruction
+
+- Audited `MobileStandaloneHost::openMore()`: its stack-allocated `QMenu menu(this)` was owned by the Android host while `menu.exec()` ran a nested event loop. If the host was synchronously destroyed by a document action, Qt could delete the stack menu while its own stack frame remained live. Changed it to an independent `QMenu` that is explicitly closed on host destruction (`aec528d`).
+- Added a Qt-only regression with a populated menu, host deletion while `exec()` is running, and post-unwind checks that the host is gone and menu is closed (`129a624`, `6366b89`). Native Qt host regression tests remain unavailable without WSL Qt5Widgets development libraries; exact new revision build status must be checked. No APK uploaded.
+
+
 ## November 16 — unwind Quick Actions nested chooser on editor rejection
 
 - Found a teardown gap in `MobileQuickActions::choose()`. The chooser was independently owned and connected to the outer editor's `destroyed` signal, but toolbar teardown now rejects rather than destroys the stack-owned editor. A nested chooser could therefore remain modal with an already-dismissed owner. The chooser now also observes `QDialog::rejected` from its originating editor and rejects itself (`74e58d3`).
