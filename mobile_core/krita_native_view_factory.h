@@ -447,11 +447,25 @@ private:
                                         if(watched)
                                             watched->setProperty(
                                                 "_mobileWaitingForFirstSwap",false);
+                                        if(!manager || !root || !selected || !watched ||
+                                           !selected->isVisible() ||
+                                           root->currentWidget()!=selected.data())
+                                            return;
+                                        // KisView::document() and currentDocument()
+                                        // can reenter Krita document notifications.
+                                        // Capture the original document once and
+                                        // recheck the view/root after each query.
+                                        const QPointer<KisDocument> document(
+                                            selected->document());
                                         if(!manager || !root || !selected ||
-                                           !watched || !selected->isVisible() ||
+                                           !watched || !document ||
+                                           root->currentWidget()!=selected.data())
+                                            return;
+                                        const auto activeDocument=root->currentDocument();
+                                        if(!manager || !root || !selected ||
+                                           !watched || !document ||
                                            root->currentWidget()!=selected.data() ||
-                                           !selected->document() ||
-                                           root->currentDocument()!=selected->document())
+                                           activeDocument.data()!=document.data())
                                             return;
                                         // The root's existing activation
                                         // timer rechecks GL readiness. Do not
