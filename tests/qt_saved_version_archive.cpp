@@ -1441,6 +1441,29 @@ int main(int argc,char **argv)
     require(!MobileDraftRecovery::hasProjectDraft(rescueAssociation),
             "rescued association remained after fixture cleanup");
 
+    // A project association is limited to 16 KiB on write. A damaged
+    // or concurrently growing sidecar must never trigger a readAll()
+    // allocation proportional to its eventual size.
+    const QString boundedAssociation=MobileDraftRecovery::allocate(
+        QStringLiteral("bounded-association"));
+    require(!boundedAssociation.isEmpty(),
+            "cannot allocate bounded association fixture");
+    const QString metadata=boundedAssociation+QStringLiteral(".project");
+    const QString safeAssociation=temp.filePath(
+        QStringLiteral("bounded-project.kra"));
+    require(MobileDraftRecovery::setProject(boundedAssociation,safeAssociation) &&
+            MobileDraftRecovery::projectFor(boundedAssociation)==safeAssociation,
+            "bounded recovery association failed normal round trip");
+    save(metadata,QByteArray(16385,'x'));
+    require(MobileDraftRecovery::projectFor(boundedAssociation).isEmpty(),
+            "oversized recovery association metadata was accepted");
+    // Writer and reader must agree at the exact 16 KiB boundary.
+    const QString maxAssociation(16384,QLatin1Char('a'));
+    save(metadata,maxAssociation.toUtf8());
+    require(MobileDraftRecovery::projectFor(boundedAssociation)==maxAssociation,
+            "valid maximum-length association metadata was rejected");
+    QFile::remove(metadata);
+
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
                " provider identity, SAF tree normalization and legacy migration";
     return 0;
