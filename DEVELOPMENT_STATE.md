@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — keep gallery cache PNG decodes stable across concurrent pruning
+
+- Audited `MobileProjectPreviewCache::load()` and `pruneLocked()`. The cache loader previously validated a PNG with `QFileInfo`, then passed the original path to `QImageReader`. Concurrent background gallery cache retention can unlink that file between the two operations, causing a cache miss and unnecessary re-extraction of the source KRA preview (and temporary image allocations).
+- `load()` now opens `QFile` before constructing `QImageReader(&source, "png")`. The decoder reads through the already-open file descriptor, which remains usable if a concurrent sweep unlinks the name on Android/Linux. The existing size, symlink and decoder dimension guards, cancellation checks, and retention quotas are unchanged.
+- Added a Qt regression in `tests/qt_project_preview_cache.cpp` that opens a PNG, unlinks its pathname where the filesystem permits, then decodes through the still-live file handle. Source commit `6c284e8e436cf0875d656fb23662f3ea6d590999`; regression commit `8030aa65895868f120c09d0e0135e4d6d94ee5fa`. The preceding wide-thumbnail cache fix compiled successfully at `0d1db51a`; exact-revision compilation and test execution for this change remain pending. No APK uploaded.
+
 ## November 16 — cache safe wide-canvas gallery previews without repeated full-size decoding
 
 - Audited `MobileProjectPreviewCache` memory and cache admission. Preview decode accepts dimensions up to 8192 pixels with at most 16 megapixels, but `store()` separately rejected any already-decoded image wider or taller than 4096 pixels **before** downscaling to a 124 px gallery icon. A valid 8192×256 source therefore could not be cached, causing repeated full-preview extraction and temporary bitmap allocations on future gallery visits.
