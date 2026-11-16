@@ -607,12 +607,20 @@ public:
         });
 
         QObject::connect(versionsAction,&QAction::triggered,window,
-                         [alive,home,views=services.views]() {
-            if(!alive || !views)return;
-            const auto *doc=qobject_cast<KisDocument*>(views->currentDocument().data());
-            if(!doc)return;
+                         [alive,guardedHome,views=services.views]() {
+            if(!alive || !guardedHome || !views)return;
+            const QPointer<KisDocument> doc=qobject_cast<KisDocument*>(
+                views->currentDocument().data());
+            if(!alive || !guardedHome || !doc)return;
             const QString path=doc->path();
-            QTimer::singleShot(0,home,[home,path]() {home->showSavedVersions(path);});
+            // A document provider lookup can close the current canvas
+            // and its Home widget before the deferred gallery opens.
+            if(!alive || !guardedHome || !doc)return;
+            QTimer::singleShot(0,guardedHome.data(),
+                               [alive,guardedHome,path]() {
+                if(alive && guardedHome)
+                    guardedHome->showSavedVersions(path);
+            });
         });
 
         QObject::connect(closeAction,&QAction::triggered,window,
