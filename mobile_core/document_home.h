@@ -512,7 +512,10 @@ public:
         const QPointer<QLabel> explanationGuard(explanation);
         const QPointer<QPushButton> openGuard(open);
         const QIcon placeholder=m_placeholder;
-        QThreadPool::globalInstance()->start(
+        // Version-history enumeration and preview extraction may read
+        // many large KRA files. Share the serialized recovery I/O pool,
+        // not the global Qt pool used by interactive drawing operations.
+        recoveryPool().start(
             [path,target,application,explanationGuard,openGuard,placeholder,versions,cancelled,queuedPreviews]() {
             if(cancelled->load() || !application)return;
             const auto found=MobileSavedVersionArchive::listForBrowser(
