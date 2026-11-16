@@ -340,7 +340,17 @@ public:
         // but do not materialize and sort every unrelated draft merely
         // to find checkpoints for one named project.
         rescueOrphanStaging(folder);
+        // The automatic Open fallback needs only the newest usable
+        // checkpoints, not an unbounded in-memory inventory of every
+        // draft ever associated with this project. Older files remain
+        // available in the manual recovery gallery.
+        constexpr int maxOpenCandidates=32;
         QFileInfoList result;
+        const auto newer=[](const QFileInfo &a,const QFileInfo &b) {
+            if(a.lastModified()!=b.lastModified())
+                return a.lastModified()>b.lastModified();
+            return a.fileName()>b.fileName();
+        };
         QDirIterator completed(folder,{QStringLiteral("*.kra")},
                                QDir::Files|QDir::Readable|QDir::NoSymLinks);
         while(completed.hasNext()) {
@@ -349,19 +359,25 @@ public:
             if(draft.lastModified().toMSecsSinceEpoch()<=savedModified ||
                !isDraft(draft.absoluteFilePath()))
                 continue;
+            // When the heap is full, avoid opening an old KRA merely
+            // to learn it cannot enter the newest recovery candidates.
+            if(result.size()==maxOpenCandidates &&
+               !newer(draft,result.front()))continue;
             if(MobileSavedVersionArchive::canonicalIdentity(
-                   projectFor(draft.absoluteFilePath()))==identity &&
-               hasReadableProject(draft.absoluteFilePath()))
+                   projectFor(draft.absoluteFilePath()))!=identity ||
+               !hasReadableProject(draft.absoluteFilePath()))continue;
+            if(result.size()<maxOpenCandidates) {
                 result.append(draft);
+                std::push_heap(result.begin(),result.end(),newer);
+            } else {
+                std::pop_heap(result.begin(),result.end(),newer);
+                result.last()=draft;
+                std::push_heap(result.begin(),result.end(),newer);
+            }
         }
         // Recovery offers the newest valid project checkpoint first,
         // breaking timestamp ties deterministically like list().
-        std::sort(result.begin(),result.end(),
-                  [](const QFileInfo &a,const QFileInfo &b) {
-            if(a.lastModified()!=b.lastModified())
-                return a.lastModified()>b.lastModified();
-            return a.fileName()>b.fileName();
-        });
+        std::sort(result.begin(),result.end(),newer);
         return result;
     }
 
