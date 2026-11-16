@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — back off pending background-draft retries during lengthy saves
+
+- Followed up on deferred autosave retry (`136ad7c4`). Android's watchdog checked `m_pendingDrafts` every two seconds until a document's current Krita save finished. This was safe from uncontrolled timer allocation because of `m_draftRetryQueued`, but a long or stuck save still woke the app and rechecked the same document every two seconds.
+- Added Qt-only `MobilePendingDraftRetryPolicy` with clamped 2, 4, 8, and 16-second retry delays, remaining at 16 seconds thereafter. `MobileKritaStandaloneRuntime::continueDrafts()` increases this backoff only when a pending document remains and resets it once the pending queue drains. The existing `sigCompleteBackgroundSaving` connection continues to trigger an immediate continuation when Krita reports completed saving; QObject-owned timers are still cancelled on runtime teardown.
+- `tests/qt_saved_version_archive.cpp` verifies delay progression, saturation for extreme positive counts, negative input handling, and reset to the first delay. Policy commit `e22e379a678caed35f43ef6b2ae6031726cd9174`, runtime integration `710c8561c09f85c16b0f99699a987f2b6bf01fe6`, regression `f9df338808c2bc3155c40933ae547a473399244e`. The last watcher-confirmed Android build was successful at `1a24b341`; these latest revisions still require compilation and Qt test execution. No APK uploaded.
+
 ## November 16 — retry deferred background autosaves after a concurrent save
 
 - Audited `MobileKritaStandaloneRuntime::checkpointDrafts()` and `continueDrafts()`. If Android backgrounds the app while a document's Krita save is already in progress, the runtime records that document in `m_pendingDrafts` and queues one immediate continuation. The continuation can still see `isSaving()==true` and leave the document pending without any further wakeup. That can miss the intended private background checkpoint until another app event.
