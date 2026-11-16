@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — cache safe wide-canvas gallery previews without repeated full-size decoding
+
+- Audited `MobileProjectPreviewCache` memory and cache admission. Preview decode accepts dimensions up to 8192 pixels with at most 16 megapixels, but `store()` separately rejected any already-decoded image wider or taller than 4096 pixels **before** downscaling to a 124 px gallery icon. A valid 8192×256 source therefore could not be cached, causing repeated full-preview extraction and temporary bitmap allocations on future gallery visits.
+- `store()` now reuses `safePreviewDecodeSize(image.size())` to accept only the same bounded 8192 px/16 MP input dimensions that extraction permits. All accepted images are still downscaled to at most 124×124 before PNG encoding, subject to the existing 32 MiB file and 128 MiB cache quotas.
+- Expanded `tests/qt_project_preview_cache.cpp` with an 8192×256 input, verifying the cached 124×4 result and color, and adjusted the oversized-input regression to 8193×1 (outside the actual decode policy). Source commit `b35d7181bd43668d435fee101b98003399be7312`; regression commit `0e4e411b3ae8a374932972dec5c9eb1fcbdc0b17`. Source-only and Qt tests require exact-revision execution; no APK uploaded.
+
 ## November 16 — guard native first-frame retry across document ownership queries
 
 - Reviewed the first-frame OpenGL timeout path following the earlier reentrant surface-destruction fix. It checked `selected->document()`, then queried `root->currentDocument()`, then read `selected->document()` a second time. Krita host/document observers can close or replace the selected document while resolving ownership, so the second raw lookup could use stale view/document state during graphics recovery.
