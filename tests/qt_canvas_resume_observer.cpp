@@ -46,6 +46,12 @@ int main(int argc,char **argv)
             MobileFirstSwapRetryPolicy::afterTimeoutScheduled(-1)==1 &&
             MobileFirstSwapRetryPolicy::afterTimeoutScheduled(999)==3,
             "GL retry progression did not clamp an out-of-range count");
+    // Successful context restoration can precede frameSwapped. Starting
+    // another context-loss episode must not inherit saturated backoff.
+    attempt=MobileFirstSwapRetryPolicy::afterSurfaceReady();
+    require(attempt==0 &&
+            MobileFirstSwapRetryPolicy::timeoutMs(attempt)==2000,
+            "restored GL surface retained stale first-frame retry backoff");
     QWidget window;
     auto *layout=new QVBoxLayout(&window);
     auto *root=new QWidget;
