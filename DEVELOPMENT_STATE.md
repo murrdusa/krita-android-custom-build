@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — abort deferred Save/Close after reentrant window destruction
+
+- `MobileDeferredViewCommand::schedule()` now captures a `QPointer` to the initiating context **before** its first backend query and checks the owner again after each potentially reentrant `openViews()` / `currentDocument()` lookup, including the queued dispatch path. Previously a synchronous engine observer could destroy the initiating native window during a lookup, yet subsequent code would continue consulting the backend or queue an action using the destroyed context. The updated dispatch refuses to call the captured Save/Close command if the owner, view or document vanishes during the lookup.
+- `tests/qt_deferred_view_command.cpp` now exercises owner destruction during both initial and queued view/document reads, in addition to existing view-switch, stale-identity, and normal owner-teardown tests. The initial new test fixture explicitly selects the still-live second canvas after its earlier deliberate first-canvas deletion.
+- Source commit `ad31196d1a448c9c96e93c199654d95d7a2ea349`; regression commits `07e75f55fd7f01039d76e4ca86e31d132c817355` and `3aa020801e6247a43a7ee4eef1eecc71f2069a04`. Local Android exact-revision compilation, standalone Qt regression execution, and Fold 6 behavior are **not yet confirmed**. No APK uploaded.
+
 ## November 15 — safely unwind touch gesture modals during Android teardown
 
 - `MobileKritaNativeWorkspace::openTouchGestures()` used a stack `QDialog` parented to the native window; its nested "More actions" picker was another stack dialog parented to the combo box. Window teardown during either `exec()` could destroy a stack dialog through QObject parenting, then resume code referencing destroyed controls. Both dialogs now use independent stack ownership. Native-window destruction rejects the outer dialog, whose rejection also rejects any running inner picker; the combo's destruction directly rejects its picker as well. `QPointer` checks prevent accessing the disappeared combo or committing settings when the workspace/owner no longer exists. A call with no parent still supports accepted changes.
