@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — complete late-attachment rollback after resume observer setup
+
+- Reviewed the new `MobileKritaNativeViewFactory::attach()` rollback added in `2d01005` against every post-`adoptView()` failure branch. The resume-observer installation branch still returned `nullptr` directly if a synchronous Android/window callback destroyed the candidate manager, canvas or document, bypassing the new registered-canvas cleanup. That branch now calls `abortRegistered()` as well; unrelated tabs remain registered.
+- Added a host Qt regression to `tests/qt_native_view_stack.cpp` with two canvases: it forgets only the simulated failed attachment by view identity, deletes its detached widget, and verifies that the other view/document remains registered and selected. The test covers Qt stack ownership, not the Krita observer itself. Source commit `bb22001b6a4c44b8f11f6b8736e145698f253a8d`; test commit `a6652e0d1ab03cfef9692d9e6f67db3ef65c5786`. Exact-revision Android compilation and host test execution not yet confirmed; no APK uploaded.
+
 ## November 15 — roll back a registered native canvas after failed late attachment
 
 - `MobileKritaNativeViewFactory::attach()` now removes the candidate's original native-stack registration when a later synchronous selection, document-state, or resume-observer callback invalidates the document, canvas, root or Krita manager. Before this change, several late `return nullptr` paths occurred *after* `adoptView()` succeeded, leaving a registered partially initialized canvas behind although the caller was told attachment failed. The rollback verifies the original view/document registration before `forgetView()`, and deletes the detached `KisView` only if its native manager and original Qt owner are still live. If another host has adopted/reparented the widget, it is left untouched. This does not change Save/Discard/Cancel semantics or delete unrelated canvases.
