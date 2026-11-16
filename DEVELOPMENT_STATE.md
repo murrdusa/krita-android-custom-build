@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — one-shot first GL frame activation
+
+- The first-frame OpenGL `frameSwapped` listener is now a one-shot child receiver. It disconnects before scheduling the existing deferred activation and deletes itself after the callback, avoiding perpetual startup checks on every subsequent painting frame. The listener is also destroyed with its owning view if startup aborts.
+- Change committed as `8a2169c6f47bf7014c95ff488fad02e4258dea7a`. Exact-revision local Android compile and Fold 6 runtime remain to be verified; no APK published.
+
 ## November 15 — canvas creation and brush/menu lifetime
 
 - Native views size to the canvas stack before loading and rely on the stack for visibility. New blank canvases use Krita’s first projection on a ready surface, with a refresh retained if layout or surface initialization needs it.
