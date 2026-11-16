@@ -7,6 +7,7 @@
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QMessageBox>
+#include <QPointer>
 #include <QSettings>
 #include <QSysInfo>
 #include <QThreadPool>
@@ -41,12 +42,18 @@ inline void copy()
              settings.value(QStringLiteral("MobileStudio/previousCrashPhase")).toString(),
              settings.value(QStringLiteral("MobileStudio/previousCrashCheckpoint")).toString(),
              settings.value(QStringLiteral("MobileStudio/crashCheckpoint")).toString());
-    QThreadPool::globalInstance()->start([header]() {
+    // Exit-history retrieval can finish after Android destroys the
+    // QApplication. Never post to qApp by a stale global pointer.
+    const QPointer<QCoreApplication> application(qApp);
+    if(!application)return;
+    QThreadPool::globalInstance()->start([header,application]() {
+        if(!application)return;
         const auto result=QAndroidJniObject::callStaticObjectMethod(
             "org/krita/android/MainActivity","studioProcessExitReport","()Ljava/lang/String;");
         const QString report=header+(result.isValid()?result.toString():
             QStringLiteral("Android exit history unavailable.\n"));
-        QMetaObject::invokeMethod(qApp,[report]() {
+        if(!application)return;
+        QMetaObject::invokeMethod(application.data(),[report]() {
             if(auto *clipboard=QGuiApplication::clipboard()) {
                 clipboard->setText(report);
                 QMessageBox::information(QApplication::activeWindow(),
