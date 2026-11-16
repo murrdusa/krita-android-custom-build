@@ -107,14 +107,19 @@ public:
 protected:
     bool event(QEvent *event) override
     {
+        const QPointer<MobileToolbarGestureButton> alive(this);
         switch(event->type()) {
         case QEvent::Hide:
         case QEvent::UngrabMouse:
         case QEvent::WindowDeactivate:
             cancelGesture();
+            if(!alive)return true;
             break;
         case QEvent::EnabledChange:
-            if(!isEnabled())cancelGesture();
+            if(!isEnabled()) {
+                cancelGesture();
+                if(!alive)return true;
+            }
             break;
         case QEvent::TouchBegin:
         case QEvent::TouchUpdate:
@@ -209,7 +214,9 @@ private:
             } else if(m_sampling && (!inlineDrag || m_command==QStringLiteral("eyedropper"))) {
                 m_axis=2;
             }
+            const QPointer<MobileToolbarGestureButton> alive(this);
             setDown(false);
+            if(!alive)return;
         }
         const QPointer<MobileToolbarGestureButton> alive(this);
         if(m_dragged)dispatch(pos,MobileToolbarDrag::Phase::Preview);
