@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — independent engine first-frame OpenGL lifecycle hardening
+
+- `MobileKritaNativeViewFactory::scheduleActivation()` now checks that the selected Krita view, native document root, manager, and GL canvas are still the same live objects after Qt dynamic-property changes and repaint requests. A first-frame property notification may synchronously close a drawing or replace a canvas while the Android window is being recreated; previously the code could continue creating a swap receiver or reading a destroyed document/surface.
+- The invalid-context retry revalidates the surface immediately after marking `_mobileWaitingForFirstSwap`, before allocating or connecting its one-shot `frameSwapped` receiver. Its callback also checks the selected view after each property read/write before scheduling another activation. Initial projection readiness, `_mobileBlankCanvas`, and pending-swap metadata are read with intervening lifetime/identity checks.
+- The final paint/update path rechecks current view ownership after `surface->update()` and guards the native top-level `QWindow` before `requestUpdate()`. No additional OpenGL contexts or duplicated canvas buffers are introduced. No changes to Krita's painting algorithms, undo history, or KRA saving.
+- Source commits `1f2b8183ba04665177afdba6971bae1960ed624c`, `e1d6d827442af6ba3bbfa68a2f2e08bd1dab7fd5`, `19ed87c4a25d008fcbc349f443def375d8d1eaac`. This Android/Krita GL path cannot be exercised by the existing standalone Qt widget fixtures. Exact-revision WSL Android compilation, device first-frame behavior and crash reduction are **not yet verified**; no APK uploaded.
+
 ## November 16 — guard periodic stationary canvas refresh from synchronous teardown
 
 - `MobileNativeCanvasPilot::refresh()` now snapshots its engine bridge and tracks its member timer with a `QPointer` throughout UI and native-document updates. Krita queries and Qt widget methods (including visibility, title, layout and panel refresh changes) can synchronously notify observers that destroy the pilot or replace its workspace. Each potentially reentrant operation is followed by a lifetime check, and each panel is separately guarded before further use. A destroyed document title/panel aborts that refresh rather than dereferencing an invalid QObject. No Krita document, painting, recovery, or Save/Discard behavior changed.
