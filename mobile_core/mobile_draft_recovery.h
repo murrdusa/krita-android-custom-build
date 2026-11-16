@@ -96,12 +96,18 @@ public:
     {
         // Do not feed an oversized, replaced, or special filesystem entry
         // to KoStore during background recovery discovery.
-        const QFileInfo entry(path);
         constexpr qint64 maxArchiveBytes=8LL*1024*1024*1024;
+        const QFileInfo entry(path);
         if(!entry.isFile() || entry.isSymLink() ||
            entry.size()<4 || entry.size()>maxArchiveBytes)return false;
         QFile file(path);
-        return file.open(QIODevice::ReadOnly) &&
+        if(!file.open(QIODevice::ReadOnly))return false;
+        // The path can be replaced between QFileInfo and open(). Check
+        // the opened handle as well, so a newly oversized or special
+        // file does not pass the cheap recovery discovery guard.
+        const QFileInfo opened(file);
+        return opened.isFile() && !opened.isSymLink() &&
+            file.size()>=4 && file.size()<=maxArchiveBytes &&
             file.peek(4)==QByteArray::fromHex("504b0304");
     }
 
