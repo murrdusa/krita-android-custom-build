@@ -387,6 +387,11 @@ private:
                                 // A child receiver owns the connection and disconnects
                                 // before requesting the deferred activation.
                                 auto *firstSwap=new QObject(selected.data());
+                                // Name the receiver for opt-in native memory
+                                // diagnostics. Closed views should retire
+                                // these observers along with their canvases.
+                                firstSwap->setObjectName(
+                                    QStringLiteral("_mobileFirstSwapObserver"));
                                 const QPointer<QObject> receiver(firstSwap);
                                 const QPointer<QOpenGLWidget> watched(
                                     qobject_cast<QOpenGLWidget*>(surface.data()));
