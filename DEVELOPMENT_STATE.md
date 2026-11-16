@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — roll back a registered native canvas after failed late attachment
+
+- `MobileKritaNativeViewFactory::attach()` now removes the candidate's original native-stack registration when a later synchronous selection, document-state, or resume-observer callback invalidates the document, canvas, root or Krita manager. Before this change, several late `return nullptr` paths occurred *after* `adoptView()` succeeded, leaving a registered partially initialized canvas behind although the caller was told attachment failed. The rollback verifies the original view/document registration before `forgetView()`, and deletes the detached `KisView` only if its native manager and original Qt owner are still live. If another host has adopted/reparented the widget, it is left untouched. This does not change Save/Discard/Cancel semantics or delete unrelated canvases.
+- Code commit `2d010055f4cfd60b0e6fa619b686910102fa1292`. This is Krita engine-specific attachment code with no standalone Qt-only regression. Exact-revision Android compilation and device behavior have not yet been confirmed; no APK uploaded.
+
 ## November 15 — rearm native OpenGL first-frame retry after surface teardown
 
 - `MobileKritaNativeViewFactory::scheduleActivation()` now resets `_mobileWaitingForFirstSwap` if Android destroys the watched `QOpenGLWidget` before the initial valid frame, and also if a `frameSwapped` callback arrives while its context is still invalid. Previously this flag was set before registering a one-shot callback and was never cleared on failure. Replaced or reinitialized GL surfaces could therefore remain unable to register a new first-frame retry, leaving the native projection uninitialized until another lifecycle event or canvas recreation. The one-shot receiver remains scoped to the native view; the ordinary successful first-frame path is unchanged and still requests a full projection upload for a waiting canvas.
