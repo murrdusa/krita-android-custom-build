@@ -489,6 +489,18 @@ private:
                                            root->currentWidget()!=selected.data() ||
                                            activeDocument.data()!=document.data())
                                             return;
+                                        // Android may replace the GL surface
+                                        // without destroying the old QWidget.
+                                        // A timeout belonging to that old
+                                        // surface must not restart activation
+                                        // of a different, newly created one.
+                                        const QPointer<KisCanvas2> activeCanvas=
+                                            selected->canvasBase();
+                                        if(!manager || !root || !selected ||
+                                           !activeCanvas || !watched ||
+                                           root->currentWidget()!=selected.data() ||
+                                           activeCanvas->canvasWidget()!=watched.data())
+                                            return;
                                         // The root's existing activation
                                         // timer rechecks GL readiness. Do not
                                         // touch the canvas from this timeout.
