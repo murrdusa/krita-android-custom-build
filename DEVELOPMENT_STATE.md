@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — toolbar layout controller callback lifetime
+
+- `MobileNativeCommandLayout::editCanvasLayout()` now checks its QObject lifetime after external editing/target callbacks. On layout-editor completion it guards the owning controller across `saveBars()`, toolbar `rebuild()`/`position()`, and the external `m_layoutEditing(false)` callback, avoiding use of freed state when a workspace rebuild or callback destroys the controller.
+- Extended `tests/qt_native_command_layout.cpp` to destroy the toolbar controller synchronously from the editor-completion callback. Code commit `f8212795782189a6e08bc0a2b040a38b8dd9a14c`, regression commit `e3d999656ea5417e7e30ba99a7c08509a158a24e` (test type adjustment `cb71e5761333350d1cbe391d06bef3d3b61ebf2f`). Exact-revision Android build and Qt test execution are not yet verified. No APK uploaded.
+
 ## November 15 — layout editor synchronous callback teardown
 
 - `MobileCanvasLayoutEditor::closeEditor()` now checks the editor's lifetime after hiding/restoring widgets and invoking placement and completion callbacks. These callbacks may rebuild the current workspace and destroy the editor synchronously; the old loop could continue reading freed editor members or call `deleteLater()` on a destroyed QObject. The completion callback is copied before external calls.
