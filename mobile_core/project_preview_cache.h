@@ -192,6 +192,12 @@ private:
             // older previews from the newest-512 retention window.
             // The second pass deletes these invalid files as usual.
             if(entry.size()<8 || entry.size()>maxEncodedBytes())continue;
+            // The bounded heap already holds 512 newer, eligible PNGs.
+            // An older file cannot be retained regardless of its bytes:
+            // skip opening it, especially on cache directories with a
+            // large backlog after an interrupted Android cleanup.
+            if(newest.size()==maxEntries &&
+               !newer(entry,newest.front()))continue;
             // A small corrupt file may still occupy a newest slot and
             // evict a real preview. Reject the cheap PNG-signature
             // failure before it enters the bounded retention heap.
