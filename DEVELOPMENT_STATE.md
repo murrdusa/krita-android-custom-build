@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — bound restored preview revision metadata
+
+- `MobileSavedVersionArchive::recordPreviewRevision()` previously removed only one old entry after inserting a new preview revision. If settings were restored from an older or oversized revision map, hundreds of metadata entries persisted in memory and settings after each Save. It now trims until the existing 128-entry cap is restored in a single pass, preserving the newest timestamps.
+- Added a Qt-only regression that seeds 300 legacy entries, records a new project Save, verifies the 128-entry cap and newest/current identities, then restores the prior settings. Code `d423b07`; regression `8dc7365`. No UI or save-file changes. Exact-revision PC build and Qt test execution pending; no APK uploaded.
+
 ## November 16 — recheck opened recovery archive size
 
 - Recovery discovery checked an archive's path metadata before opening it, then probed the header without verifying the opened file's size. A file replaced between these operations could bypass the original 8 GiB limit. `MobileDraftRecovery::hasKraHeader()` now also checks the opened `QFile` and its metadata before reading the four-byte ZIP header. This reduces exposure to oversized/stale recovery entries without allocating a full archive. Source `d6de27c`.
