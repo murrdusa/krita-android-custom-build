@@ -383,6 +383,17 @@ private:
            originalRoot->currentDocument().data()!=guardedDocument.data())
             return false;
         const QScopedValueRollback<bool> transaction(m_saving,true);
+        // Krita registry observers may synchronously close the canvas
+        // while ownsDocument() walks engine views. Recheck the guarded
+        // root and document AFTER that query, not just before it.
+        const auto stillOwnedSelected=[runtime,originalRoot,guardedDocument]() {
+            if(!runtime || !originalRoot || !guardedDocument ||
+               runtime->documentRoot()!=originalRoot.data())return false;
+            const bool owned=runtime->ownsDocument(guardedDocument.data());
+            return owned && runtime && originalRoot && guardedDocument &&
+                runtime->documentRoot()==originalRoot.data() &&
+                originalRoot->currentDocument().data()==guardedDocument.data();
+        };
 
         // Match Krita's native render-completion protection. Refuse
         // Ignore instead of allowing a potentially corrupt overwrite.
@@ -401,11 +412,7 @@ private:
         const bool renderReady=idle &&
             idle->result()==KisDelayedSaveDialog::Accepted;
         if(idle)delete idle.data();
-        if(!renderReady || !guardedDocument || !m_runtime ||
-           !originalRoot || m_runtime->documentRoot()!=originalRoot.data() ||
-           !m_runtime->ownsDocument(guardedDocument) ||
-           originalRoot->currentDocument().data()!=guardedDocument.data())
-            return false;
+        if(!renderReady || !stillOwnedSelected())return false;
 
         // Every Krita document query below may notify Qt observers
         // during a nested save/close workflow. Keep the original view
@@ -453,11 +460,7 @@ private:
             dialog.setMimeTypeFilters(formats,preferred);
             target=MobileNativeDocumentPathPolicy::localFilePath(
                 dialog.filename());
-            if(target.isEmpty() || !guardedDocument ||
-               !m_runtime || !originalRoot ||
-               m_runtime->documentRoot()!=originalRoot.data() ||
-               !m_runtime->ownsDocument(guardedDocument) ||
-               originalRoot->currentDocument().data()!=guardedDocument.data())
+            if(target.isEmpty() || !stillOwnedSelected())
                 return false; // Cancel, closed canvas, or different active document.
             QString selected=KisMimeDatabase::mimeTypeForFile(target,false);
             if(!formats.contains(selected))
@@ -467,11 +470,8 @@ private:
             targetMime=selected.toLatin1();
         }
 
-        if(!guardedDocument || !m_runtime || !originalRoot ||
-           m_runtime->documentRoot()!=originalRoot.data() ||
-           !m_runtime->ownsDocument(guardedDocument) ||
-           originalRoot->currentDocument().data()!=guardedDocument.data() ||
-           target.isEmpty() || targetMime.isEmpty())return false;
+        if(target.isEmpty() || targetMime.isEmpty() ||
+           !stillOwnedSelected())return false;
         // With multiple native canvases, a Save As or Export Copy could
         // otherwise overwrite the on-disk project of a different open
         // tab while its dirty in-memory artwork remains unsaved.
@@ -570,9 +570,7 @@ private:
         // The write can complete during a nested Qt event loop while
         // Android replaces the native canvas root. Record history and
         // report success only for a document still owned by the same host.
-        if(!completed->load() || !guardedDocument || !m_runtime ||
-           !originalRoot || m_runtime->documentRoot()!=originalRoot.data() ||
-           !m_runtime->ownsDocument(guardedDocument))return false;
+        if(!completed->load() || !stillOwnedSelected())return false;
         // The ownership query and subsequent metadata reads can execute
         // Krita/Qt callbacks. Capture all document-derived information
         // before notifying the recent-files and archive services.
