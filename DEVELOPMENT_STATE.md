@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — distinguish registered canvases from retained KisView objects
+
+- The opt-in `MobileStudioMemory` log now includes `retainedKisViews` (actual `KisView` QObject widgets below the independent native root) and `detachedKisViews` (those not registered in its `QStackedWidget`). This distinguishes a stale canvas QWidget from process RSS retained by ordinary caches. The `registeredDocuments` counter now counts unique live document identities, not one per view row; `pendingDrafts` provides context about background-save continuations.
+- No new background work, allocations, file writes, or logging occurs while `MobileStudio/memoryDiagnosticsV1` is disabled. When enabled, compare these counts at steady state after repeated open/close cycles. A nonzero `detachedKisViews` at the immediate `closed` sample may be transient during Qt cleanup; persistent values across later `periodic` samples warrant investigation.
+- Commit `d20b6a61f298415e209db534162bd635ab34bba3`. This improves diagnostics only; it does not prove or fix a leak. Exact-revision Android compilation and memory measurements are not yet verified, and no APK was uploaded.
+
 ## November 16 — opt-in native memory retention telemetry
 
 - `MobileKritaStandaloneRuntime` now accepts the disabled-by-default `QSettings` key `MobileStudio/memoryDiagnosticsV1`. When enabled, the independent engine emits structured `MobileStudioMemory` lines to Qt/Android logs on startup, immediately after successful document attachment, on the next event-loop turn after document destruction (allowing queued view retirement to finish), and every 60 seconds. There is no extra timer or file I/O when disabled.
