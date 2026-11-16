@@ -298,8 +298,17 @@ private:
             if(!selected && root->currentWidget())return;
             // The canvas resource provider and active brush must first
             // refer to the CURRENT view, not the previously selected tab.
-            const bool changedView=
-                manager->canvasBase()!=(selected?selected->canvasBase():nullptr);
+            const QPointer<KisCanvas2> selectedCanvas=selected?
+                selected->canvasBase():nullptr;
+            if(!manager || !root || (selected && !selectedCanvas))return;
+            // canvasBase() can invoke synchronous engine observers. If
+            // the manager query closes the selected view, never call its
+            // getter or activate a canvas from a destroyed registration.
+            const QPointer<KisCanvas2> managerCanvas=manager->canvasBase();
+            if(!manager || !root || (selected &&
+               (!selectedCanvas || root->currentWidget()!=selected.data())))
+                return;
+            const bool changedView=managerCanvas!=selectedCanvas;
             if(changedView)manager->setCurrentView(selected);
             if(!manager || !root)return;
             if(selected && (root->currentWidget()!=selected.data() ||
