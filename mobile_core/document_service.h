@@ -193,21 +193,27 @@ public:
     }
     bool saveCurrentDocument(bool saveAs=false) const
     {
-        if(!m_host || !m_host->available() || !m_viewHost)return false;
-        const QPointer<QObject> current=m_viewHost->currentDocument();
-        const auto views=m_viewHost->openViews();
+        // A provider may synchronously destroy this service when a
+        // document closes during selection. Keep both backends alive
+        // independently of the service's member storage.
+        const auto host=m_host;
+        const auto viewsHost=m_viewHost;
+        if(!host || !viewsHost || !host->available())return false;
+        const QPointer<QObject> current=viewsHost->currentDocument();
+        const auto views=viewsHost->openViews();
         const QPointer<QObject> selected=
             MobileViewIdentityGuard::uniqueActive(views);
         // A focus/selection change while the save dialog is opening
         // must never redirect Save to a different document. Require one
         // unambiguous live view for Krita's currently selected document.
-        if(!MobileViewIdentityGuard::maySave(views,selected,current))
-            return false;
-        auto *document=qobject_cast<KisDocument*>(current.data());
+        if(!current || !MobileViewIdentityGuard::maySave(
+               views,selected,current))return false;
+        const QPointer<KisDocument> document=
+            qobject_cast<KisDocument*>(current.data());
         if(!document)return false;
         // Native Krita save path retains its format handling,
         // render-completion checks, backups and Android file provider.
-        return m_host->save(document,saveAs);
+        return host->save(document.data(),saveAs);
     }
 
     // A deferred UI Save must never silently target a different drawing
@@ -217,14 +223,20 @@ public:
     bool saveDocumentView(const QPointer<QObject> &identity,
                           bool saveAs=false) const
     {
-        auto *document=documentForView(identity);
-        return document && m_host->save(document,saveAs);
+        const auto host=m_host;
+        const auto viewsHost=m_viewHost;
+        const QPointer<KisDocument> document=
+            documentForView(identity,host,viewsHost);
+        return host && document && host->save(document.data(),saveAs);
     }
 
     bool exportDocumentView(const QPointer<QObject> &identity) const
     {
-        auto *document=documentForView(identity);
-        return document && m_host->exportCopy(document);
+        const auto host=m_host;
+        const auto viewsHost=m_viewHost;
+        const QPointer<KisDocument> document=
+            documentForView(identity,host,viewsHost);
+        return host && document && host->exportCopy(document.data());
     }
 
     QString activeDocumentTitle() const
@@ -258,21 +270,20 @@ public:
     }
 
 private:
-    KisDocument *documentForView(const QPointer<QObject> &identity) const
+    static QPointer<KisDocument> documentForView(
+        const QPointer<QObject> &identity,
+        const QSharedPointer<MobileDocumentHostPort> &host,
+        const QSharedPointer<MobileViewHostPort> &viewsHost)
     {
-        if(!m_host || !m_host->available() ||
-           !m_viewHost || !identity)return nullptr;
-        // Capture no raw KisView: the provider can replace a view while
-        // Qt dispatches a deferred menu callback. A current snapshot
-        // must still contain exactly this selected identity and the
-        // same live KisDocument currently owned by Krita's manager.
-        const auto views=m_viewHost->openViews();
-        const QPointer<QObject> current=m_viewHost->currentDocument();
-        auto *document=qobject_cast<KisDocument*>(current.data());
-        if(!document || !MobileViewIdentityGuard::maySave(
-               views,identity,current))
-            return nullptr;
-        return document;
+        if(!host || !viewsHost || !identity || !host->available())return {};
+        // A current snapshot must still contain exactly this selected
+        // identity and the same live document owned by Krita. Both
+        // backends stay alive if a nested callback destroys the service.
+        const auto views=viewsHost->openViews();
+        const QPointer<QObject> current=viewsHost->currentDocument();
+        if(!current || !MobileViewIdentityGuard::maySave(
+               views,identity,current))return {};
+        return qobject_cast<KisDocument*>(current.data());
     }
     QSharedPointer<MobileDocumentHostPort> m_host;
     QSharedPointer<MobileViewHostPort> m_viewHost;
