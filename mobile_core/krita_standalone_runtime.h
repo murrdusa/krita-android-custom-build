@@ -213,13 +213,33 @@ public:
         const QPointer<KisDocument> liveDocument(document);
         const QPointer<MobileNativeViewStack> root=m_root;
         const QPointer<KisViewManager> manager=m_manager;
-        if(document->property("_mobileDraftPath").toString().isEmpty()) {
-            const QString title=document->path().isEmpty()?
-                document->documentInfo()->aboutInfo(QStringLiteral("title")):
-                QFileInfo(document->path()).completeBaseName();
-            if(!alive || !liveDocument || !root || !manager)return nullptr;
-            document->setProperty("_mobileDraftPath",
-                                  MobileDraftRecovery::allocate(title));
+        // A native document can close while draft metadata is queried,
+        // or while storage allocation processes Android/Qt callbacks.
+        // Capture the identities before the first access and revalidate
+        // between each operation; never dereference a destroyed document.
+        const auto attachmentValid=[alive,liveDocument,root,manager]() {
+            return alive && liveDocument && root && manager &&
+                alive->m_root==root && alive->m_manager==manager;
+        };
+        if(!attachmentValid())return nullptr;
+        const bool needsDraft=document->property(
+            "_mobileDraftPath").toString().isEmpty();
+        if(!attachmentValid())return nullptr;
+        if(needsDraft) {
+            const QString path=liveDocument->path();
+            if(!attachmentValid())return nullptr;
+            QString title;
+            if(path.isEmpty()) {
+                const auto *info=liveDocument->documentInfo();
+                if(!attachmentValid())return nullptr;
+                title=info?info->aboutInfo(QStringLiteral("title")):QString();
+            } else {
+                title=QFileInfo(path).completeBaseName();
+            }
+            if(!attachmentValid())return nullptr;
+            const QString draft=MobileDraftRecovery::allocate(title);
+            if(!attachmentValid())return nullptr;
+            liveDocument->setProperty("_mobileDraftPath",draft);
         }
         if(!alive || !liveDocument || !root || !manager ||
            alive->m_root!=root || alive->m_manager!=manager ||
