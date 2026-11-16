@@ -480,6 +480,42 @@ int main(int argc,char **argv)
         QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
     }
 
+    // A detached canvas may be transferred into another native host
+    // before the old host's queued retirement runs. It must not be
+    // destroyed by the old host after reparenting/re-registration.
+    {
+        MobileNativeViewStack original;
+        MobileNativeViewStack receiving;
+        auto *oldDocument=new QObject;
+        auto *newDocument=new QObject;
+        auto *view=new QWidget;
+        QPointer<QWidget> surviving(view);
+        require(original.adoptView(view,oldDocument,
+                    QStringLiteral("original"),[](){return true;}),
+                "could not register view before transfer");
+        delete oldDocument; // Queues retirement outside removeWidget.
+        require(original.openViews().isEmpty() && surviving,
+                "document destruction did not detach transferable view");
+        surviving->setParent(nullptr);
+        require(receiving.adoptView(surviving.data(),newDocument,
+                    QStringLiteral("transferred"),[](){return false;}),
+                "receiving host could not adopt detached native canvas");
+        QCoreApplication::sendPostedEvents(nullptr,0);
+        QApplication::processEvents();
+        QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        QApplication::processEvents();
+        require(surviving && receiving.openViews().size()==1 &&
+                receiving.currentDocument()==newDocument,
+                "old host deleted a canvas after ownership transferred");
+        delete newDocument;
+        QCoreApplication::sendPostedEvents(nullptr,0);
+        QApplication::processEvents();
+        QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        QApplication::processEvents();
+        require(!surviving && receiving.openViews().isEmpty(),
+                "receiving host retained orphan after final document close");
+    }
+
     // Recovery metadata updates emit synchronous QObject change
     // notifications before an imported document is registered with
     // Krita. The first notification may destroy the document, so the
