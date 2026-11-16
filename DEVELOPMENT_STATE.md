@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — activation router setup teardown checks
+
+- `MobileKritaNativeViewFactory::attach()` now validates the original Krita view, document, manager and native root after querying the `_mobileStudioKritaSelectionWired` dynamic property and after writing it following resume-observer installation. If any of those objects were invalidated during setup, attachment takes the existing guarded rollback instead of continuing into `setCurrentWidget()` and activation.
+- Source commit `c4af1fccdd8efde3a9f231334d4a0c4dfab8eeef`. This is a narrow preventative check, not a measured crash fix. Native Krita/Android build for this revision and device regression testing remain pending. No APK uploaded.
+
 ## November 16 — guard queued native canvas bootstrap after Qt property callbacks
 
 - `MobileKritaNativeViewFactory::scheduleActivation()` now revalidates the selected `KisView`, original view manager, canvas root, current document and active tab immediately after querying `_mobileStudioKritaCanvasBootstrapped`. Previously a synchronous Qt property observer could destroy/switch the selected canvas, and the next line would access its `canvasBase()`.
