@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — unwind Quick Actions nested chooser on editor rejection
+
+- Found a teardown gap in `MobileQuickActions::choose()`. The chooser was independently owned and connected to the outer editor's `destroyed` signal, but toolbar teardown now rejects rather than destroys the stack-owned editor. A nested chooser could therefore remain modal with an already-dismissed owner. The chooser now also observes `QDialog::rejected` from its originating editor and rejects itself (`74e58d3`).
+- Added a Qt regression that destroys the toolbar while the nested chooser is running, verifies rejection of both modal loops, and ensures the toolbar is gone (`e624bc6`). Host Qt5Widgets tests remain NOT RUN on the current WSL development-kit setup; no Android validation claim until the watcher reports the exact revision. No APK uploaded.
+
+
 ## November 16 — finish workspace settings and nested keyboard modal teardown
 
 - Follow-up audit found that `MobileKritaNativeWorkspace::openSettings()` resumes from `QDialog::exec()` and then reads/writes workspace members without confirming the workspace survived an Android host teardown. Added an explicit `QPointer` lifetime check before any accepted-settings mutations; also require the host still exists (`7d0c763`).
