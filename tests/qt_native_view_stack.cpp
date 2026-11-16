@@ -1097,6 +1097,55 @@ int main(int argc,char **argv)
                 "Android intent completion used a destroyed Home widget");
     }
 
+    // Saved-versions toolbar resolves the current document path before
+    // scheduling the Home gallery. A provider callback may destroy the
+    // document and Home synchronously; neither may be reused afterward.
+    {
+        auto *window=new QWidget;
+        auto *home=new QWidget(window);
+        auto *document=new QObject(window);
+        const QPointer<QWidget> guardedWindow(window);
+        const QPointer<QWidget> guardedHome(home);
+        const QPointer<QObject> guardedDocument(document);
+        int galleryOpens=0;
+        const auto resolvePath=[window]() {
+            delete window;
+            return QStringLiteral("closed.kra");
+        };
+        const QString path=resolvePath();
+        if(guardedWindow && guardedHome && guardedDocument)
+            ++galleryOpens;
+        require(path==QStringLiteral("closed.kra") &&
+                !guardedWindow && !guardedHome && !guardedDocument &&
+                galleryOpens==0,
+                "saved-version gallery used document or Home after path lookup teardown");
+    }
+    {
+        QWidget window;
+        auto *home=new QWidget(&window);
+        const QPointer<QWidget> guardedHome(home);
+        int galleryOpens=0;
+        QTimer::singleShot(0,home,[guardedHome,&galleryOpens]() {
+            if(guardedHome)++galleryOpens;
+        });
+        delete home;
+        QCoreApplication::processEvents();
+        require(!guardedHome && galleryOpens==0,
+                "queued saved-version gallery reopened after Home destruction");
+    }
+    {
+        QWidget window;
+        QWidget home(&window);
+        const QPointer<QWidget> guardedHome(&home);
+        int galleryOpens=0;
+        QTimer::singleShot(0,&home,[guardedHome,&galleryOpens]() {
+            if(guardedHome)++galleryOpens;
+        });
+        QCoreApplication::processEvents();
+        require(galleryOpens==1,
+                "live Home lost its scheduled saved-version gallery action");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
