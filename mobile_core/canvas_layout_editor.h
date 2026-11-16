@@ -93,15 +93,28 @@ public:
     {
         if(m_closing)return;
         m_closing=true;
+        // Restoring a control or saving its placement can rebuild the
+        // workspace and synchronously destroy this editor. Keep the
+        // completion callable alive and stop touching editor members
+        // as soon as its QObject has been deleted.
+        const QPointer<MobileCanvasLayoutEditor> alive(this);
+        const auto finished=m_finished;
         hide();
+        if(!alive)return;
         for(auto &item:m_items) {
             if(!item.target.widget)continue;
             item.target.widget->show();
-            if(save && (item.rotated || item.rect!=item.original))
-                item.target.save(item.rect,item.rotated);
+            if(!alive)return;
+            if(save && (item.rotated || item.rect!=item.original)) {
+                const auto persist=item.target.save;
+                const QRect placement=item.rect;
+                const bool rotated=item.rotated;
+                if(persist)persist(placement,rotated);
+                if(!alive)return;
+            }
         }
-        if(m_finished)m_finished();
-        deleteLater();
+        if(finished)finished();
+        if(alive)alive->deleteLater();
     }
 
 protected:
