@@ -1840,6 +1840,28 @@ int main(int argc,char **argv)
                 "modal dialog survived owner destruction without rejection");
     }
 
+    // An independent Input Settings modal can open nested calibration.
+    // Closing Android's host must reject both event loops, without Qt
+    // deleting either stack-owned dialog as a host QObject child.
+    {
+        auto *host=new QWidget;
+        const QPointer<QWidget> liveHost(host);
+        QDialog settings;
+        settings.setWindowModality(Qt::ApplicationModal);
+        QObject::connect(host,&QObject::destroyed,
+                         &settings,&QDialog::reject);
+        QTimer::singleShot(0,&settings,[&]() {
+            QDialog calibration(&settings);
+            QObject::connect(&settings,&QDialog::rejected,
+                             &calibration,&QDialog::reject);
+            QTimer::singleShot(0,&calibration,[host]() {delete host;});
+            require(calibration.exec()==QDialog::Rejected,
+                    "host teardown failed to close nested calibration");
+        });
+        require(settings.exec()==QDialog::Rejected && !liveHost,
+                "host teardown failed to reject independent settings modal");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
