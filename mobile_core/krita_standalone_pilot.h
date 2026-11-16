@@ -528,6 +528,7 @@ public:
         }
 
         auto *home=new MobileDocumentHome(nativeBridge,services.documents,window);
+        const QPointer<MobileDocumentHome> guardedHome(home);
         home->setDisplayMargins([](const QWidget *widget) {
             return MobileNativeCommandLayout::cameraMargins(widget);
         });
@@ -623,14 +624,22 @@ public:
             });
         });
         QObject::connect(homeAction,&QAction::triggered,window,
-                         [alive,home,documents,deferViewCommand]() {
-            if(!alive)return;
-            if(documents->openDocuments().isEmpty()) {
-                home->showHome();
+                         [alive,guardedHome,documents,deferViewCommand]() {
+            if(!alive || !guardedHome)return;
+            const bool empty=documents->openDocuments().isEmpty();
+            if(!alive || !guardedHome)return;
+            if(empty) {
+                guardedHome->showHome();
                 return;
             }
-            deferViewCommand([alive,home,documents](const QPointer<QObject> &selected) {
-                if(alive && documents->closeDocumentView(selected))home->showHome();
+            deferViewCommand([alive,guardedHome,documents](
+                    const QPointer<QObject> &selected) {
+                if(!alive || !guardedHome)return;
+                // Close can enter Save/Discard/Cancel, which may close
+                // the parent window and delete Home synchronously.
+                const bool closed=documents->closeDocumentView(selected);
+                if(closed && alive && guardedHome)
+                    guardedHome->showHome();
             });
         });
 
@@ -692,18 +701,23 @@ public:
         window->raise();
         window->suppressNativeStatusChrome();
         QTimer::singleShot(0,window,
-                           [alive,home,stage,firstCanvas,firstCanvasReady,
+                           [alive,guardedHome,stage,firstCanvas,firstCanvasReady,
                             intentHost=services.documents]() {
-            if(!alive)return;
+            if(!alive || !guardedHome)return;
             const int opened=MobileAndroidDocumentIntents::attachAndOpen(
                 alive.data(),intentHost);
+            // Opening an Android intent may close the original window
+            // or replace Home while a native file picker is active.
+            if(!alive || !guardedHome)return;
             if(opened==0) {
-                home->showHome();
+                guardedHome->showHome();
+                if(!alive || !guardedHome)return;
                 stage("Document Home ready",false);
             } else {
                 firstCanvas();
             }
-            if(firstCanvasReady)firstCanvasReady(true);
+            if(alive && guardedHome && firstCanvasReady)
+                firstCanvasReady(true);
         });
         return true;
     }
