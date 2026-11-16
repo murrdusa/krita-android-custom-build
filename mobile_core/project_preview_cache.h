@@ -75,9 +75,9 @@ public:
         // that stable handle instead of reopening a disappearing path.
         // This avoids an unnecessary full-project preview extraction
         // when a concurrent cache sweep races a gallery thumbnail.
-        QFile source(entry.absoluteFilePath());
-        if(!source.open(QIODevice::ReadOnly))return {};
-        QImageReader reader(&source,"png");
+        QFile cachedFile(entry.absoluteFilePath());
+        if(!cachedFile.open(QIODevice::ReadOnly))return {};
+        QImageReader reader(&cachedFile,"png");
         const QSize size=reader.size();
         // Cache files are untrusted disk input. Reject malformed or very
         // large images before allocating their decoded pixel buffers.
