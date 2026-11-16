@@ -1289,6 +1289,35 @@ int main(int argc,char **argv)
                 "native pilot suppressed surviving workspace setup");
     }
 
+    // Root installation may synchronously destroy the native window.
+    // Engine-session startup must capture the QPointer before creating
+    // the root, and skip runtime construction if either was deleted.
+    {
+        auto *host=new MobileLightweightCanvasHost;
+        const QPointer<MobileLightweightCanvasHost> guardedHost(host);
+        const auto installRoot=[host]() -> MobileNativeViewStack* {
+            delete host;
+            return nullptr;
+        };
+        const QPointer<MobileNativeViewStack> root(installRoot());
+        int runtimeCreations=0;
+        if(guardedHost && root)++runtimeCreations;
+        require(!guardedHost && !root && runtimeCreations==0,
+                "engine session started after root installation destroyed host");
+    }
+    {
+        MobileLightweightCanvasHost host;
+        const QPointer<MobileLightweightCanvasHost> guardedHost(&host);
+        const QPointer<MobileNativeViewStack> root(
+            host.createNativeDocumentRoot());
+        int runtimeCreations=0;
+        if(guardedHost && root)++runtimeCreations;
+        require(guardedHost && root && runtimeCreations==1,
+                "engine session rejected surviving root installation");
+        require(host.discardEmptyNativeDocumentRoot(),
+                "could not clean up intact engine startup root fixture");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
