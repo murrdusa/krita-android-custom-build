@@ -485,15 +485,22 @@ private:
                 m_pendingDrafts.removeAll(QPointer<KisDocument>());
                 continue;
             }
+            // A document can be detached from this runtime without
+            // being destroyed (for example during a view handoff).
+            // Do not keep polling a foreign, still-saving document
+            // indefinitely just because its QPointer remains valid.
+            const bool owned=ownsDocument(document.data());
+            if(!alive || !originalRoot || !document ||
+               alive->m_root!=originalRoot)return;
+            if(!owned) {
+                m_pendingDrafts.removeAll(document);
+                continue;
+            }
             const bool saving=document->isSaving();
             if(!alive || !originalRoot || !document ||
                alive->m_root!=originalRoot)return;
             if(saving)continue;
             if(!m_pendingDrafts.removeAll(document))continue;
-            const bool owned=ownsDocument(document.data());
-            if(!alive || !originalRoot || !document ||
-               alive->m_root!=originalRoot)return;
-            if(!owned)continue;
             const bool modified=document->isModified();
             if(!alive || !originalRoot || !document ||
                alive->m_root!=originalRoot)return;
