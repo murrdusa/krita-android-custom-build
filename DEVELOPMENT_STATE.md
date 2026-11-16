@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — canvas creation and brush/menu lifetime
+
+- Native views size to the canvas stack before loading and rely on the stack for visibility. New blank canvases use Krita’s first projection on a ready surface, with a refresh retained if layout or surface initialization needs it.
+- Brush capability checks run in short batches while the picker is visible. Popup refresh, touch replay, preset actions and native brush activation guard against teardown during callbacks. Device-specific crash reports remain needed to identify other failure paths.
+
 ## November 15 — Android launch splash
 
 - Android shows the Krita launcher icon on Studio’s dark background during cold startup. The native splash fades out when Home or the initial canvas is ready, with no added minimum wait.

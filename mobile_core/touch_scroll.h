@@ -98,8 +98,9 @@ protected:
         m_dragging=m_dragging || delta.manhattanLength()>=QApplication::startDragDistance();
         if(m_dragging && m_area && m_area->isVisible() &&
            QScroller::scroller(m_area->viewport())->state()==QScroller::Inactive) {
-            m_area->horizontalScrollBar()->setValue(m_scrollStart.x()-delta.x());
-            m_area->verticalScrollBar()->setValue(m_scrollStart.y()-delta.y());
+            const auto area=m_area;
+            area->horizontalScrollBar()->setValue(m_scrollStart.x()-delta.x());
+            if(area)area->verticalScrollBar()->setValue(m_scrollStart.y()-delta.y());
         }
         if(type!=QEvent::MouseButtonRelease)return true;
         const auto target=m_target;
@@ -107,7 +108,7 @@ protected:
         const bool gap=m_area && m_area->property("_mobileScrollGaps").toBool() &&
             !qobject_cast<QAbstractButton*>(target.data()) && !qobject_cast<QComboBox*>(target.data());
         m_area.clear();
-        if(gap || m_dragging || !target->isVisible() || !target->isEnabled() ||
+        if(!target || gap || m_dragging || !target->isVisible() || !target->isEnabled() ||
            !target->rect().contains(target->mapFromGlobal(mouse->globalPos())))return true;
         QMouseEvent press(m_pressType,target->mapFromGlobal(m_start),m_start,
                           Qt::LeftButton,Qt::LeftButton,mouse->modifiers());
@@ -259,8 +260,11 @@ private:
             if((pos-m_start).manhattanLength()<QApplication::startDragDistance())return;
             m_dragging=true;
             m_holdTimer.stop();
+            const QPointer<ItemViewPointer> alive(this);
             if(m_input==Mouse && !m_stopTap)cancelNativePress();
+            if(!alive)return;
             m_scroller->handleInput(QScroller::InputPress,m_start,m_pressedAt);
+            if(!alive)return;
         }
         m_scroller->handleInput(QScroller::InputMove,pos,now);
     }
@@ -268,9 +272,12 @@ private:
     bool finish(const QPoint &pos)
     {
         m_holdTimer.stop();
+        const QPointer<ItemViewPointer> alive(this);
         if(!m_cancelled)move(pos);
+        if(!alive)return false;
         if(m_dragging)
             m_scroller->handleInput(QScroller::InputRelease,pos,m_clock.elapsed()+1);
+        if(!alive)return false;
         m_input=None;
         return !m_dragging && !m_cancelled && !m_stopTap && !m_held;
     }
@@ -316,8 +323,11 @@ private:
 #endif
         if(event->type()==QEvent::TouchBegin) {
             const bool cancelMouse=m_input==Mouse && !m_dragging && !m_stopTap && !m_held;
+            const QPointer<ItemViewPointer> alive(this);
             begin(Touch,pos);
+            if(!alive)return true;
             if(cancelMouse)cancelNativePress();
+            if(!alive)return true;
             m_touchIndex=m_view->indexAt(pos);
             m_touchOnItem=m_touchIndex.isValid();
         }
@@ -332,12 +342,13 @@ private:
             m_lastTouchEnd=m_clock.elapsed();
             m_lastTouchPos=pos;
             m_lastTouchStart=m_start;
+            const QPointer<ItemViewPointer> alive(this);
             const bool tap=finish(pos);
+            if(!alive)return true;
             const bool sameItem=!m_touchOnItem || (m_touchIndex.isValid() &&
                 m_touchIndex==m_view->indexAt(m_start));
             m_touchIndex=QModelIndex();
             if(tap && sameItem && m_viewport->rect().contains(pos)) {
-                QPointer<ItemViewPointer> alive(this);
                 if(m_view->focusPolicy() & Qt::ClickFocus)
                     m_view->setFocus(Qt::MouseFocusReason);
                 if(!alive)return true;
@@ -374,8 +385,9 @@ private:
         if(m_input!=Mouse)return false;
         if(type==QEvent::MouseMove) {
             if(!(event->buttons() & Qt::LeftButton))return false;
+            const QPointer<ItemViewPointer> alive(this);
             move(pos);
-            return m_dragging || m_stopTap || m_held;
+            return !alive || m_dragging || m_stopTap || m_held;
         }
         return !finish(pos);
     }

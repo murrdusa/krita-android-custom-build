@@ -7,6 +7,8 @@
 
 #include <QHBoxLayout>
 #include <QHash>
+#include <QElapsedTimer>
+#include <QSet>
 #include <QLabel>
 #include <QFile>
 #include <QFileInfo>
@@ -36,6 +38,7 @@
 #include "touch_scroll.h"
 #include <QSettings>
 #include <QScopedValueRollback>
+#include <QScopeGuard>
 #include <QSignalBlocker>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -888,7 +891,12 @@ private:
             : QSortFilterProxyModel(parent),m_owner(owner),m_source(source),m_slot(slot)
         {
             reloadPersonalLists();
+            m_scan.setSingleShot(true);
+            connect(&m_scan,&QTimer::timeout,this,[this]() {scanBatch();});
         }
+
+        std::function<void()> onScanProgress;
+        bool scanning() const {return !m_pending.isEmpty();}
 
         void attach()
         {
@@ -901,6 +909,7 @@ private:
             if(m_category==category && m_custom==custom)return;
             m_category=category;
             m_custom=custom;
+            m_pending.clear();
             invalidate();
             sort(KisAbstractResourceModel::Name);
         }
@@ -930,6 +939,7 @@ private:
         void setSearch(const QString &search)
         {
             m_search=search.trimmed();
+            m_pending.clear();
             invalidateFilter();
         }
 
@@ -980,6 +990,7 @@ private:
 
         bool filterAcceptsRow(int row,const QModelIndex &parent) const override
         {
+            if(!m_source)return false;
             const QString name=m_source->index(row,KisAbstractResourceModel::Name,parent)
                 .data().toString();
             if(!name.contains(m_search,Qt::CaseInsensitive))return false;
@@ -994,7 +1005,15 @@ private:
                 if(!assignment.isEmpty() && assignment!=familyAssignment(m_category))return false;
                 if(assignment.isEmpty() && paintingFamily(name)!=m_category)return false;
             }
-            const auto available=rowCapabilities(row);
+            if(!m_owner)return false;
+            const int id=m_source->index(row,KisAbstractResourceModel::Id,parent).data().toInt();
+            const auto cached=m_owner->m_presetCapabilities.constFind(id);
+            if(cached==m_owner->m_presetCapabilities.cend()) {
+                m_pending.insert(id);
+                if(!m_scan.isActive())m_scan.start(1);
+                return false;
+            }
+            const auto available=cached.value();
             if(!available.supports(m_slot))return false;
             if(m_category==1)return available.eraser;
             if(m_category==2)return available.blend;
@@ -1011,13 +1030,33 @@ private:
             return m_assignments.insert(id,QSettings().value(presetCategoryKey(id)).toString()).value();
         }
 
-        PresetCapabilities rowCapabilities(int row) const
+        void scanBatch()
         {
-            return m_owner->cachedCapabilities(row);
+            const auto *panel=qobject_cast<QWidget*>(parent());
+            if(!m_owner || !m_source || !panel || !panel->isVisible())return;
+            const QPointer<PresetFilter> self(this);
+            QElapsedTimer budget;
+            budget.start();
+            for(int rows=0;rows<24 && !m_pending.isEmpty();++rows) {
+                const auto next=m_pending.begin();
+                const int id=*next;
+                m_pending.erase(next);
+                const auto index=m_source->indexForResourceId(id);
+                if(index.isValid())m_owner->cachedCapabilities(index.row());
+                if(!self || !m_owner || !m_source)return;
+                if(budget.elapsed()>=6)break;
+            }
+            invalidateFilter();
+            if(!self)return;
+            if(!m_pending.isEmpty())m_scan.start(1);
+            const auto report=onScanProgress;
+            if(report)report();
         }
 
-        KritaMobileBrushWorkspace *m_owner;
-        KisResourceModel *m_source;
+        QPointer<KritaMobileBrushWorkspace> m_owner;
+        QPointer<KisResourceModel> m_source;
+        mutable QSet<int> m_pending;
+        mutable QTimer m_scan;
         int m_category=-1;
         QString m_search,m_custom;
         mutable QHash<int,QString> m_assignments;
@@ -1050,13 +1089,16 @@ private:
 
     PresetCapabilities cachedCapabilities(int row)
     {
+        const QPointer<KritaMobileBrushWorkspace> self(this);
         auto *source=model();
-        const auto index=source->index(row,KisAbstractResourceModel::Id);
+        const QPersistentModelIndex index(source->index(row,KisAbstractResourceModel::Id));
+        if(!index.isValid())return {};
         const int id=index.data().toInt();
         const auto cached=m_presetCapabilities.constFind(id);
         if(cached!=m_presetCapabilities.cend())return cached.value();
         const auto result=capabilities(source->resourceForIndex(index).dynamicCast<KisPaintOpPreset>());
-        m_presetCapabilities.insert(id,result);
+        if(self && index.isValid() && index.data().toInt()==id)
+            m_presetCapabilities.insert(id,result);
         return result;
     }
 
@@ -1119,8 +1161,13 @@ private:
     bool setNativePreset(const KisPaintOpPresetSP &preset)
     {
         if(!preset || m_internalChange)return false;
-        const QScopedValueRollback<bool> change(m_internalChange,true);
-        return m_engine.selectBrushPreset(preset);
+        const QPointer<KritaMobileBrushWorkspace> self(this);
+        const MobileEngineBridge engine=m_engine;
+        m_internalChange=true;
+        const bool selected=engine.selectBrushPreset(preset);
+        if(!self)return false;
+        m_internalChange=false;
+        return selected;
     }
     void switchMode(int slot)
     {
@@ -1143,14 +1190,17 @@ private:
     }
     bool usePreset(int slot,const KisPaintOpPresetSP &preset)
     {
-        m_engine.freehandBrush();
-        if(!setNativePreset(preset))return false;
+        const QPointer<KritaMobileBrushWorkspace> self(this);
+        const MobileEngineBridge engine=m_engine;
+        engine.freehandBrush();
+        if(!self || !setNativePreset(preset))return false;
         setEraser(slot==1);
+        if(!self)return false;
         m_slot=slot;
         m_hasSelectedMode=true;
         rememberPreset(slot,preset);
         refresh();
-        return true;
+        return bool(self);
     }
 
     bool savePresetCopy(const KisPaintOpPresetSP &copy,const QString &name)
@@ -1230,7 +1280,8 @@ private:
             menu.addAction(i18n("Delete brush…"))->setData(Remove);
         }
         const QPointer<MobileTransientPanel> alive=drawer;
-        mobileShowActionList(drawer,nullptr,menu,this,[this,alive,id,title,refreshList](const QVariant &value) {
+        const QPointer<KritaMobileBrushWorkspace> workspace(this);
+        mobileShowActionList(drawer,nullptr,menu,this,[this,alive,workspace,id,title,refreshList](const QVariant &value) {
             if(!alive || !alive->isVisible())return;
             auto *source=model();
             auto preset=source->resourceForId(id).dynamicCast<KisPaintOpPreset>();
@@ -1243,7 +1294,7 @@ private:
                 bool accepted=false;
                 const auto name=QInputDialog::getText(parentWidget(),i18n("Duplicate brush"),i18n("Name"),
                     QLineEdit::Normal,i18n("%1 Copy",title),&accepted).trimmed();
-                if(!accepted || name.isEmpty())return;
+                if(!workspace || !accepted || name.isEmpty())return;
                 const auto copy=preset->clone().dynamicCast<KisPaintOpPreset>();
                 success=copy && savePresetCopy(copy,name);
                 break;
@@ -1251,6 +1302,7 @@ private:
             case Revert:
                 if(!factory.isEmpty() && QMessageBox::question(parentWidget(),i18n("Restore factory preset"),
                     i18n("Restore the original settings for “%1”?",title))!=QMessageBox::Yes)return;
+                if(!workspace)return;
                 success=revertPreset(preset,factory);
                 if(success && oldName!=preset->name())renamePersonalEntries(oldName,preset->name());
                 break;
@@ -1268,7 +1320,9 @@ private:
                 if(!factory.isEmpty())return;
                 QSettings settings;
                 const QString key=presetCategoryKey(id);
-                QDialog dialog(parentWidget());
+                QPointer<QDialog> prompt(new QDialog(parentWidget()));
+                const auto cleanup=qScopeGuard([&prompt]() {delete prompt.data();});
+                auto &dialog=*prompt;
                 MobileTouchScroll::styleMenuDialog(dialog,QSize(380,300));
                 dialog.setWindowTitle(i18n("Move brush"));
                 auto *layout=new QVBoxLayout(&dialog);
@@ -1309,7 +1363,9 @@ private:
                 });
                 connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
                 dialog.resize(qMin(350,parentWidget()->width()),qMin(470,parentWidget()->height()));
-                if(dialog.exec()!=QDialog::Accepted)return;
+                const int result=dialog.exec();
+                if(!workspace || !prompt || result!=QDialog::Accepted ||
+                   !choices->currentItem())return;
 
                 const bool create=choices->currentItem()==createChoice;
                 QString assignment=choices->currentItem()->data(Qt::UserRole).toString();
@@ -1342,6 +1398,7 @@ private:
             case Remove: {
                 if(!factory.isEmpty() || QMessageBox::question(parentWidget(),i18n("Delete brush"),
                     i18n("Remove “%1” from your presets?",title))!=QMessageBox::Yes)return;
+                if(!workspace)return;
                 const auto index=source->indexForResourceId(id);
                 if(!index.isValid())return;
                 success=source->setResourceActive(index,false);
@@ -1356,7 +1413,9 @@ private:
                 break;
             }
             }
+            if(!workspace)return;
             if(!success)QMessageBox::warning(parentWidget(),i18n("Brush presets"),i18n("Could not update “%1”.",title));
+            if(!workspace)return;
             if(alive && alive->isVisible())refreshList({});
             refresh();
         });
@@ -1514,8 +1573,12 @@ private:
         list->setModel(filter);
         filter->setCategory(categories->currentItem()->data(Qt::UserRole).toInt(),
                             categories->currentItem()->data(Qt::UserRole+1).toString());
-        const auto valid=[this,view]() {
-            return view && view==MobileViewIdentityGuard::uniqueActive(m_engine.openDocuments()) && resources();
+        const QPointer<KritaMobileBrushWorkspace> workspace(this);
+        const QPointer<MobileTransientPanel> drawer(panel);
+        const auto valid=[workspace,drawer,view]() {
+            return workspace && drawer && drawer->isVisible() && view &&
+                view==MobileViewIdentityGuard::uniqueActive(workspace->m_engine.openDocuments()) &&
+                workspace->resources();
         };
         const auto updateSelected=[this,list,source,filter]() {
             const auto preset=resources()?resources()->currentPreset():KisPaintOpPresetSP();
@@ -1531,8 +1594,10 @@ private:
         const auto updateList=[list,empty,filter]() {
             const bool hasRows=filter->rowCount()>0;
             list->setVisible(hasRows);
+            empty->setText(filter->scanning()?i18n("Loading brushes…"):i18n("No matching brushes"));
             empty->setVisible(!hasRows);
         };
+        filter->onScanProgress=updateList;
         connect(filter,&QAbstractItemModel::rowsInserted,panel,updateList);
         connect(filter,&QAbstractItemModel::rowsRemoved,panel,updateList);
         connect(filter,&QAbstractItemModel::modelReset,panel,updateList);
@@ -1573,8 +1638,8 @@ private:
         });
         const auto openRowMenu=[=](const QModelIndex &index) {
             hideSearchHandle();
-            updateSelected();
             if(!valid())return;
+            updateSelected();
             const auto selected=filter->mapToSource(index);
             const auto preset=source->resourceForIndex(selected).dynamicCast<KisPaintOpPreset>();
             showPresetActions(panel,preset,[=](const QString &name) {
@@ -1653,7 +1718,7 @@ private:
             QTimer::singleShot(0,panel,[=]() {
                 if(request!=*selectionRequest || !panel->isVisible() ||
                    !valid() || !usePreset(slot,preset))return;
-                if(!panel->isVisible())return;
+                if(!valid())return;
                 filter->refreshRecent();
                 updateSelected();
             });
@@ -1670,7 +1735,7 @@ private:
             QTimer::singleShot(0,panel,[=]() {
                 if(request!=*selectionRequest || !panel->isVisible() ||
                    !valid() || !usePreset(2,result))return;
-                if(!panel->isVisible())return;
+                if(!valid())return;
                 filter->refreshRecent();
                 updateSelected();
             });
@@ -1690,6 +1755,7 @@ private:
         QTimer::singleShot(0,panel,[=]() {
             if(!panel->isVisible() || !valid())return;
             filter->attach();
+            if(!valid())return;
             list->setModelColumn(KisAbstractResourceModel::Name);
             empty->setText(i18n("No matching brushes"));
             updateSelected();

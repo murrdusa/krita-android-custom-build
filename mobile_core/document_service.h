@@ -105,6 +105,7 @@ public:
             delete document;
             return false;
         }
+        document->setProperty("_mobileBlankCanvas",true);
         const QPointer<KisDocument> guardedDocument(document);
         KisPart::instance()->addDocument(document);
         // Document registration notifies observers synchronously.

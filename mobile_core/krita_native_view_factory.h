@@ -74,6 +74,12 @@ public:
         };
         if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
             return abortAttach();
+        // Size the hidden view before Krita initializes its zoom and
+        // projection. QStackedWidget owns when that view is shown.
+        const QSize initialSize=stack->contentsRect().size();
+        if(!initialSize.isEmpty())view->resize(initialSize);
+        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
+            return abortAttach();
         view->setAttribute(Qt::WA_DeleteOnClose,false);
         view->setMobileNativeSaveHost(saver);
         // Krita's view-manager and loading hooks can run synchronous
@@ -195,9 +201,6 @@ public:
 
         if(!guarded || !guardedDocument || !guardedStack || !guardedManager)
             return nullptr;
-        view->show();
-        if(!guarded || !guardedDocument || !guardedStack || !guardedManager)
-            return nullptr;
         stack->setCurrentWidget(view);
         if(!guarded || !guardedDocument || !guardedStack || !guardedManager)
             return nullptr;
@@ -305,13 +308,20 @@ private:
                     }
                     const QRectF viewport(surface->rect());
                     const QRectF image=selected->viewConverter()->imageRectInWidgetPixels();
-                    if(!viewport.intersects(image))selected->zoomManager()->slotZoomToFit();
+                    const bool fitNeeded=!viewport.intersects(image);
+                    if(fitNeeded)selected->zoomManager()->slotZoomToFit();
                     if(!isCurrent() || !canvas || canvas->canvasWidget()!=surface)return;
                     selected->setProperty("_mobileInitialProjectionReady",true);
-                    MobileCrashReport::checkpoint(QStringLiteral("Populate initial canvas projection"));
-                    canvas->refetchDataFromImage();
-                    if(!isCurrent() || !canvas || canvas->canvasWidget()!=surface)return;
-                    MobileCrashReport::checkpoint(QStringLiteral("Initial canvas projection queued"));
+                    const bool needsReload=!selected->document()->property("_mobileBlankCanvas").toBool() ||
+                        fitNeeded || surface->property("_mobileWaitingForFirstSwap").toBool();
+                    // Native canvas initialization already queues the projection.
+                    // A new blank image can use that upload on a ready surface.
+                    if(needsReload) {
+                        MobileCrashReport::checkpoint(QStringLiteral("Populate initial canvas projection"));
+                        canvas->refetchDataFromImage();
+                        if(!isCurrent() || !canvas || canvas->canvasWidget()!=surface)return;
+                        MobileCrashReport::checkpoint(QStringLiteral("Initial canvas projection queued"));
+                    }
                 }
                 canvas->updateCanvas();
                 if(!isCurrent() || !canvas)return;

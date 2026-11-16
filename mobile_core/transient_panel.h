@@ -35,7 +35,8 @@ public:
         m_refreshPending=true;
         QTimer::singleShot(0,this,[this]() {
             m_refreshPending=false;
-            if(isVisible() && onRefresh)onRefresh();
+            const auto refresh=onRefresh;
+            if(isVisible() && refresh)refresh();
         });
     }
 
@@ -69,9 +70,11 @@ public:
 
     void present()
     {
+        const QPointer<MobileTransientPanel> panel(this);
         position();
+        if(!panel)return;
         show();
-        raise();
+        if(panel)raise();
     }
 
 protected:
@@ -84,7 +87,9 @@ protected:
         if(!isVisible())return false;
         auto *target=qobject_cast<QWidget*>(watched);
         if(target==parentWidget() && event->type()==QEvent::Resize) {
+            const QPointer<MobileTransientPanel> panel(this);
             position();
+            if(!panel)return false;
             requestRefresh();
         }
 
@@ -173,7 +178,9 @@ private:
             origin.setY(qBound(0,origin.y(),qMax(0,bounds.height()-size.height())));
         }
         const QRect preferredGeometry(origin,size);
-        const QRect fitted=fitGeometry?fitGeometry(preferredGeometry):QRect();
-        setGeometry(fitted.isValid()?fitted:preferredGeometry);
+        const QPointer<MobileTransientPanel> panel(this);
+        const auto fit=fitGeometry;
+        const QRect fitted=fit?fit(preferredGeometry):QRect();
+        if(panel)setGeometry(fitted.isValid()?fitted:preferredGeometry);
     }
 };

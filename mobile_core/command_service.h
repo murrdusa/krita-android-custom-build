@@ -60,8 +60,9 @@ public:
     bool selectBrushPreset(const KisPaintOpPresetSP &preset) const {
         if(!preset || !preset->valid() || !preset->settings() ||
            !hasDocument() || !m_manager->paintOpBox())return false;
+        const QPointer<KisViewManager> view(m_manager);
         m_manager->paintOpBox()->resourceSelected(preset);
-        const auto *provider=m_manager->canvasResourceProvider();
+        const auto *provider=view?view->canvasResourceProvider():nullptr;
         return provider && provider->currentPreset()==preset;
     }
     void setEraser(bool enabled) const {
