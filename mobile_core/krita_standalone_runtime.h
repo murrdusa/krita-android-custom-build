@@ -12,6 +12,7 @@
 #include <QFile>
 #include <QDebug>
 #include <QSettings>
+#include <QSet>
 #include <QGuiApplication>
 #include <QMenu>
 #include <QPointer>
@@ -299,11 +300,24 @@ private:
         };
         int nativeViews=0;
         int documents=0;
+        int retainedKisViews=0;
+        int detachedKisViews=0;
         if(m_root) {
             const auto views=m_root->openViews();
             nativeViews=views.size();
+            QSet<QObject*> documentIdentities;
             for(const auto &view:views)
-                if(view.document)++documents;
+                if(view.document)
+                    documentIdentities.insert(view.document.data());
+            documents=documentIdentities.size();
+            // Registered rows alone cannot identify an orphaned native
+            // view. Count the real KisView QWidget children still owned by
+            // the root, including views already removed from the stack.
+            const auto children=m_root->findChildren<KisView*>();
+            retainedKisViews=children.size();
+            for(KisView *view:children)
+                if(m_root->indexOf(view)<0)
+                    ++detachedKisViews;
         }
         qInfo().noquote()
             << "MobileStudioMemory"
@@ -313,7 +327,10 @@ private:
             << "anonKiB" << kib("RssAnon")
             << "swapKiB" << kib("VmSwap")
             << "nativeViews" << nativeViews
-            << "registeredDocuments" << documents;
+            << "registeredDocuments" << documents
+            << "retainedKisViews" << retainedKisViews
+            << "detachedKisViews" << detachedKisViews
+            << "pendingDrafts" << m_pendingDrafts.size();
     }
 
     void checkpointDrafts()
