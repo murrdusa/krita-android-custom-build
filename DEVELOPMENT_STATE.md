@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — New Canvas IME and panel teardown safety
+
+- Creating a canvas now guards the transient form across Android input-method dismissal before closing it. Showing the New Canvas panel also checks that both the panel and button box survived synchronous window/focus callbacks before assigning focus. Prevents stale QWidget dereferences without changing document creation, settings persistence, or canvas rendering.
+- Source commit `ffa6dc1e9a1fd557a72f435138cd4a30f4abcdc9`. Exact-revision local Android compile and Fold 6 runtime are not yet verified; no APK uploaded.
+
 ## November 15 — deferred tool menu lifetime
 
 - The tool browser now captures its parent canvas/window with `QPointer` before closing the transient tool panel. It cancels deferred tool activation if closing that panel synchronously destroys the parent; a surviving parent remains the Qt timer context, and the existing active document check still prevents retargeting tool actions to a different painting.
