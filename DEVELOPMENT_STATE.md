@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — verify original canvas root after import MIME callbacks
+
+- The prior document guard in `openProjectSource()` handled an imported `KisDocument` being destroyed during Android provider-name or Krita MIME callbacks, but those callbacks could also destroy/replace the original native canvas root while leaving the document alive. A still-live document alone is not authorization to load a potentially large KRA into a replaced workspace.
+- The helper now receives a `QPointer<MobileNativeViewStack>` for the original root and checks document, runtime, root identity, and `KisPart` both **before and after** MIME setup, immediately before `openPath()`. The same check is shared by normal imports and recovery-checkpoint imports; existing caller cleanup disposes of surviving unregistered documents on failure.
+- Extended `tests/qt_native_view_stack.cpp` with a Qt-only reentrant MIME callback simulation that replaces the root while preserving the import document and verifies no load starts. Source commit `af483cca3180ce36e5cddfcbfd1095d9d17017a6`, test commit `81a70faba19bedf0daaae69869d888451b4c7d50`. This is an ownership/lifetime guard, not a demonstrated improvement in measured crash frequency. Exact-revision build and regression execution remain unverified at commit time. No APK uploaded.
+
 ## November 16 — guard document lifetime during MIME setup before KRA loading
 
 - Audited the native import transaction after the earlier `createDocument()` host-lifetime checks. `openProjectSource()` previously invoked `applyProjectMime(document,path)` followed by `document->openPath()` through the original raw pointer. Android provider-name resolution and Krita MIME notification may reenter Qt callbacks and destroy the unregistered document, so this was a potential use-after-free at the handoff to KRA loading.
