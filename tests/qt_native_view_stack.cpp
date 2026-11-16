@@ -773,7 +773,8 @@ int main(int argc,char **argv)
         };
         bool staleSaving=true;
         int retries=0;
-        for(const auto &candidate:pending) {
+        const auto snapshot=pending;
+        for(const auto &candidate:snapshot) {
             if(!candidate || !stillOwned(candidate)) {
                 pending.removeAll(candidate);
                 continue;
