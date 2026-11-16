@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — guard native view attachment after image/registration callbacks
+
+- `MobileKritaStandaloneDocuments::attachCanvas()` previously read `document->image()` and queried Krita registration before passing the original raw document pointer to the native view factory. A reentrant Qt observer could destroy the imported document or replace the native view root during either operation. The attach path now holds `QPointer` identities for the original document, runtime and root, and checks them after both queries before attempting view creation. Code `84818b6`.
+- Added Qt-only lifetime-pattern tests for document destruction during the image query, root destruction during registry lookup, and ordinary surviving attachment (`333f4e2`). These tests model guard behavior; they do not instantiate Android Krita document attachment. Exact-revision PC build and regression execution pending. No APK uploaded.
+
 ## November 16 — guard Save canvas after reentrant ownership query
 
 - Audited `MobileKritaStandaloneDocuments::writeDocument()`. Several Save/Save As/Export Copy authorization expressions invoked `ownsDocument()` then read `originalRoot->currentDocument()` without checking that the runtime, document and original view root survived the ownership query. Qt registry callbacks can synchronously tear down or replace that root. A shared `stillOwnedSelected()` guard now validates the original root both before and after querying ownership, including the render-dialog, picker, prewrite and save-completion boundaries. Source `c16e1ec`.
