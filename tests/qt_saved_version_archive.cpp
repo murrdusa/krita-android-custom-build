@@ -1269,6 +1269,29 @@ int main(int argc,char **argv)
             boundedDrafts.at(1).absoluteFilePath()==
                 fullDrafts.at(1).absoluteFilePath(),
             "bounded recovery gallery did not retain the newest two drafts");
+    // Checkpoint scans should retain precisely the subset newer than
+    // the saved project's timestamp; the same cutoff must work when
+    // combined with gallery-style bounded enumeration.
+    const qint64 cutoff=QDateTime::currentDateTime().addSecs(-98)
+                            .toMSecsSinceEpoch();
+    QFileInfoList expectedNewer;
+    for(const auto &entry:fullDrafts)
+        if(entry.lastModified().toMSecsSinceEpoch()>cutoff)
+            expectedNewer.append(entry);
+    const auto filtered=MobileDraftRecovery::list(0,cutoff);
+    const auto newestFiltered=MobileDraftRecovery::list(2,cutoff);
+    require(filtered.size()==expectedNewer.size(),
+            "checkpoint cutoff changed the number of recoverable drafts");
+    for(int i=0;i<filtered.size();++i)
+        require(filtered.at(i).absoluteFilePath()==
+                    expectedNewer.at(i).absoluteFilePath(),
+                "checkpoint cutoff changed newest-first recovery ordering");
+    require(newestFiltered.size()==qMin(2,filtered.size()),
+            "combined time and count limits returned an incorrect size");
+    for(int i=0;i<newestFiltered.size();++i)
+        require(newestFiltered.at(i).absoluteFilePath()==
+                    filtered.at(i).absoluteFilePath(),
+                "bounded checkpoint cutoff lost a newer recovery draft");
     for(const QString &draft:galleryFixtures)QFile::remove(draft);
 
     qInfo() << "PASS: snapshot, dedup, atomic recovery, retention,"
