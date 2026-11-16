@@ -8,6 +8,7 @@
 #include <QSharedPointer>
 #include <QTimer>
 #include <QDebug>
+#include <functional>
 #include "mobile_core/deferred_view_command.h"
 
 static void require(bool ok,const char *reason)
@@ -26,9 +27,15 @@ public:
     QPointer<QObject> a,b,da,db,selected,current;
     bool ambiguous=false;
     mutable bool replaceDocumentOnRead=false;
+    mutable std::function<void()> onOpenViews;
+    mutable std::function<void()> onDocumentRead;
     QPointer<QObject> replacementDocument;
     QVector<ViewSnapshot> openViews() const override
     {
+        if(onOpenViews) {
+            auto callback=std::move(onOpenViews);
+            callback();
+        }
         return {
             {QStringLiteral("A.kra"),true,
              selected==a || ambiguous,0,a,da},
@@ -38,6 +45,10 @@ public:
     }
     QPointer<QObject> currentDocument() const override
     {
+        if(onDocumentRead) {
+            auto callback=std::move(onDocumentRead);
+            callback();
+        }
         if(replaceDocumentOnRead) {
             replaceDocumentOnRead=false;
             const_cast<FakeViews*>(this)->db=replacementDocument;
@@ -113,6 +124,38 @@ int main(int argc,char **argv)
     delete pointerA.data();
     pump();
     require(calls==1,"destroyed canvas was used by deferred command");
+
+    // Synchronous engine notifications during initial lookup may
+    // destroy the initiating toolbar/window before a timer is queued.
+    auto *initialOwner=new QObject;
+    views->onOpenViews=[initialOwner]() {delete initialOwner;};
+    require(!MobileDeferredViewCommand::schedule(initialOwner,views,command),
+            "owner destroyed by initial view lookup was accepted");
+    pump();
+    require(calls==1,"initial owner teardown dispatched a command");
+
+    auto *documentOwner=new QObject;
+    views->onDocumentRead=[documentOwner]() {delete documentOwner;};
+    require(!MobileDeferredViewCommand::schedule(documentOwner,views,command),
+            "owner destroyed by initial document lookup was accepted");
+    pump();
+    require(calls==1,"document lookup teardown dispatched a command");
+
+    // The same failure can occur from a queued snapshot or identity
+    // lookup. Both must abort without invoking stale toolbar commands.
+    auto *queuedOwner=new QObject;
+    require(MobileDeferredViewCommand::schedule(queuedOwner,views,command),
+            "queued owner teardown scenario was refused");
+    views->onOpenViews=[queuedOwner]() {delete queuedOwner;};
+    pump();
+    require(calls==1,"queued view lookup teardown dispatched a command");
+
+    auto *queuedDocumentOwner=new QObject;
+    require(MobileDeferredViewCommand::schedule(queuedDocumentOwner,views,command),
+            "queued document teardown scenario was refused");
+    views->onDocumentRead=[queuedDocumentOwner]() {delete queuedDocumentOwner;};
+    pump();
+    require(calls==1,"queued document lookup teardown dispatched a command");
 
     // New test owner, to prove QObject timer context cancels on close.
     auto *owner=new QObject;
