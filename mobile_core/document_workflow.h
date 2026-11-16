@@ -184,8 +184,12 @@ public:
             const int resolution=dpi->value();
             const QColor color=background->currentData().value<QColor>();
             const QPointer<QWidget> host=panel->parentWidget();
+            const QPointer<MobileTransientPanel> livePanel(panel);
+            // Android IME dismissal may deliver Qt focus/window events,
+            // including teardown of the transient form and its owner.
             QGuiApplication::inputMethod()->hide();
-            panel->close();
+            if(!livePanel || !host)return;
+            livePanel->close();
             if(!host)return;
             QTimer::singleShot(0,host.data(),[host,engine,title,size,resolution,color,created]() {
                 static bool creating=false;
@@ -206,8 +210,13 @@ public:
                 if(host && created)created();
             });
         });
+        const QPointer<MobileTransientPanel> livePanel(panel);
+        const QPointer<QDialogButtonBox> liveActions(actions);
         panel->present();
-        actions->button(QDialogButtonBox::Ok)->setFocus(Qt::OtherFocusReason);
+        // Showing the panel can synchronously trigger host/window callbacks.
+        if(livePanel && liveActions)
+            if(auto *ok=liveActions->button(QDialogButtonBox::Ok))
+                ok->setFocus(Qt::OtherFocusReason);
     }
     static bool open(const MobileEngineBridge &engine,QWidget *owner)
     {
