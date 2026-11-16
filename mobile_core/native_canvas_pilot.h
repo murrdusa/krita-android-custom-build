@@ -252,6 +252,7 @@ private:
     void runQuickAction(const QString &id)
     {
         if(!m_backend || !m_chrome.active())return;
+        const QPointer<QTimer> alive(&m_refresh);
 
         // Native Android dialogs must be opened after the Quick Action's
         // QToolButton click has returned. A Close action captures the exact
@@ -286,6 +287,10 @@ private:
             }
             QTimer::singleShot(0,&m_refresh,[this,id,selectedView]() {
                 if(!m_backend || !m_chrome.active())return;
+                // Native Save/Close and modal workflows can synchronously
+                // destroy this pilot. Its member timer is destroyed with
+                // it; use that QObject lifetime to guard the final refresh.
+                const QPointer<QTimer> alive(&m_refresh);
                 if(id==QStringLiteral("mobile:new"))
                     MobileDocumentWorkflow::create(m_engine,m_backend);
                 else if(id==QStringLiteral("mobile:open"))
@@ -305,7 +310,7 @@ private:
                     showMore(m_document);
                 else if(id==QStringLiteral("mobile:close") && selectedView)
                     m_engine.closeDocumentView(selectedView);
-                refresh();
+                if(alive)refresh();
             });
             return;
         }
@@ -326,7 +331,9 @@ private:
             if(m_color && m_engine.hasDocument())
                 m_color->setVisible(!m_color->isVisible());
         }
-        refresh();
+        // A native QAction or tool dispatch can tear down the entire
+        // mobile pilot before returning. Do not dereference it afterward.
+        if(alive)refresh();
     }
 
     void showMore(QWidget *anchor)
