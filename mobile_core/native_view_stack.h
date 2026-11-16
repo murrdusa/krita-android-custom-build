@@ -224,13 +224,23 @@ private:
             m_rows.removeAt(i);
             QObject::disconnect(removed.viewDestroyed);
             QObject::disconnect(removed.documentDestroyed);
-            if(view && indexOf(view.data())>=0) {
-                // Removing the selected widget emits currentChanged.
-                // Its callback may synchronously destroy the whole
-                // stack; never touch the removed view through a dead host.
+            const int index=view?indexOf(view.data()):-1;
+            if(index>=0) {
+                const bool wasCurrent=view==currentWidget();
                 const QPointer<MobileNativeViewStack> host(this);
+                // Qt's layout is still inside takeAt() when it emits
+                // these signals. A synchronous observer may delete the
+                // stack and its layout, so notify after removal returns.
+                const bool alreadyBlocked=blockSignals(true);
                 removeWidget(view.data());
                 if(!host)return true;
+                blockSignals(alreadyBlocked);
+                if(!alreadyBlocked) {
+                    if(wasCurrent)Q_EMIT currentChanged(currentIndex());
+                    if(!host)return true;
+                    Q_EMIT widgetRemoved(index);
+                    if(!host)return true;
+                }
                 // currentChanged may synchronously transfer this widget
                 // to another host or re-register it here. Do not hide
                 // a canvas that the receiving owner has already shown.

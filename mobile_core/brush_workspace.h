@@ -1006,10 +1006,11 @@ private:
                 if(assignment.isEmpty() && paintingFamily(name)!=m_category)return false;
             }
             if(!m_owner)return false;
-            const int id=m_source->index(row,KisAbstractResourceModel::Id,parent).data().toInt();
+            const auto idIndex=m_source->index(row,KisAbstractResourceModel::Id,parent);
+            const int id=idIndex.data().toInt();
             const auto cached=m_owner->m_presetCapabilities.constFind(id);
             if(cached==m_owner->m_presetCapabilities.cend()) {
-                m_pending.insert(id);
+                m_pending.insert(id,QPersistentModelIndex(idIndex));
                 if(!m_scan.isActive())m_scan.start(1);
                 return false;
             }
@@ -1039,9 +1040,8 @@ private:
             budget.start();
             for(int rows=0;rows<24 && !m_pending.isEmpty();++rows) {
                 const auto next=m_pending.begin();
-                const int id=*next;
+                const auto index=next.value();
                 m_pending.erase(next);
-                const auto index=m_source->indexForResourceId(id);
                 if(index.isValid())m_owner->cachedCapabilities(index.row());
                 if(!self || !m_owner || !m_source)return;
                 if(budget.elapsed()>=6)break;
@@ -1055,7 +1055,7 @@ private:
 
         QPointer<KritaMobileBrushWorkspace> m_owner;
         QPointer<KisResourceModel> m_source;
-        mutable QSet<int> m_pending;
+        mutable QHash<int,QPersistentModelIndex> m_pending;
         mutable QTimer m_scan;
         int m_category=-1;
         QString m_search,m_custom;
@@ -1597,7 +1597,11 @@ private:
             empty->setText(filter->scanning()?i18n("Loading brushes…"):i18n("No matching brushes"));
             empty->setVisible(!hasRows);
         };
-        filter->onScanProgress=updateList;
+        filter->onScanProgress=[list,updateList,updateSelected,valid]() {
+            if(!valid())return;
+            updateList();
+            if(!list->currentIndex().isValid())updateSelected();
+        };
         connect(filter,&QAbstractItemModel::rowsInserted,panel,updateList);
         connect(filter,&QAbstractItemModel::rowsRemoved,panel,updateList);
         connect(filter,&QAbstractItemModel::modelReset,panel,updateList);
