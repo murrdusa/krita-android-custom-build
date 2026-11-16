@@ -1146,6 +1146,49 @@ int main(int argc,char **argv)
                 "live Home lost its scheduled saved-version gallery action");
     }
 
+    // A startup intent callback can outlive rollback of an empty
+    // native document root. No first-canvas readiness notification
+    // may dereference the discarded view port.
+    {
+        MobileLightweightCanvasHost host;
+        auto *root=host.createNativeDocumentRoot();
+        require(root && host.nativeViewPort(),
+                "could not create first-canvas rollback fixture");
+        int readyNotifications=0;
+        QTimer::singleShot(0,&host,[&host,&readyNotifications]() {
+            const auto views=host.nativeViewPort();
+            if(!views)return;
+            if(!views->currentDocument())return;
+            ++readyNotifications;
+        });
+        require(host.discardEmptyNativeDocumentRoot() &&
+                !host.nativeViewPort(),
+                "empty native root was not discarded for startup rollback");
+        QCoreApplication::processEvents();
+        require(readyNotifications==0,
+                "first-canvas callback used a discarded native view port");
+    }
+    {
+        MobileLightweightCanvasHost host;
+        auto *root=host.createNativeDocumentRoot();
+        auto *document=new QObject;
+        auto *canvas=new QWidget;
+        require(root && root->adoptView(canvas,document,
+                  QStringLiteral("Ready"),[](){return true;}),
+                "could not create surviving first-canvas fixture");
+        const auto views=host.nativeViewPort();
+        int readyNotifications=0;
+        QTimer::singleShot(0,&host,[&host,&readyNotifications]() {
+            const auto port=host.nativeViewPort();
+            if(port && port->currentDocument())
+                ++readyNotifications;
+        });
+        QCoreApplication::processEvents();
+        require(views && readyNotifications==1,
+                "first-canvas callback skipped surviving native view");
+        delete document;
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
