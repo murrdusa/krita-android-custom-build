@@ -237,8 +237,8 @@ public:
             if(!stillOpening())return abortOpening();
             document->setLocalFilePath(path);
             if(!stillOpening())return abortOpening();
-            applyProjectMime(document,path);
-            if(!stillOpening())return abortOpening();
+            if(!applyProjectMime(guardedDocument.data(),path) ||
+               !stillOpening())return abortOpening();
             document->setReadWrite(true);
             if(!stillOpening())return abortOpening();
             document->setModified(true);
@@ -314,19 +314,32 @@ public:
     }
 
 private:
-    static void applyProjectMime(KisDocument *document,const QString &path)
+    static bool applyProjectMime(KisDocument *document,const QString &path)
     {
+        const QPointer<KisDocument> guarded(document);
+        if(!guarded)return false;
+        // Android provider display-name lookups can dispatch callbacks;
+        // do not dereference an import destroyed while resolving its MIME.
         const QString name=MobileSavedVersionArchive::projectName(path);
-        if(!MobileSavedVersionArchive::isKritaProjectName(name))return;
+        if(!guarded)return false;
+        if(!MobileSavedVersionArchive::isKritaProjectName(name))return true;
         const QString suffix=name.mid(name.lastIndexOf(QLatin1Char('.'))+1);
-        document->setMimeType(suffix.startsWith(QStringLiteral("krz"),Qt::CaseInsensitive)?
-            QByteArray("application/x-krita-archive"):document->nativeFormatMimeType());
+        const QByteArray mime=suffix.startsWith(QStringLiteral("krz"),Qt::CaseInsensitive)?
+            QByteArray("application/x-krita-archive"):guarded->nativeFormatMimeType();
+        if(!guarded)return false;
+        guarded->setMimeType(mime);
+        return bool(guarded);
     }
 
     static bool openProjectSource(KisDocument *document,const QString &path,bool privateCopy)
     {
-        applyProjectMime(document,path);
-        return document->openPath(path,privateCopy?KisDocument::DontAddToRecent:KisDocument::None);
+        const QPointer<KisDocument> guarded(document);
+        if(!guarded || !applyProjectMime(guarded.data(),path) ||
+           !guarded)return false;
+        // MIME changes can synchronously destroy the document. Never
+        // start an expensive KRA load through its old raw address.
+        return guarded->openPath(path,privateCopy?
+            KisDocument::DontAddToRecent:KisDocument::None);
     }
 
     bool attachCanvas(KisDocument *document) const
