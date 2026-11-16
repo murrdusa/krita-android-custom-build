@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — toolbar gesture callback teardown
+
+- `MobileToolbarGestureButton` now checks its lifetime after drag-preview callbacks, synthetic completion transitions and down-state changes; the gesture's inline-adjustment, color-sampling and long-hold callables are invoked from copies instead of potentially destroyed member function storage. A workspace rebuild during a preview/commit/hold must not continue dereferencing its deleted toolbar button.
+- `tests/qt_mobile_toolbar_drag.cpp` now exercises buttons synchronously deleted from preview, commit, and hold callbacks. Code commit `2f18d8afe1b28c39be48bfa23a5163cb9a9d055c`, regression commit `1cc1c0da03adf339829c0d08456be13c534e3afa`. Android build and host regression execution for exact revision remain unverified; no APK uploaded.
+
 ## November 15 — touch scroll filter synchronous teardown
 
 - The application-wide `MobileTouchScroll::MenuPointerFilter` now checks its QObject lifetime after scrollbar value changes and synchronous synthetic mouse-event delivery. Scrollbar listeners, button actions, or stylus gap dragging can destroy the filter during its own event handler; the old handler accessed members after these callbacks and could use freed memory.
