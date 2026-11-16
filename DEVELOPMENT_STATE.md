@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — retain native view backend through switch/close callbacks
+
+- Audited `MobileDocumentService::activateDocument()`, `closeDocument()`, and `closeActiveDocument()`. These methods previously read an open-view snapshot and then called a second service method or `m_viewHost`. If a Qt/Krita selection callback synchronously destroyed the owning UI service during snapshot/current-document lookup, the second member access could use freed memory. Switch and close operations now take one local `QSharedPointer<MobileViewHostPort>` snapshot, use it for selection and action, and retain its lifetime across the native Save/Discard/Cancel callback. The direct view-ID paths and `openDocuments()` also consistently retain the port. Source `411e772`.
+- Added a Qt-only integration regression with a real `MobileNativeViewStack` and `MobileNativeViewPortAdapter` where the native close handler releases the owning UI service and destroys its canvas. The local port stays live through close and releases after the transaction (`4634b98`, assertion follow-up `2aeb416`). Exact-revision PC build and tests pending; no APK uploaded.
+
 ## November 16 — keep Save and Export backends alive across UI teardown
 
 - Audited `MobileDocumentService::saveCurrentDocument()`, `saveDocumentView()`, `exportDocumentView()`, and `documentForView()`. These queried the backend and native selection, which can deliver reentrant Qt/Krita close callbacks, then dereferenced `m_host` or `m_viewHost` through the original service. If the originating UI/service was destroyed inside a callback, that was a use-after-free risk. Save, Save As, and Export Copy now snapshot both `QSharedPointer` backends before external calls and the selection helper is static, using only those retained backends; the selected `KisDocument` is checked through a `QPointer` instead of a raw pointer. Source `b8174b8`.
