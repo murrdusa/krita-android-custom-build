@@ -289,7 +289,7 @@ public:
         const qint64 expected=provider?input.size():original.size();
         if(expected<=0 || expected>copyLimit)return false;
         if(minGapMs>0) {
-            const auto versions=scan(folder);
+            const auto versions=scan(folder,1);
             if(!versions.isEmpty()) {
                 const Version &recent=versions.first();
                 const qint64 elapsed=recent.createdUtc.msecsTo(
@@ -336,7 +336,7 @@ public:
                 return false;
         }
         const QByteArray sha=hash.result().toHex();
-        const auto previous=scan(folder);
+        const auto previous=scan(folder,1);
         if(!previous.isEmpty() && previous.first().bytes==copied) {
             QFile sidecar(previous.first().path+QStringLiteral(".sha256"));
             QByteArray oldSha;
@@ -880,35 +880,40 @@ private:
                actual.result().toHex()==sha;
     }
 
-    static QVector<Version> scan(const QString &folder)
+    static QVector<Version> scan(const QString &folder,int maxResults=0)
     {
         QVector<Version> result;
         if(folder.isEmpty())return result;
         const QDir dir(folder);
         if(!dir.exists())return result;
-        // Version History needs the valid archive metadata, not a
-        // second, full QFileInfoList sorted by Qt. Stream directory
-        // entries to reduce peak memory for folders left overfull by
-        // interrupted cleanup, then sort the retained versions.
+        // Full retention scans still enumerate every archive. Snapshot
+        // rate-limiting and deduplication only need the most recent one:
+        // stream a bounded heap instead of retaining a whole corrupted
+        // or interrupted history directory during an autosave.
+        const auto newer=[](const Version &a,const Version &b) {
+            return a.path>b.path;
+        };
         QDirIterator files(folder,{QStringLiteral("*.kra")},
                            QDir::Files|QDir::Readable|QDir::NoSymLinks);
         while(files.hasNext()) {
             files.next();
             const QFileInfo entry=files.fileInfo();
-            if(entry.size()>0)
-                result.append({entry.absoluteFilePath(),
-                    entry.lastModified().toUTC(),entry.size()});
+            if(entry.size()<=0)continue;
+            Version version{entry.absoluteFilePath(),
+                            entry.lastModified().toUTC(),entry.size()};
+            if(maxResults<=0 || result.size()<maxResults) {
+                result.append(std::move(version));
+                if(maxResults>0)
+                    std::push_heap(result.begin(),result.end(),newer);
+            } else if(newer(version,result.front())) {
+                std::pop_heap(result.begin(),result.end(),newer);
+                result.last()=std::move(version);
+                std::push_heap(result.begin(),result.end(),newer);
+            }
         }
-        // The generated timestamp/UUID filename is the canonical
-        // version order. Keep the same ordering as QDir::Name|Reversed,
-        // rather than sorting by mutable filesystem modification time.
-        std::sort(result.begin(),result.end(),
-                  [](const Version &a,const Version &b) {
-            // All entries share the same folder, so full-path lexical
-            // comparison has the same order without allocating QFileInfo
-            // for every comparison during sorting.
-            return a.path>b.path;
-        });
+        // The generated timestamp/UUID filename defines version order;
+        // filesystem modification time is deliberately not used.
+        std::sort(result.begin(),result.end(),newer);
         return result;
     }
 
