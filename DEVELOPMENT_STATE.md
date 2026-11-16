@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — expose Qt test verdict independently of Android APK success
+
+- Audited the local watcher report. Even after the native Qt smoke runner was integrated, Issue #1's report could truncate the test lines because its diagnostic excerpt only retains the end of the Android log. Added `qt_lifecycle_section()` to `krita_build_reporter.py` to read only the recorded watcher log inside `.build-watcher/logs`, extract up to 12 `Native Qt lifecycle tests:` messages and prominently show them in the GitHub build issue. If the log does not contain the test verdict, the report explicitly says `NOT REPORTED`, not PASS. Source `71b5331`, corrected Python escaping `4172e93`.
+- This reporting enhancement does not compile Krita or run GitHub Actions. The existing long-running reporter process may need to load the updated script on its next start; a cached APK watcher SUCCESS without test verdict remains insufficient evidence that Qt regressions passed. Exact-revision result pending.
+
 ## November 16 — make WSL watcher report native Qt lifecycle regressions
 
 - The local Android build previously reported `SUCCESS` after reusing a cached APK, without compiling/running Qt-only native view regressions. Added `tests/run_mobile_lifecycle_smoke.sh` (`7a2b56d`), which builds and runs `qt_native_view_stack`, `qt_native_document_rollback`, and `qt_canvas_resume_observer` using host Qt5Widgets. A passing fingerprint cache skips recompilation of unchanged tests; source/header changes force a rerun. Missing Qt host development libraries produce an explicit `NOT RUN` rather than a false pass, and compile/test failure fails the WSL watcher build.
