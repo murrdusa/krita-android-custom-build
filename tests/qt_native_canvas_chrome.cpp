@@ -247,6 +247,36 @@ int main(int argc,char **argv)
                 "Back changed synthetic drawing state");
     }
 
+    // A long-running Android session can repeatedly create and destroy
+    // Krita tabbars and dockers without exiting Mobile Studio. A periodic
+    // chrome scan must discard the dead snapshots while retaining live
+    // native UI for correct restoration on exit.
+    require(mobile.activate(),"could not enter chrome churn test");
+    for(int cycle=0;cycle<120;++cycle) {
+        auto *temporaryToolbar=new QToolBar(QStringLiteral("Transient native tools"),&backend);
+        backend.addToolBar(temporaryToolbar);
+        auto *temporaryDock=new QDockWidget(QStringLiteral("Transient docker"),&backend);
+        backend.addDockWidget(Qt::RightDockWidgetArea,temporaryDock);
+        auto *temporaryTab=new QTabBar(canvas);
+        temporaryTab->addTab(QStringLiteral("Temporary drawing"));
+        temporaryToolbar->show();
+        temporaryDock->show();
+        temporaryTab->show();
+        mobile.enforceMobileChrome();
+        require(!temporaryToolbar->isVisible() && !temporaryDock->isVisible() &&
+                !temporaryTab->isVisible(),"new temporary native chrome remained visible");
+        delete temporaryToolbar;
+        delete temporaryDock;
+        delete temporaryTab;
+        mobile.enforceMobileChrome();
+    }
+    require(mobile.deactivate(),"chrome churn could not return to desktop");
+    require(backend.centralWidget()==originalCanvas &&
+            originalToolbar->isVisible()==initiallyToolbar &&
+            originalDock->isVisible()==initiallyDock &&
+            nativeTabs->isVisible()==initiallyTabs,
+            "chrome churn damaged native canvas or existing UI restoration");
+
     // Simulate an unexpected replacement while already in mobile mode.
     // Restore the desktop controls even though the original native canvas
     // is no longer in the central slot; never delete an unrelated canvas.
