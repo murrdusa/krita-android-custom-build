@@ -997,6 +997,58 @@ int main(int argc,char **argv)
                 "close hook failed to activate a surviving native canvas");
     }
 
+    // A deferred activation must not inspect the selected view's
+    // canvas after the manager canvas getter synchronously tears down
+    // that view. Preserve normal switching for a surviving selection.
+    {
+        MobileNativeViewStack stack;
+        auto *document=new QObject;
+        auto *selected=new QWidget;
+        require(stack.adoptView(selected,document,QStringLiteral("active"),
+                                [](){return true;}),
+                "could not register activation teardown fixture");
+        const QPointer<QWidget> selectedGuard(selected);
+        const QPointer<QObject> documentGuard(document);
+        const QPointer<MobileNativeViewStack> rootGuard(&stack);
+        int switches=0;
+        // Model the selected canvas identity without Krita classes.
+        auto *selectedCanvas=new QObject(selected);
+        const QPointer<QObject> selectedCanvasGuard(selectedCanvas);
+        const auto queryManagerCanvas=[selected]() -> QObject* {
+            delete selected;
+            return nullptr;
+        };
+        const QPointer<QObject> managerCanvas(queryManagerCanvas());
+        if(rootGuard && selectedGuard && selectedCanvasGuard &&
+           rootGuard->currentWidget()==selectedGuard.data() &&
+           managerCanvas!=selectedCanvasGuard)
+            ++switches;
+        require(!selectedGuard && !selectedCanvasGuard &&
+                switches==0 && documentGuard,
+                "deferred activation switched after selected view teardown");
+        delete document;
+    }
+    {
+        MobileNativeViewStack stack;
+        QObject document;
+        auto *selected=new QWidget;
+        require(stack.adoptView(selected,&document,QStringLiteral("active"),
+                                [](){return true;}),
+                "could not register intact activation fixture");
+        QObject selectedCanvas(selected);
+        QObject managerCanvas;
+        const QPointer<QWidget> selectedGuard(selected);
+        const QPointer<QObject> selectedCanvasGuard(&selectedCanvas);
+        const QPointer<QObject> managerCanvasGuard(&managerCanvas);
+        int switches=0;
+        if(selectedGuard && selectedCanvasGuard &&
+           stack.currentWidget()==selectedGuard.data() &&
+           managerCanvasGuard!=selectedCanvasGuard)
+            ++switches;
+        require(switches==1,
+                "deferred activation rejected surviving view selection");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
