@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — recheck opened recovery archive size
+
+- Recovery discovery checked an archive's path metadata before opening it, then probed the header without verifying the opened file's size. A file replaced between these operations could bypass the original 8 GiB limit. `MobileDraftRecovery::hasKraHeader()` now also checks the opened `QFile` and its metadata before reading the four-byte ZIP header. This reduces exposure to oversized/stale recovery entries without allocating a full archive. Source `d6de27c`.
+- Added a Qt-only sparse-file regression verifying that an archive larger than 8 GiB is rejected without materializing its bytes (`86e636f`). The test does not simulate the replacement race. Exact-revision Android build and Qt execution pending; no APK uploaded.
+
 ## November 16 — preserve unvalidated recovery staging on reported export success
 
 - Audited `MobileDraftRecovery::publish()`. Its invalid-KRA branch deleted `.pending.kra` whenever the exporter reported success, even though validation may have observed an incomplete flush or a concurrent writer. This could destroy the only remaining partial unsaved artwork while providing no benefit to the last published checkpoint.
