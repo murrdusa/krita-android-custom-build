@@ -8,6 +8,7 @@
 #include <QDialog>
 #include <QTimer>
 #include <QLabel>
+#include <QMenu>
 #include <QPointer>
 #include <QScopeGuard>
 #include <QSharedPointer>
@@ -1904,6 +1905,20 @@ int main(int argc,char **argv)
         require(editor.exec()==QDialog::Rejected &&
                 chooserRejected && !liveToolbar,
                 "nested Quick Actions chooser remained open after editor rejection");
+    }
+
+    // A stack QMenu running exec() must not be a QObject child of
+    // the standalone host. Host teardown closes it, leaving its
+    // stack storage intact until the caller's frame unwinds.
+    {
+        auto *owner=new QWidget;
+        const QPointer<QWidget> liveOwner(owner);
+        QMenu menu;
+        QObject::connect(owner,&QObject::destroyed,&menu,&QMenu::close);
+        QTimer::singleShot(0,&menu,[owner]() {delete owner;});
+        menu.exec(QPoint(100,100));
+        require(!liveOwner && !menu.isVisible(),
+                "standalone More menu survived host teardown");
     }
 
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
