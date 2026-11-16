@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — avoid unnecessary file opens during thumbnail-cache pruning
+
+- `MobileProjectPreviewCache::pruneLocked()` maintains a 512-entry newest-first heap, but continued opening every older eligible PNG and reading its signature even when its timestamp/name ranked below the oldest retained candidate. Added an early heap-bound check before disk open (`819136a`), so an overfull/legacy cache avoids unnecessary file descriptors, tiny reads, and filesystem work while preserving valid-PNG qualification for files that could be retained.
+- Existing `tests/qt_project_preview_cache.cpp` already covers 620-entry retention ordering and corrupt/empty files; neither that test nor native Qt lifecycle regressions can run until Qt development headers/libs are available. No precise Android performance or crash claim; exact-revision WSL build pending. No APK uploaded.
+
+
 ## November 16 — avoid validating obsolete named recovery checkpoints
 
 - `MobileDocumentHome::showList()` obtains private drafts in newest-first order. For each named project it previously performed a full Android ZIP/KoStore readability check *before* checking whether a newer valid checkpoint for that project had already been chosen. Reordered the membership check before archive validation (`faf7254`), eliminating redundant archive opens across older checkpoints during repeated Home refreshes.
