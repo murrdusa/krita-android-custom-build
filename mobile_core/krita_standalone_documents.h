@@ -180,36 +180,44 @@ public:
             return guardedDocument && m_runtime && originalRoot &&
                 m_runtime->documentRoot()==originalRoot.data();
         };
+        const auto abortOpening=[guardedDocument]() {
+            // Before addDocument(), this imported document is still
+            // ours. Do not leak it if a metadata callback replaces the
+            // host; do not delete a document registered by an observer.
+            if(guardedDocument && !isRegistered(guardedDocument.data()))
+                delete guardedDocument.data();
+            return false;
+        };
         if(!latest.isEmpty()) {
             // Reopen the latest completed checkpoint as the original project.
             // Keeping the original path lets the next native Save update it.
             document->setProperty("_mobileDraftPath",latest);
-            if(!stillOpening())return false;
+            if(!stillOpening())return abortOpening();
             document->setPath(path);
-            if(!stillOpening())return false;
+            if(!stillOpening())return abortOpening();
             document->setLocalFilePath(path);
-            if(!stillOpening())return false;
+            if(!stillOpening())return abortOpening();
             applyProjectMime(document,path);
-            if(!stillOpening())return false;
+            if(!stillOpening())return abortOpening();
             document->setReadWrite(true);
-            if(!stillOpening())return false;
+            if(!stillOpening())return abortOpening();
             document->setModified(true);
-            if(!stillOpening())return false;
+            if(!stillOpening())return abortOpening();
         }
         if(privateDraft) {
             document->setProperty("_mobileDraftPath",path);
-            if(!stillOpening())return false;
+            if(!stillOpening())return abortOpening();
         }
         if(privateDraft || savedVersion) {
             document->resetPath();
-            if(!stillOpening())return false;
+            if(!stillOpening())return abortOpening();
             document->setRecovered(true);
-            if(!stillOpening())return false;
+            if(!stillOpening())return abortOpening();
             document->setModified(true);
-            if(!stillOpening())return false;
+            if(!stillOpening())return abortOpening();
         }
 
-        if(!stillOpening() || !KisPart::instance())return false;
+        if(!stillOpening() || !KisPart::instance())return abortOpening();
         KisPart::instance()->addDocument(document);
         // Registration notifies Krita observers. A callback can close
         // the imported document before the native view is attached.
