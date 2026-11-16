@@ -66,6 +66,40 @@ int main(int argc,char **argv)
             "registry guard removed another window's document");
     delete third;
     require(FakeDocument::destroyed==3,"lost or double destroyed document");
+
+    // A failed attachment can cause an observer to unregister a loaded
+    // KRA without deleting its QObject. Its buffers must be retired
+    // when the registry no longer owns it.
+    auto *orphan=new FakeDocument;
+    const QPointer<FakeDocument> orphanIdentity(orphan);
+    require(MobileFailedDocumentAttach::disposeUnregistered(
+                orphanIdentity,[](FakeDocument *) {return false;}) &&
+            !orphanIdentity && FakeDocument::destroyed==4,
+            "orphaned imported image was retained after failed attachment");
+
+    // A still-registered document must never be deleted by a local
+    // failure handler: another Krita owner may still be displaying it.
+    auto *owned=new FakeDocument;
+    const QPointer<FakeDocument> ownedIdentity(owned);
+    require(!MobileFailedDocumentAttach::disposeUnregistered(
+                ownedIdentity,[](FakeDocument *) {return true;}) &&
+            ownedIdentity && FakeDocument::destroyed==4,
+            "orphan cleanup deleted a registered drawing");
+    delete owned;
+    require(FakeDocument::destroyed==5,
+            "registered drawing was leaked or destroyed twice");
+
+    // Registry traversal itself may destroy the candidate. Recheck
+    // the QPointer after that callback before attempting deletion.
+    auto *retired=new FakeDocument;
+    const QPointer<FakeDocument> retiredIdentity(retired);
+    require(!MobileFailedDocumentAttach::disposeUnregistered(
+                retiredIdentity,[](FakeDocument *candidate) {
+                    delete candidate;
+                    return false;
+                }) &&
+            !retiredIdentity && FakeDocument::destroyed==6,
+            "orphan cleanup double-deleted a document retired during lookup");
     int backendDestructions=0;
     auto backend=QSharedPointer<ReentrantDocumentBackend>::create(
         backendDestructions);
