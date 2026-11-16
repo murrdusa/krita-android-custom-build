@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — limit concurrent gallery thumbnail decode memory
+
+- `MobileDocumentHome` used two concurrent thumbnail workers, each potentially decoding a 16 MP image despite a requested 124 px thumbnail (Qt plugins may ignore decoder scaling). Serialized the existing thumbnail pool to one worker (`2e9ce59`), reducing simultaneous full-bitmap allocations and peak Android gallery memory pressure while retaining background decoding. This may reduce gallery thumbnail throughput, and is not evidence of a phone crash fix. Exact-revision local watcher result pending. No APK uploaded.
+
+
 ## November 16 — require selected live canvas for active-document identity
 
 - Hardened `MobileNativeViewStack::currentDocument()` to reject a missing selected QWidget and require a live view/document and a current stack layout slot before exposing the document identity (`ed898a4`). This keeps active-document queries aligned with `openViews()` during Qt removal and reentrant teardown; it is a preventative consistency guard, not a demonstrated on-device crash fix.
