@@ -18,6 +18,26 @@
 #include <functional>
 #include <utility>
 
+// Pure Qt policy used by the native GL first-swap observer. Keep the
+// capped exponential backoff testable without constructing KisView or
+// an Android OpenGL surface.
+class MobileFirstSwapRetryPolicy final
+{
+public:
+    static int boundedAttempt(int stored)
+    {
+        return qBound(0,stored,3);
+    }
+    static int timeoutMs(int stored)
+    {
+        return 2000 << boundedAttempt(stored);
+    }
+    static int afterTimeoutScheduled(int stored)
+    {
+        return qMin(boundedAttempt(stored)+1,3);
+    }
+};
+
 class MobileCanvasResumeObserver final : public QObject
 {
 public:
