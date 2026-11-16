@@ -5,15 +5,45 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QCoreApplication>
+#include <QFile>
 #include <QGuiApplication>
 #include <QMessageBox>
 #include <QPointer>
 #include <QSettings>
 #include <QSysInfo>
+#include <QStringList>
 #include <QThreadPool>
 
 namespace MobileCrashReport
 {
+// Read-only process memory counters supplied by Linux/Android. These
+// complement the previous-exit RSS: a single on-demand snapshot is
+// cheap, does not request permissions, and never reads drawing data.
+// Values are kernel-reported KiB; they are not allocations attributable
+// specifically to Krita's canvas or a particular tool.
+inline QString memorySnapshot()
+{
+    QFile status(QStringLiteral("/proc/self/status"));
+    if(!status.open(QIODevice::ReadOnly))
+        return QStringLiteral("Process memory: unavailable");
+    const QByteArray contents=status.read(16*1024);
+    QStringList fields;
+    for(const QByteArray &line:contents.split('\\n')) {
+        const int colon=line.indexOf(':');
+        if(colon<0)continue;
+        const QByteArray key=line.left(colon);
+        if(key==QByteArrayLiteral("VmRSS") ||
+           key==QByteArrayLiteral("VmHWM") ||
+           key==QByteArrayLiteral("VmSwap")) {
+            fields.append(QString::fromLatin1(key)+QStringLiteral(": ")+
+                          QString::fromLatin1(line.mid(colon+1).trimmed()));
+        }
+    }
+    return fields.isEmpty()?QStringLiteral("Process memory: unavailable"):
+        QStringLiteral("Process memory (kernel counters): ")+
+            fields.join(QStringLiteral("; "));
+}
+
 inline void rememberPreviousSession(QSettings &settings)
 {
     const auto phase=settings.value(QStringLiteral("MobileStudio/standaloneLastPhase"));
@@ -36,12 +66,13 @@ inline void copy()
     const QString header=QStringLiteral(
         "Krita Mobile Studio crash report\nVersion: %1\nDevice: %2, %3\n"
         "Previous launch startup phase: %4\nPrevious launch canvas/tool checkpoint: %5\n"
-        "Current canvas/tool checkpoint: %6\n\n")
+        "Current canvas/tool checkpoint: %6\n%7\n\n")
         .arg(QCoreApplication::applicationVersion(),QSysInfo::currentCpuArchitecture(),
              QSysInfo::prettyProductName(),
              settings.value(QStringLiteral("MobileStudio/previousCrashPhase")).toString(),
              settings.value(QStringLiteral("MobileStudio/previousCrashCheckpoint")).toString(),
-             settings.value(QStringLiteral("MobileStudio/crashCheckpoint")).toString());
+             settings.value(QStringLiteral("MobileStudio/crashCheckpoint")).toString(),
+             memorySnapshot());
     // Exit-history retrieval can finish after Android destroys the
     // QApplication. Never post to qApp by a stale global pointer.
     const QPointer<QCoreApplication> application(qApp);
