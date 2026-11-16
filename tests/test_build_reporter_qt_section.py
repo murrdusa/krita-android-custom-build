@@ -54,5 +54,28 @@ class QtLifecycleReportTests(unittest.TestCase):
             self.assertIn("NOT REPORTED", section)
 
 
+    def test_large_diagnostic_report_is_bounded(self):
+        with tempfile.TemporaryDirectory() as work:
+            base = Path(work)
+            report = base / "compiler-report.md"
+            report.write_text("first diagnostic\n" + "x" * 200000 +
+                              "\nlate marker", encoding="utf-8")
+            watcher = {"revision": "testrevision", "result": "failure",
+                       "report": str(report), "completed_at": "test"}
+            captured = {}
+            def record_dashboard(path):
+                captured["body"] = path.read_text(encoding="utf-8")
+                return "https://example.invalid/issue"
+            with patch.object(reporter, "BASE", base), \
+                 patch.object(reporter, "qt_lifecycle_section", return_value=""), \
+                 patch.object(reporter, "update_dashboard", side_effect=record_dashboard), \
+                 patch.object(reporter, "publish_status"), \
+                 patch.object(reporter, "gh", return_value=type("Result", (), {"returncode": 1})()):
+                reporter.report_completed(watcher)
+            self.assertIn("first diagnostic", captured["body"])
+            self.assertNotIn("late marker", captured["body"])
+            self.assertLessEqual(len(captured["body"]), 60000)
+
+
 if __name__ == "__main__":
     unittest.main()
