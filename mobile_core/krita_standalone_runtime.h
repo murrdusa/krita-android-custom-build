@@ -336,6 +336,7 @@ private:
         int documents=0;
         int retainedKisViews=0;
         int detachedKisViews=0;
+        int pendingFirstSwapObservers=0;
         if(m_root) {
             const auto views=m_root->openViews();
             nativeViews=views.size();
@@ -352,6 +353,11 @@ private:
             for(KisView *view:children)
                 if(m_root->indexOf(view)<0)
                     ++detachedKisViews;
+            // These named one-shot receivers should disappear after
+            // frameSwapped, timeout, or canvas destruction. Count them
+            // alongside detached views to detect callback retention.
+            pendingFirstSwapObservers=m_root->findChildren<QObject*>(
+                QStringLiteral("_mobileFirstSwapObserver")).size();
         }
         qInfo().noquote()
             << "MobileStudioMemory"
@@ -364,6 +370,7 @@ private:
             << "registeredDocuments" << documents
             << "retainedKisViews" << retainedKisViews
             << "detachedKisViews" << detachedKisViews
+            << "pendingFirstSwapObservers" << pendingFirstSwapObservers
             << "pendingDrafts" << m_pendingDrafts.size();
     }
 
