@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — release partially constructed engine runtime on failed startup
+
+- Audited `MobileKritaStandaloneRuntime::create()`. Its plugin action setup and manager initialization have several early failure returns after allocating a runtime under the still-live host. Those paths previously returned null without deleting the surviving runtime, leaving its action collection, view manager, diagnostic timer, or draft checkpoint machinery allocated until host shutdown and potentially preventing subsequent native startup. A `qScopeGuard` now deletes a still-live partial runtime on any failed return; successful construction dismisses that cleanup before returning ownership to the host. Source `02b7db6`.
+- Added Qt-only regression tests checking that unsuccessful initialization immediately destroys runtime QObject children, successful construction retains its host-owned runtime, and host destruction during initialization does not double-delete it (`baaf5d5`). These validate scoped QObject ownership, not the Android-only Krita constructor itself. Exact-revision PC Android build and test execution pending; no APK uploaded.
+
 ## November 16 — guard native central widget installation and failed-root cleanup
 
 - Audited `MobileLightweightCanvasHost::installNativeCanvas()` and `createNativeDocumentRoot()`. The former passed an unguarded widget to `setCentralWidget()`, then assigned that raw pointer to `m_canvas`. Qt can issue synchronous ownership/parenting notifications during central-widget installation; an observer can destroy the candidate or host. The caller's failed-installation branch also unconditionally deleted the original `root` raw pointer, risking a second deletion. Installation now tracks the host and candidate with `QPointer` before reparenting and only publishes a surviving central widget; failed-root cleanup deletes a still-live, unowned candidate, and preserves a widget already reparented to its host. Source `fbab3b5`.
