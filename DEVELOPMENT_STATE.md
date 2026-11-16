@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — guard failed native root rollback against host teardown and canvas transfer
+
+- Audited `MobileLightweightCanvasHost::discardEmptyNativeDocumentRoot()`. Its `takeCentralWidget()` reparents the central canvas and can notify Qt observers that close the host, destroy the candidate, or adopt it in another window. The old implementation immediately accessed host members, cleared the adapter, and deleted the returned raw widget after that operation. The rollback now captures `QPointer` identities before the Qt call, verifies the original host/root survive and the detached root is still unparented, then clears the adapter and destroys only that still-unowned canvas. Source `156a7f3`.
+- Added Qt-only coverage for real central-widget detachment followed by transfer to another parent, confirming the old host cannot retire it and its adapter becomes inert once deleted; plus host/root destruction lifetime checks (`bde6f50`). These tests exercise Qt ownership and guard policy, not a synthetic destructive event filter inside `takeCentralWidget()`. Exact-revision PC build/test execution pending; no APK uploaded.
+
 ## November 16 — avoid destroyed Open-dialog parent after Android display-name lookup
 
 - Audited `MobileDocumentService::openFiles()`' failed-Open warning. It previously evaluated the raw `window.data()` and `MobileSavedVersionArchive::projectName(path)` in the same `QMessageBox::warning()` call. Android SAF/provider display-name resolution can enter Qt callbacks that destroy the originating window before the modal warning is created; the argument evaluation order is not guaranteed. The code now resolves the name separately and rechecks `QPointer<QWidget> window` after the lookup before passing it to `QMessageBox::warning`. Source `f15e313`.
