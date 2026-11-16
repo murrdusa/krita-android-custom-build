@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — avoid stale document reads during save metadata publication
+
+- Reviewed `MobileKritaStandaloneDocuments::writeDocument()` after completed background-save confirmation. It previously called `MobileSavedVersionArchive::recordPreviewRevision()` and `rememberPath()` before reading `guardedDocument->nativeFormatMimeType()` and its private draft property. Qt recent-file/metadata observers can synchronously close the document or replace the native root, so those later reads risk stale ownership during a completed Save.
+- The save-completion path now rechecks the original native root and selected document after `ownsDocument()`, captures native MIME and draft identity **before** publishing preview/Recent Files metadata, and revalidates ownership after each publication step. If the canvas is closed/replaced, history enqueue is skipped rather than reading a destroyed document. Successful Save As/Export Copy behavior is otherwise unchanged.
+- Added Qt-only `tests/qt_native_view_stack.cpp` regression modeling synchronous document/root closure during save metadata publication, checking no later document read or history publication proceeds. Source commit `f147dfa352968a97f71c3f73a65cbb38e7cb92de`; test commit `ee2f6bf729cadf556f5d1cf91d40b88fa2fb1661`. Exact-revision Android compilation and test execution remain pending; no APK uploaded.
+
 ## November 16 — guard native save ownership before render dialog construction
 
 - Audited `MobileKritaStandaloneDocuments::writeDocument()`, including the save render-completion dialog. The initial conditional previously called `m_runtime->ownsDocument(document)` then dereferenced `m_runtime->documentRoot()` and its current document through raw/unrevalidated identities. If Krita registration observers tear down the canvas during the ownership query, that second dereference risks a stale-runtime or stale-root access.
