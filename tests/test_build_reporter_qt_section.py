@@ -21,22 +21,22 @@ class QtLifecycleReportTests(unittest.TestCase):
             path = logs / "large.log"
             with path.open("w", encoding="utf-8") as log:
                 for i in range(20000):
-                    log.write(f"compiler output {i}\\n")
+                    log.write(f"compiler output {i}\n")
                     if i % 1000 == 0:
-                        log.write(f"Native Qt lifecycle tests: test {i}\\n")
-                log.write("Native Qt lifecycle tests: PASS (3 executables)\\n")
+                        log.write(f"Native Qt lifecycle tests: test {i}\n")
+                log.write("Native Qt lifecycle tests: PASS (3 executables)\n")
             with patch.object(reporter, "BASE", base):
                 section = reporter.qt_lifecycle_section(f"Full local log: `{path}`")
             self.assertIn("Native Qt lifecycle tests: PASS", section)
             self.assertEqual(section.count("Native Qt lifecycle tests: "), 12)
-            self.assertNotIn("Native Qt lifecycle tests: test 0\\n", section)
+            self.assertNotIn("Native Qt lifecycle tests: test 0\n", section)
 
     def test_rejects_log_outside_watcher_directory(self):
         with tempfile.TemporaryDirectory() as work:
             base = Path(work)
             (base / "logs").mkdir()
             outside = base / "untrusted.log"
-            outside.write_text("Native Qt lifecycle tests: PASS\\n", encoding="utf-8")
+            outside.write_text("Native Qt lifecycle tests: PASS\n", encoding="utf-8")
             with patch.object(reporter, "BASE", base):
                 section = reporter.qt_lifecycle_section(f"Full local log: `{outside}`")
             self.assertIn("outside watcher directory", section)
@@ -48,7 +48,7 @@ class QtLifecycleReportTests(unittest.TestCase):
             logs = base / "logs"
             logs.mkdir()
             path = logs / "no-test.log"
-            path.write_text("Android APK build: SUCCESS\\n", encoding="utf-8")
+            path.write_text("Android APK build: SUCCESS\n", encoding="utf-8")
             with patch.object(reporter, "BASE", base):
                 section = reporter.qt_lifecycle_section(f"Full local log: `{path}`")
             self.assertIn("NOT REPORTED", section)
