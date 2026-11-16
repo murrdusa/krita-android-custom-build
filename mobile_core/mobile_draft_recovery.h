@@ -99,10 +99,11 @@ public:
 #endif
     }
 
-    // maxResults limits *only* the retained published-draft snapshot.
-    // Recovery searches use the default unlimited list so older
-    // recoverable checkpoints are never silently excluded.
-    static QFileInfoList list(int maxResults=0)
+    // maxResults limits the retained gallery snapshot. An optional
+    // modified-time cutoff skips drafts that cannot supersede the saved
+    // project, without losing older drafts from unrestricted recovery
+    // browsing or deleting any files.
+    static QFileInfoList list(int maxResults=0,qint64 newerThanMs=0)
     {
         const QString folder=directory();
         if(folder.isEmpty())return {};
@@ -178,6 +179,9 @@ public:
         while(completed.hasNext()) {
             completed.next();
             const QFileInfo file=completed.fileInfo();
+            if(newerThanMs>0 &&
+               file.lastModified().toMSecsSinceEpoch()<=newerThanMs)
+                continue;
             if(!isDraft(file.absoluteFilePath()))continue;
             if(maxResults<=0 || drafts.size()<maxResults) {
                 drafts.append(file);
@@ -288,7 +292,10 @@ public:
         const QString identity=MobileSavedVersionArchive::canonicalIdentity(project);
         if(identity.isEmpty())return {};
         QFileInfoList result;
-        for(const auto &draft:list()) {
+        // Most saved drawings have years of older draft history. Filter
+        // it while scanning instead of materializing and sorting entries
+        // that cannot be offered as recovery candidates.
+        for(const auto &draft:list(0,savedModified)) {
             if(draft.lastModified().toMSecsSinceEpoch()<=savedModified)break;
             if(MobileSavedVersionArchive::canonicalIdentity(
                    projectFor(draft.absoluteFilePath()))==identity &&
