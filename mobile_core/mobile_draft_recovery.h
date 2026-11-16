@@ -312,9 +312,21 @@ public:
     {
         const QString identity=MobileSavedVersionArchive::canonicalIdentity(project);
         if(identity.isEmpty())return false;
-        for(const QFileInfo &draft:list()) {
+        // list() also rescues a bounded batch of old completed .pending
+        // drafts. Preserve that behavior before checking whether a
+        // project may be deleted, but do not allocate and sort every
+        // published draft just to answer an existence question.
+        list(1);
+        const QString folder=directory();
+        if(folder.isEmpty())return false;
+        QDirIterator completed(folder,{QStringLiteral("*.kra")},
+                               QDir::Files|QDir::Readable|QDir::NoSymLinks);
+        while(completed.hasNext()) {
+            completed.next();
+            const QString path=completed.fileInfo().absoluteFilePath();
+            if(!isDraft(path))continue;
             if(MobileSavedVersionArchive::canonicalIdentity(
-                   projectFor(draft.absoluteFilePath()))==identity)
+                   projectFor(path))==identity)
                 return true;
         }
         return false;
