@@ -145,11 +145,37 @@ public:
             if(guarded && guardedManager)delete guarded.data();
             return nullptr;
         }
+        // After adoption, a later Qt callback can invalidate the
+        // document or manager without removing the view registration.
+        // Roll back only our original registration. An independently
+        // reparented or re-registered widget belongs to its new owner.
+        const auto abortRegistered=[guarded,guardedDocument,guardedManager,
+                                    guardedStack]() -> KisView* {
+            if(!guarded || !guardedStack)return nullptr;
+            bool registered=false;
+            for(const auto &entry:guardedStack->openViews()) {
+                if(entry.nativeView.data()==guarded.data() &&
+                   entry.document==guardedDocument) {
+                    registered=true;
+                    break;
+                }
+            }
+            if(!registered)return nullptr;
+            const QPointer<QObject> identity(guarded.data());
+            guardedStack->forgetView(identity);
+            // A KisView destructor calls its native manager. Only
+            // destroy the detached view if that manager still exists.
+            if(guarded && guardedManager && guardedStack &&
+               guarded->parentWidget()==guardedStack.data() &&
+               guardedStack->indexOf(guarded.data())<0)
+                delete guarded.data();
+            return nullptr;
+        };
         // addWidget() emits currentChanged synchronously. Its listeners
         // can destroy the Krita manager without destroying this root or
         // view; do not wire or display a canvas with a dead manager.
         if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
-            return nullptr;
+            return abortRegistered();
 
         // Krita emits both title/path and dirty-state changes. Keep
         // the native document switcher in sync with the actual engine,
@@ -178,7 +204,7 @@ public:
         // synchronously tear down the host. Do not read stack properties
         // or attach activation observers after that teardown.
         if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
-            return nullptr;
+            return abortRegistered();
 
         // One native manager activation router per Qt document root.
         // Connections are scoped to the native manager QObject.
@@ -212,10 +238,10 @@ public:
         }
 
         if(!guarded || !guardedDocument || !guardedStack || !guardedManager)
-            return nullptr;
+            return abortRegistered();
         stack->setCurrentWidget(view);
         if(!guarded || !guardedDocument || !guardedStack || !guardedManager)
-            return nullptr;
+            return abortRegistered();
         // First addWidget() emits currentChanged before the router is
         // wired. Only that first canvas needs explicit activation.
         // Later changes are already routed through currentChanged.
