@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — stop native bootstrap after reentrant host teardown
+
+- Audited `MobileKritaStandaloneRuntime::create()`. Tool-factory `createActions()`, the Qt main-window association, and startup diagnostics can execute Qt callbacks while the runtime and its host are still being initialized. Previously, bootstrap continued dereferencing raw runtime and host pointers without revalidating ownership after these callbacks. It now captures guarded runtime, host and canvas-root identities and exits if they are destroyed or replaced, including between tool registrations. Source commit `d5bee05`.
+- Added a Qt-only callback-lifetime regression checking that a destroyed host prevents subsequent registration and a surviving host proceeds normally (`20be7c5`). The fixture models the Qt lifetime boundary; it does not instantiate the Android-only Krita runtime or establish crash-frequency improvement. Exact Android compilation and regression execution pending. No APK uploaded.
+
 ## November 16 — bound restored preview revision metadata
 
 - `MobileSavedVersionArchive::recordPreviewRevision()` previously removed only one old entry after inserting a new preview revision. If settings were restored from an older or oversized revision map, hundreds of metadata entries persisted in memory and settings after each Save. It now trims until the existing 128-entry cap is restored in a single pass, preserving the newest timestamps.
