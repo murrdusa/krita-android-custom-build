@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — avoid stale canvas switch during native Close
+
+- Audited `MobileKritaNativeViewFactory::attach()`'s close callback. It compared `manager->canvasBase()` to `guarded->canvasBase()`, then immediately called `setCurrentView()` when they differed. A synchronous Qt/Krita callback during either getter could destroy the closing view, its canvas or manager before switching to it. The callback now holds the closing canvas in a `QPointer` and checks view, manager and canvas after querying the current manager canvas and before switching. Source `53ec042`.
+- Extended the Qt-only native stack regression with a callback that destroys the closing canvas during manager lookup; it must not attempt a view switch, while a surviving canvas may still be selected. Regression `c1c854a`, strengthened in `304d28e`. This models the lifecycle predicate, not Krita's Android Close flow. Exact-revision PC compilation and Qt test execution pending; no APK uploaded.
+
 ## November 16 — guard native canvas adoption after Android project title lookup
 
 - `MobileKritaNativeViewFactory::attach()` previously called `MobileSavedVersionArchive::projectName(initialPath)`, which can query Android's document provider, and then used raw `stack`, `view`, and `document` pointers to adopt the native canvas. If the provider or nested Qt observer closed that document/window, the first `adoptView()` call could access freed objects. After title lookup, verify guarded view, document, manager, root, and native Save host identities; adopt through those surviving guards. Source `ea163aa`.
