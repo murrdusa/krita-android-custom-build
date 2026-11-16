@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — isolate version-history browsing from paint workers
+
+- `MobileDocumentHome::showSavedVersions()` now sends history enumeration and KRA thumbnail decoding through the existing one-worker `recoveryPool()`, instead of Qt's global worker pool. Previously only recovery materialization used that isolated pool, while the history dialog's potentially long file scan and preview extraction still occupied a global worker shared with interactive drawing/fill operations. This also serializes history reads with recovery copies; gallery cancellation, queued-preview limit (four), and temporary-file ownership remain unchanged.
+- Source commit `2d68d7482253b9254b1f012ffa44592173507ba3`. Confirmed the gallery contains no remaining global thread-pool submissions. Exact-revision Android build and on-device responsiveness have not yet been verified; no APK uploaded.
+
 ## November 15 — non-allocating native chrome discovery
 
 - `MobileNativeCanvasChrome` now finds existing direct-child menu and status bars without invoking `QMainWindow::menuBar()` or `statusBar()`, which create widgets when none exist. The adapter's periodic 750 ms discovery previously could instantiate and retain unused desktop UI on a minimal native host simply to hide it. Existing desktop controls still retain their original visibility restoration semantics.
