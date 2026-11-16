@@ -268,8 +268,13 @@ private:
                 if(saved.widget==widget)return;
             m_chrome.append({widget,widget->isVisible()});
         };
-        store(m_backend->menuBar());
-        store(m_backend->statusBar());
+        // QMainWindow::menuBar()/statusBar() allocate missing widgets.
+        // Discovery runs every 750 ms; never create desktop chrome
+        // merely to record and hide it on a minimal native host.
+        store(m_backend->findChild<QMenuBar*>(
+            QString(),Qt::FindDirectChildrenOnly));
+        store(m_backend->findChild<QStatusBar*>(
+            QString(),Qt::FindDirectChildrenOnly));
         for(QToolBar *widget:m_backend->findChildren<QToolBar*>())
             store(widget);
         for(QDockWidget *widget:m_backend->findChildren<QDockWidget*>())
