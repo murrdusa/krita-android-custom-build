@@ -602,6 +602,7 @@ public:
 protected:
     void hideEvent(QHideEvent *event) override
     {
+        if(m_addLayerMenu && m_addLayerMenu->isVisible())m_addLayerMenu->close();
         // The gallery may hide this panel while its Krita document is
         // closed. Unlike a visible panel, it receives no refresh, so
         // cached KisNodeSP references could keep an entire old layer

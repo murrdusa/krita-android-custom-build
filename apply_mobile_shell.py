@@ -1768,7 +1768,24 @@ install(FILES org.kde.krita.desktop''',
     style_xml=one(style_xml,'<item name="android:windowBackground">@android:color/black</item>',
         '<item name="android:windowBackground">@color/studio_splash_background</item>',
         "match the Android launch window to the Studio background")
+    style_xml=one(style_xml,'<style name="DefaultTheme" parent="android:Theme.Material">',
+        '<style name="StudioBaseTheme" parent="android:Theme.Material">',
+        "share the Studio activity theme across Android versions")
+    style_xml=one(style_xml,'</resources>',
+        '    <style name="DefaultTheme" parent="StudioBaseTheme" />\n</resources>',
+        "retain the original activity theme below Android 12")
     styles.write_text(style_xml,encoding="utf-8")
+    versioned_styles=resources/"values-v31"
+    versioned_styles.mkdir(exist_ok=True)
+    (versioned_styles/"studio_splash.xml").write_text(
+        """<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="DefaultTheme" parent="StudioBaseTheme">
+        <item name="android:windowSplashScreenBackground">@color/studio_splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+    </style>
+</resources>
+""",encoding="utf-8")
     manifestfile.write_text(manifest,encoding="utf-8")
 
     # The older quick-pinch recognizer still runs in Krita's input manager,

@@ -124,8 +124,7 @@ public:
             delete guardedDocument.data();
             return false;
         }
-        guardedDocument->setProperty("_mobileBlankCanvas",true);
-        if(!guardedDocument || !KisPart::instance()) {
+        if(!KisPart::instance()) {
             if(guardedDocument)delete guardedDocument.data();
             return false;
         }

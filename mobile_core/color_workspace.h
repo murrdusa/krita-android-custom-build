@@ -444,6 +444,9 @@ public:
         m_tabs=new QTabBar(this);
         auto *tabs=m_tabs;
         tabs->setExpanding(true);
+        tabs->setUsesScrollButtons(false);
+        tabs->setElideMode(Qt::ElideRight);
+        tabs->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
         tabs->setStyleSheet(QStringLiteral(
             "QTabBar::tab{background:#30323b;color:#c3c6d1;min-height:30px;padding:0 7px;}"
             "QTabBar::tab:selected{background:#394459;color:#fff;}"));
@@ -497,7 +500,11 @@ public:
         };
         addPage(wheelPage,tr("Wheel"));
 
-        auto *values=new QWidget(pages);
+        m_valuesScroll=new QScrollArea(pages);
+        m_valuesScroll->setFrameShape(QFrame::NoFrame);
+        m_valuesScroll->setWidgetResizable(true);
+        MobileTouchScroll::configure(m_valuesScroll);
+        auto *values=new QWidget;
         auto *valuesLayout=new QVBoxLayout(values);
         valuesLayout->setContentsMargins(0,0,0,0);
         auto *form=new QFormLayout;
@@ -534,7 +541,8 @@ public:
             if(text.size()>=6 && color.isValid())select(color);
             if(m_provider)m_hex->setText(m_provider->fgColor().toQColor().name());
         });
-        addPage(values,tr("Sliders"));
+        m_valuesScroll->setWidget(values);
+        addPage(m_valuesScroll,tr("Sliders"));
 
         auto *lightingPage=new QWidget(pages);
         auto *lightingLayout=new QVBoxLayout(lightingPage);
@@ -692,7 +700,7 @@ public:
     {
         const int chrome=outerRowsHeight()+4;
         switch(m_tabs->currentIndex()) {
-        case 1:return QSize(320,m_pages->currentWidget()->layout()->sizeHint().height()+chrome+10);
+        case 1:return QSize(320,m_valuesScroll->widget()->sizeHint().height()+chrome+10);
         case 2:return QSize(360,470+chrome);
         default:return QSize(344,328+chrome);
         }
@@ -817,7 +825,7 @@ private:
     QStackedWidget *m_pages=nullptr;
     QTabBar *m_tabs=nullptr;
     QGridLayout *m_historyGrid=nullptr;
-    QScrollArea *m_lightingScroll=nullptr;
+    QScrollArea *m_valuesScroll=nullptr,*m_lightingScroll=nullptr;
     std::function<void()> m_syncBase;
     QLineEdit *m_hex=nullptr;
     QLabel *m_previous=nullptr,*m_current=nullptr;

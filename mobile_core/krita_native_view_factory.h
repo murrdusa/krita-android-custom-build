@@ -379,7 +379,9 @@ private:
                 // Home/IME transitions can leave a paint queued against the
                 // pre-layout viewport. On the first visible pass, lay out the
                 // real view and repopulate the projection, then paint it.
-                const bool firstProjection=!selected->property("_mobileInitialProjectionReady").toBool();
+                const QPointer<QWidget> initialSurface=canvas->canvasWidget();
+                const bool firstProjection=!initialSurface ||
+                    !initialSurface->property("_mobileInitialProjectionReady").toBool();
                 if(firstProjection) {
                     if(auto *layout=root->layout())layout->activate();
                     if(!isCurrent() || !canvas)return;
@@ -533,10 +535,8 @@ private:
                                                     "_mobileFirstSwapRetryCount",0);
                                         }
                                         if(!selected || !manager || !root)return;
-                                        const bool projectionReady=selected->property(
-                                            "_mobileInitialProjectionReady").toBool();
-                                        if(!selected || !manager || !root ||
-                                           projectionReady)return;
+                                        if(!watched || !selected || !manager || !root ||
+                                           watched->property("_mobileInitialProjectionReady").toBool())return;
                                         // A swap does not guarantee a usable
                                         // context if Android is tearing it down.
                                         // Let the ordinary activation path
@@ -568,27 +568,17 @@ private:
                     const bool fitNeeded=!viewport.intersects(image);
                     if(fitNeeded)selected->zoomManager()->slotZoomToFit();
                     if(!isCurrent() || !canvas || canvas->canvasWidget()!=surface)return;
-                    selected->setProperty("_mobileInitialProjectionReady",true);
+                    if(!surface)return;
+                    // Initialize each drawable surface once, including a
+                    // blank canvas whose first GL swap arrived after setup.
+                    // A replacement Android surface has its own projection.
+                    surface->setProperty("_mobileInitialProjectionReady",true);
                     if(!isCurrent() || !canvas || !surface ||
                        canvas->canvasWidget()!=surface)return;
-                    const QPointer<KisDocument> currentDocument=selected->document();
-                    if(!currentDocument)return;
-                    const bool blank=currentDocument->property("_mobileBlankCanvas").toBool();
-                    if(!isCurrent() || !canvas || !surface ||
-                       canvas->canvasWidget()!=surface)return;
-                    const bool waitingForSwap=surface->property(
-                        "_mobileWaitingForFirstSwap").toBool();
-                    if(!isCurrent() || !canvas || !surface ||
-                       canvas->canvasWidget()!=surface)return;
-                    const bool needsReload=!blank || fitNeeded || waitingForSwap;
-                    // Native canvas initialization already queues the projection.
-                    // A new blank image can use that upload on a ready surface.
-                    if(needsReload) {
-                        MobileCrashReport::checkpoint(QStringLiteral("Populate initial canvas projection"));
-                        canvas->refetchDataFromImage();
-                        if(!isCurrent() || !canvas || canvas->canvasWidget()!=surface)return;
-                        MobileCrashReport::checkpoint(QStringLiteral("Initial canvas projection queued"));
-                    }
+                    MobileCrashReport::checkpoint(QStringLiteral("Populate initial canvas projection"));
+                    canvas->refetchDataFromImage();
+                    if(!isCurrent() || !canvas || !surface || canvas->canvasWidget()!=surface)return;
+                    MobileCrashReport::checkpoint(QStringLiteral("Initial canvas projection queued"));
                 }
                 canvas->updateCanvas();
                 if(!isCurrent() || !canvas)return;

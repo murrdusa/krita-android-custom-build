@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — verify and restore mobile feature behavior
+
+- The stability branch includes the Wheel, Sliders, and Lighting picker, Layers minimization from Add, and the native splash. Color tabs fit narrow popups and the numeric controls scroll when needed. The Layers launcher always shows an icon, and the Add menu closes when the rail hides. Android 12 and newer use Studio’s splash colors and icon during the system launch transition.
+- Krita repopulates the first projection once per drawable surface, including blank canvases and replacement Android surfaces after the GL context becomes ready. The newer reentrancy, recovery, and memory fixes remain in place. Device rendering and cold-start appearance still need runtime verification.
+
 ## November 16 — verify the opened KRA inode before gallery preview ZIP parsing
 
 - `MobileProjectPreviewCache::safeLocalKraSource()` checked path size, regular-file state, symlink state and ZIP signature but, after opening the file, checked only the header. If a concurrent save or provider renamed/replaced a document between the initial `QFileInfo` stat and `QFile::open()`, the new handle could refer to an oversized or unexpected file, bypassing the source guard and reaching Krita's ZIP reader.

@@ -28,6 +28,7 @@
 #include <QSignalBlocker>
 #include <QScopedValueRollback>
 #include <QScrollArea>
+#include <QStyle>
 #include "touch_scroll.h"
 #include <QSpinBox>
 #include <QObject>
@@ -1993,7 +1994,8 @@ private:
             m_showLayers->setAccessibleName(tr("Show Layers"));
             m_showLayers->setToolTip(tr("Show Layers"));
             m_showLayers->setIcon(m_layersAction?m_layersAction->icon():QIcon());
-            if(m_showLayers->icon().isNull())m_showLayers->setText(tr("Layers"));
+            if(m_showLayers->icon().isNull())
+                m_showLayers->setIcon(m_showLayers->style()->standardIcon(QStyle::SP_FileDialogListView));
             m_showLayers->setFixedSize(44,44);
             m_showLayers->setStyleSheet(QStringLiteral(
                 "QToolButton{background:#34343a;color:white;border:1px solid #66666d;border-radius:7px;}"));
