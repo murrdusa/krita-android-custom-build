@@ -214,4 +214,27 @@ int main(int argc,char **argv)
     QTest::qWait(520);
     require(!holdButton && holdTeardowns==1,
             "toolbar hold deletion must not use a freed callback");
+
+    // Android can hide or deactivate the window during an inline drag.
+    // Cancellation may rebuild the workspace and destroy the active
+    // button before QWidget's normal event handler is reached.
+    QPointer<MobileToolbarGestureButton> cancelButton;
+    int cancelTeardowns=0;
+    cancelButton=new MobileToolbarGestureButton(nullptr,
+        QStringLiteral("tool-settings"),false,
+        [&](const QString &,qreal,const QPoint &,Phase phase) {
+            if(phase==Phase::Cancel) {
+                ++cancelTeardowns;
+                delete cancelButton.data();
+            }
+        },{});
+    cancelButton->resize(48,48);
+    cancelButton->show();
+    QApplication::processEvents();
+    mouse(cancelButton.data(),QEvent::MouseButtonPress,QPoint(20,20));
+    mouse(cancelButton.data(),QEvent::MouseMove,QPoint(90,20));
+    QEvent deactivate(QEvent::WindowDeactivate);
+    QApplication::sendEvent(cancelButton.data(),&deactivate);
+    require(!cancelButton && cancelTeardowns==1,
+            "window deactivation must not forward an event to a deleted toolbar button");
 }
