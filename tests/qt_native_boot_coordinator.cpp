@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QMainWindow>
+#include <QPointer>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QWidget>
@@ -103,6 +104,27 @@ int main(int argc,char **argv)
         nullptr,Decision::Launch,
         [](QMainWindow*,Coordinator::Completion) {return true;}),
         "missing Android Qt window accepted");
+
+    // A native launcher can synchronously destroy its parent Qt window.
+    // Since the boot coordinator is its child, that also destroys the
+    // coordinator while its launch callable is still executing.
+    auto *transient=new QMainWindow;
+    transient->setCentralWidget(new QWidget);
+    transient->resize(360,540);
+    transient->show();
+    drain();
+    const QPointer<QMainWindow> transientGuard(transient);
+    int teardownLaunches=0;
+    ensure(Coordinator::schedule(
+        transient,Decision::Launch,
+        [&teardownLaunches](QMainWindow *host,Coordinator::Completion) {
+            ++teardownLaunches;
+            delete host;
+            return true;
+        },0,2),"destructive launcher failed to schedule");
+    drain();
+    ensure(teardownLaunches==1 && !transientGuard,
+           "synchronous parent teardown must not outlive the startup callback");
     qInfo()<<"PASS: Android native engine Qt boot, retries,"
               " failure recovery and MDI-independent host";
     return 0;
