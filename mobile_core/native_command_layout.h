@@ -609,9 +609,14 @@ private:
     void editCanvasLayout()
     {
         if(m_editor || m_canvasOnly)return;
+        const QPointer<MobileNativeCommandLayout> alive(this);
         auto *canvas=static_cast<QWidget*>(parent());
-        if(m_layoutEditing)m_layoutEditing(true);
-        auto targets=m_layoutPanels?m_layoutPanels():QVector<MobileCanvasLayoutEditor::Target>();
+        const auto editing=m_layoutEditing;
+        if(editing)editing(true);
+        if(!alive)return;
+        const auto panels=m_layoutPanels;
+        auto targets=panels?panels():QVector<MobileCanvasLayoutEditor::Target>();
+        if(!alive)return;
         const auto addToolbar=[&](QFrame *frame,int index) {
             const bool vertical=verticalEdge(m_bars.at(index).edge);
             const auto name=QStringLiteral("_mobileToolbarColorHistory");
@@ -636,18 +641,24 @@ private:
         };
         addToolbar(m_toolbar,0);
         for(int i=0;i<m_extra.size();++i)addToolbar(m_extra.at(i),i+1);
-        m_editor=new MobileCanvasLayoutEditor(canvas,targets,[this]() {
-            m_editor.clear();
-            if(m_editedBars) {
-                m_editedBars=false;
-                m_builtin=false;
-                m_bars.first().adaptive=false;
-                saveBars();
-                rebuild();
-            } else position();
-            if(m_layoutEditing)m_layoutEditing(false);
-            m_workspaceTimer.start();
-        },[this]() {chooseWorkspaceLayout();});
+        m_editor=new MobileCanvasLayoutEditor(canvas,targets,[alive]() {
+            if(!alive)return;
+            alive->m_editor.clear();
+            if(alive->m_editedBars) {
+                alive->m_editedBars=false;
+                alive->m_builtin=false;
+                alive->m_bars.first().adaptive=false;
+                alive->saveBars();
+                if(!alive)return;
+                alive->rebuild();
+            } else alive->position();
+            if(!alive)return;
+            const auto editing=alive->m_layoutEditing;
+            if(editing)editing(false);
+            if(alive)alive->m_workspaceTimer.start();
+        },[alive]() {
+            if(alive)alive->chooseWorkspaceLayout();
+        });
     }
 
     void position()
