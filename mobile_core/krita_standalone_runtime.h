@@ -82,12 +82,16 @@ public:
             return nullptr;
 
         auto *runtime=new MobileKritaStandaloneRuntime(host,root);
+        const QPointer<MobileKritaStandaloneRuntime> alive(runtime);
+        const QPointer<MobileLightweightCanvasHost> guardedHost(host);
+        const QPointer<MobileNativeViewStack> guardedRoot(root);
         // Diagnostic collection is opt-in and has no effect on painting
         // or autosave when disabled.
         runtime->m_memoryDiagnosticsEnabled=QSettings().value(
             QStringLiteral("MobileStudio/memoryDiagnosticsV1"),false).toBool();
         if(runtime->m_memoryDiagnosticsEnabled) {
             runtime->reportMemorySnapshot("startup");
+            if(!alive || !guardedHost || !guardedRoot)return nullptr;
             auto *memoryTimer=new QTimer(runtime);
             memoryTimer->setInterval(60000);
             QObject::connect(memoryTimer,&QTimer::timeout,runtime,
@@ -104,14 +108,26 @@ public:
         // KisViewManager(QWidget*,...) does not set its QObject parent.
         runtime->m_manager->setParent(runtime);
         runtime->m_manager->setQtMainWindow(host);
+        if(!alive || !guardedHost || !guardedRoot ||
+           !alive->m_actions || !alive->m_manager ||
+           alive->m_root!=guardedRoot)return nullptr;
         // Krita's KisMainWindow registers plugin tool actions before
         // KisView::setViewManager() requests the active brush. Without
         // this, KoToolManager can select a tool whose actions were never
         // created for the independent host.
         for(KoToolFactoryBase *factory:KoToolRegistry::instance()->values()) {
-            if(factory)factory->createActions(runtime->m_actions.data());
+            if(!alive || !guardedHost || !guardedRoot ||
+               !alive->m_actions || !alive->m_manager ||
+               alive->m_root!=guardedRoot)return nullptr;
+            if(factory)factory->createActions(alive->m_actions.data());
         }
+        if(!alive || !guardedHost || !guardedRoot ||
+           !alive->m_actions || !alive->m_manager ||
+           alive->m_root!=guardedRoot)return nullptr;
         runtime->m_actions->addAssociatedWidget(host);
+        if(!alive || !guardedHost || !guardedRoot ||
+           !alive->m_actions || !alive->m_manager ||
+           alive->m_root!=guardedRoot)return nullptr;
         runtime->m_commands=QSharedPointer<MobileStandaloneKritaActions>::create(
             runtime->m_actions,host);
         auto *draftTimer=new QTimer(runtime);
