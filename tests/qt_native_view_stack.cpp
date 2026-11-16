@@ -1914,6 +1914,7 @@ int main(int argc,char **argv)
         auto *owner=new QWidget;
         const QPointer<QWidget> liveOwner(owner);
         QMenu menu;
+        menu.addAction(QStringLiteral("More"));
         QObject::connect(owner,&QObject::destroyed,&menu,&QMenu::close);
         QTimer::singleShot(0,&menu,[owner]() {delete owner;});
         menu.exec(QPoint(100,100));
