@@ -972,9 +972,9 @@ int main(int argc,char **argv)
         const QPointer<QObject> closingManager(&manager);
         const QPointer<QObject> closingCanvas(canvas);
         int switches=0;
-        const auto managerCanvas=[canvas]() -> QObject* {
+        const auto managerCanvas=[canvas,&manager]() -> QObject* {
             delete canvas;
-            return nullptr;
+            return &manager;
         };
         const bool needsActivation=managerCanvas()!=closingCanvas.data();
         if(closingView && closingManager && closingCanvas && needsActivation)
