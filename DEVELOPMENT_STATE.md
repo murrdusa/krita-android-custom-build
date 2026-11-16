@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — Android file-intent window ownership
+
+- Android file-intent registration now tags window ownership by generation. A delayed `destroyed()` callback from a previous activity/window can no longer clear a newer window's document host. Reattaching the same window also avoids stacking redundant destroyed observers.
+- Document-intent draining retains a local `QSharedPointer` for each `openFile()` call so synchronous window teardown cannot release the host while its method is running. Pending path deduplication and normal file-open behavior are unchanged.
+- Source commit `82aa98298a7cf4167a347927c4778fe3d8ac37b1`. Local Android build and device-intent reentry are not yet validated for this exact revision; no APK uploaded.
+
 ## November 15 — touch dropdown model lifetime
 
 - Touch combo initial-selection scrolling now captures a `QPersistentModelIndex` and verifies it still belongs to the list's displayed model before a queued scroll executes. A resource/model reset while a popup opens invalidates the saved row instead of passing a stale index into Qt's item view.
