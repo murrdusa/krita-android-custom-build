@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — guard native canvas adoption after Android project title lookup
+
+- `MobileKritaNativeViewFactory::attach()` previously called `MobileSavedVersionArchive::projectName(initialPath)`, which can query Android's document provider, and then used raw `stack`, `view`, and `document` pointers to adopt the native canvas. If the provider or nested Qt observer closed that document/window, the first `adoptView()` call could access freed objects. After title lookup, verify guarded view, document, manager, root, and native Save host identities; adopt through those surviving guards. Source `ea163aa`.
+- Added a Qt-only lifecycle-pattern regression that destroys the host during title resolution and verifies no adoption occurs, plus a surviving-path adoption test (`97356e7`). The test does not exercise Android provider JNI or the Krita-only view factory. Exact-revision PC build and test execution remain pending; no APK uploaded.
+
 ## November 16 — guard native view attachment after image/registration callbacks
 
 - `MobileKritaStandaloneDocuments::attachCanvas()` previously read `document->image()` and queried Krita registration before passing the original raw document pointer to the native view factory. A reentrant Qt observer could destroy the imported document or replace the native view root during either operation. The attach path now holds `QPointer` identities for the original document, runtime and root, and checks them after both queries before attempting view creation. Code `84818b6`.
