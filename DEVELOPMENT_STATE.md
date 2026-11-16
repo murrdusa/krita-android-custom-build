@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — tighten GL surface-destruction and zoom initialization guards
+
+- `MobileKritaNativeViewFactory::scheduleActivation()` now rechecks the selected view after reading its projection-ready Qt property in the one-shot GL surface destruction callback. The property lookup may dispatch QObject observers; a callback that destroys the view must not be followed by a write through its stale pointer.
+- Before invoking native Zoom-to-Fit after calculating the image rectangle, the factory now revalidates the active Krita view, manager, canvas widget, and native root. An engine notification during converter geometry calculation may tear down or switch the selected view. Do not subsequently query its zoom manager without verifying identity.
+- Source commit `557f3edaa97b6087f075fbd87d58fb2086ebe7d5`. These are narrow Android/Krita OpenGL lifecycle safeguards with no changes to document contents, drawing behavior or background saving. Exact-revision Android compilation and on-device testing are pending; host-only Qt regressions cannot reproduce Krita's converter and GL callbacks. No APK uploaded.
+
 ## November 16 — independent engine first-frame OpenGL lifecycle hardening
 
 - `MobileKritaNativeViewFactory::scheduleActivation()` now checks that the selected Krita view, native document root, manager, and GL canvas are still the same live objects after Qt dynamic-property changes and repaint requests. A first-frame property notification may synchronously close a drawing or replace a canvas while the Android window is being recreated; previously the code could continue creating a swap receiver or reading a destroyed document/surface.
