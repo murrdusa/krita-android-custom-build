@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — release fill-tolerance preview memory on canvas hide
+
+- `MobileFillTolerancePreview` now frees its sampled paint-device `QByteArray`, sampled selection bytes, and rendered `QImage` overlay whenever Android hides the canvas. These buffers are only temporary copies for interactive tolerance feedback, but previously remained resident for the lifetime of the widget even while another document was open. Hide invalidates the active worker generation and stops its delay timer; `requestMask()` now refuses hidden work, worker completion callbacks avoid rescheduling hidden previews, and Show requests a fresh sample once the previous worker completes (or immediately if idle). Original Krita paint devices, undo history, and document data are unchanged.
+- Source commits `3cb2c4d93e46576adc0321819333d84a117e0288` and `c67030aeec1c4ced2faf1c155e05d7a711aa96d1`. This engine-specific preview widget is not exercised by host Qt regressions; exact-revision WSL Android compilation, low-memory behavior and actual RSS reduction remain unverified. No APK uploaded.
+
 ## November 15 — test deferred retirement after accepted native closes
 
 - Expanded `tests/qt_native_view_stack.cpp` with another 128-cycle cleanup regression. Every iteration opens a canvas, cancels a Close (verifying its canvas and document stay registered), then accepts a Close callback which deliberately does not destroy the QWidget. After draining Qt's queued/deferred events the test checks that the now-detached painting widget has been destroyed, its view registration cleared, and no child widgets accumulate in the native stack. This complements the prior 128-cycle test where the document itself is destroyed before its canvas.
