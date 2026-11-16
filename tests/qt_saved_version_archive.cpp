@@ -1006,6 +1006,42 @@ int main(int argc,char **argv)
     QFile::remove(oversizedVersion);
     QFile::remove(oversizedVersion+QStringLiteral(".sha256"));
 
+    // The newest archive may itself be an oversized sparse file, while
+    // an older verified checkpoint is the only working recovery copy.
+    // Reserve that fallback without signed-size overflow or eviction.
+    const QString fallbackRoot=temp.filePath(QStringLiteral("sparse-fallback"));
+    const QString fallbackFolder=MobileSavedVersionArchive::folderFor(
+        source,fallbackRoot);
+    require(QDir().mkpath(fallbackFolder),
+            "create sparse fallback history folder");
+    const QString fallbackGood=QDir(fallbackFolder).filePath(
+        QStringLiteral("20000101T000000000-good.kra"));
+    save(fallbackGood,initial);
+    save(fallbackGood+QStringLiteral(".sha256"),
+         QCryptographicHash::hash(initial,QCryptographicHash::Sha256).toHex());
+    const QString fallbackHuge=QDir(fallbackFolder).filePath(
+        QStringLiteral("zzzz-largest-damaged.kra"));
+    {
+        QFile huge(fallbackHuge);
+        require(huge.open(QIODevice::WriteOnly) &&
+                huge.write(QByteArray::fromHex("504b0304"))==4,
+                "create newest sparse fallback archive");
+        if(huge.resize(8LL*1024*1024*1024+1)) {
+            huge.close();
+            require(MobileSavedVersionArchive::snapshot(source,fallbackRoot),
+                    "sparse newest checkpoint interrupted pruning");
+            const auto kept=MobileSavedVersionArchive::list(source,fallbackRoot);
+            bool fallbackSurvived=false;
+            for(const auto &version:kept)
+                if(version.path==fallbackGood)fallbackSurvived=true;
+            require(fallbackSurvived && QFile::exists(fallbackGood),
+                    "oversized newest archive evicted verified older fallback");
+        } else huge.close();
+    }
+    QFile::remove(fallbackHuge);
+    QFile::remove(fallbackGood);
+    QFile::remove(fallbackGood+QStringLiteral(".sha256"));
+
     // When the latest history version is healthy, corrupt intermediate
     // entries still must not evict the last older, verified checkpoint.
     const QString priorityRoot=temp.filePath(QStringLiteral("verified-priority"));
