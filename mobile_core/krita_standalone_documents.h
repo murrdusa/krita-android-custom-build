@@ -159,7 +159,8 @@ public:
                     return false;
                 }
                 const bool opened=openProjectSource(
-                    candidate.data(),checkpoint.absoluteFilePath(),true);
+                    candidate.data(),checkpoint.absoluteFilePath(),true,
+                    originalRoot);
                 if(!candidate)return false;
                 if(!m_runtime || !originalRoot ||
                    m_runtime->documentRoot()!=originalRoot.data() ||
@@ -195,7 +196,8 @@ public:
                 return false;
             }
             const bool opened=openProjectSource(
-                candidate.data(),path,privateDraft || savedVersion);
+                candidate.data(),path,privateDraft || savedVersion,
+                originalRoot);
             if(!candidate || !opened || !m_runtime || !originalRoot ||
                m_runtime->documentRoot()!=originalRoot.data() ||
                !KisPart::instance()) {
@@ -331,13 +333,21 @@ private:
         return bool(guarded);
     }
 
-    static bool openProjectSource(KisDocument *document,const QString &path,bool privateCopy)
+    bool openProjectSource(
+        KisDocument *document,const QString &path,bool privateCopy,
+        const QPointer<MobileNativeViewStack> &originalRoot) const
     {
         const QPointer<KisDocument> guarded(document);
-        if(!guarded || !applyProjectMime(guarded.data(),path) ||
-           !guarded)return false;
-        // MIME changes can synchronously destroy the document. Never
-        // start an expensive KRA load through its old raw address.
+        const auto stillOwned=[this,guarded,originalRoot]() {
+            return guarded && m_runtime && originalRoot &&
+                m_runtime->documentRoot()==originalRoot.data() &&
+                KisPart::instance();
+        };
+        if(!stillOwned() || !applyProjectMime(guarded.data(),path) ||
+           !stillOwned())return false;
+        // MIME changes or Android provider-name resolution can replace
+        // the native window without destroying the unregistered import.
+        // Do not spend memory opening a KRA for a stale workspace.
         return guarded->openPath(path,privateCopy?
             KisDocument::DontAddToRecent:KisDocument::None);
     }
