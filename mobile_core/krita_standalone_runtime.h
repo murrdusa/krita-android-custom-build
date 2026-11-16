@@ -188,20 +188,30 @@ public:
             if(registered==document) {inPart=true;break;}
         }
         if(!inPart)return nullptr;
+        // A draft-path property update notifies QObject observers before
+        // the view factory runs. Capture identities before that callback
+        // can close the document, native root, or entire runtime.
+        const QPointer<MobileKritaStandaloneRuntime> alive(this);
+        const QPointer<KisDocument> liveDocument(document);
+        const QPointer<MobileNativeViewStack> root=m_root;
+        const QPointer<KisViewManager> manager=m_manager;
         if(document->property("_mobileDraftPath").toString().isEmpty()) {
             const QString title=document->path().isEmpty()?
                 document->documentInfo()->aboutInfo(QStringLiteral("title")):
                 QFileInfo(document->path()).completeBaseName();
+            if(!alive || !liveDocument || !root || !manager)return nullptr;
             document->setProperty("_mobileDraftPath",
                                   MobileDraftRecovery::allocate(title));
         }
+        if(!alive || !liveDocument || !root || !manager ||
+           alive->m_root!=root || alive->m_manager!=manager ||
+           !alive->m_host || !alive->m_host->isVisible())
+            return nullptr;
         // The view factory enters Krita loading, canvas and Qt selection
         // callbacks. They can synchronously close this runtime or the
         // document. Revalidate both before registering more callbacks.
-        const QPointer<MobileKritaStandaloneRuntime> alive(this);
-        const QPointer<KisDocument> liveDocument(document);
         auto *view=MobileKritaNativeViewFactory::attach(
-            document,m_manager,m_root,saver);
+            liveDocument.data(),manager.data(),root.data(),saver);
         if(!alive || !liveDocument || !view)return nullptr;
         {
             connect(liveDocument.data(),&KisDocument::sigMobileDraftPublished,this,
