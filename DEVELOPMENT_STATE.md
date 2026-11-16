@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — guard periodic stationary canvas refresh from synchronous teardown
+
+- `MobileNativeCanvasPilot::refresh()` now snapshots its engine bridge and tracks its member timer with a `QPointer` throughout UI and native-document updates. Krita queries and Qt widget methods (including visibility, title, layout and panel refresh changes) can synchronously notify observers that destroy the pilot or replace its workspace. Each potentially reentrant operation is followed by a lifetime check, and each panel is separately guarded before further use. A destroyed document title/panel aborts that refresh rather than dereferencing an invalid QObject. No Krita document, painting, recovery, or Save/Discard behavior changed.
+- `runQuickAction()` now uses a local engine-bridge copy to enumerate Save/Close targets and stops if that enumeration tears down the pilot before scheduling a deferred command. Previously it could try to access the pilot-owned timer after synchronous destruction.
+- Commits `45d19f82f2291febc6a0cd54b1bef9c479463e4f` and `7a4c060ae859d6a8e23298f168299c8e1caeb53b`. This is the optional Android stationary UI, not the independent engine's active painting loop. No standalone Qt test can instantiate this pilot without Krita. Exact-revision Android compilation and Fold 6 runtime validation are pending; no APK was uploaded.
+
 ## November 16 — prevent stationary canvas pilot use-after-free during navigation
 
 - `MobileNativeCanvasPilot`'s Canvases button previously called `MobileDocumentSwitcher::open()` and then unconditionally called `refresh()`. The nested switcher can synchronously replace the native workspace or destroy the pilot while closing/opening a drawing, leaving that final refresh as a potential use-after-free. It now copies the engine bridge out of the pilot before entering the dialog, holds a `QPointer` to its lifetime-owned timer, and refreshes only while that timer remains live.
