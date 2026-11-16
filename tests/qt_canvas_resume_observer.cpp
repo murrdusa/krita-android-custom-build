@@ -198,6 +198,38 @@ int main(int argc,char **argv)
                 "destroyed canvas observer resumed after teardown");
     }
 
+    // An Android GL-context replacement can leave the old QWidget
+    // alive while a first-swap deadline is pending. Its timeout must
+    // not trigger activation of the new surface or clear its flags.
+    {
+        QObject activeCanvas;
+        auto *oldSurface=new QWidget;
+        auto *newSurface=new QWidget;
+        QPointer<QWidget> watched(oldSurface);
+        QPointer<QWidget> current(newSurface);
+        int activations=0;
+        const auto expireFirstSwap=[&]() {
+            if(watched)
+                watched->setProperty("_mobileWaitingForFirstSwap",false);
+            if(watched && current && watched==current)
+                ++activations;
+        };
+        oldSurface->setProperty("_mobileWaitingForFirstSwap",true);
+        newSurface->setProperty("_mobileWaitingForFirstSwap",true);
+        expireFirstSwap();
+        require(activations==0 &&
+                !oldSurface->property("_mobileWaitingForFirstSwap").toBool() &&
+                newSurface->property("_mobileWaitingForFirstSwap").toBool(),
+                "old GL timeout restarted a replacement canvas surface");
+        watched=newSurface;
+        expireFirstSwap();
+        require(activations==1 &&
+                !newSurface->property("_mobileWaitingForFirstSwap").toBool(),
+                "current GL timeout failed to resume the matching surface");
+        delete oldSurface;
+        delete newSurface;
+    }
+
     qInfo()<<"PASS: native canvas resumes after Android hide/show,"
            <<"skips hidden GL activation and survives deleted roots";
     return 0;
