@@ -328,7 +328,9 @@ int main(int argc,char **argv)
         auto *document=new QObject;
         auto *view=new QWidget;
         QObject::connect(&stack,&QStackedWidget::currentChanged,
-                         &stack,[manager](int) {delete manager;});
+                         &stack,[guardedManager](int index) {
+            if(index>=0 && guardedManager)delete guardedManager.data();
+        });
         require(stack.adoptView(view,document,QStringLiteral("activate"),
                                 [](){return true;}),
                 "could not exercise synchronous manager teardown on registration");

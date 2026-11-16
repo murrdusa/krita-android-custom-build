@@ -77,12 +77,18 @@ public:
                     retireDetachedView(host,orphan);
             });
         m_rows.append(std::move(row));
-        // addWidget() can synchronously emit currentChanged for the
-        // first tab. Its observers need the registered document then.
+        // Notify listeners only after Qt's insertion finishes so they
+        // can safely close the document or the stack during activation.
         const QPointer<MobileNativeViewStack> host(this);
         const QPointer<QWidget> guardedView(view);
         const QPointer<QObject> guardedDocument(document);
+        const bool first=currentIndex()<0;
+        const bool alreadyBlocked=blockSignals(true);
         const int inserted=addWidget(view);
+        if(!host)return false;
+        blockSignals(alreadyBlocked);
+        if(!alreadyBlocked && first && inserted>=0 && currentWidget()==guardedView)
+            Q_EMIT currentChanged(currentIndex());
         // currentChanged handlers may synchronously destroy a newly
         // activated view or its document. Never report a stale canvas
         // as successfully registered after those callbacks.

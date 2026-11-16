@@ -372,13 +372,13 @@ int main(int argc,char **argv)
     delete externalView;
     if(!require(externalStack.openViews().isEmpty(),
                 "destroyed native view removed from stack"))return 1;
-    auto *replacement=new QWidget;
+    auto *replacementView=new QWidget;
     if(!require(externalStack.adoptView(
-                    replacement,&externalDocument,QStringLiteral("Reattached"),
+                    replacementView,&externalDocument,QStringLiteral("Reattached"),
                     [](){return true;}) &&
                 externalStack.currentDocument()==&externalDocument,
                 "document can attach again after view destruction"))return 1;
-    delete replacement;
+    delete replacementView;
     if(!require(externalStack.openViews().isEmpty(),
                 "replaced view teardown cleans registry"))return 1;
 
