@@ -424,6 +424,9 @@ private:
                                     qMin(attempts+1,3));
                                 if(!receiver || !watched || !selected ||
                                    !manager || !root) {
+                                    if(watched)
+                                        watched->setProperty(
+                                            "_mobileWaitingForFirstSwap",false);
                                     if(receiver)receiver->deleteLater();
                                     return;
                                 }
