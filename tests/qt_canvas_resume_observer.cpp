@@ -202,7 +202,6 @@ int main(int argc,char **argv)
     // alive while a first-swap deadline is pending. Its timeout must
     // not trigger activation of the new surface or clear its flags.
     {
-        QObject activeCanvas;
         auto *oldSurface=new QWidget;
         auto *newSurface=new QWidget;
         QPointer<QWidget> watched(oldSurface);
