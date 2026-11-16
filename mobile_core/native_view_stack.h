@@ -278,7 +278,8 @@ private:
                 // to another host or re-register it here. Do not hide
                 // a canvas that the receiving owner has already shown.
                 if(view && view->parentWidget()==host.data() &&
-                   host->indexOf(view.data())<0)
+                   host->indexOf(view.data())<0 &&
+                   !host->uniqueRow(QPointer<QObject>(view.data())))
                     view->hide();
             }
             return true;
