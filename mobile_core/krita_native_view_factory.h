@@ -315,6 +315,17 @@ private:
                                 auto *firstSwap=new QObject(selected.data());
                                 const QPointer<QObject> receiver(firstSwap);
                                 const QPointer<QOpenGLWidget> watched(gl);
+                                // Android can replace the GL QWidget before
+                                // its first swap. Without clearing this flag,
+                                // a new surface will never install a retry.
+                                QObject::connect(gl,&QObject::destroyed,firstSwap,
+                                    [selected,receiver]() {
+                                        if(selected && !selected->property(
+                                                "_mobileInitialProjectionReady").toBool())
+                                            selected->setProperty(
+                                                "_mobileWaitingForFirstSwap",false);
+                                        if(receiver)receiver->deleteLater();
+                                    });
                                 QObject::connect(gl,&QOpenGLWidget::frameSwapped,firstSwap,
                                     [manager,root,selected,receiver,watched]() {
                                         if(receiver && watched)
@@ -322,8 +333,17 @@ private:
                                                                 receiver.data(),nullptr);
                                         if(receiver)receiver->deleteLater();
                                         if(selected && !selected->property(
-                                                "_mobileInitialProjectionReady").toBool())
+                                                "_mobileInitialProjectionReady").toBool()) {
+                                            // A swap does not guarantee a
+                                            // usable context if Android has
+                                            // already begun tearing it down.
+                                            // Allow the next activation to
+                                            // install a new one-shot observer.
+                                            if(!watched || !watched->isValid())
+                                                selected->setProperty(
+                                                    "_mobileWaitingForFirstSwap",false);
                                             scheduleActivation(manager,root,selected);
+                                        }
                                     });
                             }
                             surface->update();
