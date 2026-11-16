@@ -171,24 +171,45 @@ public:
             if(document)delete document; // Not yet registered with KisPart.
             return false;
         }
+        // Property and path changes notify document observers
+        // synchronously. A callback may close the document or replace
+        // the native host before the next setter runs. Keep the guard
+        // across the entire recovery metadata transaction.
+        const QPointer<KisDocument> guardedDocument(document);
+        const auto stillOpening=[this,guardedDocument,originalRoot]() {
+            return guardedDocument && m_runtime && originalRoot &&
+                m_runtime->documentRoot()==originalRoot.data();
+        };
         if(!latest.isEmpty()) {
             // Reopen the latest completed checkpoint as the original project.
             // Keeping the original path lets the next native Save update it.
             document->setProperty("_mobileDraftPath",latest);
+            if(!stillOpening())return false;
             document->setPath(path);
+            if(!stillOpening())return false;
             document->setLocalFilePath(path);
+            if(!stillOpening())return false;
             applyProjectMime(document,path);
+            if(!stillOpening())return false;
             document->setReadWrite(true);
+            if(!stillOpening())return false;
             document->setModified(true);
+            if(!stillOpening())return false;
         }
-        if(privateDraft)document->setProperty("_mobileDraftPath",path);
+        if(privateDraft) {
+            document->setProperty("_mobileDraftPath",path);
+            if(!stillOpening())return false;
+        }
         if(privateDraft || savedVersion) {
             document->resetPath();
+            if(!stillOpening())return false;
             document->setRecovered(true);
+            if(!stillOpening())return false;
             document->setModified(true);
+            if(!stillOpening())return false;
         }
 
-        const QPointer<KisDocument> guardedDocument(document);
+        if(!stillOpening() || !KisPart::instance())return false;
         KisPart::instance()->addDocument(document);
         // Registration notifies Krita observers. A callback can close
         // the imported document before the native view is attached.
