@@ -573,17 +573,34 @@ private:
         if(!completed->load() || !guardedDocument || !m_runtime ||
            !originalRoot || m_runtime->documentRoot()!=originalRoot.data() ||
            !m_runtime->ownsDocument(guardedDocument))return false;
-
+        // The ownership query and subsequent metadata reads can execute
+        // Krita/Qt callbacks. Capture all document-derived information
+        // before notifying the recent-files and archive services.
+        if(!stillSaving())return false;
+        QByteArray nativeMime;
+        QString draft;
+        if(!exporting) {
+            nativeMime=guardedDocument->nativeFormatMimeType();
+            if(!stillSaving())return false;
+            if(targetMime==nativeMime ||
+               targetMime=="application/x-krita-archive") {
+                draft=guardedDocument->property(
+                    "_mobileDraftPath").toString();
+                if(!stillSaving())return false;
+            }
+        }
+        if(!stillSaving())return false;
         if(!exporting) {
             MobileSavedVersionArchive::recordPreviewRevision(target);
+            if(!stillSaving())return false;
             rememberPath(target);
-            if(targetMime==guardedDocument->nativeFormatMimeType() ||
+            if(!stillSaving())return false;
+            if(targetMime==nativeMime ||
                targetMime=="application/x-krita-archive") {
-                // An unsaved drawing already has historical private draft
-                // checkpoints. Keep them when it first receives a name.
-                const QString draft=guardedDocument->property(
-                    "_mobileDraftPath").toString();
+                // Enqueue without re-reading a potentially closed
+                // document after recent-files listeners have run.
                 MobileSavedVersionArchive::enqueueAfterSave(target,draft);
+                if(!stillSaving())return false;
             }
         }
         return true;
