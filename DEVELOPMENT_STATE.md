@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — bound routine saved-version checks to newest archive
+
+- Investigated autosave memory pressure in `MobileSavedVersionArchive::snapshotFrom()`. Its rate-limit check and deduplication pass previously each called `scan(folder)`, materializing and sorting the entire history even though each uses only the newest completed KRA. A damaged/interrupted history directory can contain far more files than normal retention permits, causing avoidable temporary allocations on an autosave path.
+- Added optional `maxResults` to the streaming `scan()` helper. The two latest-only autosave calls now use `scan(folder,1)`, with a one-entry heap and filename-based ordering identical to full history enumeration. Retention pruning and user-visible history still use unrestricted `scan(folder)`; no backups are deleted by the new optimization.
+- Added a Qt regression in `tests/qt_saved_version_archive.cpp` that publishes a real checkpoint, stages 48 older archive entries, and confirms a rate-limited snapshot succeeds without changing the version inventory. Code commit `ebbaee5c92d9ae7a26f60232fa37aea90c34aa57`; test commit `f26af092373a194f516123f21518aaed1c814d03`. Exact-revision compilation and test execution remain pending, and no APK was uploaded.
+
 ## November 16 — stress regression for recovery-list memory bounds
 
 - Verified the native build watcher had reported a successful Android build at `be3f07e8`, covering the initial 20k gallery bound; the subsequent checkpoint time cutoff still lacked a matching build report during this pass.
