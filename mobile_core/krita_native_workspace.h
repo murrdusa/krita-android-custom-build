@@ -762,7 +762,8 @@ public:
         layout->addWidget(buttons);
         connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);
         connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
-        if(dialog.exec()!=QDialog::Accepted || !owner || !alive)return;
+        if(dialog.exec()!=QDialog::Accepted || !alive ||
+           (parent && !owner))return;
         for(const auto &row:rows) {
             if(row.second->currentIndex()==0)settings.remove(row.first);
             else settings.setValue(row.first,row.second->currentData());
