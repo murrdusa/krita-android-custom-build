@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — fix GL first-frame retry flag ownership
+
+- Identified an inconsistent state transition in `MobileKritaNativeViewFactory::scheduleActivation()`: `_mobileWaitingForFirstSwap` is set and checked on the QOpenGLWidget surface, but the invalid-frame and surface-destruction callbacks were clearing a property of the same name on the parent `KisView`. On a still-live but invalid GL surface, this leaves the original surface's retry flag set and prevents a new `frameSwapped` listener from being armed after context loss.
+- The invalid-frame callback now clears the flag **on the watched surface** before requesting a new activation. A destroyed surface needs no reset (its dynamic properties disappear with the QWidget); the destruction handler now only retires its one-shot QObject receiver. Existing guarded QPointers, per-surface first-swap observer disconnection and Android first-projection logic are preserved.
+- Source commit `6a2f682477085622e3ed38ad4969422eadf8429f`. This corrects a specific logical bug in first-frame recovery; exact-revision Android compilation and device GL context recreation tests are pending. No APK uploaded.
+
 ## November 16 — reject duplicate-open scans after document teardown
 
 - `MobileKritaStandaloneDocuments::openFile()` previously read the path and `_mobileDraftPath` of another open `KisDocument` through a raw pointer. When a Qt/Krita observer closes the document during either read, the next access can target a destroyed QObject. The scan now uses `QPointer<KisDocument>`, checks the original native root and view survival after each metadata lookup, and aborts without importing or activating a tab when an identity disappears.
