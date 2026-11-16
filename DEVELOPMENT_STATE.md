@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — fix stale PASS reuse in native Qt lifecycle test cache
+
+- Audited the local WSL native lifecycle regression runner following the latest canvas-retirement changes. Its fingerprint included test files and several headers but omitted the transitively included `view_host_port.h`, `host_services.h`, and `native_canvas_chrome.h`. A change to one of those files could otherwise be reported as an unchanged cached PASS without recompiling the affected tests. The runner now includes those headers and the active Qt5Core/Qt5Widgets development-kit versions in its cache fingerprint (`17840d3`). Source/test execution is still gated by the host Qt5Widgets development libraries, absent in the latest watcher report.
+- Reviewed `MobileDraftRecovery::rescueOrphanStaging()` and `MobileSavedVersionArchive` background work: rescans are bounded and archive copying uses a single worker; no speculative behavioral changes made. Exact-revision build status pending; no APK uploaded.
+
 ## November 16 — preserve re-registered canvas during deferred retirement
 
 - Audited `MobileNativeViewStack::retireDetachedView()` after the recent Close/adoption/deregistration fixes. Its deferred callback previously used QWidget parentage and `indexOf()` alone. During a reentrant canvas handoff, an original QWidget can be registered with a live document row while temporarily outside `QStackedWidget`'s layout. In that case `indexOf() == -1` was not proof of orphan ownership, and a previously queued cleanup could delete a still-registered painting canvas. The callback now checks `uniqueRow()` as well before deletion. Source `b7d1643`.
