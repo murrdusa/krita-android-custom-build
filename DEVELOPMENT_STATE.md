@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — guard native document-open picker against host teardown
+
+- `MobileDocumentService::openFiles()` now holds a local `QSharedPointer` to its document backend across `KoFileDialog::filename()` and checks a `QPointer<QWidget>` to the original window after that potentially nested Android picker. If the app window was destroyed during the picker, the selected file is not opened into a stale host; if `openFile()` subsequently destroys the window or service, the result is still returned without dereferencing their stale members. A failed Open only displays an error dialog while its owner remains live.
+- Source commit `275c5a9021f8963982cd50cd7edfacce92e141ca`. The native KoFileDialog path is Android/Krita-specific and has no standalone Qt regression fixture. Exact-revision WSL Android compile and device behavior are unverified; no APK uploaded.
+
 ## November 15 — avoid stack popup deletion during toolbar teardown
 
 - The stationary native canvas pilot's More menu now uses an unparented stack `QMenu`. Its `exec()` enters a nested Qt event loop, and previously the menu was QObject-parented to the toolbar anchor (or main window). Destroying that owner during a workspace replacement could delete the C++ stack object before `showMore()` unwound, leading to invalid stack destruction/use-after-free. The menu remains scoped to `showMore()` and is automatically destroyed after `exec()` returns; deferred QAction callbacks already target the pilot's context timer.
