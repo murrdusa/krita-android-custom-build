@@ -24,6 +24,23 @@
 #include <QScopedPointer>
 #endif
 
+// The background checkpoint watchdog runs only while a document remains
+// busy saving. Back off on long saves rather than waking Android every
+// two seconds indefinitely; normal save-completion signals still trigger
+// the immediate continuation.
+struct MobilePendingDraftRetryPolicy final
+{
+    static int timeoutMs(int attempts)
+    {
+        const int level=qBound(0,attempts,3);
+        return 2000 << level;
+    }
+    static int afterTimeoutScheduled(int attempts)
+    {
+        return attempts<0?1:(attempts<3?attempts+1:3);
+    }
+};
+
 class MobileDraftRecovery final
 {
 public:
