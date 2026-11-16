@@ -821,6 +821,57 @@ int main(int argc,char **argv)
                 "live native bootstrap skipped normal tool registration");
     }
 
+    // Save ownership checks traverse engine registry listeners. Model a
+    // synchronous document-ownership observer replacing the canvas root:
+    // a live document and runtime alone do not authorize accessing the
+    // original root after the callback.
+    {
+        auto *runtime=new QObject;
+        auto *root=new QObject(runtime);
+        auto *document=new QObject(runtime);
+        const QPointer<QObject> guardedRuntime(runtime);
+        const QPointer<QObject> guardedRoot(root);
+        const QPointer<QObject> guardedDocument(document);
+        int rootReads=0;
+        const auto ownsDocument=[&]() {
+            delete root;
+            return true;
+        };
+        const auto stillOwnedSelected=[&]() {
+            if(!guardedRuntime || !guardedRoot || !guardedDocument)
+                return false;
+            const bool owned=ownsDocument();
+            if(!owned || !guardedRuntime || !guardedRoot ||
+               !guardedDocument)return false;
+            ++rootReads;
+            return true;
+        };
+        require(!stillOwnedSelected() && rootReads==0 &&
+                guardedRuntime && guardedDocument && !guardedRoot,
+                "save inspected destroyed root after reentrant ownership query");
+        delete runtime;
+    }
+    {
+        QObject runtime;
+        QObject root(&runtime);
+        QObject document(&runtime);
+        const QPointer<QObject> guardedRuntime(&runtime);
+        const QPointer<QObject> guardedRoot(&root);
+        const QPointer<QObject> guardedDocument(&document);
+        int rootReads=0;
+        const auto stillOwnedSelected=[&]() {
+            if(!guardedRuntime || !guardedRoot || !guardedDocument)
+                return false;
+            const bool owned=true;
+            if(!owned || !guardedRuntime || !guardedRoot ||
+               !guardedDocument)return false;
+            ++rootReads;
+            return true;
+        };
+        require(stillOwnedSelected() && rootReads==1,
+                "save guard rejected live native canvas");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
