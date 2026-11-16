@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — discard obsolete recovery entries before allocation
+
+- Reviewed the newest-first bounded heap in `MobileDraftRecovery::list()` and confirmed that the most recent Android watcher report compiled regression source commit `bfe269eb`. The design still left `checkpointsFor()` collecting and sorting every published private draft before rejecting entries at or before the saved project's modification time.
+- Added an optional `newerThanMs` cutoff to `list(maxResults,newerThanMs)`. The directory walk now skips older `QFileInfo` entries **before** adding them to the result container. `checkpointsFor()` supplies its saved-project cutoff, while default `list()`, gallery `list(20000)` and `hasProjectDraft()` behavior remain unchanged. No draft files are removed.
+- Extended `tests/qt_saved_version_archive.cpp` to compare the new filtered list against an unrestricted list filtered by the same timestamp, including newest-first ordering and a combined count+time bound. Code commit `91c9f48dfaecbbc86878b632f99bb45683e44810`; test commit `ba3452f3798d6066f2790e5934031ddb5140cd3c`. Exact-revision compilation and test execution remain pending; no APK uploaded.
+
 ## November 16 — cap Android gallery recovery-draft enumeration
 
 - Audited the native painting view lifetime and recovery workers. The home gallery's ordinary thumbnail and project index queues are already bounded, but `MobileDraftRecovery::list()` still materialized and sorted **every** published private draft before `MobileDocumentHome::showList()` could apply its 20,000-project UI limit. An anomalously large recovery directory could transiently allocate a very large `QFileInfoList` and trigger Android memory pressure.
