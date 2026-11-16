@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — stress-test successful Open/Close canvas retirement
+
+- Audited the native stack's successful `closeView()` and deferred `retireDetachedView()` flow. Added 128 repeated real Qt stack Open/Close cycles to `qt_native_view_stack.cpp`, modeling a native Close handler that accepts the close while leaving the QWidget's retirement to the stack. Each cycle asserts one registered view on Open, zero after Close, exactly one QWidget destruction after the queued callback, and no accumulated QWidget children under the long-lived root. Test `85c2f94`. This complements the 128 failed-adoption cycles without changing production code whose existing retirement policy already handles the normal close.
+- The local watcher reported SUCCESS for `17b6a6a`, but the recorded log reused the previous APK and did not demonstrate that the native Qt smoke test had run. Do not claim test execution until a runner reports it explicitly. Exact-revision test/build validation of `85c2f94` pending. No APK uploaded.
+
 ## November 16 — stress test repeated failed native canvas adoption
 
 - Extended the new reentrant native adoption failure regression to run 128 consecutive canceled registrations with a long-lived `MobileNativeViewStack`. Each cycle checks that the row is removed, the detached QWidget is destroyed after queued Qt cleanup, and no QWidget children accumulate across attempts (`85ef374`). This specifically exercises the GL-capable widget ownership leak fixed by `b4f96a2`; no additional speculative engine changes were made. The existing ownership-transfer regression still verifies that a canvas adopted by another host is not deleted by the original host.
