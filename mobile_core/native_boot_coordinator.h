@@ -75,8 +75,9 @@ private:
             }
             return;
         }
-        if(originalWindow->centralWidget()!=canvas.data() ||
-           m_window!=originalWindow)return;
+        const QPointer<QWidget> currentCanvas=originalWindow->centralWidget();
+        if(!alive || !originalWindow || !currentCanvas ||
+           currentCanvas!=canvas || m_window!=originalWindow)return;
         // A native launch can synchronously destroy the Qt window and
         // this child coordinator. Never execute the std::function stored
         // in the coordinator: its storage may be freed mid-invocation.
