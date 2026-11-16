@@ -508,6 +508,23 @@ private:
             if(!alive || !originalRoot ||
                alive->m_root!=originalRoot)return;
         }
+        // A background request can arrive while Krita is still saving.
+        // The immediate continuation above then sees isSaving()==true
+        // and leaves that document pending. Without another wakeup its
+        // private checkpoint could be skipped indefinitely. Retry with
+        // a bounded backoff; never spin in the nested save event loop.
+        if(!m_pendingDrafts.isEmpty() && !m_draftRetryQueued) {
+            m_draftRetryQueued=true;
+            const QPointer<MobileKritaStandaloneRuntime> retry(this);
+            QTimer::singleShot(2000,this,[retry]() {
+                if(!retry)return;
+                retry->m_draftRetryQueued=false;
+                if(!retry->m_checkpointing)
+                    retry->continueDrafts();
+                else
+                    retry->scheduleDraftContinuation();
+            });
+        }
     }
 
     MobileKritaStandaloneRuntime(MobileLightweightCanvasHost *host,
@@ -525,6 +542,7 @@ private:
     bool m_checkpointing=false;
     bool m_checkpointAgain=false;
     bool m_draftContinuationQueued=false;
+    bool m_draftRetryQueued=false;
     bool m_memoryDiagnosticsEnabled=false;
     bool m_closedMemorySnapshotQueued=false;
     QSharedPointer<MobileCommandRegistryPort> m_commands;
