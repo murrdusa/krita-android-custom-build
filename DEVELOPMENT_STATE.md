@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 15 — bound gallery source image decoding
+
+- KRA embedded PNG previews and imported PNG/JPEG gallery items now use one Qt-only `MobileProjectPreviewCache::safePreviewDecodeSize` guard, rejecting dimensions exceeding 8192 on either side or 16 megapixels total before `QImageReader::read()`. Image plugins may ignore `setScaledSize()`: the previous 40-megapixel allowance could allocate about 160 MiB per worker for a 32-bit source bitmap, versus at most 64 MiB now. Two simultaneous workers amplify the transient memory impact. This affects thumbnails only; the original artwork remains openable and the gallery displays its placeholder for unsupported source dimensions.
+- `tests/qt_project_preview_cache.cpp` checks accepted 4096x4096 and 8192x2048 dimensions, and rejected oversize/invalid sizes. Helper commit `1d20aedb5a63a0c53fa9499775ed013495f5f68b`, gallery integration `b9e20e3e9d2361e0913050878db92a852e5f9ccd`, regression `13dbb9b14fd4e9b911aa2878817488cdc60f1aef`. Exact-revision local Android build and Qt test results remain unverified; no APK uploaded.
+
 ## November 15 — cap legacy gallery thumbnail decoder allocations
 
 - The thumbnail disk-cache reader now rejects PNGs exceeding 1024 px in either dimension or 1 megapixel total. The prior allowance of 4096x4096 could allocate approximately 64 MiB per image on Qt plugins that ignore scaled-decode requests; two concurrent gallery workers could compound transient Android memory pressure. New cache writes remain downscaled to 124 px, and older smaller cached previews remain readable. Oversized legacy cache entries miss and are regenerated from original projects.
