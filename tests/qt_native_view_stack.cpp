@@ -480,6 +480,26 @@ int main(int argc,char **argv)
         QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
     }
 
+    // Recovery metadata updates emit synchronous QObject change
+    // notifications before an imported document is registered with
+    // Krita. The first notification may destroy the document, so the
+    // subsequent path setters must not use the original raw pointer.
+    {
+        QPointer<QObject> imported(new QObject);
+        QObject::connect(imported.data(),&QObject::objectNameChanged,
+                         &app,[&imported](const QString &) {
+            if(imported)delete imported.data();
+        },Qt::DirectConnection);
+        int subsequentWrites=0;
+        imported->setObjectName(QStringLiteral("recovered-project"));
+        if(imported) {
+            ++subsequentWrites;
+            imported->setProperty("_mobileDraftPath",QStringLiteral("draft.kra"));
+        }
+        require(!imported && subsequentWrites==0,
+                "reentrant recovery metadata destroyed document before next write");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
