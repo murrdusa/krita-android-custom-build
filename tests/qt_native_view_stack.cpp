@@ -921,6 +921,45 @@ int main(int argc,char **argv)
                 "native view attachment rejected live document and root");
     }
 
+    // Native project display-name resolution can enter Android/Qt
+    // callbacks before the view is registered. A destroyed dependency
+    // must prevent adoption, while an intact title lookup still works.
+    {
+        auto *host=new QWidget;
+        auto *stack=new MobileNativeViewStack(host);
+        auto *document=new QObject(host);
+        auto *view=new QWidget;
+        const QPointer<MobileNativeViewStack> guardedStack(stack);
+        const QPointer<QObject> guardedDocument(document);
+        const QPointer<QWidget> guardedView(view);
+        int adoptions=0;
+        const auto resolveTitle=[host]() {
+            delete host;
+            return QStringLiteral("Artwork.kra");
+        };
+        const QString title=resolveTitle();
+        if(guardedStack && guardedDocument && guardedView)
+            ++adoptions;
+        require(title==QStringLiteral("Artwork.kra") &&
+                !guardedStack && !guardedDocument && adoptions==0,
+                "native attachment survived host destruction during title lookup");
+        delete view;
+    }
+    {
+        MobileNativeViewStack stack;
+        QObject document;
+        auto *view=new QWidget;
+        const QPointer<QWidget> guardedView(view);
+        const QPointer<QObject> guardedDocument(&document);
+        const QPointer<MobileNativeViewStack> guardedStack(&stack);
+        const QString title=QStringLiteral("Artwork.kra");
+        const bool accepted=guardedStack && guardedDocument && guardedView &&
+            guardedStack->adoptView(guardedView.data(),guardedDocument.data(),
+                                    title,[](){return true;});
+        require(accepted && stack.openViews().size()==1,
+                "native title-lookup guard rejected intact attachment");
+    }
+
     qInfo() << "PASS: MDI-free view stack, Qt host close cancellation,"
             << "synchronous native destruction, twelve no-reparent"
             << "transitions and destroyed-host safety";
