@@ -23,6 +23,9 @@ namespace {
 std::atomic_bool s_active{false};
 QPointer<QWidget> s_window;
 QSharedPointer<MobileDocumentHostPort> s_documentHost;
+// A previous Android window can be destroyed after a replacement host
+// has attached. Only the latest registration may clear global host state.
+quint64 s_attachmentGeneration=0;
 QStringList s_pending;
 bool s_opening=false;
 
@@ -34,7 +37,10 @@ int drain()
     int opened=0;
     while(s_window && s_documentHost && !s_pending.isEmpty()) {
         const QString path=s_pending.takeFirst();
-        if(s_documentHost->openFile(path)) {
+        // Opening a document can synchronously close its old Android
+        // window. Retain this host until its own openFile() returns.
+        const QSharedPointer<MobileDocumentHostPort> host=s_documentHost;
+        if(host->openFile(path)) {
             ++opened;
             qInfo() << "Mobile Studio: opened Android file intent" << path;
         } else {
@@ -85,12 +91,18 @@ int MobileAndroidDocumentIntents::attachAndOpen(
 {
     if(!active() || !window || !documents || !documents->available())
         return 0;
+    if(s_window!=window) {
+        const quint64 generation=++s_attachmentGeneration;
+        QObject::connect(window,&QObject::destroyed,[generation](QObject*) {
+            // A stale window must not clear a newer window's document
+            // host during Android activity recreation.
+            if(generation!=s_attachmentGeneration)return;
+            s_window=nullptr;
+            s_documentHost.clear();
+        });
+    }
     s_window=window;
     s_documentHost=documents;
-    QObject::connect(window,&QObject::destroyed,[](QObject*) {
-        s_window=nullptr;
-        s_documentHost.clear();
-    });
     return drain();
 }
 #endif
