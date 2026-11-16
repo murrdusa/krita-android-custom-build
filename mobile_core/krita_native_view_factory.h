@@ -63,6 +63,7 @@ public:
         const QPointer<KisDocument> guardedDocument(document);
         const QPointer<KisViewManager> guardedManager(manager);
         const QPointer<MobileNativeViewStack> guardedStack(stack);
+        const QPointer<MobileKritaNativeSaveHost> guardedSaver(saver);
         KisView *view=KisPart::instance()->createView(document,manager,nullptr);
         if(!view)return nullptr;
         QPointer<KisView> guarded=view;
@@ -128,7 +129,14 @@ public:
         const QString title=initialPath.isEmpty()?
             QStringLiteral("Untitled"):
             MobileSavedVersionArchive::projectName(initialPath);
-        if(!stack->adoptView(view,document,title,
+        // On Android, projectName() can query an external document
+        // provider. A nested Qt callback may close the document or its
+        // native window before we register the newly created KisView.
+        // Revalidate every original attachment dependency first.
+        if(!guarded || !guardedDocument || !guardedManager ||
+           !guardedStack || !guardedSaver)
+            return abortAttach();
+        if(!guardedStack->adoptView(guarded.data(),guardedDocument.data(),title,
                             [guarded,manager=QPointer<KisViewManager>(manager)]() {
             if(!guarded || !manager)return false;
             // Closing several tabs can advance the Qt stack before the
