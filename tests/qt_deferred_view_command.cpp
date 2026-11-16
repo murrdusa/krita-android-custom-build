@@ -125,6 +125,9 @@ int main(int argc,char **argv)
     pump();
     require(calls==1,"destroyed canvas was used by deferred command");
 
+    views->selected=&viewB;
+    views->current=&docB;
+
     // Synchronous engine notifications during initial lookup may
     // destroy the initiating toolbar/window before a timer is queued.
     auto *initialOwner=new QObject;
