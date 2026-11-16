@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — close the detached canvas retirement ownership gap
+
+- `MobileNativeViewStack::retireDetachedView()` already deferred its ownership check until Qt stack removal and selection listeners had unwound, but then called `deleteLater()`. That left a second interval in which a still-live detached canvas could be adopted by a new owner before its already-posted `DeferredDelete` executed. The guarded zero-delay timer now destroys the orphan synchronously **only after** confirming it still has the original host as parent and is no longer registered there. This closes the check-to-delete gap without deleting any canvas during `QStackedWidget::removeWidget()`.
+- `tests/qt_native_view_stack.cpp` now exercises a document being destroyed, its detached QWidget transferred and adopted into a second `MobileNativeViewStack` before the first host's retirement callback, and then retirement by its final owner after the new document closes. Existing 128-cycle orphan/accepted-close regressions remain.
+- Source commit `4125e296b405d18b24b27dca2b561b6ac66ccf89`; regression commit `b3907380f634b3727452ed2e09cb786d2b5c9918`. The previous watcher report was successful at `1ee985a7`; the exact revision of this patch has not been compiled or executed yet. No APK uploaded.
+
 ## November 16 — guard recovery hooks during independent canvas attachment
 
 - `MobileKritaStandaloneRuntime::attachDocument()` now revalidates the runtime, document, view root and view manager after each recovery signal connection. A native Qt/Krita callback can replace the host or destroy the document during attachment; subsequent signal registration must not use freed QObject pointers. The final return also verifies that the original root and manager still belong to the runtime.
