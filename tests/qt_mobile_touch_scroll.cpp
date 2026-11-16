@@ -186,4 +186,13 @@ int main(int argc,char **argv)
     QObject::disconnect(teardown);
     verify(!filter,"press interrupting a fling must survive filter teardown");
     verify(presetClicks==before,"interrupting a fling must not activate a brush on press");
+
+    // The touch combo popup defers scrolling to the initial selection.
+    // Resetting its model during that event-loop turn must invalidate
+    // the captured row instead of letting the popup scroll a stale index.
+    QStringListModel changing(names);
+    const QPersistentModelIndex initial(changing.index(12,0));
+    verify(initial.isValid(),"combo index fixture starts valid");
+    changing.setStringList({QStringLiteral("replacement")});
+    verify(!initial.isValid(),"combo initial index invalidates on model reset");
 }
