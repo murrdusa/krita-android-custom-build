@@ -370,9 +370,17 @@ private:
                             if(!surface->property("_mobileWaitingForFirstSwap").toBool()) {
                                 surface->setProperty("_mobileWaitingForFirstSwap",true);
                                 // Qt dynamic-property observers may tear down or
-                                // replace the GL canvas synchronously.
+                                // replace the GL canvas synchronously. No swap
+                                // receiver or deadline has been installed yet:
+                                // if setup is interrupted, release the flag
+                                // rather than leaving this surface stuck.
                                 if(!isCurrent() || !canvas || !surface ||
-                                   canvas->canvasWidget()!=surface)return;
+                                   canvas->canvasWidget()!=surface) {
+                                    if(surface)
+                                        surface->setProperty(
+                                            "_mobileWaitingForFirstSwap",false);
+                                    return;
+                                }
                                 // This is a startup-only retry. Leaving a frameSwapped
                                 // observer on the view makes every later painting frame
                                 // execute a callback even after initialization succeeds.
@@ -384,6 +392,9 @@ private:
                                     qobject_cast<QOpenGLWidget*>(surface.data()));
                                 if(!watched) {
                                     firstSwap->deleteLater();
+                                    if(surface)
+                                        surface->setProperty(
+                                            "_mobileWaitingForFirstSwap",false);
                                     return;
                                 }
                                 // Android can replace the GL QWidget before
