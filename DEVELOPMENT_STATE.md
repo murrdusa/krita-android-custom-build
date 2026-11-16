@@ -1,5 +1,10 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — avoid double-delete on failed engine-session startup
+
+- Audited `MobileKritaStandalonePilot::launch()` against `MobileKritaEngineSession::attach()`. Session attachment creates the native root, Krita runtime and documents; several calls can invoke Qt callbacks and destroy the original host before attachment returns null. The failure branch previously unconditionally executed `delete window` on the raw pointer, potentially deleting an already destroyed QWidget. Pilot now captures `QPointer<MobileLightweightCanvasHost>` before attachment, returns if the host was destroyed, and only deletes a surviving host on failure. Source `4be9590`.
+- Added Qt-only native host cleanup tests for synchronous destruction during a failed bootstrap and ordinary failure with a surviving host, checking exactly one destructor notification (`b91a0e3`). These model ownership control flow rather than constructing Android Krita session. Exact-revision local build and regression test execution pending; no APK uploaded.
+
 ## November 16 — guard first canvas readiness after native root rollback
 
 - Audited the deferred `firstCanvas` callback in `MobileKritaStandalonePilot::launch()`. It previously dereferenced `alive->nativeViewPort()->currentDocument()` without checking whether the view port still existed. A failed independent bootstrap may discard its empty native root before a previously queued startup/intent completion runs, leaving a surviving host with a null view port. The callback now snapshots and checks the port and current document, and checks the host after Qt property/status operations before marking launch ready. Source `9723e0c`.
