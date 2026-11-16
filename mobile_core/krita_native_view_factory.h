@@ -141,8 +141,13 @@ public:
             if(!guarded || !manager)return false;
             // Closing several tabs can advance the Qt stack before the
             // queued native activation runs. Save must use that same view.
-            if(manager->canvasBase()!=guarded->canvasBase())
-                manager->setCurrentView(guarded);
+            const QPointer<KisCanvas2> closingCanvas=guarded->canvasBase();
+            if(!guarded || !manager || !closingCanvas)return false;
+            const bool needsActivation=manager->canvasBase()!=closingCanvas.data();
+            // A manager/canvas getter can enter Qt engine callbacks.
+            // Do not switch to a view deleted during that query.
+            if(!guarded || !manager || !closingCanvas)return false;
+            if(needsActivation)manager->setCurrentView(guarded);
             // Activating another native canvas can synchronously close
             // this view or destroy its manager during Qt signal delivery.
             if(!guarded || !manager)return false;
