@@ -301,25 +301,27 @@ private:
                 // destroy this pilot. Its member timer is destroyed with
                 // it; use that QObject lifetime to guard the final refresh.
                 const QPointer<QTimer> alive(&m_refresh);
+                const QPointer<QWidget> owner(m_backend);
+                const MobileEngineBridge engine=m_engine;
                 if(id==QStringLiteral("mobile:new"))
-                    MobileDocumentWorkflow::create(m_engine,m_backend);
+                    MobileDocumentWorkflow::create(engine,owner.data());
                 else if(id==QStringLiteral("mobile:open"))
-                    MobileDocumentWorkflow::open(m_engine,m_backend);
+                    MobileDocumentWorkflow::open(engine,owner.data());
                 else if(id==QStringLiteral("mobile:save") && selectedView)
-                    m_engine.saveDocumentView(selectedView);
+                    engine.saveDocumentView(selectedView);
                 else if(id==QStringLiteral("mobile:save_as") && selectedView)
-                    m_engine.saveDocumentView(selectedView,true);
+                    engine.saveDocumentView(selectedView,true);
                 else if(id==QStringLiteral("mobile:canvases"))
-                    MobileDocumentSwitcher::open(m_engine,m_backend);
+                    MobileDocumentSwitcher::open(engine,owner.data());
                 else if(id==QStringLiteral("mobile:tools"))
-                    MobileToolBrowser::open(m_engine,m_backend);
+                    MobileToolBrowser::open(engine,owner.data());
                 else if(id==QStringLiteral("mobile:commands") ||
                         id==QStringLiteral("mobile:menus"))
-                    MobileCommandBrowser::open(m_engine,m_backend);
+                    MobileCommandBrowser::open(engine,owner.data());
                 else if(id==QStringLiteral("mobile:more"))
                     showMore(m_document);
                 else if(id==QStringLiteral("mobile:close") && selectedView)
-                    m_engine.closeDocumentView(selectedView);
+                    engine.closeDocumentView(selectedView);
                 if(alive)refresh();
             });
             return;
