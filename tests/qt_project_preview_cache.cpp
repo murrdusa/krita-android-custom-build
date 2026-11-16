@@ -63,6 +63,15 @@ int main(int argc,char **argv)
     const QImage scaled=cache.load(source,20);
     if(scaled.isNull() || scaled.size()!=QSize(124,93) ||
        scaled.pixelColor(0,0)!=QColor(Qt::yellow))return 12;
+    // Wide but low-height previews meet the same 16 MP safety limit as
+    // direct PNG/KRA decoding. They must be cached after downscaling,
+    // or each gallery revisit would decode the full-size input again.
+    QImage widePreview(8192,256,QImage::Format_RGB32);
+    widePreview.fill(Qt::darkCyan);
+    cache.store(source,23,widePreview);
+    const QImage wideCached=cache.load(source,23);
+    if(wideCached.isNull() || wideCached.size()!=QSize(124,4) ||
+       wideCached.pixelColor(0,0)!=QColor(Qt::darkCyan))return 51;
     // Reproduce a *legacy* cache entry directly: older versions
     // stored full-resolution PNGs, unlike the current store() path.
     QImage legacy(640,480,QImage::Format_RGB32);
@@ -120,7 +129,9 @@ int main(int argc,char **argv)
     future.close();
     if(!edgeCache.load(source,0).isNull())return 6;
 
-    QImage oversized(4097,1,QImage::Format_RGB32);
+    // Dimensions above the decode limit remain excluded even if the
+    // total pixel count is small.
+    QImage oversized(8193,1,QImage::Format_RGB32);
     oversized.fill(Qt::green);
     edgeCache.store(source,7,oversized);
     if(!edgeCache.load(source,7).isNull())return 7;
