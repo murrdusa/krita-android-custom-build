@@ -219,9 +219,16 @@ public:
 
         if(!stillOpening() || !KisPart::instance())return abortOpening();
         KisPart::instance()->addDocument(document);
-        // Registration notifies Krita observers. A callback can close
-        // the imported document before the native view is attached.
+        // Registration notifies Krita observers. A callback may remove
+        // the import from KisPart without destroying its QObject.
+        // The ordinary failed-attach rollback intentionally removes
+        // only registered documents; dispose of a surviving orphan here
+        // instead of retaining a loaded KRA with no owner or canvas.
         if(!guardedDocument)return false;
+        if(!isRegistered(guardedDocument.data())) {
+            delete guardedDocument.data();
+            return false;
+        }
         if(!m_runtime || !originalRoot ||
            m_runtime->documentRoot()!=originalRoot.data() ||
            !attachCanvas(guardedDocument.data())) {
