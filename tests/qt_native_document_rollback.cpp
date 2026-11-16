@@ -155,6 +155,40 @@ int main(int argc,char **argv)
                 "destroyed MIME import was passed to the KRA loader");
     }
 
+    // Canonicalizing Android SAF identities can enter Qt provider
+    // callbacks. Open must guard its original runtime and document root
+    // before that query and skip scanning views after either disappears.
+    {
+        auto *runtime=new QObject;
+        auto *root=new QObject(runtime);
+        const QPointer<QObject> guardedRuntime(runtime);
+        const QPointer<QObject> guardedRoot(root);
+        int viewScans=0;
+        const auto canonicalize=[runtime]() {
+            delete runtime;
+            return QStringLiteral("content://closed/document");
+        };
+        const QString identity=canonicalize();
+        if(guardedRuntime && guardedRoot)++viewScans;
+        require(!identity.isEmpty() && !guardedRuntime &&
+                !guardedRoot && viewScans==0,
+                "Open scanned native views after URI lookup destroyed runtime");
+    }
+    {
+        QObject runtime;
+        QObject root(&runtime);
+        const QPointer<QObject> guardedRuntime(&runtime);
+        const QPointer<QObject> guardedRoot(&root);
+        int viewScans=0;
+        const auto canonicalize=[]() {
+            return QStringLiteral("content://live/document");
+        };
+        const QString identity=canonicalize();
+        if(guardedRuntime && guardedRoot)++viewScans;
+        require(!identity.isEmpty() && viewScans==1,
+                "Open incorrectly rejected a surviving canonicalized workspace");
+    }
+
     qInfo()<<"PASS: attach failure rollback, duplicate prevention and"
               "ownership isolation";
     return 0;
