@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — reject duplicate-open scans after document teardown
+
+- `MobileKritaStandaloneDocuments::openFile()` previously read the path and `_mobileDraftPath` of another open `KisDocument` through a raw pointer. When a Qt/Krita observer closes the document during either read, the next access can target a destroyed QObject. The scan now uses `QPointer<KisDocument>`, checks the original native root and view survival after each metadata lookup, and aborts without importing or activating a tab when an identity disappears.
+- The scan captures its native workspace before enumeration and compares it against the current rows before activating an existing matching drawing or beginning a new import. This prevents a stale duplicate-open decision if a document closes/changes during canonical path comparison. The check uses the existing `MobileViewIdentityGuard::sameRecoveryWorkspace()` policy.
+- `tests/qt_native_view_stack.cpp` adds a two-canvas regression where another document is destroyed after the duplicate-open scan's snapshot. The workspace must be rejected. Source commit `ab25fa9354959a32a561d22e024d8cc59fb99869`, regression commit `e5b9e25c6c9c460fb055c87db7edfdcd20f579e1`. Compilation and execution at these revisions remain pending; no APK uploaded.
+
 ## November 16 — activation router setup teardown checks
 
 - `MobileKritaNativeViewFactory::attach()` now validates the original Krita view, document, manager and native root after querying the `_mobileStudioKritaSelectionWired` dynamic property and after writing it following resume-observer installation. If any of those objects were invalidated during setup, attachment takes the existing guarded rollback instead of continuing into `setCurrentWidget()` and activation.
