@@ -1,5 +1,12 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — fail closed on changing Save As workspace
+
+- `MobileKritaStandaloneDocuments::writeDocument()` now protects each other-document path/draft metadata lookup with `QPointer<KisDocument>` and checks that the originating document, runtime and selected native root still exist. Previously a close or host replacement while collecting other drawings' backing paths could leave a stale `KisDocument*` in the overwrite scan.
+- The scan now compares the original native view/document/active-selection snapshot with a fresh snapshot using `MobileViewIdentityGuard::sameRecoveryWorkspace()`. If a second canvas disappears, appears or changes identity during destination validation, the write is rejected even if the original selected canvas remains live; this avoids silently skipping an unsafe overwrite comparison. The own-draft path check also revalidates the selected host before continuing.
+- `tests/qt_native_view_stack.cpp` adds a two-canvas case where another document closes during a Save As scan. The unchanged selected canvas must not authorize saving against a changed document set. No changes to Krita file encoding, drawing behavior or legitimate Save/Discard prompts.
+- Source commits `7ae91846ffb580a1f7d7b8a1541ba8bf96833b07`, `d8b9f3c6e15b81278589931d7b968999921a50f8`, `84f17b949d72f8d7462d0f175b85ac942fbac227`; Qt regression commit `a00146081c11b52fe24b15a51819b0c302a63a74`. Exact-revision Android compilation, regression execution, and device behavior remain pending; no APK uploaded.
+
 ## November 16 — close the detached canvas retirement ownership gap
 
 - `MobileNativeViewStack::retireDetachedView()` already deferred its ownership check until Qt stack removal and selection listeners had unwound, but then called `deleteLater()`. That left a second interval in which a still-live detached canvas could be adopted by a new owner before its already-posted `DeferredDelete` executed. The guarded zero-delay timer now destroys the orphan synchronously **only after** confirming it still has the original host as parent and is no longer registered there. This closes the check-to-delete gap without deleting any canvas during `QStackedWidget::removeWidget()`.
