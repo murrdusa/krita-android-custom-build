@@ -601,12 +601,9 @@ public:
         if(disk.isValid() && disk.isReady() &&
            disk.bytesAvailable()>=0 &&
            disk.bytesAvailable()<size+16LL*1024*1024)return {};
-        const QString path=QDir(base).filePath(
-            QStringLiteral("Recovered-")+
-            QUuid::createUuid().toString(QUuid::WithoutBraces)+
-            QStringLiteral(".kra"));
-        QSaveFile destination(path);
-        if(!destination.open(QIODevice::WriteOnly))return {};
+        // Validate the small checksum sidecar before creating a
+        // temporary output file. Malformed history metadata should not
+        // churn recovery staging files or allocate a destination handle.
         // Reject damaged snapshots before publishing a recovery copy.
         // Older checkpoints may legitimately lack the optional sidecar.
         QByteArray expectedHash;
@@ -624,6 +621,12 @@ public:
                     .match(QString::fromLatin1(expectedHash)).hasMatch())
                 return {};
         }
+        const QString path=QDir(base).filePath(
+            QStringLiteral("Recovered-")+
+            QUuid::createUuid().toString(QUuid::WithoutBraces)+
+            QStringLiteral(".kra"));
+        QSaveFile destination(path);
+        if(!destination.open(QIODevice::WriteOnly))return {};
         QCryptographicHash hash(QCryptographicHash::Sha256);
         QByteArray block(256*1024,Qt::Uninitialized);
         qint64 copied=0;
