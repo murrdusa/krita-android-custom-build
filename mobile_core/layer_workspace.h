@@ -3238,8 +3238,11 @@ private:
         const QScopedValueRollback<bool> refreshing(m_reloading,true);
         auto *m=manager();
         auto *view=m_engine.manager();
-        if(!m || !view)return;
-        const auto image=view->image().toStrongRef();
+        const KisImageSP image=(m && view)?view->image().toStrongRef():KisImageSP();
+        // A tab close can destroy the Krita view manager before the
+        // native rail is hidden. Returning early here used to retain
+        // strong KisNodeSP references to the closed drawing indefinitely.
+        // Use the same empty-document cleanup for unavailable managers.
         if(!image || !image->root()) {
             clearHorizontalRows();
             m_tree->clear();
