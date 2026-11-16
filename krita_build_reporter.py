@@ -192,7 +192,11 @@ def report_completed(watcher):
     success = watcher["result"] == "success"
     report_path = Path(watcher.get("report") or "")
     if report_path.is_file():
-        body = report_path.read_text(encoding="utf-8", errors="replace")
+        # Failed builds can produce unexpectedly large diagnostic reports.
+        # The published dashboard retains at most 60,000 characters, so
+        # never allocate the entire report just to discard its tail.
+        with report_path.open("r", encoding="utf-8", errors="replace") as stream:
+            body = stream.read(60000)
     else:
         body = f"# Local Android build: {'SUCCESS' if success else 'FAILED'}\n\nRevision: `{sha}`\n"
     qt_section = qt_lifecycle_section(body)
