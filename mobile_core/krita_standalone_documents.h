@@ -647,21 +647,37 @@ public:
     static MobileHostServices create(MobileKritaStandaloneRuntime *runtime)
     {
         MobileHostServices services;
-        if(!runtime || !runtime->window() || !runtime->documentRoot())
-            return services;
+        const QPointer<MobileKritaStandaloneRuntime> alive(runtime);
+        if(!alive)return services;
+        const QPointer<MobileLightweightCanvasHost> host=alive->window();
+        const QPointer<MobileNativeViewStack> root=alive->documentRoot();
+        if(!alive || !host || !root)return services;
 
         const auto documents=QSharedPointer<MobileKritaStandaloneDocuments>::
-            create(runtime);
-        auto *saver=new MobileKritaNativeSavePortAdapter(documents,runtime);
+            create(alive.data());
+        auto *saver=new MobileKritaNativeSavePortAdapter(documents,alive.data());
+        const QPointer<MobileKritaNativeSavePortAdapter> guardedSaver(saver);
         documents->setSaveHost(saver);
         services.documents=documents;
-        services.views=runtime->window()->nativeViewPort();
-        services.commands=runtime->commandPort();
-        services.documentRoot=runtime->documentRoot();
+        services.views=host->nativeViewPort();
+        if(!alive || !host || !root || !guardedSaver)return {};
+        services.commands=alive->commandPort();
+        if(!alive || !host || !root || !guardedSaver)return {};
+        services.documentRoot=root.data();
 
-        if(!services.ready() ||
-           !runtime->window()->attachServices(services)) {
-            delete saver;
+        const bool ready=services.ready();
+        if(!alive || !host || !root || !guardedSaver || !ready) {
+            if(guardedSaver)delete guardedSaver.data();
+            return {};
+        }
+        const bool attached=host->attachServices(services);
+        // A nested Qt callback can destroy the runtime and its QObject
+        // child saver during attachment. Never delete the stale raw
+        // pointer, or return services tied to a destroyed host/root.
+        if(!alive || !host || !root || !guardedSaver || !attached ||
+           alive->window()!=host.data() ||
+           alive->documentRoot()!=root.data()) {
+            if(guardedSaver)delete guardedSaver.data();
             return {};
         }
         return services;
