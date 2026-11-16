@@ -53,6 +53,26 @@ int main(int argc,char **argv)
         QStringLiteral("private-recovery"));
     const QByteArray initial=QByteArray::fromHex("504b0304")+"saved-A";
     save(source,initial);
+    // Restored settings can carry a legacy revision map far beyond the
+    // 128-entry limit. One new Save should restore the cap immediately.
+    const QString previewKey=QStringLiteral("MobileStudio/savedPreviewRevisions");
+    QSettings settings;
+    const QVariant originalPreview=settings.value(previewKey);
+    const bool hadPreview=settings.contains(previewKey);
+    QVariantMap oversizedPreview;
+    for(int i=0;i<300;++i)
+        oversizedPreview.insert(QStringLiteral("legacy-%1").arg(i),i+1);
+    settings.setValue(previewKey,oversizedPreview);
+    MobileSavedVersionArchive::recordPreviewRevision(source);
+    const QVariantMap trimmedPreview=MobileSavedVersionArchive::previewRevisions();
+    require(trimmedPreview.size()==128 &&
+            trimmedPreview.contains(
+                MobileSavedVersionArchive::canonicalIdentity(source)) &&
+            trimmedPreview.contains(QStringLiteral("legacy-299")) &&
+            !trimmedPreview.contains(QStringLiteral("legacy-0")),
+            "saved-preview revision map did not prune a legacy backlog");
+    if(hadPreview)settings.setValue(previewKey,originalPreview);
+    else settings.remove(previewKey);
     const QString uri=QStringLiteral("content://provider/document/42");
     const QString uriFolder=MobileSavedVersionArchive::folderFor(uri,store);
     require(!uriFolder.isEmpty() &&
