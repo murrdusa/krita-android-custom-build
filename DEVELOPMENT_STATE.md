@@ -1,5 +1,11 @@
 # Krita Mobile Studio — current development state
 
+## November 16 — add saved-version recovery correctness regression to WSL smoke tests
+
+- The repository already maintained a large self-contained Qt regression in `tests/qt_saved_version_archive.cpp` covering checkpoint snapshot, deduplication, atomic recovery, quota/retention, path identity, SAF normalization, and legacy archive migration, but the local watcher only attempted four other Qt tests. Added the saved-version test as a fifth executable in `tests/run_mobile_lifecycle_smoke.sh` (`b13aec5`), and fingerprinted its source plus `mobile_core/saved_version_archive.h` and `mobile_core/mobile_draft_recovery.h` so recovery-code changes invalidate cached PASS results.
+- Updated the build reporter's test fixture to match the five-executable suite (`ed6395e`). Native host Qt5Widgets development libraries are still absent in the WSL watcher, so the runner truthfully emits NOT RUN until available; no tests claimed to pass. This pass changes validation tooling, not Android runtime behavior; no APK uploaded.
+
+
 ## November 16 — include thumbnail memory/cache regression in local Qt smoke suite
 
 - The WSL native Qt smoke runner compiled three tests but omitted the already-maintained `tests/qt_project_preview_cache.cpp`. That independent test covers gallery thumbnail decode bounds, cache publication/cancellation, 128 MiB quota retention, 620-entry backlog eviction, corrupted/empty PNG cleanup and oversized KRA-source rejection — directly relevant to the recent memory-pressure changes.
