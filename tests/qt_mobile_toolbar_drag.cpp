@@ -95,6 +95,22 @@ int main(int argc,char **argv)
     mouse(&color,QEvent::MouseButtonRelease,QPoint(80,20));
     require(commits==1 && parameter==QStringLiteral("opacity") && adjustment==60 && sampled==1,
             "Color must adjust inline while sampling stays perpendicular");
+    for(bool vertical:{false,true}) {
+        color.setVertical(vertical);
+        const int oldPreviews=previews,oldSamples=sampled;
+        const int distance=QApplication::startDragDistance();
+        const auto point=[vertical](int along,int away) {
+            return QPoint(20,20)+(vertical?QPoint(away,along):QPoint(along,away));
+        };
+        mouse(&color,QEvent::MouseButtonPress,point(0,0));
+        mouse(&color,QEvent::MouseMove,point(distance+1,0));
+        require(previews==oldPreviews,"small inline wobble changed opacity");
+        mouse(&color,QEvent::MouseMove,point(2*distance,3*distance));
+        mouse(&color,QEvent::MouseButtonRelease,point(2*distance,5*distance));
+        require(previews==oldPreviews && sampled==oldSamples+1,
+                "color sampling was stolen by the inline slider");
+    }
+    color.setVertical(false);
     QSettings().setValue(MobileToolbarDrag::preference("opacity"),QStringLiteral("krita/custom-action"));
     previews=commits=0;
 

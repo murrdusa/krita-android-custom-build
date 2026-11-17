@@ -213,6 +213,10 @@ protected:
     {
         if(event==m_replay)return false;
         switch(event->type()) {
+        case QEvent::TabletPress:
+        case QEvent::TabletMove:
+        case QEvent::TabletRelease:
+            return tablet(static_cast<QTabletEvent*>(event));
         case QEvent::TouchBegin:
         case QEvent::TouchUpdate:
         case QEvent::TouchEnd:
@@ -225,7 +229,7 @@ protected:
             return mouse(static_cast<QMouseEvent*>(event));
         case QEvent::Hide:
             m_holdTimer.stop();
-            if(m_input==Touch) {
+            if(m_input==Touch || m_input==Pen) {
                 m_input=None;
                 m_scroller->stop();
                 return false;
@@ -247,7 +251,7 @@ protected:
     }
 
 private:
-    enum Input { None, Mouse, Touch };
+    enum Input { None, Mouse, Touch, Pen };
 
     void begin(Input input,const QPoint &pos)
     {
@@ -378,6 +382,37 @@ private:
         return true;
     }
 
+    bool tablet(QTabletEvent *event)
+    {
+        const QPoint pos=m_viewport->mapFromGlobal(event->globalPos());
+        const QPointer<ItemViewPointer> alive(this);
+        if(event->type()==QEvent::TabletPress) {
+            begin(Pen,pos);
+            if(!alive)return true;
+            m_touchIndex=m_view->indexAt(pos);
+            m_touchOnItem=m_touchIndex.isValid();
+        }
+        if(m_input!=Pen)return false;
+        event->accept();
+        if(event->type()==QEvent::TabletMove) {
+            move(pos);
+        } else if(event->type()==QEvent::TabletRelease) {
+            m_lastTouchEnd=m_clock.elapsed();
+            m_lastTouchStart=m_start;
+            m_lastTouchPos=pos;
+            const bool tap=finish(pos);
+            if(!alive)return true;
+            const bool sameItem=!m_touchOnItem ||
+                (m_touchIndex.isValid() && m_touchIndex==m_view->indexAt(m_start));
+            m_touchIndex=QModelIndex();
+            if(tap && sameItem && m_viewport->rect().contains(pos)) {
+                sendMouse(QEvent::MouseButtonPress,m_start);
+                if(alive)sendMouse(QEvent::MouseButtonRelease,pos);
+            }
+        }
+        return true;
+    }
+
     bool mouse(QMouseEvent *event)
     {
         const auto type=event->type();
@@ -386,7 +421,7 @@ private:
         if(type==QEvent::MouseButtonPress || type==QEvent::MouseButtonDblClick) {
             // Some Android paths deliver an additional synthesized mouse
             // sequence around a touch already handled by this viewport.
-            m_ignoreMouse=m_input==Touch ||
+            m_ignoreMouse=m_input==Touch || m_input==Pen ||
                 (event->source()!=Qt::MouseEventNotSynthesized &&
                  m_clock.elapsed()-m_lastTouchEnd<200 &&
                  qMin((pos-m_lastTouchPos).manhattanLength(),
@@ -396,7 +431,7 @@ private:
             begin(Mouse,pos);
             return !alive || m_stopTap;
         }
-        if(m_ignoreMouse || m_input==Touch) {
+        if(m_ignoreMouse || m_input==Touch || m_input==Pen) {
             if(type==QEvent::MouseButtonRelease)m_ignoreMouse=false;
             return true;
         }

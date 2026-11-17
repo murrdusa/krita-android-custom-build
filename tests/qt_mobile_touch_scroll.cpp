@@ -28,6 +28,16 @@ static void mouseTap(QWidget *target,const QPoint &pos,Qt::MouseEventSource sour
     pointer(target,QEvent::MouseButtonRelease,pos,source);
 }
 
+static void pen(QWidget *target,QEvent::Type type,const QPoint &pos)
+{
+    const bool release=type==QEvent::TabletRelease;
+    QTabletEvent event(type,pos,target->mapToGlobal(pos),
+        QTabletEvent::Stylus,QTabletEvent::Pen,release?0:0.5,0,0,0,0,0,
+        Qt::NoModifier,1,type==QEvent::TabletMove?Qt::NoButton:Qt::LeftButton,
+        release?Qt::NoButton:Qt::LeftButton);
+    QApplication::sendEvent(target,&event);
+}
+
 static void mouseSwipe(QWidget *target,const QPoint &start,Qt::MouseEventSource source)
 {
     pointer(target,QEvent::MouseButtonPress,start,source);
@@ -101,6 +111,19 @@ static void checkView(QListView &view,int &clicks)
 
     mouseTap(viewport,tile,Qt::MouseEventNotSynthesized);
     verify(clicks==before+2,"mouse tap after a raw swipe did not activate");
+    pen(viewport,QEvent::TabletPress,tile);
+    pen(viewport,QEvent::TabletRelease,tile);
+    verify(clicks==before+3,"pen tap did not activate exactly once");
+    mouseTap(viewport,tile,Qt::MouseEventSynthesizedBySystem);
+    verify(clicks==before+3,"pen tap activated twice through synthesized mouse");
+    pen(viewport,QEvent::TabletPress,swipeStart);
+    for(int y=15;y<=100;y+=15) {
+        QTest::qWait(12);
+        pen(viewport,QEvent::TabletMove,swipeStart-QPoint(0,y));
+    }
+    pen(viewport,QEvent::TabletRelease,swipeStart-QPoint(0,100));
+    verify(clicks==before+3,"pen swipe activated a brush");
+    reset();
     int holds=0;
     MobileTouchScroll::configureList(&view,[&](const QModelIndex &index) {
         verify(index==view.indexAt(tile),"held a different item");
@@ -110,14 +133,14 @@ static void checkView(QListView &view,int &clicks)
     pointer(viewport,QEvent::MouseButtonPress,tile);
     QTest::qWait(550);
     pointer(viewport,QEvent::MouseButtonRelease,tile);
-    verify(holds==1 && clicks==before+2,"mouse hold did not suppress click");
+    verify(holds==1 && clicks==before+3,"mouse hold did not suppress click");
 
     const auto mapped=viewport->mapTo(&view,tile);
     QTest::touchEvent(view.windowHandle(),device).press(0,mapped,view.windowHandle());
     QTest::qWait(550);
     QTest::touchEvent(view.windowHandle(),device).release(0,mapped,view.windowHandle());
     mouseTap(viewport,tile,Qt::MouseEventSynthesizedBySystem);
-    verify(holds==2 && clicks==before+2,"touch hold or synthesized release activated item");
+    verify(holds==2 && clicks==before+3,"touch hold or synthesized release activated item");
 }
 
 int main(int argc,char **argv)

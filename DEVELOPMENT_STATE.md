@@ -2,6 +2,11 @@
 
 The [feature baseline](FEATURE-BASELINE.md) records the user-facing behavior and source paths to preserve across sessions. The exact reconciled Android build passed at `88c3ded3ad8509d90f3fca0cf42ec83aca6a5dde`. Later WSL results are published in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1).
 
+## November 17 — pen list scrolling and toolbar direction
+
+- The shared item-view handler accepts native pen input, scrolls with QScroller, and replays one click for stationary taps. Pen swipes suppress selection and duplicate Android mouse activation.
+- Toolbar size/opacity adjustment requires twice the normal drag distance and clear movement along the toolbar. Ambiguous early movement can still resolve into perpendicular color sampling. Qt pen-scroll and both toolbar-orientation regressions passed under AddressSanitizer.
+
 ## November 17 — withhold the uninitialized canvas frame
 
 - Native OpenGL and software canvases paint the Studio background during their initial setup. Artwork presentation starts after the host establishes layout and zoom and queues the first projection. GL initialization and swaps continue during that interval, so first-frame readiness remains event-driven. This addresses the reported corner-sized startup flash at the paint entry points. Android visual verification remains pending.

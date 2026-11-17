@@ -207,16 +207,20 @@ private:
            delta.manhattanLength()>=QApplication::startDragDistance()) {
             m_dragged=true;
             m_holdTimer.stop();
-            const bool inlineDrag=qAbs(MobileToolbarDrag::along(delta,m_vertical))>=
-                                  qAbs(MobileToolbarDrag::away(delta,m_vertical));
-            if(inlineDrag && !m_parameter.isEmpty()) {
-                m_axis=1;
-            } else if(m_sampling && (!inlineDrag || m_command==QStringLiteral("eyedropper"))) {
-                m_axis=2;
-            }
             const QPointer<MobileToolbarGestureButton> alive(this);
             setDown(false);
             if(!alive)return;
+        }
+        if(m_dragged && m_axis==0) {
+            const qreal inlineDistance=qAbs(MobileToolbarDrag::along(delta,m_vertical));
+            const qreal sampleDistance=qAbs(MobileToolbarDrag::away(delta,m_vertical));
+            const int threshold=QApplication::startDragDistance();
+            if(m_sampling && (m_command==QStringLiteral("eyedropper") ||
+                              (sampleDistance>=threshold && sampleDistance>=inlineDistance)))
+                m_axis=2;
+            else if(!m_parameter.isEmpty() && inlineDistance>=2*threshold &&
+                    inlineDistance>=2*sampleDistance)
+                m_axis=1;
         }
         const QPointer<MobileToolbarGestureButton> alive(this);
         if(m_dragged)dispatch(pos,MobileToolbarDrag::Phase::Preview);
