@@ -2,6 +2,10 @@
 
 The [feature baseline](FEATURE-BASELINE.md) records the user-facing behavior and source paths to preserve across sessions. The exact reconciled Android build passed at `88c3ded3ad8509d90f3fca0cf42ec83aca6a5dde`. Later WSL results are published in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1).
 
+## November 17 — embedded Photoshop thumbnails
+
+- Home reads embedded JPEG thumbnails from PSD/PSB image resources in its existing background worker, including Android content URIs, and caches them as gallery PNGs. Reads and decoded dimensions are bounded, cancellation is respected, and layer data is skipped. Files without a supported embedded preview retain the placeholder.
+
 ## November 17 — recover the native crashing stack
 
 - A Fold 6 report confirmed SIGSEGV, but the 24 KiB protobuf prefix ended before the crashing thread. Copy Crash Report now extracts the faulting thread's stack, relative addresses, and library build IDs from the bounded Android tombstone. The cause of the original crash remains undetermined.

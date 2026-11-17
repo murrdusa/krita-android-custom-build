@@ -21,6 +21,7 @@
 #include "touch_action_picker.h"
 #include "crash_report.h"
 #include "native_document_path_policy.h"
+#include "photoshop_thumbnail.h"
 #include <QMargins>
 #include <QMutex>
 #include <QMutexLocker>
@@ -1056,9 +1057,14 @@ private:
     }
 
     static QImage preview(const QString &path,
-                          const std::atomic_bool *cancelled=nullptr)
+                          const std::atomic_bool *cancelled=nullptr,bool photoshop=false)
     {
         if(cancelled && cancelled->load())return {};
+        if(photoshop) {
+            QFile source(path);
+            if(!source.open(QIODevice::ReadOnly))return {};
+            return MobilePhotoshopThumbnail::read(source,cancelled);
+        }
         if(path.startsWith(QStringLiteral("content:"),Qt::CaseInsensitive)) {
             // Only Android's ContentResolver can access documents opened
             // with SAF. Read just the small embedded KRA PNG preview.
@@ -1681,7 +1687,7 @@ private:
     }
 
     static QImage cachedPreview(const QString &path,qint64 revision,bool refresh,
-                                const std::atomic_bool *cancelled)
+                                const std::atomic_bool *cancelled,bool photoshop=false)
     {
         if(cancelled->load())return {};
         // A missing app-private data root must disable disk thumbnails,
@@ -1696,7 +1702,7 @@ private:
         // more expensive project/SAF preview extraction afterward.
         if(cancelled->load())return {};
         if(image.isNull()) {
-            image=preview(path,cancelled);
+            image=preview(path,cancelled,photoshop);
             if(cancelled->load())return {};
             cache.store(path,revision,image,cancelled);
         }
@@ -1743,8 +1749,9 @@ private:
             const QString project=item->data(Qt::UserRole).toString();
             const QString path=item->data(Qt::UserRole+4).toString();
             const qint64 modified=item->data(Qt::UserRole+5).toLongLong();
-            if(path==project && MobileNativeDocumentPathPolicy::isPhotoshopDocumentName(
-                   item->data(Qt::UserRole+3).toString()))continue;
+            const bool photoshop=path==project &&
+                MobileNativeDocumentPathPolicy::isPhotoshopDocumentName(
+                    item->data(Qt::UserRole+3).toString());
             const auto request=qMakePair(path,modified);
             const auto cached=m_cache.constFind(path);
             if(path.isEmpty() || m_pending.contains(request) ||
@@ -1756,9 +1763,9 @@ private:
             const QPointer<QCoreApplication> application(qApp);
             const auto cancelled=m_previewCancelled;
             const bool refresh=m_forceThumbnailRefresh;
-            m_thumbnails.start([home,application,project,request,cancelled,refresh]() {
+            m_thumbnails.start([home,application,project,request,cancelled,refresh,photoshop]() {
                 if(cancelled->load() || !application)return;
-                const QImage image=cachedPreview(request.first,request.second,refresh,cancelled.get());
+                const QImage image=cachedPreview(request.first,request.second,refresh,cancelled.get(),photoshop);
                 if(cancelled->load() || !application)return;
                 QMetaObject::invokeMethod(application.data(),
                     [home,project,request,image,cancelled]() {

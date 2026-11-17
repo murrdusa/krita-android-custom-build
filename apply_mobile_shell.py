@@ -1478,6 +1478,9 @@ void KisApplication::initializeAndroidScaling(KisConfig &cfg)
     (root/"libs/ui/project_preview_cache.h").write_text(
         (own/"mobile_core/project_preview_cache.h").read_text(encoding="utf-8"),
         encoding="utf-8")
+    (root/"libs/ui/photoshop_thumbnail.h").write_text(
+        (own/"mobile_core/photoshop_thumbnail.h").read_text(encoding="utf-8"),
+        encoding="utf-8")
     (root/"libs/ui/document_home.h").write_text(
         (own/"mobile_core/document_home.h").read_text(encoding="utf-8"),
         encoding="utf-8")
