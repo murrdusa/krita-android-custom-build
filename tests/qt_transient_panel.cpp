@@ -2,6 +2,7 @@
 #include "mobile_core/transient_panel.h"
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QProgressDialog>
 #include <QTouchDevice>
 #include <QTouchEvent>
 
@@ -52,6 +53,15 @@ int main(int argc,char **argv)
     click(star);
     click(panel);
     if(!panel->isVisible() || starClicks!=1)return 1;
+    {
+        QProgressDialog loading(QStringLiteral("Loading brushes"),QString(),0,100,&host);
+        loading.setMinimumDuration(0);
+        loading.setValue(1);
+        loading.show();
+        QApplication::processEvents();
+        if(!panel->isVisible())return 13;
+        loading.close();
+    }
     click(&nextMenu);
     if(panel->isVisible() || menuClicks!=1)return 2;
 

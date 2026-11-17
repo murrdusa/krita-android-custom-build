@@ -22,6 +22,7 @@
 #include <KoToolManager.h>
 #include <KoCanvasSupervisor.h>
 #include "kis_canvas2.h"
+#include "kis_canvas_controller.h"
 #include "kis_coordinates_converter.h"
 #include "kis_zoom_manager.h"
 #include "crash_report.h"
@@ -91,6 +92,7 @@ public:
         // projection. QStackedWidget owns when that view is shown.
         const QSize initialSize=stack->contentsRect().size();
         if(!initialSize.isEmpty())view->resize(initialSize);
+        if(view->layout())view->layout()->setGeometry(view->rect());
         if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
             return abortAttach();
         view->setAttribute(Qt::WA_DeleteOnClose,false);
@@ -117,6 +119,11 @@ public:
         if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
             return abortAttach();
         view->slotLoadingFinished();
+        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
+            return abortAttach();
+        const QPointer<KisCanvasController> controller=view->canvasController();
+        if(controller && controller->layout())
+            controller->layout()->setGeometry(controller->rect());
         if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
             return abortAttach();
 
@@ -389,6 +396,16 @@ private:
                     if(!isCurrent() || !canvas)return;
                     QPointer<QWidget> surface=canvas->canvasWidget();
                     if(!surface || surface->size().isEmpty() || !surface->isVisible())return;
+                    const bool fitted=selected->property("_mobileInitialViewFitted").toBool();
+                    if(!isCurrent() || !canvas || !surface || canvas->canvasWidget()!=surface)return;
+                    if(!fitted) {
+                        // Establish the initial zoom before the GL widget
+                        // presents its first frame, using the settled viewport.
+                        selected->zoomManager()->slotZoomToFit();
+                        if(!isCurrent() || !canvas || !surface || canvas->canvasWidget()!=surface)return;
+                        selected->setProperty("_mobileInitialViewFitted",true);
+                        if(!isCurrent() || !canvas || !surface || canvas->canvasWidget()!=surface)return;
+                    }
                     if(auto *gl=qobject_cast<QOpenGLWidget*>(surface.data())) {
                         if(!gl->isValid()) {
                             // A first swap can arrive after Qt has made the

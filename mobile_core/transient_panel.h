@@ -104,12 +104,9 @@ protected:
             }
         }
         if(!target || target==this || isAncestorOf(target))return false;
-        if(type==QEvent::Show && target->isWindow() && target->parentWidget() &&
-           target->parentWidget()->window()==window()) {
-            // An owned choice popup belongs to this panel's interaction.
-            if(!isAncestorOf(target->parentWidget()) && target->parentWidget()!=this)
-                close();
-        } else if(sameWindow && (type==QEvent::MouseButtonPress || type==QEvent::MouseButtonDblClick ||
+        // Lazy resource loading can show a progress window or tooltip.
+        // Dismiss on outside input, independently of background Show events.
+        if(sameWindow && (type==QEvent::MouseButtonPress || type==QEvent::MouseButtonDblClick ||
                                type==QEvent::TabletPress || type==QEvent::TouchBegin)) {
             // Native touch or pen may reach a parent before Qt synthesizes
             // the button's click. Keep the opener exempt on that delivery too.
