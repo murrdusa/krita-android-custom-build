@@ -16,6 +16,8 @@ grep -q 'applicationIdSuffix ".debug"' "$SOURCE/packaging/android/apk/build.grad
 grep -q 'applicationId "org.krita.mobilestudio"' "$SOURCE/packaging/android/apk/build.gradle" || { echo 'Mobile Studio package ID missing' >&2; exit 1; }
 [[ -d "$KDECI_SHARED_INSTALL_PATH" ]] || { echo 'Qt/Krita Android deps missing' >&2; exit 1; }
 
+python3 "$SOURCE/prepare_android_qt_platform.py"
+
 # Krita 5.3.4 Android requires libavfilter, but some versions of KDE's
 # prebuilt FFmpeg Android bundle omit it. Rebuild that dependency, including
 # libavfilter, for the same Android ABI/toolchain and install prefix.

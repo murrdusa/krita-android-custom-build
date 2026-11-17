@@ -2,6 +2,11 @@
 
 The [feature baseline](FEATURE-BASELINE.md) records the user-facing behavior and source paths to preserve across sessions. The exact reconciled Android build passed at `88c3ded3ad8509d90f3fca0cf42ec83aca6a5dde`. Later WSL results are published in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1).
 
+## November 17 — Android Qt screen redraw crash
+
+- The Fold 6 SIGSEGV trace matches platform plugin build ID `e94e4b116123ae67019f34bb7ed11467c70987ec`. Addresses `0x5f794` and `0x5f620` resolve to `QAndroidPlatformScreen::doRedraw()` and `event()`. The null indirect call is `QWindow::surfaceType()` while checking a screen-list entry, consistent with stale window lifetime.
+- The local builder rebuilds only the pinned Qt 5.15.7 Android platform plugin. Platform windows unregister during destruction, removal follows actual list membership after reparenting, and the real window is removed before decoration-close callbacks run. The installed binary is fingerprinted to cache subsequent builds. Source and patches are reproducible through `prepare_android_qt_platform.py`. Device verification of the reported crash remains pending.
+
 ## November 17 — embedded Photoshop thumbnails
 
 - Home reads embedded JPEG thumbnails from PSD/PSB image resources in its existing background worker, including Android content URIs, and caches them as gallery PNGs. Reads and decoded dimensions are bounded, cancellation is respected, and layer data is skipped. Files without a supported embedded preview retain the placeholder.
