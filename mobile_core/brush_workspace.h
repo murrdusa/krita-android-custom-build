@@ -336,10 +336,11 @@ public:
     {
         if(m_engine.activeTool().section(QLatin1Char('/'),-1)!=QStringLiteral("KisToolBrush"))
             return false;
-        const QAction *eraser=m_engine.action("erase_action");
-        if(eraser && eraser->isChecked())return slot==1;
+        auto *provider=resources();
+        if(provider && (provider->eraserMode() ||
+                        provider->currentCompositeOp()==COMPOSITE_ERASE))return slot==1;
         if(slot==1)return false;
-        const bool blending=resources() && capabilities(resources()->currentPreset()).blend;
+        const bool blending=provider && capabilities(provider->currentPreset()).blend;
         return slot==(blending?2:0);
     }
 

@@ -223,10 +223,13 @@ public:
             action->setProperty("mobileBrushMode",true);
         }
         if(auto *nativeErase=m_engine.action("erase_action"))
-            connect(nativeErase,&QAction::toggled,this,[this]() {syncBrushModes();});
-        if(auto *provider=m_engine.brushResources())
+            connect(nativeErase,&QAction::toggled,this,[this]() {syncBrushModes();},Qt::QueuedConnection);
+        if(auto *provider=m_engine.brushResources()) {
             connect(provider,&KisCanvasResourceProvider::sigPaintOpPresetChanged,
                     this,[this]() {syncBrushModes();},Qt::QueuedConnection);
+            connect(provider,&KisCanvasResourceProvider::sigEffectiveCompositeOpChanged,
+                    this,[this]() {syncBrushModes();},Qt::QueuedConnection);
+        }
         syncBrushModes();
     }
 
@@ -1157,6 +1160,7 @@ public:
                         provider->setFGColor(*sample);
             }
             clearToolbarPreview();
+            syncBrushModes();
             return;
         }
         m_samplePoint=global;
@@ -1847,6 +1851,7 @@ private:
         if(m_eyedropper)m_eyedropper->setChecked(armed);
         if(m_eyedropperArmed==armed)return;
         m_eyedropperArmed=armed;
+        syncBrushModes();
         if(auto *manager=m_engine.manager()) {
             if(auto *canvas=manager->canvasBase())
                 if(auto *widget=canvas->canvasWidget()) {
@@ -2163,11 +2168,12 @@ private:
     void syncBrushModes()
     {
         int active=-1;
-        if(m_engine.hasDocument() &&
+        if(!m_eyedropperArmed && m_engine.hasDocument() &&
            m_engine.activeTool().section(QLatin1Char('/'),-1)==
                QStringLiteral("KisToolBrush")) {
-            const auto *erase=m_engine.action("erase_action");
-            active=erase && erase->isChecked()?1:
+            const auto *provider=m_engine.brushResources();
+            active=provider && (provider->eraserMode() ||
+                                provider->currentCompositeOp()==COMPOSITE_ERASE)?1:
                 m_brush && m_brush->isActiveMode(2)?2:0;
         }
         for(int slot=0;slot<m_brushModes.size();++slot)

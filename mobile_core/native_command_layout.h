@@ -7,6 +7,7 @@
 #pragma once
 #if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
 #include <QAction>
+#include <QCheckBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QEvent>
@@ -72,8 +73,7 @@ public:
         layout->m_holdFor=std::move(holdFor);
         layout->m_selectColor=std::move(selectColor);
         layout->m_recentColors=MobileRecentColors::load();
-        layout->m_historyEnabled=layout->m_selectColor &&
-            QSettings().value(QStringLiteral("MobileStudio/toolbarColorHistory"),true).toBool();
+        layout->m_historyEnabled=bool(layout->m_selectColor);
         auto *row=new QHBoxLayout(layout->m_toolbar);
         row->setContentsMargins(1,1,1,1);
         row->setSpacing(1);
@@ -114,23 +114,12 @@ public:
         QObject::connect(edit,&QAction::triggered,layout,[layout]() {
             QTimer::singleShot(0,layout,[layout]() {layout->editCanvasLayout();});
         });
-        auto *toolbars=preferences->addMenu(QObject::tr("Toolbars"));
+        auto *toolbars=preferences;
         layout->m_toolbarsMenu=toolbars;
         auto *commandsAction=toolbars->addAction(QObject::tr("Customize toolbar commands…"));
         QObject::connect(commandsAction,&QAction::triggered,layout,[layout]() {
             QTimer::singleShot(0,layout,[layout]() {layout->editToolbar();});
         });
-        if(layout->m_selectColor) {
-            auto *history=toolbars->addAction(QObject::tr("Toolbar color history"));
-            layout->m_historyAction=history;
-            history->setCheckable(true);
-            history->setChecked(layout->m_historyEnabled);
-            QObject::connect(history,&QAction::toggled,layout,[layout](bool enabled) {
-                layout->m_historyEnabled=enabled;
-                QSettings().setValue(QStringLiteral("MobileStudio/toolbarColorHistory"),enabled);
-                layout->position();
-            });
-        }
         auto *drawing=toolbars->addMenu(QObject::tr("Drawing commands"));
         for(const auto &id:defaults)
             if(auto action=commands.value(id))drawing->addAction(action);
@@ -237,12 +226,7 @@ public:
 
     void reloadSettings()
     {
-        m_historyEnabled=m_selectColor &&
-            QSettings().value(QStringLiteral("MobileStudio/toolbarColorHistory"),true).toBool();
-        if(m_historyAction) {
-            const QSignalBlocker blocked(m_historyAction);
-            m_historyAction->setChecked(m_historyEnabled);
-        }
+        m_historyEnabled=bool(m_selectColor);
         if(!m_profile.isEmpty())loadWorkspace();
     }
 
@@ -320,6 +304,7 @@ private:
         int opacity=66;
         QRectF placement;
         bool adaptive=false;
+        bool colorHistory=true;
     };
 
     MobileNativeCommandLayout(QWidget *canvas,const Commands &commands,
@@ -391,6 +376,8 @@ private:
                 bar.icon=qBound(16,data.value(QStringLiteral("icon"),24).toInt(),40);
                 bar.spacing=qBound(0,data.value(QStringLiteral("spacing"),1).toInt(),12);
                 bar.opacity=qBound(0,data.value(QStringLiteral("opacity"),66).toInt(),100);
+                bar.colorHistory=data.value(QStringLiteral("colorHistory"),
+                    settings.value(QStringLiteral("MobileStudio/toolbarColorHistory"),true)).toBool();
                 bar.placement=data.value(QStringLiteral("placement")).toRectF();
                 m_bars.append(bar);
             }
@@ -408,6 +395,7 @@ private:
         bar.name=QObject::tr("Main toolbar");
         bar.ids=m_defaults;
         bar.edge=m_portrait?Bottom:Left;
+        bar.colorHistory=QSettings().value(QStringLiteral("MobileStudio/toolbarColorHistory"),true).toBool();
         return bar;
     }
 
@@ -438,7 +426,8 @@ private:
                 {QStringLiteral("edge"),int(bar.edge)},{QStringLiteral("alignment"),bar.alignment},
                 {QStringLiteral("target"),bar.target},{QStringLiteral("icon"),bar.icon},
                 {QStringLiteral("spacing"),bar.spacing},{QStringLiteral("opacity"),bar.opacity},
-                {QStringLiteral("placement"),bar.placement}
+                {QStringLiteral("placement"),bar.placement},
+                {QStringLiteral("colorHistory"),bar.colorHistory}
             };
             values.append(value);
         }
@@ -688,7 +677,8 @@ private:
         const int pinned=mainVertical?home->height()+settings->height():home->width()+settings->width();
         const auto *commands=m_scroll->widget();
         const int stripLength=commands?(mainVertical?commands->height():commands->width()):0;
-        const bool history=m_historyEnabled && !m_canvasOnly && !m_recentColors.isEmpty();
+        const bool historyAvailable=m_historyEnabled && !m_canvasOnly && !m_recentColors.isEmpty();
+        const bool history=historyAvailable && main.colorHistory;
         if(main.placement.isValid()) {
             m_toolbar->setGeometry(editedBarGeometry(m_toolbar,main,bounds,history,{}));
         } else {
@@ -718,7 +708,7 @@ private:
                 if(spec.edge!=edge)continue;
                 auto *frame=m_extra.at(i);
                 if(spec.placement.isValid()) {
-                    bool showHistory=history;
+                    bool showHistory=historyAvailable && spec.colorHistory;
                     QRect geometry;
                     if(!m_canvasOnly) {
                         geometry=editedBarGeometry(frame,spec,bounds,showHistory,occupied);
@@ -742,7 +732,8 @@ private:
                 const int available=vertical?usable.height():usable.width();
                 const int toolbarBreadth=spec.target+4;
                 const int remaining=vertical?usable.width()-minimumWidth:usable.height()-minimumHeight;
-                const bool showHistory=history && remaining>=toolbarBreadth+historyThickness+2;
+                const bool showHistory=historyAvailable && spec.colorHistory &&
+                    remaining>=toolbarBreadth+historyThickness+2;
                 const int breadth=toolbarBreadth+(showHistory?historyThickness:0);
                 const bool fits=!m_canvasOnly && extent>0 && available>=toolbarBreadth && remaining>=breadth+2;
                 frame->setVisible(fits);
@@ -895,6 +886,14 @@ private:
             for(const auto &id:bar.ids)
                 if(auto action=m_commands.value(id))fallback->addAction(action);
             fallback->menuAction()->setEnabled(!fallback->isEmpty());
+        }
+        if(m_toolbarsMenu) {
+            for(auto *action:m_toolbarsMenu->actions()) {
+                if(action->objectName()!=QStringLiteral("mobileSettingsPresets"))continue;
+                m_toolbarsMenu->removeAction(action);
+                m_toolbarsMenu->addAction(action);
+                break;
+            }
         }
         position();
     }
@@ -1050,6 +1049,9 @@ private:
         propertyForm->addRow(QObject::tr("Toolbar name"),barName);
         propertyForm->addRow(QObject::tr("Button spacing"),barSpacing);
         propertyForm->addRow(QObject::tr("Toolbar opacity"),opacityRow);
+        auto *barHistory=new QCheckBox(QObject::tr("Show color history on this toolbar"),&dialog);
+        layout->insertWidget(2,barHistory);
+        barHistory->setVisible(bool(m_selectColor));
         layout->insertWidget(2,properties);
         properties->hide();
         const auto updateProperties=[&]() {
@@ -1057,10 +1059,12 @@ private:
             QSignalBlocker nameBlock(barName);
             QSignalBlocker spacingBlock(barSpacing);
             QSignalBlocker opacityBlock(barOpacity);
+            QSignalBlocker historyBlock(barHistory);
             barName->setText(bars.at(current).name);
             barName->setEnabled(current>0);
             barSpacing->setValue(bars.at(current).spacing);
             barOpacity->setValue(bars.at(current).opacity);
+            barHistory->setChecked(bars.at(current).colorHistory);
             showOpacity(barOpacity->value());
         };
         QObject::connect(barName,&QLineEdit::textEdited,&dialog,
@@ -1075,6 +1079,9 @@ private:
                 QSignalBlocker block(selector);
                 selector->setItemText(current,value);
             });
+        QObject::connect(barHistory,&QCheckBox::toggled,&dialog,[&](bool enabled) {
+            if(current>=0 && current<bars.size())bars[current].colorHistory=enabled;
+        });
         QObject::connect(barSpacing,QOverload<int>::of(&QSpinBox::valueChanged),
             &dialog,[&](int value) {
                 if(current>=0 && current<bars.size())bars[current].spacing=value;
@@ -1198,7 +1205,6 @@ private:
     std::function<void(const QColor &)> m_selectColor;
     QStringList m_recentColors;
     bool m_historyEnabled=false;
-    QPointer<QAction> m_historyAction;
     QStringList m_defaults;
     QVector<Bar> m_bars;
     QVector<QFrame*> m_extra;

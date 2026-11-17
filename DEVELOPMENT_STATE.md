@@ -2,6 +2,11 @@
 
 The [feature baseline](FEATURE-BASELINE.md) records the user-facing behavior and source paths to preserve across sessions. The exact reconciled Android build passed at `88c3ded3ad8509d90f3fca0cf42ec83aca6a5dde`. Later WSL results are published in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1).
 
+## November 17 — simpler Settings and toolbar history
+
+- Settings lists color and toolbar controls directly, keeps settings presets last, and offers crash reports on Home. Customize toolbar commands includes a color-history checkbox for each selected toolbar, persisted with its screen layout. Older layouts inherit their previous global history preference.
+- One-shot eyedropper highlights its own action while armed and restores the indicator from Krita's actual eraser/composite state afterward, including eraser presets. Queued native notifications refresh the indicator after the engine applies its mode changes.
+
 ## November 17 — pen list scrolling and toolbar direction
 
 - The shared item-view handler accepts native pen input, scrolls with QScroller, and replays one click for stationary taps. Pen swipes suppress selection and duplicate Android mouse activation.

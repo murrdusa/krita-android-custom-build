@@ -456,17 +456,16 @@ public:
         documentMenu->addAction(closeAction);
         auto *preferences=new QMenu(QObject::tr("Settings"),window);
         preferences->setObjectName(QStringLiteral("mobileSettingsGroup"));
-        auto *presetsAction=preferences->addAction(QObject::tr("Settings presets…"));
+        auto *presetsAction=new QAction(QObject::tr("Settings presets…"),preferences);
+        presetsAction->setObjectName(QStringLiteral("mobileSettingsPresets"));
         QObject::connect(presetsAction,&QAction::triggered,workspace,[workspace]() {
             workspace->openSettingsPresets();
         });
         preferences->addActions({settingsAction,inputAction,keyboardAction});
-        auto *colorMenu=preferences->addMenu(QObject::tr("Color"));
-        colorMenu->addActions({colorWheelAction,lightingSphereAction});
-        auto *wheelHistory=colorMenu->addAction(QObject::tr("Show recent colors below floating wheel"));
+        preferences->addActions({colorWheelAction,lightingSphereAction});
+        auto *wheelHistory=preferences->addAction(QObject::tr("Show recent colors below floating wheel"));
         workspace->bindWheelHistory(wheelHistory);
-        auto *crashReport=preferences->addAction(QObject::tr("Copy crash report"));
-        QObject::connect(crashReport,&QAction::triggered,window,&MobileCrashReport::copy);
+        preferences->addAction(presetsAction);
         QList<QAction*> moreActions{preferences->menuAction()};
         for(auto *menu:{filtersMenu,documentMenu,drawingMenu,selectionMenu,viewMenu})
             if(!menu->isEmpty())moreActions.append(menu->menuAction());

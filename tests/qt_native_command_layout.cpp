@@ -145,8 +145,12 @@ int main(int argc,char **argv)
     QSettings().setValue(QStringLiteral("MobileStudio/strokeColors"),
                          QStringList{QStringLiteral("#ffaa5500"),QStringLiteral("#ff0066ff")});
     QColor picked;
+    QMenu preferences(QStringLiteral("Settings"),&second);
+    preferences.setObjectName(QStringLiteral("mobileSettingsGroup"));
+    auto *presets=preferences.addAction(QStringLiteral("Settings presets…"));
+    presets->setObjectName(QStringLiteral("mobileSettingsPresets"));
     auto *secondLayout=MobileNativeCommandLayout::install(
-        &second,&home,icon,commands,defaults,{},&canvasOnly,{},{},
+        &second,&home,icon,commands,defaults,{preferences.menuAction()},&canvasOnly,{},{},
         [&picked](const QColor &color) {picked=color;});
     verify(secondLayout,"could not reload multiple toolbars");
     second.show();
@@ -163,17 +167,14 @@ int main(int argc,char **argv)
     auto *settingsGroup=secondMenu->actions().first()->menu();
     verify(settingsGroup && settingsGroup->title()==QStringLiteral("Settings"),
            "Settings is not the first group");
-    QMenu *toolbarMenu=nullptr;
-    for(auto *action:settingsGroup->actions())
-        if(action->text()==QStringLiteral("Toolbars"))toolbarMenu=action->menu();
-    verify(toolbarMenu,"gear menu did not group toolbar settings");
-    QAction *historyToggle=nullptr;
+    verify(settingsGroup->actions().last()==presets,"settings presets were not last");
     QMenu *fallbackMenu=nullptr;
-    for(auto *action:toolbarMenu->actions()) {
-        if(action->text()==QStringLiteral("Toolbar color history"))historyToggle=action;
+    bool hasCustomization=false;
+    for(auto *action:settingsGroup->actions()) {
+        if(action->text()==QStringLiteral("Customize toolbar commands…"))hasCustomization=true;
         if(action->text()==QStringLiteral("Drawing commands"))fallbackMenu=action->menu();
     }
-    verify(historyToggle && historyToggle->isChecked(),"history should start on");
+    verify(hasCustomization,"toolbar customization was not accessible directly in Settings");
     auto *secondBar=secondCanvas->findChild<QFrame*>(QStringLiteral("_mobileNativeToolbar"));
     const auto stripName=QStringLiteral("_mobileToolbarColorHistory");
     auto *topHistory=secondBar->findChild<QFrame*>(stripName);
@@ -189,17 +190,33 @@ int main(int argc,char **argv)
     canvasOnly.trigger();
     verify(!side->isVisible() && !topHistory->isVisible(),"Canvas Only left a toolbar visible");
     canvasOnly.trigger();
-    historyToggle->trigger();
-    verify(!topHistory->isVisible() && !sideHistory->isVisible() &&
-           !QSettings().value(QStringLiteral("MobileStudio/toolbarColorHistory")).toBool(),
-           "history toggle did not hide both strips and persist");
+    QSettings settings;
+    for(const auto &key:settings.allKeys()) {
+        if(!key.endsWith(QStringLiteral("/toolbars")))continue;
+        auto bars=settings.value(key).toList();
+        if(bars.size()!=2)continue;
+        auto main=bars[0].toMap();
+        main.insert(QStringLiteral("colorHistory"),false);
+        bars[0]=main;
+        auto sideSettings=bars[1].toMap();
+        sideSettings.insert(QStringLiteral("colorHistory"),true);
+        bars[1]=sideSettings;
+        settings.setValue(key,bars);
+    }
+    secondLayout->reloadSettings();
+    QApplication::processEvents();
+    side=secondCanvas->findChild<QFrame*>(QStringLiteral("_mobileCustomToolbar"));
+    topHistory=secondBar->findChild<QFrame*>(stripName);
+    sideHistory=side->findChild<QFrame*>(stripName);
+    verify((!topHistory || !topHistory->isVisible()) && sideHistory && sideHistory->isVisible(),
+           "a toolbar history preference affected another toolbar");
     second.resize(160,280);
     QApplication::processEvents();
     verify(!side->isVisible(),"oversized rail crowded a small canvas");
     verify(fallbackMenu && fallbackMenu->actions().contains(&brush),
            "the gear menu lost default drawing commands");
     bool fallback=false;
-    for(auto *action:toolbarMenu->actions())
+    for(auto *action:settingsGroup->actions())
         if(action->menu() && action->text()==QStringLiteral("Side") &&
            action->menu()->actions().contains(&brush))fallback=true;
     verify(fallback,"the gear menu lost commands from an overflow toolbar");
@@ -273,6 +290,7 @@ int main(int argc,char **argv)
     // closes, may destroy the toolbar layout controller synchronously.
     // Its completion callback must not restart the controller timer or
     // read its members after the owner has been destroyed.
+    QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
     QPointer<MobileNativeCommandLayout> controller(secondLayout);
     int controllerTeardowns=0;
     controller->setLayoutPanels([&]() {
