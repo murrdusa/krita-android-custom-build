@@ -26,6 +26,17 @@ int main(int argc,char **argv)
         "content://com.android.documents/document/primary%3Aart%2Fdrawing.kra");
     const QString missing=tmp.filePath(QStringLiteral("missing.kra"));
     using P=MobileNativeDocumentPathPolicy;
+    require(P::photoshopMimeForName(QStringLiteral("Layered drawing.PSD (2)"))==
+                QStringLiteral("image/vnd.adobe.photoshop") &&
+            P::photoshopMimeForName(QStringLiteral("Large drawing.psb"))==
+                QStringLiteral("image/x-psb") &&
+            !P::isPhotoshopDocumentName(QStringLiteral("drawing.psd.zip")) &&
+            P::isPhotoshopMime(QStringLiteral("image/x-photoshop")) &&
+            !P::isPhotoshopMime(QStringLiteral("application/octet-stream")),
+            "Photoshop names or provider MIME aliases were misclassified");
+    require(P::canModifyOriginal(realFile,false) && P::canModifyOriginal(realFile,true) &&
+            !P::canModifyOriginal(missing,false) && !P::canModifyOriginal(missing,true),
+            "local file mutation checks ignored the original file");
     require(P::mayAttemptOpen(realFile),"existing local document rejected");
     require(P::mayAttemptOpen(provider),"Android provider document pre-rejected");
     require(!P::mayAttemptOpen(missing),"missing local document accepted");

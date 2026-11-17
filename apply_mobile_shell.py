@@ -1788,6 +1788,49 @@ install(FILES org.kde.krita.desktop''',
 """,encoding="utf-8")
     manifestfile.write_text(manifest,encoding="utf-8")
 
+    psd_loader=root/"plugins/impex/psd/psd_loader.cpp"
+    psd=psd_loader.read_text(encoding="utf-8")
+    psd=one(psd,
+        '            dbgFile  << "Loaded ICC profile" << profile->name();',
+        '''            if (profile) {
+                dbgFile << "Loaded ICC profile" << profile->name();
+            } else {
+                warnKrita << "PSD: ignoring an invalid embedded ICC profile";
+            }''',
+        "keep Photoshop import working when the embedded color profile is invalid")
+    psd_loader.write_text(psd,encoding="utf-8")
+
+    psd_import=root/"plugins/impex/psd/psd_import.cc"
+    psd=psd_import.read_text(encoding="utf-8")
+    psd=one(psd,'#include <kpluginfactory.h>',
+        '#include <kpluginfactory.h>\n#ifdef Q_OS_ANDROID\n#include <QTemporaryFile>\n#endif',
+        "allow Photoshop import to stage a streamed Android document")
+    psd=one(psd,'    PSDLoader ib(document, importUserFeedBackInterface());',
+        '''#ifdef Q_OS_ANDROID
+    // PSD layer/channel parsing seeks throughout the input. A SAF
+    // provider can return a pipe instead of a seekable descriptor.
+    QTemporaryFile seekable;
+    if (io->isSequential() || !io->seek(0)) {
+        if (!seekable.open()) {
+            return ImportExportCodes::ErrorWhileReading;
+        }
+        QByteArray chunk(256 * 1024, Qt::Uninitialized);
+        qint64 count;
+        while ((count = io->read(chunk.data(), chunk.size())) > 0) {
+            if (seekable.write(chunk.constData(), count) != count) {
+                return ImportExportCodes::ErrorWhileReading;
+            }
+        }
+        if (count < 0 || !seekable.seek(0)) {
+            return ImportExportCodes::ErrorWhileReading;
+        }
+        io = &seekable;
+    }
+#endif
+    PSDLoader ib(document, importUserFeedBackInterface());''',
+        "give the native Photoshop importer a seekable input")
+    psd_import.write_text(psd,encoding="utf-8")
+
     # The older quick-pinch recognizer still runs in Krita's input manager,
     # but its view-reset callback only searched for a desktop KisMainWindow.
     # Keep the exact gesture thresholds and native desktop behavior, while
@@ -2177,6 +2220,16 @@ install(FILES org.kde.krita.desktop''',
         return "";
     }
 
+    public static String tabletProjectMime(String location) {
+        MainActivity activity = tabletPermissionActivity;
+        if (activity == null) return "";
+        try {
+            return activity.getContentResolver().getType(Uri.parse(location));
+        } catch (RuntimeException ignored) {
+            return "";
+        }
+    }
+
     public static long tabletProjectModified(String location) {
         MainActivity activity = tabletPermissionActivity;
         if (activity == null) return 0;
@@ -2187,6 +2240,25 @@ install(FILES org.kde.krita.desktop''',
             return row != null && row.moveToFirst() ? row.getLong(0) : 0;
         } catch (RuntimeException ignored) {
             return 0;
+        }
+    }
+
+    public static boolean tabletCanModifyProject(String location, boolean deleting) {
+        MainActivity activity = tabletPermissionActivity;
+        if (activity == null) return false;
+        Uri uri = Uri.parse(location);
+        if (activity.checkUriPermission(uri, android.os.Process.myPid(),
+                android.os.Process.myUid(), Intent.FLAG_GRANT_WRITE_URI_PERMISSION) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED) return false;
+        if (!DocumentsContract.isDocumentUri(activity, uri)) return !deleting;
+        String column = DocumentsContract.Document.COLUMN_FLAGS;
+        int capability = deleting ? DocumentsContract.Document.FLAG_SUPPORTS_DELETE :
+                DocumentsContract.Document.FLAG_SUPPORTS_WRITE;
+        try (android.database.Cursor row = activity.getContentResolver().query(
+                uri, new String[]{column}, null, null, null)) {
+            return row != null && row.moveToFirst() && (row.getInt(0) & capability) != 0;
+        } catch (RuntimeException ignored) {
+            return false;
         }
     }
 
@@ -2275,8 +2347,12 @@ install(FILES org.kde.krita.desktop''',
         String name = row.getString(1);
         if (name == null) return;
         String lower = name.toLowerCase(java.util.Locale.ROOT);
-        if (!lower.matches(".*[.]kr[az]( \\(\\d+\\))?") &&
-            !"application/x-krita".equals(row.getString(2))) return;
+        String mime = row.getString(2);
+        if (!lower.matches(".*[.](kr[az]|ps[db])( \\(\\d+\\))?") &&
+            !"application/x-krita".equals(mime) &&
+            !"image/vnd.adobe.photoshop".equals(mime) &&
+            !"image/photoshop".equals(mime) && !"image/x-photoshop".equals(mime) &&
+            !"image/x-psd".equals(mime) && !"image/x-psb".equals(mime)) return;
         if (!seen.add(uri.getAuthority() + "/" + row.getString(0))) return;
         org.json.JSONObject item = new org.json.JSONObject();
         item.put("uri", uri.toString());

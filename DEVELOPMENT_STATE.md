@@ -2,6 +2,11 @@
 
 The [feature baseline](FEATURE-BASELINE.md) records the user-facing behavior and source paths to preserve across sessions. The exact reconciled Android build passed at `88c3ded3ad8509d90f3fca0cf42ec83aca6a5dde`. Later WSL results are published in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1).
 
+## November 17 — Photoshop files on Android
+
+- All Projects indexes PSD and PSB from shared storage and Android document providers. Search with the filename or extension, or open directly through Browse Files. The existing index is retained and refreshed for the new formats.
+- Photoshop imports use the native Krita importer, stage non-seekable Android streams to a temporary file, and tolerate invalid embedded ICC profiles. Android provider permissions govern deletion and overwrite. Save opens a copy destination for a read-only PSD. PSD/PSB runtime behavior and the reported crash remain unverified on the affected phone.
+
 ## November 16 — verify and restore mobile feature behavior
 
 - The stability branch includes the Wheel, Sliders, and Lighting picker, Layers minimization from Add, and the native splash. Color tabs fit narrow popups and the numeric controls scroll when needed. The Layers launcher always shows an icon, and the Add menu closes when the rail hides. Android 12 and newer use Studio’s splash colors and icon during the system launch transition.

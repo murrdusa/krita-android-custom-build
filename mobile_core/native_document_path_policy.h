@@ -13,12 +13,55 @@
 #if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
 #include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <QString>
 #include <QUrl>
+#ifdef Q_OS_ANDROID
+#include <QAndroidJniObject>
+#endif
 
 class MobileNativeDocumentPathPolicy final
 {
 public:
+    static bool isPhotoshopDocumentName(const QString &name)
+    {
+        return !photoshopMimeForName(name).isEmpty();
+    }
+
+    static QString photoshopMimeForName(const QString &name)
+    {
+        static const QRegularExpression extension(
+            QStringLiteral(R"(\.(psd|psb)(?: \(\d+\))?$)"),
+            QRegularExpression::CaseInsensitiveOption);
+        const auto match=extension.match(name);
+        if(!match.hasMatch())return {};
+        return match.captured(1).compare(QLatin1String("psb"),Qt::CaseInsensitive)==0?
+            QStringLiteral("image/x-psb"):QStringLiteral("image/vnd.adobe.photoshop");
+    }
+
+    static bool isPhotoshopMime(const QString &mime)
+    {
+        return mime==QLatin1String("image/vnd.adobe.photoshop") ||
+            mime==QLatin1String("image/x-photoshop") ||
+            mime==QLatin1String("image/photoshop") ||
+            mime==QLatin1String("image/x-psd") || mime==QLatin1String("image/x-psb");
+    }
+
+    static bool canModifyOriginal(const QString &path,bool deleting)
+    {
+#ifdef Q_OS_ANDROID
+        if(isProviderUri(path)) {
+            const auto uri=QAndroidJniObject::fromString(path);
+            return QAndroidJniObject::callStaticMethod<jboolean>(
+                "org/krita/android/MainActivity","tabletCanModifyProject",
+                "(Ljava/lang/String;Z)Z",uri.object<jstring>(),jboolean(deleting));
+        }
+#endif
+        const QFileInfo file(localFilePath(path));
+        return file.isFile() && QFileInfo(file.absolutePath()).isWritable() &&
+            (deleting || file.isWritable());
+    }
+
     static bool isProviderUri(const QString &path)
     {
         return path.startsWith(QStringLiteral("content://"),

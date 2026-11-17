@@ -32,6 +32,7 @@
 #include "KisPart.h"
 #include "dialogs/kis_delayed_save_dialog.h"
 #include "document_host_port.h"
+#include "crash_report.h"
 #include "native_document_rollback.h"
 #include "native_document_path_policy.h"
 #include "host_services.h"
@@ -341,7 +342,19 @@ private:
         // do not dereference an import destroyed while resolving its MIME.
         const QString name=MobileSavedVersionArchive::projectName(path);
         if(!guarded)return false;
-        if(!MobileSavedVersionArchive::isKritaProjectName(name))return true;
+        if(!MobileSavedVersionArchive::isKritaProjectName(name)) {
+            QString mime=MobileNativeDocumentPathPolicy::photoshopMimeForName(name);
+            if(mime.isEmpty() && MobileNativeDocumentPathPolicy::isProviderUri(path)) {
+                const auto uri=QAndroidJniObject::fromString(path);
+                mime=QAndroidJniObject::callStaticObjectMethod(
+                    "org/krita/android/MainActivity","tabletProjectMime",
+                    "(Ljava/lang/String;)Ljava/lang/String;",uri.object<jstring>()).toString();
+                if(!guarded)return false;
+            }
+            if(MobileNativeDocumentPathPolicy::isPhotoshopMime(mime))
+                guarded->setMimeType(mime.toLatin1());
+            return bool(guarded);
+        }
         const QString suffix=name.mid(name.lastIndexOf(QLatin1Char('.'))+1);
         const QByteArray mime=suffix.startsWith(QStringLiteral("krz"),Qt::CaseInsensitive)?
             QByteArray("application/x-krita-archive"):guarded->nativeFormatMimeType();
@@ -362,6 +375,10 @@ private:
         };
         if(!stillOwned() || !applyProjectMime(guarded.data(),path) ||
            !stillOwned())return false;
+        if(MobileNativeDocumentPathPolicy::isPhotoshopMime(
+               QString::fromLatin1(guarded->mimeType())))
+            MobileCrashReport::checkpoint(QStringLiteral("Import Photoshop document"));
+        if(!stillOwned())return false;
         // MIME changes or Android provider-name resolution can replace
         // the native window without destroying the unregistered import.
         // Do not spend memory opening a KRA for a stale workspace.
@@ -463,8 +480,12 @@ private:
             QString::fromLatin1(currentMime));
         const bool recovered=guardedDocument->isRecovered();
         if(!stillSelected())return false;
+        const bool readOnlyPhotoshop=MobileNativeDocumentPathPolicy::isPhotoshopMime(
+            QString::fromLatin1(currentMime)) && !currentPath.isEmpty() &&
+            !MobileNativeDocumentPathPolicy::canModifyOriginal(currentPath,false);
+        if(!stillSelected())return false;
         const bool choosePath=MobileNativeDocumentPathPolicy::needsSaveAs(
-            currentPath,saveAs,recovered,unsupportedMime);
+            currentPath,saveAs || readOnlyPhotoshop,recovered,unsupportedMime);
 
         QString target=currentPath;
         QByteArray targetMime=currentMime;
@@ -485,7 +506,7 @@ private:
             const QString nativeMime=QString::fromLatin1(
                 guardedDocument->nativeFormatMimeType());
             if(!stillSelected())return false;
-            const QString preferred=unsupportedMime || currentMime.isEmpty()?
+            const QString preferred=unsupportedMime || currentMime.isEmpty() || readOnlyPhotoshop?
                 nativeMime:QString::fromLatin1(currentMime);
             dialog.setMimeTypeFilters(formats,preferred);
             target=MobileNativeDocumentPathPolicy::localFilePath(

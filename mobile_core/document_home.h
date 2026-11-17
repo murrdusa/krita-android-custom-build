@@ -20,6 +20,7 @@
 #include <QMenu>
 #include "touch_action_picker.h"
 #include "crash_report.h"
+#include "native_document_path_policy.h"
 #include <QMargins>
 #include <QMutex>
 #include <QMutexLocker>
@@ -285,7 +286,7 @@ public:
 
         auto *tools=new QHBoxLayout;
         m_search=new QLineEdit(this);
-        m_search->setPlaceholderText(i18n("Search Krita documents"));
+        m_search->setPlaceholderText(i18n("Search projects (e.g. .psd)"));
         m_search->setClearButtonEnabled(true);
         m_refresh=new QPushButton(i18n("Refresh"),this);
         m_refresh->setMinimumWidth(76);
@@ -357,7 +358,7 @@ public:
         connect(KisRecentFilesManager::instance(),&KisRecentFilesManager::fileAdded,
                 this,[this](const QUrl &url) {
             const auto path=url.isLocalFile()?url.toLocalFile():url.toString();
-            if(url.isLocalFile() && (!isKra(path) || MobileDraftRecovery::isDraft(path)))return;
+            if(url.isLocalFile() && (!isIndexedProject(path) || MobileDraftRecovery::isDraft(path)))return;
             // A burst of recent-file notifications must not enqueue an
             // unbounded number of expensive index load/save jobs.
             // Coalesce duplicate paths and persist each pending batch in
@@ -424,8 +425,8 @@ public:
             const bool access=hasAllFilesAccess();
             if(access==m_lastAccess)return;
             QSettings settings;
-            settings.remove(QStringLiteral("MobileStudio/projectIndexSharedStorageScanMs"));
-            settings.remove(QStringLiteral("MobileStudio/projectIndexPartialScanMs"));
+            settings.remove(QStringLiteral("MobileStudio/projectIndexKraPsdScanMs"));
+            settings.remove(QStringLiteral("MobileStudio/projectIndexKraPsdPartialScanMs"));
             if(access || m_mode==AllProjects)showList(AllProjects,true);
             else m_lastAccess=access;
         });
@@ -669,7 +670,7 @@ private:
     {
         if(m_restoringVersion)return;
         if(m_projectMenu)m_projectMenu->close();
-        QMenu menu(title,this);
+        QMenu menu(title);
         enum Action {Open=1,Duplicate,History,Star,Delete,Rename,DiscardRecovery};
         auto *heading=menu.addAction(fontMetrics().elidedText(title,Qt::ElideRight,216));
         heading->setProperty("mobileSectionHeading",true);
@@ -685,7 +686,12 @@ private:
         if(!draft)add(m_starred.contains(key)?i18n("Remove star"):i18n("Star project"),Star);
         const QString recoveryPath=m_latestDrafts.value(key).absoluteFilePath();
         if(!draft && !recoveryPath.isEmpty())add(i18n("Discard recovery draft…"),DiscardRecovery);
-        add(draft?i18n("Discard draft…"):i18n("Delete…"),Delete);
+        const QPointer<MobileDocumentHome> home(this);
+        if(draft || (!MobileNativeDocumentPathPolicy::isProviderUri(path) &&
+                     !MobileNativeDocumentPathPolicy::isPhotoshopDocumentName(title)) ||
+           MobileNativeDocumentPathPolicy::canModifyOriginal(path,true))
+            add(draft?i18n("Discard draft…"):i18n("Delete…"),Delete);
+        if(!home || !home->isVisible())return;
         const auto generation=m_homeListGeneration;
         m_projectMenu=mobileShowActionList(this,nullptr,menu,this,
             [this,path,title,draft,key,draftProject,recoveryPath,generation](const QVariant &chosen) {
@@ -909,7 +915,8 @@ private:
         if(!removed) {
             QPointer<QMessageBox> notice(new QMessageBox(
                 QMessageBox::Warning,i18n("Could not delete drawing"),
-                i18n("Android or the file provider did not allow deletion."),
+                i18n("Android or the file provider did not allow deletion. "
+                     "Try reopening it with Browse Files, or delete it in Android Files."),
                 QMessageBox::Ok,this));
             notice->exec();
             delete notice.data();
@@ -1001,6 +1008,12 @@ private:
     static bool isKra(const QString &path)
     {
         return MobileSavedVersionArchive::isKritaProjectName(QFileInfo(path).fileName());
+    }
+
+    static bool isIndexedProject(const QString &path)
+    {
+        return isKra(path) || MobileNativeDocumentPathPolicy::isPhotoshopDocumentName(
+            QFileInfo(path).fileName());
     }
 
     static bool hasAllFilesAccess()
@@ -1197,7 +1210,7 @@ private:
             addMissingDraftProjects(draftProjects);
         } else {
             m_message->setText(m_lastAccess?
-                i18n("Searching accessible storage for Krita projects…"):
+                i18n("Searching accessible storage for Krita and Photoshop projects…"):
                 i18n("Checking accessible files and Android file grants…"));
             // Load persisted index immediately so the list is populated
             // before the background scan starts.  The scan will add new
@@ -1228,9 +1241,9 @@ private:
             const qint64 now=QDateTime::currentMSecsSinceEpoch();
             const QSettings settings;
             const qint64 last=settings.value(
-                QStringLiteral("MobileStudio/projectIndexSharedStorageScanMs"),0).toLongLong();
+                QStringLiteral("MobileStudio/projectIndexKraPsdScanMs"),0).toLongLong();
             const qint64 partial=settings.value(
-                QStringLiteral("MobileStudio/projectIndexPartialScanMs"),0).toLongLong();
+                QStringLiteral("MobileStudio/projectIndexKraPsdPartialScanMs"),0).toLongLong();
             const bool complete=last>0 && last<=now && now-last<24LL*60*60*1000;
             const bool coolingDown=partial>0 && partial<=now && now-partial<10LL*60*1000;
             const bool needsScan=forceScan || (!complete && !coolingDown);
@@ -1247,8 +1260,8 @@ private:
                 m_message->setText(!complete && count>0?
                     i18n("%1 indexed projects. Tap Refresh to finish searching shared storage.",count):
                     count==0?
-                    i18n("No indexed Krita projects. Tap Refresh or use Browse Files."):
-                    i18np("%1 indexed Krita project", "%1 indexed Krita projects",count));
+                    i18n("No indexed projects. Tap Refresh or use Browse Files."):
+                    i18np("%1 indexed project", "%1 indexed projects",count));
                 // New recent entries are remembered immediately rather than
                 // waiting for a full scan to finish.
                 persistIndex();
@@ -1492,7 +1505,7 @@ private:
                            !path.endsWith(QStringLiteral("/Android/data")) &&
                            !path.endsWith(QStringLiteral("/Android/obb")))
                             roots.append(path);
-                    } else if(info.isReadable() && isKra(path) &&
+                    } else if(info.isReadable() && isIndexedProject(path) &&
                               !info.fileName().startsWith(QLatin1Char('.'))) {
                         const QString canonical=QDir::cleanPath(path);
                         if(seen.contains(canonical))continue;
@@ -1610,14 +1623,14 @@ private:
                 i18n("%1 indexed projects. Tap Refresh to finish searching shared storage.",count));
         } else {
             m_message->setText(count==0?
-                i18n("No Krita projects found. Try Browse Files."):
-                i18np("%1 Krita project found", "%1 Krita projects found",count));
+                i18n("No projects found. Try Browse Files."):
+                i18np("%1 project found", "%1 projects found",count));
         }
         QSettings settings;
-        settings.setValue(truncated?QStringLiteral("MobileStudio/projectIndexPartialScanMs"):
-                                   QStringLiteral("MobileStudio/projectIndexSharedStorageScanMs"),
+        settings.setValue(truncated?QStringLiteral("MobileStudio/projectIndexKraPsdPartialScanMs"):
+                                   QStringLiteral("MobileStudio/projectIndexKraPsdScanMs"),
                           QDateTime::currentMSecsSinceEpoch());
-        if(!truncated)settings.remove(QStringLiteral("MobileStudio/projectIndexPartialScanMs"));
+        if(!truncated)settings.remove(QStringLiteral("MobileStudio/projectIndexKraPsdPartialScanMs"));
         persistIndex();
     }
 
@@ -1730,6 +1743,8 @@ private:
             const QString project=item->data(Qt::UserRole).toString();
             const QString path=item->data(Qt::UserRole+4).toString();
             const qint64 modified=item->data(Qt::UserRole+5).toLongLong();
+            if(path==project && MobileNativeDocumentPathPolicy::isPhotoshopDocumentName(
+                   item->data(Qt::UserRole+3).toString()))continue;
             const auto request=qMakePair(path,modified);
             const auto cached=m_cache.constFind(path);
             if(path.isEmpty() || m_pending.contains(request) ||
