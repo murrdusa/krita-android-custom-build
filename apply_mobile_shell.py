@@ -2483,8 +2483,9 @@ install(FILES org.kde.krita.desktop''',
 
     public static long studioCutoutInsets() {""","expose Android process exit diagnostics to the Studio")
     activityfile.write_text(activity,encoding="utf-8")
-    activityfile.with_name("StudioProcessExitReport.java").write_text(
-        (own/"mobile_core/StudioProcessExitReport.java").read_text(encoding="utf-8"),encoding="utf-8")
+    for source_name in ("StudioProcessExitReport.java", "StudioNativeTombstone.java"):
+        activityfile.with_name(source_name).write_text(
+            (own/"mobile_core"/source_name).read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/crash_report.h").write_text(
         (own/"mobile_core/crash_report.h").read_text(encoding="utf-8"),encoding="utf-8")
 

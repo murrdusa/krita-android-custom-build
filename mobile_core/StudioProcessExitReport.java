@@ -30,7 +30,13 @@ final class StudioProcessExitReport {
                     reason != ApplicationExitInfo.REASON_ANR)) continue;
                 try (InputStream stream = exit.getTraceInputStream()) {
                     if (stream == null) continue;
-                    // Android supplies binary tombstones for native crashes and text for ANRs.
+                    if (reason == ApplicationExitInfo.REASON_CRASH_NATIVE) {
+                        String stack = StudioNativeTombstone.read(stream);
+                        if (stack.isEmpty()) continue;
+                        includeTrace = false;
+                        report.append(stack).append('\n');
+                        continue;
+                    }
                     ByteArrayOutputStream trace = new ByteArrayOutputStream();
                     byte[] buffer = new byte[4096];
                     int limit = 24 * 1024;
@@ -40,13 +46,8 @@ final class StudioProcessExitReport {
                         trace.write(buffer, 0, count);
                     if (trace.size() == 0) continue;
                     includeTrace = false;
-                    if (reason == ApplicationExitInfo.REASON_CRASH_NATIVE) {
-                        report.append("Native tombstone (base64, up to 24 KiB)\n")
-                            .append(android.util.Base64.encodeToString(trace.toByteArray(), android.util.Base64.NO_WRAP));
-                    } else {
-                        report.append("ANR trace (up to 24 KiB)\n")
-                            .append(new String(trace.toByteArray(), StandardCharsets.UTF_8));
-                    }
+                    report.append("ANR trace (up to 24 KiB)\n")
+                        .append(new String(trace.toByteArray(), StandardCharsets.UTF_8));
                     report.append("\n\n");
                 } catch (java.io.IOException | RuntimeException ignored) {
                     report.append("Android could not read this trace.\n");
