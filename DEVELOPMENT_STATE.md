@@ -1,5 +1,7 @@
 # Krita Mobile Studio — current development state
 
+The [feature baseline](FEATURE-BASELINE.md) records the user-facing behavior and source paths to preserve across sessions. The exact reconciled Android build passed at `88c3ded3ad8509d90f3fca0cf42ec83aca6a5dde`. Later WSL results are published in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1).
+
 ## November 16 — verify and restore mobile feature behavior
 
 - The stability branch includes the Wheel, Sliders, and Lighting picker, Layers minimization from Add, and the native splash. Color tabs fit narrow popups and the numeric controls scroll when needed. The Layers launcher always shows an icon, and the Add menu closes when the rail hides. Android 12 and newer use Studio’s splash colors and icon during the system launch transition.

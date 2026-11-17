@@ -2,6 +2,8 @@
 
 **Read this file at the start of every development session, including a new ChatGPT chat.** Then read [DEVELOPMENT_STATE.md](DEVELOPMENT_STATE.md), the latest GitHub commits, and [local build Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1). These are the project handoff, not earlier chat transcripts. Before changing code, check the latest branch state.
 
+Use [FEATURE-BASELINE.md](FEATURE-BASELINE.md) to preserve existing behavior during stability work. Start from current `main`, keep newer fixes, and compare the affected paths against the verified baseline tag when a feature seems missing.
+
 ## Highest priority: time and iteration speed
 
 - **Be autonomous.** Take reasonable engineering decisions and implement as much as possible without requesting user input or approval. Ask only when essential information, device access, credentials, or a consequential decision requires the user. Don't wait idly for a compile: work on the next independent, relevant task while the PC builds.
