@@ -13,6 +13,7 @@
 #include <QAndroidJniObject>
 #include <atomic>
 #include <memory>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QEnableSharedFromThis>
@@ -327,6 +328,19 @@ public:
         return keepAlive && writeDocument(document,saveAs,false);
     }
 
+    bool prepareDocumentForHome(KisDocument *document) const override
+    {
+        const auto keepAlive=sharedFromThis();
+        const QPointer<KisDocument> selected(document);
+        if(!keepAlive || !selected)return false;
+        const QByteArray mime=selected->mimeType();
+        if(!selected)return false;
+        const QByteArray nativeMime=selected->nativeFormatMimeType();
+        if(!selected)return false;
+        return !MobileNativeDocumentPathPolicy::needsKritaCopyOnHome(mime,nativeMime) ||
+            writeDocument(selected.data(),true,false,true);
+    }
+
     bool exportCopy(KisDocument *document) const override
     {
         const auto keepAlive=sharedFromThis();
@@ -409,7 +423,8 @@ private:
         return runtime->attachDocument(guardedDocument.data(),m_saver.data())!=nullptr;
     }
 
-    bool writeDocument(KisDocument *document,bool saveAs,bool exporting) const
+    bool writeDocument(KisDocument *document,bool saveAs,bool exporting,
+                       bool nativeProject=false) const
     {
         if(!available() || m_saving || !document)return false;
         const QPointer<KisDocument> guardedDocument(document);
@@ -480,7 +495,7 @@ private:
             QString::fromLatin1(currentMime));
         const bool recovered=guardedDocument->isRecovered();
         if(!stillSelected())return false;
-        const bool readOnlyPhotoshop=MobileNativeDocumentPathPolicy::isPhotoshopMime(
+        const bool readOnlyPhotoshop=!nativeProject && MobileNativeDocumentPathPolicy::isPhotoshopMime(
             QString::fromLatin1(currentMime)) && !currentPath.isEmpty() &&
             !MobileNativeDocumentPathPolicy::canModifyOriginal(currentPath,false);
         if(!stillSelected())return false;
@@ -494,13 +509,21 @@ private:
                                 KoFileDialog::SaveFile,
                                 exporting?QStringLiteral("MobileStudioExportCopy"):
                                           QStringLiteral("MobileStudioNativeSaveAs"));
-            dialog.setCaption(exporting?QObject::tr("Export a copy"):
-                                        QObject::tr("Save drawing"));
-            const QString proposed=
+            dialog.setCaption(nativeProject?QObject::tr("Save as Krita project"):
+                exporting?QObject::tr("Export a copy"):QObject::tr("Save drawing"));
+            QString proposed=
                 MobileNativeDocumentPathPolicy::saveDialogStartPath(
                     currentPath,
                     QStandardPaths::writableLocation(
                         QStandardPaths::PicturesLocation));
+            if(nativeProject) {
+                const QString originalName=MobileSavedVersionArchive::projectName(currentPath);
+                if(!stillSelected())return false;
+                const QString directory=QFileInfo(proposed).isDir()?proposed:
+                    QFileInfo(proposed).absolutePath();
+                proposed=QDir(directory).filePath(
+                    MobileNativeDocumentPathPolicy::kritaCopyFileName(originalName));
+            }
             if(!proposed.isEmpty())dialog.setDefaultDir(proposed,true);
             if(!stillSelected())return false;
             const QString nativeMime=QString::fromLatin1(
@@ -508,17 +531,32 @@ private:
             if(!stillSelected())return false;
             const QString preferred=unsupportedMime || currentMime.isEmpty() || readOnlyPhotoshop?
                 nativeMime:QString::fromLatin1(currentMime);
-            dialog.setMimeTypeFilters(formats,preferred);
+            dialog.setMimeTypeFilters(nativeProject?QStringList{nativeMime}:formats,
+                                      nativeProject?nativeMime:preferred);
             target=MobileNativeDocumentPathPolicy::localFilePath(
                 dialog.filename());
             if(target.isEmpty() || !stillOwnedSelected())
                 return false; // Cancel, closed canvas, or different active document.
-            QString selected=KisMimeDatabase::mimeTypeForFile(target,false);
-            if(!formats.contains(selected))
-                selected=dialog.selectedMimeType();
-            if(!formats.contains(selected))
-                return false; // Never encode KRA under an unknown suffix.
-            targetMime=selected.toLatin1();
+            if(nativeProject) {
+                const QString name=MobileSavedVersionArchive::projectName(target);
+                if(!stillOwnedSelected())return false;
+                if(!MobileSavedVersionArchive::isKritaProjectName(name) ||
+                   !name.mid(name.lastIndexOf(QLatin1Char('.'))).startsWith(
+                       QStringLiteral(".kra"),Qt::CaseInsensitive) ||
+                   MobileOpenDocumentDestinationPolicy::sameFile(target,currentPath)) {
+                    QMessageBox::warning(runtime->window(),QObject::tr("Drawing not saved"),
+                        QObject::tr("Choose a new filename ending in .kra."));
+                    return false;
+                }
+                targetMime=nativeMime.toLatin1();
+            } else {
+                QString selected=KisMimeDatabase::mimeTypeForFile(target,false);
+                if(!formats.contains(selected))
+                    selected=dialog.selectedMimeType();
+                if(!formats.contains(selected))
+                    return false; // Never encode KRA under an unknown suffix.
+                targetMime=selected.toLatin1();
+            }
         }
 
         if(target.isEmpty() || targetMime.isEmpty() ||

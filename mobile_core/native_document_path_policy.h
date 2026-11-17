@@ -11,6 +11,7 @@
  */
 #pragma once
 #if defined(Q_OS_ANDROID) || defined(KRITA_MOBILE_QT_TEST)
+#include <QByteArray>
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
@@ -23,6 +24,17 @@
 class MobileNativeDocumentPathPolicy final
 {
 public:
+    static bool needsKritaCopyOnHome(const QByteArray &mime,const QByteArray &nativeMime)
+    {
+        return !mime.isEmpty() && mime!=nativeMime && mime!="application/x-krita-archive";
+    }
+
+    static QString kritaCopyFileName(const QString &originalName)
+    {
+        const QString base=QFileInfo(originalName).completeBaseName();
+        return (base.isEmpty()?QStringLiteral("Untitled"):base)+QStringLiteral(".kra");
+    }
+
     static bool isPhotoshopDocumentName(const QString &name)
     {
         return !photoshopMimeForName(name).isEmpty();
