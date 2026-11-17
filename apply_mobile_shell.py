@@ -1805,6 +1805,29 @@ install(FILES org.kde.krita.desktop''',
         "keep Photoshop import working when the embedded color profile is invalid")
     psd_loader.write_text(psd,encoding="utf-8")
 
+    for canvas_file,paint_method in (
+        ("opengl/kis_opengl_canvas2.cpp", "void KisOpenGLCanvas2::paintGL()"),
+        ("canvas/kis_qpainter_canvas.cpp", "void KisQPainterCanvas::paintEvent(QPaintEvent * ev)"),
+    ):
+        path=root/"libs/ui"/canvas_file
+        path.write_text(one(path.read_text(encoding="utf-8"),
+            paint_method+"\n{",
+            paint_method+"""
+{
+#ifdef Q_OS_ANDROID
+    // The standalone host initializes layout and projection after adoption.
+    // Keep the GL surface alive so its first swap can finish setup, while
+    // withholding the temporary default-sized artwork from presentation.
+    const QVariant initialProjection = property("_mobileInitialProjectionReady");
+    if (initialProjection.isValid() && !initialProjection.toBool()) {
+        QPainter loading(this);
+        loading.fillRect(rect(), QColor("#252529"));
+        return;
+    }
+#endif
+""","present artwork only after the standalone canvas is initialized"),
+            encoding="utf-8")
+
     psd_import=root/"plugins/impex/psd/psd_import.cc"
     psd=psd_import.read_text(encoding="utf-8")
     psd=one(psd,'#include <kpluginfactory.h>',

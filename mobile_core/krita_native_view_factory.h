@@ -88,6 +88,11 @@ public:
         };
         if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
             return abortAttach();
+        const QPointer<QWidget> initialSurface=view->canvasBase()?
+            view->canvasBase()->canvasWidget():nullptr;
+        if(initialSurface)initialSurface->setProperty("_mobileInitialProjectionReady",false);
+        if(!guarded || !guardedDocument || !guardedManager || !guardedStack)
+            return abortAttach();
         // Size the hidden view before Krita initializes its zoom and
         // projection. QStackedWidget owns when that view is shown.
         const QSize initialSize=stack->contentsRect().size();
@@ -589,11 +594,10 @@ private:
                     // Initialize each drawable surface once, including a
                     // blank canvas whose first GL swap arrived after setup.
                     // A replacement Android surface has its own projection.
-                    surface->setProperty("_mobileInitialProjectionReady",true);
-                    if(!isCurrent() || !canvas || !surface ||
-                       canvas->canvasWidget()!=surface)return;
                     MobileCrashReport::checkpoint(QStringLiteral("Populate initial canvas projection"));
                     canvas->refetchDataFromImage();
+                    if(!isCurrent() || !canvas || !surface || canvas->canvasWidget()!=surface)return;
+                    surface->setProperty("_mobileInitialProjectionReady",true);
                     if(!isCurrent() || !canvas || !surface || canvas->canvasWidget()!=surface)return;
                     MobileCrashReport::checkpoint(QStringLiteral("Initial canvas projection queued"));
                 }
