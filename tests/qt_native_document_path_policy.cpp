@@ -26,16 +26,6 @@ int main(int argc,char **argv)
         "content://com.android.documents/document/primary%3Aart%2Fdrawing.kra");
     const QString missing=tmp.filePath(QStringLiteral("missing.kra"));
     using P=MobileNativeDocumentPathPolicy;
-    const QByteArray kraMime("application/x-krita");
-    require(P::needsKritaCopyOnHome("image/vnd.adobe.photoshop",kraMime) &&
-            P::needsKritaCopyOnHome("image/png",kraMime) &&
-            !P::needsKritaCopyOnHome(kraMime,kraMime) &&
-            !P::needsKritaCopyOnHome("application/x-krita-archive",kraMime) &&
-            !P::needsKritaCopyOnHome({},kraMime),
-            "Home did not distinguish imports from existing projects and new canvases");
-    require(P::kritaCopyFileName(QStringLiteral("drawing.v2.psd"))==QStringLiteral("drawing.v2.kra") &&
-            P::kritaCopyFileName({})==QStringLiteral("Untitled.kra"),
-            "Home did not propose a native filename for an import");
     require(P::photoshopMimeForName(QStringLiteral("Layered drawing.PSD (2)"))==
                 QStringLiteral("image/vnd.adobe.photoshop") &&
             P::photoshopMimeForName(QStringLiteral("Large drawing.psb"))==

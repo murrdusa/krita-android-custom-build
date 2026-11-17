@@ -2,10 +2,6 @@
 
 The [feature baseline](FEATURE-BASELINE.md) records the user-facing behavior and source paths to preserve across sessions. The exact reconciled Android build passed at `88c3ded3ad8509d90f3fca0cf42ec83aca6a5dde`. Later WSL results are published in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1).
 
-## November 17 — Save imported artwork as Krita on Home
-
-- Home opens a Krita-only Save As picker for non-native files and suggests the source basename with a `.kra` extension. It closes the same canvas only after the save completes. Cancel returns to the canvas. New canvases, KRA/KRZ files, and other Save or Export commands keep their existing behavior.
-
 ## November 17 — Photoshop files on Android
 
 - All Projects indexes PSD and PSB from shared storage and Android document providers. Search with the filename or extension, or open directly through Browse Files. The existing index is retained and refreshed for the new formats.

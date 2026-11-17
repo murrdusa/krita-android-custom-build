@@ -660,7 +660,7 @@ public:
                 if(!alive || !guardedHome)return;
                 // Close can enter Save/Discard/Cancel, which may close
                 // the parent window and delete Home synchronously.
-                const bool closed=documents->closeDocumentViewForHome(selected);
+                const bool closed=documents->closeDocumentView(selected);
                 if(closed && alive && guardedHome)
                     guardedHome->showHome();
             });

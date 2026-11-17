@@ -75,18 +75,6 @@ public:
         const auto viewsHost=m_viewHost;
         return viewsHost && identity && viewsHost->closeView(identity);
     }
-
-    bool closeDocumentViewForHome(const QPointer<QObject> &identity) const
-    {
-        const auto host=m_host;
-        const auto views=m_viewHost;
-        const auto document=documentForView(identity,host,views);
-        if(!document || !host->prepareDocumentForHome(document.data()))return false;
-        // Save As enters the file picker and runs native save callbacks.
-        // Only close the same document if it is still selected afterward.
-        return document && documentForView(identity,host,views)==document &&
-            views->closeView(identity);
-    }
     bool closeDocument(int nativeIndex) const
     {
         const auto viewsHost=m_viewHost;
