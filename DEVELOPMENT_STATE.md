@@ -1,6 +1,15 @@
 # Krita Mobile Studio — current development state
 
-The [feature baseline](FEATURE-BASELINE.md) records the user-facing behavior and source paths to preserve across sessions. The exact reconciled Android build passed at `88c3ded3ad8509d90f3fca0cf42ec83aca6a5dde`. Later WSL results are published in [Issue #1](https://github.com/murrdusa/krita-android-custom-build/issues/1).
+The [feature baseline](FEATURE-BASELINE.md) records user-facing behavior and source paths to preserve across sessions. Continue from latest GitHub `main`, preserving subsequent fixes rather than restoring the older baseline tag wholesale.
+
+## Continuation handoff — November 18
+
+- **Latest verified app source:** `ca012edb50f68737046241587cf97b4f36842580`. Local WSL Android compilation passed on November 17 at 21:49 UTC. Latest checks passed: shared Qt interaction/layout regressions under AddressSanitizer, nine Python tests, and the native tombstone parser test. Compilation and automated checks do not establish phone runtime stability.
+- All implementation and handoff files are committed to this repository. Start with `AGENTS.md`, this file, `FEATURE-BASELINE.md`, `PRODUCT-ROADMAP.md`, and GitHub Issues #76 (priorities) and #1 (exact local build result). The local watcher follows `main`; use it for Android builds. Do not launch cloud builds or publish APKs.
+- **Latest user decisions:** color history is independently toggled for each toolbar in Customize toolbar commands. Settings presets stay at the bottom. Copy Crash Report is available from Home, removed from Settings. One-shot eyedropper must restore the actual previous brush/eraser mode and its indicator. The requested automatic conversion of imported documents to KRA on Home was explicitly reverted (`62c3e2a`): preserve the normal Save/Discard/Cancel behavior and existing recovery checkpoints.
+- **Runtime follow-up remains:** confirm brush picker stays open while resources load, pen swipes scroll without selection, first canvas appears full-size without a corner flash or forced refresh, one-shot mode indicators match actual erasing, and PSD imports remain stable. These have source fixes and successful builds, but the latest phone behavior is unverified. Avoid claiming they are conclusively fixed or reintroducing older behavior.
+- **Crash identification:** the reported Qt Android redraw crash used plugin build ID `e94e4b116123ae67019f34bb7ed11467c70987ec`. The patched plugin packaged by the local builder has build ID `8d468da2d86897194944269b5c86e1a8a3459671`; preparation is reproducible in `prepare_android_qt_platform.py`. Compare reports against the packaged binary. The APK filename still contains `e7e52a7` and is not a trustworthy source revision identifier.
+- Preserve the native engine, shared menu/touch architecture, bounded version history, Android background checkpoints, latest-checkpoint recovery, and intentional hold-to-discard. Prefer focused stability work and meaningful regression tests over broad rewrites. User prioritizes minimal token/usage consumption and local processing, with no new phone-testing request for now.
 
 ## November 17 — simpler Settings and toolbar history
 
