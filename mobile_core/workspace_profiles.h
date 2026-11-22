@@ -160,11 +160,11 @@ inline QVariantMap twoToolbarPreset()
 {
     const QVariantMap top{
         {QStringLiteral("name"),QObject::tr("Top toolbar")},
-        {QStringLiteral("commands"),QStringList{QStringLiteral("layers")}},
+        {QStringLiteral("commands"),QStringList{QStringLiteral("reference-images"),QStringLiteral("layers")}},
         {QStringLiteral("edge"),0},{QStringLiteral("alignment"),2},
         {QStringLiteral("opacity"),0},{QStringLiteral("colorHistory"),false},
         {QStringLiteral("settingsBeforeCommands"),true},
-        {QStringLiteral("homeOpacity"),0}
+        {QStringLiteral("homeOpacity"),100}
     };
     const QVariantMap left{
         {QStringLiteral("name"),QObject::tr("Drawing tools")},
@@ -172,7 +172,7 @@ inline QVariantMap twoToolbarPreset()
             QStringLiteral("paint"),QStringLiteral("erase"),QStringLiteral("blend"),
             QStringLiteral("tool-settings"),QStringLiteral("color"),
             QStringLiteral("eyedropper"),QStringLiteral("transform"),
-            QStringLiteral("liquify"),QStringLiteral("reference-images"),QStringLiteral("tools")}},
+            QStringLiteral("liquify"),QStringLiteral("tools")}},
         {QStringLiteral("edge"),2},{QStringLiteral("colorHistory"),false}
     };
     return {

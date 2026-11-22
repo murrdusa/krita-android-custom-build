@@ -2,6 +2,12 @@
 
 The [feature baseline](FEATURE-BASELINE.md) records user-facing behavior and source paths to preserve across sessions. Continue from latest GitHub `main`, preserving subsequent fixes rather than restoring the older baseline tag wholesale.
 
+## November 22 — top-bar navigation and Layers launcher
+
+- Restored the visible Home icon, including saved layouts with zero Home opacity. Reference now starts in the top toolbar; existing screen layouts move that command there once while retaining their other commands and placements.
+- The standalone collapsed Layers launcher appears only when no visible toolbar offers Layers. Toolbar edits, layout switches, and toolbar visibility changes refresh this decision.
+- Local Android compilation and focused Qt regression verification pending for this change. No APK publication requested.
+
 ## November 22 — canvas opening and two-toolbar preset
 
 - Each native view now retries activation when it becomes visible and when its layout settles. This covers opening another view inside an already visible canvas stack, where window/stack Show events alone missed the first projection. Existing bootstrap-once, zoom-once and tool transaction behavior remains intact.

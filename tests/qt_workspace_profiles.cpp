@@ -76,7 +76,7 @@ int main(int argc,char **argv)
     const auto factoryLayout=twoToolbarPreset().value(QStringLiteral("layout")).toMap();
     const auto factoryBars=factoryLayout.value(QStringLiteral("toolbars")).toList();
     if(factoryBars.size()!=2)return 16;
-    QStringList ids{QStringLiteral("layers")};
+    QStringList ids=factoryBars.first().toMap().value(QStringLiteral("commands")).toStringList();
     ids.append(factoryBars.last().toMap().value(QStringLiteral("commands")).toStringList());
     if(ids.contains(QStringLiteral("undo")) || ids.contains(QStringLiteral("redo")) ||
        !ids.contains(QStringLiteral("liquify")) || !ids.contains(QStringLiteral("reference-images")))return 17;
@@ -104,7 +104,9 @@ int main(int argc,char **argv)
     const auto *topRow=bar->layout();
     if(topRow->itemAt(1)->widget()->objectName()!=QStringLiteral("_mobileNativeMoreButton"))return 20;
     auto *homeEffect=qobject_cast<QGraphicsOpacityEffect*>(topRow->itemAt(0)->widget()->graphicsEffect());
-    if(!homeEffect || homeEffect->opacity()!=0.0 || !topRow->itemAt(0)->widget()->isEnabled())return 21;
+    if(!homeEffect || homeEffect->opacity()!=1.0 || !topRow->itemAt(0)->widget()->isEnabled())return 21;
+    auto *reference=layout->buttonForCommand(QStringLiteral("reference-images"));
+    if(!reference || !bar->isAncestorOf(reference))return 24;
     for(const auto &value:QSettings().value(group(MobileWorkspaceProfiles::closest(QSettings(),canvas->size()))+
             QStringLiteral("toolbars")).toList())
         if(value.toMap().value(QStringLiteral("colorHistory"),true).toBool())return 22;
@@ -115,6 +117,37 @@ int main(int argc,char **argv)
     if(portraitId.isEmpty() || !portrait)return 8;
     QSettings local;
     remember(local,portraitId,canvas->size());
+    // An existing installation has an invisible Home and Reference on the side.
+    auto legacy=local.value(group(portraitId)+QStringLiteral("toolbars")).toList();
+    auto legacyTop=legacy.first().toMap(),legacySide=legacy.last().toMap();
+    legacyTop.insert(QStringLiteral("homeOpacity"),0);
+    legacyTop.insert(QStringLiteral("commands"),QStringList{QStringLiteral("layers")});
+    auto sideIds=legacySide.value(QStringLiteral("commands")).toStringList();
+    sideIds.append(QStringLiteral("reference-images"));
+    legacySide.insert(QStringLiteral("commands"),sideIds);
+    legacy[0]=legacyTop;
+    legacy[1]=legacySide;
+    local.setValue(group(portraitId)+QStringLiteral("toolbars"),legacy);
+    local.remove(group(portraitId)+QStringLiteral("topBarNavigationV1"));
+    int positioned=0;
+    layout->onToolbarPositioned=[&]() {++positioned;};
+    layout->reloadSettings();
+    QApplication::processEvents();
+    reference=layout->buttonForCommand(QStringLiteral("reference-images"));
+    homeEffect=qobject_cast<QGraphicsOpacityEffect*>(topRow->itemAt(0)->widget()->graphicsEffect());
+    if(!positioned || !reference || !bar->isAncestorOf(reference) ||
+       !homeEffect || homeEffect->opacity()!=1.0)return 25;
+    // Toolbar removal must notify the workspace so the standalone Layers
+    // launcher can return immediately, and adding Layers must hide it again.
+    auto migrated=local.value(group(portraitId)+QStringLiteral("toolbars")).toList();
+    auto withoutLayers=migrated.first().toMap();
+    withoutLayers.insert(QStringLiteral("commands"),QStringList{QStringLiteral("reference-images")});
+    migrated[0]=withoutLayers;
+    local.setValue(group(portraitId)+QStringLiteral("toolbars"),migrated);
+    positioned=0;
+    layout->reloadSettings();
+    QApplication::processEvents();
+    if(!positioned || layout->buttonForCommand(QStringLiteral("layers")))return 26;
     QStringList custom=defaults;
     custom.move(0,3);
     auto customized=local.value(group(portraitId)+QStringLiteral("toolbars")).toList();

@@ -205,6 +205,8 @@ public:
         return nullptr;
     }
 
+    std::function<void()> onToolbarPositioned;
+
     void syncToolbarGestures()
     {
         for(auto *button:static_cast<QWidget*>(parent())->findChildren<QToolButton*>()) {
@@ -394,7 +396,7 @@ private:
                 bar.icon=qBound(16,data.value(QStringLiteral("icon"),24).toInt(),40);
                 bar.spacing=qBound(0,data.value(QStringLiteral("spacing"),1).toInt(),12);
                 bar.opacity=qBound(0,data.value(QStringLiteral("opacity"),66).toInt(),100);
-                bar.homeOpacity=qBound(0,data.value(QStringLiteral("homeOpacity"),100).toInt(),100);
+                bar.homeOpacity=100;
                 bar.colorHistory=data.value(QStringLiteral("colorHistory"),
                     settings.value(QStringLiteral("MobileStudio/toolbarColorHistory"),true)).toBool();
                 bar.settingsBeforeCommands=data.value(QStringLiteral("settingsBeforeCommands"),false).toBool();
@@ -404,6 +406,17 @@ private:
         }
         if(!m_commands.contains(QStringLiteral("shortcut")))
             for(auto &bar:m_bars)bar.ids.removeAll(QStringLiteral("shortcut"));
+        // Upgrade existing layouts once, retaining their other commands and geometry.
+        const QString navigationMigration=MobileWorkspaceProfiles::group(m_profile)+
+            QStringLiteral("topBarNavigationV1");
+        if(!settings.value(navigationMigration,false).toBool()) {
+            if(m_commands.contains(QStringLiteral("reference-images"))) {
+                for(auto &bar:m_bars)bar.ids.removeAll(QStringLiteral("reference-images"));
+                m_bars.first().ids.prepend(QStringLiteral("reference-images"));
+            }
+            saveBars();
+            settings.setValue(navigationMigration,true);
+        }
         m_bars.first().adaptive=m_builtin;
         rebuild();
         if(m_applyWorkspace)m_applyWorkspace(m_profile,m_portrait);
@@ -783,6 +796,7 @@ private:
         if(m_restore)m_restore->raise();
         if(canvas->property(overlayBoundsProperty()).toRect()!=usable)
             canvas->setProperty(overlayBoundsProperty(),usable);
+        if(onToolbarPositioned)onToolbarPositioned();
     }
 
     void populate(QScrollArea *scroll,const Bar &bar,bool vertical)

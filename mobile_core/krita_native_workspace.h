@@ -1181,7 +1181,19 @@ public:
         if(!m_samplePreviewTimer.isActive())m_samplePreviewTimer.start();
     }
 
-    void bindToolbarLayout(MobileNativeCommandLayout *layout) {m_toolbarLayout=layout;}
+    void bindToolbarLayout(MobileNativeCommandLayout *layout)
+    {
+        m_toolbarLayout=layout;
+        if(layout) {
+            const QPointer<MobileKritaNativeWorkspace> alive(this);
+            layout->onToolbarPositioned=[alive]() {
+                if(!alive)return;
+                alive->syncLayersVisibility();
+                alive->scheduleOverlayPlacement();
+            };
+        }
+        syncLayersVisibility();
+    }
 
     void openSettingsPresets()
     {
@@ -2032,7 +2044,9 @@ private:
             connect(m_showLayers,&QToolButton::clicked,this,[this]() {toggleLayers();});
         }
         if(m_layers)m_layers->setVisible(available && !m_layersCollapsed);
-        if(m_showLayers)m_showLayers->setVisible(available && m_layersCollapsed);
+        const bool toolbarLayers=m_toolbarLayout &&
+            m_toolbarLayout->buttonForCommand(QStringLiteral("layers"));
+        if(m_showLayers)m_showLayers->setVisible(available && m_layersCollapsed && !toolbarLayers);
         syncPanelActions();
     }
 
