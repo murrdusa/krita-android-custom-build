@@ -123,6 +123,23 @@ public:
 
     QWidget *toolButton() const {return m_tool;}
 
+    bool activateTransformMode(bool liquify)
+    {
+        if(m_id.section(QLatin1Char('/'),-1)!=QStringLiteral("KisToolTransform"))return false;
+        auto *button=qobject_cast<QAbstractButton*>(findOption(liquify?"liquifyButton":"freeTransformButton"));
+        const QByteArray slot=liquify?"slotSetLiquifyModeButtonClicked":"slotSetFreeTransformModeButtonClicked";
+        if(!button || !button->isEnabled())return false;
+        const QByteArray signature=slot+"(bool)";
+        for(QObject *owner=button;owner;owner=owner->parent()) {
+            if(owner->metaObject()->indexOfMethod(signature.constData())<0)continue;
+            button->setChecked(true);
+            const bool invoked=QMetaObject::invokeMethod(owner,slot.constData(),Qt::DirectConnection,Q_ARG(bool,true));
+            refreshControls();
+            return invoked;
+        }
+        return false;
+    }
+
     std::function<void(QWidget *)> chooseTool;
     std::function<void(QWidget *)> openTextFormatting;
     std::function<void(bool,QWidget *)> chooseFillResource;

@@ -2,6 +2,14 @@
 
 The [feature baseline](FEATURE-BASELINE.md) records user-facing behavior and source paths to preserve across sessions. Continue from latest GitHub `main`, preserving subsequent fixes rather than restoring the older baseline tag wholesale.
 
+## November 22 — canvas opening and two-toolbar preset
+
+- Each native view now retries activation when it becomes visible and when its layout settles. This covers opening another view inside an already visible canvas stack, where window/stack Show events alone missed the first projection. Existing bootstrap-once, zoom-once and tool transaction behavior remains intact.
+- Brush Size/Opacity/Flow options open next to the visible Tool Settings toolbar button. Explicit placements made in Edit UI Layout still take precedence.
+- Added direct Transform and Liquify commands using the native Transform options slots. Both are available to toolbar customization and keyboard bindings.
+- Added the built-in **Two toolbars · no color history** Settings preset and use its arrangement for new screen layouts: transparent Home target, Settings, Layers at top right; drawing/editing tools on the left with Color, Reference, Transform and Liquify, without Undo/Redo. Home remains tappable with its existing accessible name. Saved layouts are retained; apply the preset explicitly to replace an existing layout. Applying this layout retains unrelated preferences and disables toolbar/wheel color history.
+- Local checks: four Qt regressions under AddressSanitizer (workspace profiles, canvas visibility, toolbar drag, transient panels) and nine Python tests pass. Android compilation for the final source is pending. Phone verification of first-frame visibility, anchored sliders and native Liquify remains outstanding. No APK publication requested.
+
 ## Continuation handoff — November 18
 
 - **Latest verified app source:** `ca012edb50f68737046241587cf97b4f36842580`. Local WSL Android compilation passed on November 17 at 21:49 UTC. Latest checks passed: shared Qt interaction/layout regressions under AddressSanitizer, nine Python tests, and the native tombstone parser test. Compilation and automated checks do not establish phone runtime stability.

@@ -284,6 +284,13 @@ public:
 
         if(!guarded || !guardedDocument || !guardedStack || !guardedManager)
             return abortRegistered();
+        MobileCanvasResumeObserver::attach(manager->qtMainWindow(),view,view,
+            [root=QPointer<MobileNativeViewStack>(stack),vm=QPointer<KisViewManager>(manager),selected=guarded]() {
+                if(root && vm && selected && root->currentWidget()==selected)
+                    scheduleActivation(vm,root,selected);
+            });
+        if(!guarded || !guardedDocument || !guardedStack || !guardedManager)
+            return abortRegistered();
         stack->setCurrentWidget(view);
         if(!guarded || !guardedDocument || !guardedStack || !guardedManager)
             return abortRegistered();

@@ -103,6 +103,26 @@ int main(int argc,char **argv)
     drain();
     require(activations>=1,"first visible canvas was not activated");
 
+    // Layout can settle after the initial activation while the window stays visible.
+    const int beforeLayout=activations;
+    QEvent layoutReady(QEvent::LayoutRequest);
+    QCoreApplication::sendEvent(root,&layoutReady);
+    drain();
+    require(activations>beforeLayout,"settled canvas layout did not retry activation");
+
+    // A newly selected child view must wake without hiding/showing the window.
+    auto *secondView=new QWidget(root);
+    secondView->hide();
+    int secondActivations=0;
+    MobileCanvasResumeObserver::attach(&window,secondView,secondView,[&]() {++secondActivations;});
+    drain();
+    require(secondActivations==0,"activated a hidden new view");
+    secondView->show();
+    drain();
+    require(secondActivations>0,"new view waited for a window refresh");
+    delete secondView;
+    drain();
+
     const int initial=activations;
     window.hide();
     drain();

@@ -292,6 +292,19 @@ public:
         syncPanelActions();
     }
 
+    void activateTransform(bool liquify)
+    {
+        if(!m_engine.hasDocument())return;
+        for(const auto &tool:m_engine.tools()) {
+            if(tool.id.section(QLatin1Char('/'),-1)!=QStringLiteral("KisToolTransform"))continue;
+            if(!m_engine.selectTool(tool.id))return;
+            syncActiveToolOptions();
+            syncContextToolBar();
+            if(m_contextToolBar)m_contextToolBar->activateTransformMode(liquify);
+            return;
+        }
+    }
+
     void toggleToolSettings()
     {
         if(!m_host || !m_engine.hasDocument() || m_canvasOnly)return;
@@ -1199,6 +1212,9 @@ public:
         const QString key=QStringLiteral("MobileStudio/namedSettingsPresets");
         const auto refresh=[list,key]() {
             list->clear();
+            auto *factory=new QListWidgetItem(QObject::tr("Two toolbars · no color history"),list);
+            factory->setData(Qt::UserRole,true);
+            factory->setSizeHint(QSize(0,44));
             for(const auto &name:QSettings().value(key).toMap().keys()) {
                 auto *item=new QListWidgetItem(name,list);
                 item->setSizeHint(QSize(0,40));
@@ -1206,7 +1222,7 @@ public:
         };
         const auto sync=[list,apply,remove]() {
             apply->setEnabled(list->currentItem()!=nullptr);
-            remove->setEnabled(list->currentItem()!=nullptr);
+            remove->setEnabled(list->currentItem() && !list->currentItem()->data(Qt::UserRole).toBool());
         };
         connect(list,&QListWidget::currentItemChanged,panel,sync);
         connect(save,&QPushButton::clicked,panel,[this,name,key,status,refresh]() {
@@ -1236,7 +1252,16 @@ public:
         });
         connect(apply,&QPushButton::clicked,panel,[this,panel,list,key]() {
             if(!list->currentItem())return;
-            const auto preset=QSettings().value(key).toMap().value(list->currentItem()->text()).toMap();
+            const bool factory=list->currentItem()->data(Qt::UserRole).toBool();
+            auto preset=factory?MobileWorkspaceProfiles::twoToolbarPreset():
+                QSettings().value(key).toMap().value(list->currentItem()->text()).toMap();
+            if(factory) {
+                auto preferences=MobileWorkspaceProfiles::capturePreset(QSettings(),m_workspaceId)
+                    .value(QStringLiteral("preferences")).toMap();
+                preferences.insert(QStringLiteral("MobileStudio/toolbarColorHistory"),false);
+                preferences.insert(QStringLiteral("MobileStudio/colorWheelHistory"),false);
+                preset.insert(QStringLiteral("preferences"),preferences);
+            }
             if(preset.isEmpty())return;
             panel->close();
             QTimer::singleShot(0,this,[this,preset]() {applySettingsPreset(preset);});
@@ -2569,9 +2594,23 @@ private:
                            obstacles,QSize(170,80));
             };
             placeOptions(m_toolOptions,bounds);
-            if(m_brushOptions)
-                placeOptions(m_brushOptions,QRect(bounds.x(),bounds.y(),bounds.width(),
-                    qMin(room.height(),m_brushOptions->sizeHint().height())));
+            if(m_brushOptions) {
+                QRect brushBounds(bounds.x(),bounds.y(),bounds.width(),
+                    qMin(room.height(),m_brushOptions->sizeHint().height()));
+                if(auto *opener=m_toolbarLayout?m_toolbarLayout->buttonForCommand(QStringLiteral("tool-settings")):nullptr) {
+                    const QRect anchor(canvas->mapFromGlobal(opener->mapToGlobal(QPoint())),opener->size());
+                    const QSize size(qMin(340,viewport.width()),qMin(viewport.height(),m_brushOptions->sizeHint().height()));
+                    // Prefer the canvas side of a left/right toolbar; top/bottom bars open inward.
+                    const bool side=anchor.left()<viewport.left() || anchor.right()>viewport.right();
+                    const int x=side?(anchor.center().x()<viewport.center().x()?anchor.right()+5:anchor.left()-size.width()-4):
+                                     anchor.center().x()-size.width()/2;
+                    const int y=side?anchor.center().y()-size.height()/2:
+                        (anchor.center().y()<viewport.center().y()?anchor.bottom()+5:anchor.top()-size.height()-4);
+                    brushBounds=QRect(QPoint(qBound(viewport.left(),x,viewport.right()-size.width()+1),
+                                            qBound(viewport.top(),y,viewport.bottom()-size.height()+1)),size);
+                }
+                placeOptions(m_brushOptions,brushBounds);
+            }
             placeOptions(m_textFormatting,bounds);
         }
         if(m_color && m_color->isVisible()) {

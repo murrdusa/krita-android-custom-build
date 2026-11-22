@@ -73,8 +73,14 @@ int main(int argc,char **argv)
     QAction home(icon,QStringLiteral("Home"),&window);
     MobileNativeCommandLayout::Commands commands;
     QStringList defaults;
-    for(int i=0;i<8;++i) {
-        const auto key=QString::number(i);
+    const auto factoryLayout=twoToolbarPreset().value(QStringLiteral("layout")).toMap();
+    const auto factoryBars=factoryLayout.value(QStringLiteral("toolbars")).toList();
+    if(factoryBars.size()!=2)return 16;
+    QStringList ids{QStringLiteral("layers")};
+    ids.append(factoryBars.last().toMap().value(QStringLiteral("commands")).toStringList());
+    if(ids.contains(QStringLiteral("undo")) || ids.contains(QStringLiteral("redo")) ||
+       !ids.contains(QStringLiteral("liquify")) || !ids.contains(QStringLiteral("reference-images")))return 17;
+    for(const auto &key:ids) {
         commands.insert(key,new QAction(icon,key,&window));
         defaults.append(key);
     }
@@ -84,8 +90,24 @@ int main(int argc,char **argv)
     QApplication::processEvents();
     auto *bar=canvas->findChild<QFrame*>(QStringLiteral("_mobileNativeToolbar"));
     auto *scroll=bar?bar->findChild<QScrollArea*>():nullptr;
-    if(!bar || !scroll || bar->geometry().bottom()!=canvas->rect().bottom()-2 ||
+    if(!bar || !scroll || bar->geometry().top()!=2 || bar->geometry().right()!=canvas->rect().right()-2 ||
        scroll->horizontalScrollBar()->maximum()!=0)return 7;
+    const auto extras=canvas->findChildren<QFrame*>(QString(),Qt::FindDirectChildrenOnly);
+    QFrame *side=nullptr;
+    for(auto *frame:extras)
+        if(frame!=bar && frame->property("mobileCommandToolbar").toBool())side=frame;
+    if(!side || !side->isVisible() || side->width()>=side->height() || side->x()!=2)return 18;
+    auto *layersButton=layout->buttonForCommand(QStringLiteral("layers"));
+    if(!layersButton || layersButton->width()<30 || !bar->isAncestorOf(layersButton))return 23;
+    if(!layout->buttonForCommand(QStringLiteral("liquify")) ||
+       !layout->buttonForCommand(QStringLiteral("tool-settings")))return 19;
+    const auto *topRow=bar->layout();
+    if(topRow->itemAt(1)->widget()->objectName()!=QStringLiteral("_mobileNativeMoreButton"))return 20;
+    auto *homeEffect=qobject_cast<QGraphicsOpacityEffect*>(topRow->itemAt(0)->widget()->graphicsEffect());
+    if(!homeEffect || homeEffect->opacity()!=0.0 || !topRow->itemAt(0)->widget()->isEnabled())return 21;
+    for(const auto &value:QSettings().value(group(MobileWorkspaceProfiles::closest(QSettings(),canvas->size()))+
+            QStringLiteral("toolbars")).toList())
+        if(value.toMap().value(QStringLiteral("colorHistory"),true).toBool())return 22;
     QString active;
     bool portrait=false;
     layout->bindWorkspace([&](const QString &id,bool isPortrait) {active=id;portrait=isPortrait;});
@@ -95,7 +117,11 @@ int main(int argc,char **argv)
     remember(local,portraitId,canvas->size());
     QStringList custom=defaults;
     custom.move(0,3);
-    local.setValue(group(portraitId)+QStringLiteral("primaryToolbarCommands"),custom);
+    auto customized=local.value(group(portraitId)+QStringLiteral("toolbars")).toList();
+    auto main=customized.first().toMap();
+    main.insert(QStringLiteral("commands"),custom);
+    customized[0]=main;
+    local.setValue(group(portraitId)+QStringLiteral("toolbars"),customized);
     const auto resize=[&](int width,int height) {
         window.resize(width,height);
         QEventLoop wait;
@@ -103,10 +129,10 @@ int main(int argc,char **argv)
         wait.exec();
     };
     resize(800,360);
-    if(portrait || active==portraitId || bar->geometry().left()!=2 ||
-       bar->height()<=bar->width() || scroll->verticalScrollBar()->maximum()!=0)return 9;
+    if(portrait || active==portraitId || bar->geometry().top()!=2 ||
+       bar->height()>=bar->width())return 9;
     resize(750,780);
-    if(portrait || active==portraitId || bar->height()<=bar->width())return 10;
+    if(portrait || active==portraitId || bar->height()>=bar->width())return 10;
     resize(340,720);
     const auto *first=qobject_cast<QToolButton*>(scroll->widget()->layout()->itemAt(0)->widget());
     if(!portrait || active!=portraitId || !first || first->defaultAction()!=commands.value(custom.first()))return 11;

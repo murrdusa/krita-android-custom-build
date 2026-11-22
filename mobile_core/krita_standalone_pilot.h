@@ -153,6 +153,10 @@ public:
                 }
             }
         });
+        auto *transformAction=makeAction("Transform");
+        auto *liquifyAction=makeAction("Liquify");
+        QObject::connect(transformAction,&QAction::triggered,workspace,[workspace]() {workspace->activateTransform(false);});
+        QObject::connect(liquifyAction,&QAction::triggered,workspace,[workspace]() {workspace->activateTransform(true);});
         auto *toolsAction=makeAction("Tools");
         auto *optionsAction=makeAction("Tool Settings");
         auto *commandsAction=makeAction("All Krita Commands");
@@ -174,6 +178,8 @@ public:
         setStudioIcon(brushesAction,"krita_tool_freehand");
         setStudioIcon(layersAction,"all-layers");
         setStudioIcon(toolsAction,"tools-wizard");
+        setStudioIcon(transformAction,"krita_tool_transform");
+        setStudioIcon(liquifyAction,"transform_icons_liquify_main");
         setStudioIcon(eraserAction,"draw-eraser");
         setStudioIcon(blendBrushAction,"colorsmudge");
         if(auto *provider=nativeBridge.brushResources()) {
@@ -482,6 +488,7 @@ public:
             {"paint",brushesAction},{"erase",eraserAction},{"blend",blendBrushAction},
             {"tool-settings",optionsAction},{"color",colorAction},{"layers",layersAction},
             {"eyedropper",eyedropperAction},{"reference-images",referenceAction},
+            {"transform",transformAction},{"liquify",liquifyAction},
             {"tools",toolsAction},{"undo",undoAction},{"redo",redoAction},{"save",saveAction},
             {"new",newAction},{"open",openAction},
             {"previous-canvas",previousCanvasAction},{"next-canvas",nextCanvasAction},

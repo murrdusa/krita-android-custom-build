@@ -100,7 +100,9 @@ protected:
         } else if((watched==m_window.data() ||
                    watched==m_root.data()) &&
                   (event->type()==QEvent::Show ||
-                   event->type()==QEvent::WindowActivate)) {
+                   event->type()==QEvent::WindowActivate ||
+                   (watched==m_root.data() && (event->type()==QEvent::Resize ||
+                                              event->type()==QEvent::LayoutRequest)))) {
             request();
         }
         if(watched==m_window.data() &&

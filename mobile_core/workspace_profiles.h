@@ -155,6 +155,37 @@ inline QVariantMap capturePreset(const QSettings &settings,const QString &screen
     return {{QStringLiteral("preferences"),preferences},{QStringLiteral("layout"),layout}};
 }
 
+// Factory layout is independent of saved user presets and never overwrites them.
+inline QVariantMap twoToolbarPreset()
+{
+    const QVariantMap top{
+        {QStringLiteral("name"),QObject::tr("Top toolbar")},
+        {QStringLiteral("commands"),QStringList{QStringLiteral("layers")}},
+        {QStringLiteral("edge"),0},{QStringLiteral("alignment"),2},
+        {QStringLiteral("opacity"),0},{QStringLiteral("colorHistory"),false},
+        {QStringLiteral("settingsBeforeCommands"),true},
+        {QStringLiteral("homeOpacity"),0}
+    };
+    const QVariantMap left{
+        {QStringLiteral("name"),QObject::tr("Drawing tools")},
+        {QStringLiteral("commands"),QStringList{
+            QStringLiteral("paint"),QStringLiteral("erase"),QStringLiteral("blend"),
+            QStringLiteral("tool-settings"),QStringLiteral("color"),
+            QStringLiteral("eyedropper"),QStringLiteral("transform"),
+            QStringLiteral("liquify"),QStringLiteral("reference-images"),QStringLiteral("tools")}},
+        {QStringLiteral("edge"),2},{QStringLiteral("colorHistory"),false}
+    };
+    return {
+        {QStringLiteral("preferences"),QVariantMap{
+            {QStringLiteral("MobileStudio/toolbarColorHistory"),false},
+            {QStringLiteral("MobileStudio/colorWheelHistory"),false}}},
+        {QStringLiteral("layout"),QVariantMap{
+            {QStringLiteral("toolbars"),QVariantList{top,left}},
+            {QStringLiteral("layersHorizontal"),false},
+            {QStringLiteral("layerCorner"),1}}}
+    };
+}
+
 inline void applyPreset(QSettings &settings,const QString &screen,const QSize &size,
                         const QVariantMap &preset)
 {

@@ -15,6 +15,7 @@
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QFrame>
+#include <QGraphicsOpacityEffect>
 #include <QHBoxLayout>
 #include <QInputMethod>
 #include <QLabel>
@@ -196,6 +197,14 @@ public:
         return result;
     }
 
+    QWidget *buttonForCommand(const QString &id) const
+    {
+        for(auto *button:static_cast<QWidget*>(parent())->findChildren<QToolButton*>())
+            if(button->property("_mobileToolbarCommandId").toString()==id && button->isVisible())
+                return button;
+        return nullptr;
+    }
+
     void syncToolbarGestures()
     {
         for(auto *button:static_cast<QWidget*>(parent())->findChildren<QToolButton*>()) {
@@ -302,9 +311,11 @@ private:
         int icon=24;
         int spacing=1;
         int opacity=66;
+        int homeOpacity=100;
         QRectF placement;
         bool adaptive=false;
         bool colorHistory=true;
+        bool settingsBeforeCommands=false;
     };
 
     MobileNativeCommandLayout(QWidget *canvas,const Commands &commands,
@@ -355,7 +366,14 @@ private:
     void loadWorkspace()
     {
         m_bars={defaultBar()};
-        const QSettings settings;
+        QSettings settings;
+        if(!settings.contains(settingsKey()) && !settings.contains(
+            MobileWorkspaceProfiles::group(m_profile)+QStringLiteral("primaryToolbarCommands"))) {
+            const auto factory=MobileWorkspaceProfiles::twoToolbarPreset().value(QStringLiteral("layout")).toMap();
+            for(auto it=factory.cbegin();it!=factory.cend();++it)
+                settings.setValue(MobileWorkspaceProfiles::group(m_profile)+it.key(),it.value());
+            MobileWorkspaceProfiles::remember(settings,m_profile,m_profileSize);
+        }
         const auto saved=settings.value(settingsKey()).toList();
         m_builtin=saved.isEmpty() && !settings.contains(
             MobileWorkspaceProfiles::group(m_profile)+QStringLiteral("primaryToolbarCommands"));
@@ -376,8 +394,10 @@ private:
                 bar.icon=qBound(16,data.value(QStringLiteral("icon"),24).toInt(),40);
                 bar.spacing=qBound(0,data.value(QStringLiteral("spacing"),1).toInt(),12);
                 bar.opacity=qBound(0,data.value(QStringLiteral("opacity"),66).toInt(),100);
+                bar.homeOpacity=qBound(0,data.value(QStringLiteral("homeOpacity"),100).toInt(),100);
                 bar.colorHistory=data.value(QStringLiteral("colorHistory"),
                     settings.value(QStringLiteral("MobileStudio/toolbarColorHistory"),true)).toBool();
+                bar.settingsBeforeCommands=data.value(QStringLiteral("settingsBeforeCommands"),false).toBool();
                 bar.placement=data.value(QStringLiteral("placement")).toRectF();
                 m_bars.append(bar);
             }
@@ -427,7 +447,9 @@ private:
                 {QStringLiteral("target"),bar.target},{QStringLiteral("icon"),bar.icon},
                 {QStringLiteral("spacing"),bar.spacing},{QStringLiteral("opacity"),bar.opacity},
                 {QStringLiteral("placement"),bar.placement},
-                {QStringLiteral("colorHistory"),bar.colorHistory}
+                {QStringLiteral("colorHistory"),bar.colorHistory},
+                {QStringLiteral("settingsBeforeCommands"),bar.settingsBeforeCommands},
+                {QStringLiteral("homeOpacity"),bar.homeOpacity}
             };
             values.append(value);
         }
@@ -673,7 +695,7 @@ private:
         const auto *row=m_toolbar->layout();
         const bool mainVertical=verticalEdge(main.edge);
         const auto *home=row->itemAt(0)->widget();
-        const auto *settings=row->itemAt(2)->widget();
+        const auto *settings=m_toolbar->findChild<QToolButton*>(QStringLiteral("_mobileNativeMoreButton"));
         const int pinned=mainVertical?home->height()+settings->height():home->width()+settings->width();
         const auto *commands=m_scroll->widget();
         const int stripLength=commands?(mainVertical?commands->height():commands->width()):0;
@@ -846,10 +868,17 @@ private:
                                             Qt::FindDirectChildrenOnly);
         mainRow->setSpacing(main.adaptive?0:1);
         mainRow->setDirection(vertical?QBoxLayout::TopToBottom:QBoxLayout::LeftToRight);
-        mainRow->itemAt(0)->widget()->setFixedSize(main.target,main.target);
-        mainRow->itemAt(2)->widget()->setFixedSize(main.target,main.target);
-        for(int index:{0,2}) {
-            auto *button=static_cast<MobileToolbarGestureButton*>(mainRow->itemAt(index)->widget());
+        auto *home=static_cast<MobileToolbarGestureButton*>(mainRow->itemAt(0)->widget());
+        auto *settings=static_cast<MobileToolbarGestureButton*>(m_toolbar->findChild<QToolButton*>(QStringLiteral("_mobileNativeMoreButton")));
+        auto *homeEffect=new QGraphicsOpacityEffect(home);
+        homeEffect->setOpacity(main.homeOpacity/100.0);
+        home->setGraphicsEffect(homeEffect);
+        mainRow->removeWidget(settings);
+        mainRow->removeWidget(m_scroll);
+        mainRow->addWidget(main.settingsBeforeCommands?static_cast<QWidget*>(settings):m_scroll);
+        mainRow->addWidget(main.settingsBeforeCommands?static_cast<QWidget*>(m_scroll):settings);
+        for(auto *button:{home,settings}) {
+            button->setFixedSize(main.target,main.target);
             button->setVertical(vertical);
             button->setIconSize(QSize(main.icon,main.icon));
         }
