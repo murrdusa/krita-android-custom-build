@@ -63,6 +63,18 @@ int main(int argc,char **argv)
     QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,files.path());
     QCoreApplication::setOrganizationName(QStringLiteral("KritaWorkspaceTest"));
     QCoreApplication::setApplicationName(QStringLiteral("Studio"));
+    // A centered camera hole must not push a corner toolbar down by an
+    // entire safe-inset band. In landscape a bar that actually overlaps
+    // the camera must still move clear of the physical cutout.
+    const QRect phoneBounds(2,2,356,776);
+    const QRect cornerBar(222,2,136,48);
+    const QList<QRect> portraitCutout{QRect(170,0,20,30)};
+    if(MobileOverlayPlacement::nearest(cornerBar,phoneBounds,portraitCutout,cornerBar.size())!=cornerBar)return 28;
+    const QRect landscapeBounds(2,2,776,356);
+    const QRect sideBar(2,2,48,320);
+    const QList<QRect> landscapeCutout{QRect(0,160,30,20)};
+    const auto shifted=MobileOverlayPlacement::nearest(sideBar,landscapeBounds,landscapeCutout,sideBar.size());
+    if(!shifted.isValid() || shifted.intersects(landscapeCutout.first()))return 29;
     QMainWindow window;
     auto *canvas=new QWidget(&window);
     window.setCentralWidget(canvas);

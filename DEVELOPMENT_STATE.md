@@ -2,6 +2,12 @@
 
 The [feature baseline](FEATURE-BASELINE.md) records user-facing behavior and source paths to preserve across sessions. Continue from latest GitHub `main`, preserving subsequent fixes rather than restoring the older baseline tag wholesale.
 
+## November 22 — finger-paint double tap and camera layout
+
+- Double-tap bindings remain enabled during finger painting. The native shortcut matcher delays a single painting dot during double-tap recognition, consumes both taps for the gesture, and flushes a pending dot before an actual stroke. Deferred dots retain their originating canvas identity; one-finger drag shortcuts remain disabled during touch painting. A small drag threshold prevents tap jitter from starting a brush stroke.
+- The engine-only Android root requests fullscreen. MainActivity reapplies cutout extension after Qt updates its window flags and on focus return. Toolbars and drawing panels avoid the actual camera rectangles instead of reserving a full-width camera-safe strip, fixing unnecessary top-bar displacement on a narrow phone screen. Home retains its existing camera-safe gallery margins.
+- Verification: four Qt regressions under AddressSanitizer, including centered portrait/landscape cutout placement, and nine Python tests pass. The actual patched native tap dispatcher also passes a host Qt fixture for double taps without paint dots, delayed single dots, distant taps, drag flush, and suppressed input. `tests/prepare_native_tap_fixture.py` recreates that fixture from the patched engine source; it substitutes engine action endpoints and does not validate device input delivery. Final exact-revision Android build pending. Phone verification remains outstanding; no APK upload requested.
+
 ## November 22 — top-bar navigation and Layers launcher
 
 - Restored the visible Home icon, including saved layouts with zero Home opacity. Reference now starts in the top toolbar; existing screen layouts move that command there once while retaining their other commands and placements.

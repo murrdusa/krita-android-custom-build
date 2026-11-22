@@ -22,7 +22,7 @@ bool MobileEngineOnlyBootstrap::launch()
     root->setProperty("_mobileNativeEngineOnlyRoot",true);
     root->setAttribute(Qt::WA_DeleteOnClose,true);
     root->setWindowTitle(QObject::tr("Krita Mobile Studio"));
-    root->show();
+    root->showFullScreen();
     if(!root->isVisible()) {
         qCritical() << "Mobile Studio: drawing window could not show";
         root->deleteLater();

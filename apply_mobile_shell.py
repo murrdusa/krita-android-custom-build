@@ -1987,6 +1987,8 @@ install(FILES org.kde.krita.desktop''',
 #endif
 """+matcher[b:]
     matcher_file.write_text(matcher,encoding="utf-8")
+    from apply_mobile_finger_taps import apply as apply_finger_taps
+    apply_finger_taps(root)
 
     tool_manager_file=root/"libs/flake/KoToolManager.cpp"
     tool_manager=tool_manager_file.read_text(encoding="utf-8")
@@ -2131,6 +2133,22 @@ install(FILES org.kde.krita.desktop''',
         super.onCreate(savedInstanceState);
         tabletPermissionActivity = this;''',
         "Allow the Android drawing surface to extend around the camera cutout")
+    activity=one(activity, "            setFullScreen(fullScreen);", """            setFullScreen(fullScreen);
+            // Qt can replace window attributes when applying its fullscreen state.
+            if (Build.VERSION.SDK_INT >= 28) {
+                android.view.WindowManager.LayoutParams params = getWindow().getAttributes();
+                params.layoutInDisplayCutoutMode = Build.VERSION.SDK_INT >= 30
+                    ? android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                    : android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+                getWindow().setAttributes(params);
+            }""", "retain edge-to-edge camera layout after Qt fullscreen changes")
+    activity=one(activity, "    private void trySetFullScreen(boolean fullScreen) {", """    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && inFullScreen) trySetFullScreen(true);
+    }
+
+    private void trySetFullScreen(boolean fullScreen) {""", "restore immersive cutout layout after returning to the app")
     activity=one(activity,
         '''        if (keyCode == KeyEvent.KEYCODE_BACK) {
             if (!JNIWrappers.hasMainWindowLoaded()) {''',
@@ -2140,7 +2158,21 @@ install(FILES org.kde.krita.desktop''',
         "Consume legacy Android Back while canvas protection is active")
     activity=one(activity,
         "    public boolean isInFullScreen() {",
-        '''    public static long studioCutoutInsets() {
+        '''    public static String studioCutoutRects() {
+        MainActivity activity = tabletPermissionActivity;
+        if (activity == null || Build.VERSION.SDK_INT < 28) return "";
+        android.view.WindowInsets insets = activity.getWindow().getDecorView().getRootWindowInsets();
+        android.view.DisplayCutout cutout = insets == null ? null : insets.getDisplayCutout();
+        if (cutout == null) return "";
+        StringBuilder result = new StringBuilder();
+        for (android.graphics.Rect rect : cutout.getBoundingRects()) {
+            result.append(rect.left).append(',').append(rect.top).append(',')
+                .append(rect.width()).append(',').append(rect.height()).append(';');
+        }
+        return result.toString();
+    }
+
+    public static long studioCutoutInsets() {
         MainActivity activity = tabletPermissionActivity;
         if (activity == null || Build.VERSION.SDK_INT < 28) return 0;
         android.view.WindowInsets insets = activity.getWindow().getDecorView().getRootWindowInsets();

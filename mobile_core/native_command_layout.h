@@ -276,10 +276,34 @@ public:
 #endif
     }
 
+    static QList<QRect> cameraCutouts(const QWidget *widget)
+    {
+        QList<QRect> result;
+#ifdef Q_OS_ANDROID
+        const QString packed=QAndroidJniObject::callStaticObjectMethod(
+            "org/krita/android/MainActivity","studioCutoutRects","()Ljava/lang/String;").toString();
+        const qreal scale=widget->devicePixelRatioF();
+        const QPoint origin=widget->mapToGlobal(QPoint());
+        for(const auto &entry:packed.split(QLatin1Char(';'),Qt::SkipEmptyParts)) {
+            const auto values=entry.split(QLatin1Char(','));
+            if(values.size()!=4)continue;
+            const QRect rect(qFloor(values[0].toInt()/scale)-origin.x(),
+                             qFloor(values[1].toInt()/scale)-origin.y(),
+                             qCeil(values[2].toInt()/scale),qCeil(values[3].toInt()/scale));
+            if(rect.intersects(widget->rect()))result.append(rect);
+        }
+#else
+        Q_UNUSED(widget);
+#endif
+        return result;
+    }
+
     static QRect controlBounds(const QWidget *canvas)
     {
-        const QRect inset=canvas->rect().marginsRemoved(cameraMargins(canvas));
-        return (inset.isValid()?inset:canvas->rect()).adjusted(2,2,-2,-2);
+        // The canvas already uses Qt's actual content geometry. Avoid the
+        // camera's rectangle when placing controls, rather than insetting
+        // the entire top edge (or applying the system's inset twice).
+        return canvas->rect().adjusted(2,2,-2,-2);
     }
 
     static int panelTopInset(QWidget *canvas)
@@ -727,8 +751,14 @@ private:
                         (main.edge==Top?bounds.top():bounds.bottom()-breadth+1);
             m_toolbar->setGeometry(x,y,mainVertical?breadth:length,mainVertical?length:breadth);
         }
+        const auto cutouts=cameraCutouts(canvas);
+        if(!cutouts.isEmpty()) {
+            const auto geometry=MobileOverlayPlacement::nearest(m_toolbar->geometry(),bounds,cutouts,
+                                                               m_toolbar->size());
+            if(geometry.isValid())m_toolbar->setGeometry(geometry);
+        }
         placeHistory(m_toolbar,main.edge,1,history);
-        QList<QRect> occupied;
+        QList<QRect> occupied=cutouts;
         if(!m_canvasOnly) {
             occupied.append(m_toolbar->geometry());
             reserveEdge(usable,m_toolbar->geometry(),main.edge);

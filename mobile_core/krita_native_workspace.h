@@ -2521,7 +2521,7 @@ private:
         if(!canvas || m_canvasLayoutEditing)return;
         const QRect canvasBounds=MobileNativeCommandLayout::controlBounds(canvas);
         if(!canvasBounds.isValid())return;
-        QList<QRect> obstacles;
+        QList<QRect> obstacles=MobileNativeCommandLayout::cameraCutouts(canvas);
         for(auto *toolbar:canvas->findChildren<QFrame*>(QString(),Qt::FindDirectChildrenOnly))
             if(toolbar->isVisible() && toolbar->property("mobileCommandToolbar").toBool())
                 obstacles.append(toolbar->geometry());
