@@ -6,7 +6,7 @@ The [feature baseline](FEATURE-BASELINE.md) records user-facing behavior and sou
 
 - Restored the visible Home icon, including saved layouts with zero Home opacity. Reference now starts in the top toolbar; existing screen layouts move that command there once while retaining their other commands and placements.
 - The standalone collapsed Layers launcher appears only when no visible toolbar offers Layers. Toolbar edits, layout switches, and toolbar visibility changes refresh this decision.
-- Local Android compilation and focused Qt regression verification pending for this change. No APK publication requested.
+- Local WSL/Docker Android compilation and APK packaging passed for app source `4546999a337b113aa61a16d332d8ffd13dc29690`. The focused workspace/toolbar regression passed under AddressSanitizer, including saved-layout navigation migration and Layers command removal. Build log: `C:/Users/pokem/Documents/Codex/2026-11-22/can-i-continue-to-develop-my/android-toolbar-build.log`. Phone interaction remains unverified. No APK publication requested.
 
 ## November 22 — canvas opening and two-toolbar preset
 
