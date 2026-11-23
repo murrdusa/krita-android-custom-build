@@ -536,6 +536,7 @@ public:
                 workspace->sampleEyedropperDrag(global,phase);
             },
             [workspace](const QString &id) -> MobileToolbarGestureButton::Hold {
+                if(id==QStringLiteral("color"))return [workspace]() {workspace->openLightingSphere();};
                 if(id==QStringLiteral("eyedropper"))return [workspace]() {workspace->toggleEyedropperSource();};
                 if(id==QStringLiteral("reference-images") ||
                    id==QStringLiteral("krita/view_toggle_reference_images") ||

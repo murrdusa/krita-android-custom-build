@@ -474,6 +474,10 @@ def main(root:Path):
     root=root.resolve()
     install_phone_brush_editor(root)
     own=Path(__file__).resolve().parent
+    (root/"libs/ui/lighting_sphere.h").write_text(
+        (own/"mobile_core/lighting_sphere.h").read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/idle_fade.h").write_text(
+        (own/"mobile_core/idle_fade.h").read_text(encoding="utf-8"),encoding="utf-8")
     (root/"prepare_android_qt_platform.py").write_text(
         (own/"prepare_android_qt_platform.py").read_text(encoding="utf-8"),encoding="utf-8")
     native_chrome=own/"mobile_core/native_canvas_chrome.h"

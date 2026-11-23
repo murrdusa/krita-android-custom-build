@@ -650,7 +650,9 @@ private:
             static_cast<QScrollArea*>(frame->layout()->itemAt(0)->widget());
         const auto *commands=scroll->widget();
         const int commandLength=commands?(vertical?commands->height():commands->width()):0;
-        const int length=qMin(minimumLength+commandLength,available);
+        if(frame!=m_toolbar && commandLength<=0)return {};
+        const int padding=frame==m_toolbar?2*bar.target+6:4;
+        const int length=qMin(padding+commandLength,available);
         const int cross=qMin(breadth,vertical?bounds.width():bounds.height());
         rect.setSize(vertical?QSize(cross,length):QSize(length,cross));
         rect.moveTo(bounds.x()+qRound(bar.placement.x()*(bounds.width()-rect.width())),
@@ -889,10 +891,17 @@ private:
                 }
                 shortcutButton->setVisible(action->isVisible() && !duplicate);
             }
-            const auto hint=row->sizeHint();
-            const QSize size=vertical?QSize(bar.target,hint.height()):QSize(hint.width(),bar.target);
+            int length=0,count=0;
+            for(int i=0;i<row->count();++i) {
+                const auto *button=row->itemAt(i)->widget();
+                if(!button || button->isHidden())continue;
+                length+=vertical?button->height():button->width();
+                ++count;
+            }
+            length+=qMax(0,count-1)*bar.spacing;
+            const QSize size=vertical?QSize(bar.target,length):QSize(length,bar.target);
             if(strip->size()!=size)strip->setFixedSize(size);
-            if(scroll==m_scroll)scroll->setVisible((vertical?hint.height():hint.width())>0);
+            if(scroll==m_scroll)scroll->setVisible(count>0);
         };
         for(int i=0;i<row->count();++i) {
             auto *button=static_cast<QToolButton*>(row->itemAt(i)->widget());

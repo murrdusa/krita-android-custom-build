@@ -88,6 +88,7 @@
 #include "lightweight_canvas_host.h"
 #include "kis_mainwindow_observer.h"
 #include "native_command_layout.h"
+#include "idle_fade.h"
 #include "context_tool_bar.h"
 #include "finger_pressure_calibration.h"
 
@@ -120,11 +121,11 @@ public:
         connect(qApp,&QGuiApplication::applicationStateChanged,this,
                 [this](Qt::ApplicationState state) {
             if(!m_fadeTimer)return;
-            if(state==Qt::ApplicationActive && m_fadePanels)
+            if(state==Qt::ApplicationActive && anyFadeEnabled())
                 m_fadeTimer->start();
             else m_fadeTimer->stop();
         });
-        if(m_fadePanels && QGuiApplication::applicationState()==Qt::ApplicationActive)
+        if(anyFadeEnabled() && QGuiApplication::applicationState()==Qt::ApplicationActive)
             m_fadeTimer->start();
         m_samplePreviewTimer.setSingleShot(true);
         m_samplePreviewTimer.setInterval(16);
@@ -516,6 +517,12 @@ public:
     {
         const QScopedValueRollback<bool> sampling(m_samplingSphere,true);
         MobileColorPicker::setForeground(m_engine.brushResources(),color);
+    }
+
+    void openLightingSphere()
+    {
+        if(!m_sphere || !m_sphere->isVisible())toggleLightingSphere();
+        else wakePanel(m_sphere);
     }
 
     void toggleLightingSphere()
@@ -1349,6 +1356,12 @@ public:
             auto *fade=new QCheckBox(QObject::tr("Fade idle panels"),body);
             fade->setChecked(m_fadePanels);
             layout->addWidget(fade);
+            auto *fadeSphere=new QCheckBox(tr("Fade idle color sphere"),body);
+            fadeSphere->setChecked(m_fadeSphere);
+            layout->addWidget(fadeSphere);
+            auto *fadeToolbars=new QCheckBox(tr("Fade idle toolbars"),body);
+            fadeToolbars->setChecked(m_fadeToolbars);
+            layout->addWidget(fadeToolbars);
             auto *fadeDetails=new QWidget(body);
             auto *fadeForm=new QFormLayout(fadeDetails);
             fadeForm->setContentsMargins(0,0,0,0);
@@ -1370,8 +1383,12 @@ public:
             };
             auto *idleOpacity=fadeSlider(tr("Idle opacity"),15,90,m_idleOpacity,QStringLiteral("%"));
             auto *fadeDelay=fadeSlider(tr("Fade after"),1,30,m_fadeDelay,tr(" s"));
-            fadeDetails->setVisible(fade->isChecked());
-            connect(fade,&QCheckBox::toggled,fadeDetails,&QWidget::setVisible);
+            const auto showFadeDetails=[fade,fadeSphere,fadeToolbars,fadeDetails]() {
+                fadeDetails->setVisible(fade->isChecked() || fadeSphere->isChecked() || fadeToolbars->isChecked());
+            };
+            for(auto *option:{fade,fadeSphere,fadeToolbars})
+                connect(option,&QCheckBox::toggled,fadeDetails,showFadeDetails);
+            showFadeDetails();
             layout->addWidget(fadeDetails);
             layout->addStretch(1);
             body=page();
@@ -1443,12 +1460,16 @@ public:
                 settings.setValue(prefix+QStringLiteral("showOpacitySlider"),m_showOpacity);
             }
             m_fadePanels=fade->isChecked();
+            m_fadeSphere=fadeSphere->isChecked();
+            m_fadeToolbars=fadeToolbars->isChecked();
+            settings.setValue(QStringLiteral("MobileStudio/fadeSphere"),m_fadeSphere);
+            settings.setValue(QStringLiteral("MobileStudio/fadeToolbars"),m_fadeToolbars);
             m_idleOpacity=idleOpacity->value();
             m_fadeDelay=fadeDelay->value();
             settings.setValue(QStringLiteral("MobileStudio/fadePanels"),m_fadePanels);
             settings.setValue(QStringLiteral("MobileStudio/idlePanelOpacity"),m_idleOpacity);
             settings.setValue(QStringLiteral("MobileStudio/panelFadeDelay"),m_fadeDelay);
-            if(m_fadePanels && QGuiApplication::applicationState()==Qt::ApplicationActive)
+            if(anyFadeEnabled() && QGuiApplication::applicationState()==Qt::ApplicationActive)
                 m_fadeTimer->start();
             else m_fadeTimer->stop();
             for(auto *panel:fadeTargets())wakePanel(panel);
@@ -1677,12 +1698,12 @@ protected:
                 }
             }
             dismissTemporaryPanels(target);
-            if(m_fadePanels) {
+            if(anyFadeEnabled()) {
                 const int channel=type==QEvent::TouchBegin?0:type==QEvent::TabletPress?1:2;
                 m_fadeHeld[channel]=panelAt(target);
                 wakePanel(m_fadeHeld[channel]);
             }
-        } else if(m_fadePanels) {
+        } else if(anyFadeEnabled()) {
             if(type==QEvent::TouchEnd || type==QEvent::TouchCancel)endPanelInput(0);
             else if(type==QEvent::TabletRelease)endPanelInput(1);
             else if((type==QEvent::MouseButtonRelease && QApplication::mouseButtons()==Qt::NoButton) ||
@@ -1718,6 +1739,8 @@ private:
         m_showSize=settings.value(QStringLiteral("MobileStudio/showSizeSlider"),oldSliders).toBool();
         m_showOpacity=settings.value(QStringLiteral("MobileStudio/showOpacitySlider"),oldSliders).toBool();
         m_fadePanels=settings.value(QStringLiteral("MobileStudio/fadePanels"),true).toBool();
+        m_fadeSphere=settings.value(QStringLiteral("MobileStudio/fadeSphere"),true).toBool();
+        m_fadeToolbars=settings.value(QStringLiteral("MobileStudio/fadeToolbars"),true).toBool();
         m_preventCanvasBack=settings.value(QStringLiteral("MobileStudio/protectCanvasBack"),false).toBool();
         m_idleOpacity=qBound(15,settings.value(QStringLiteral("MobileStudio/idlePanelOpacity"),30).toInt(),90);
         m_fadeDelay=qBound(1,settings.value(QStringLiteral("MobileStudio/panelFadeDelay"),3).toInt(),30);
@@ -1739,7 +1762,7 @@ private:
             const QSignalBlocker blocked(m_wheelHistoryAction);
             m_wheelHistoryAction->setChecked(history);
         }
-        if(m_fadePanels && QGuiApplication::applicationState()==Qt::ApplicationActive)m_fadeTimer->start();
+        if(anyFadeEnabled() && QGuiApplication::applicationState()==Qt::ApplicationActive)m_fadeTimer->start();
         else m_fadeTimer->stop();
         for(auto *panel:fadeTargets())wakePanel(panel);
         for(auto it=m_keyboardCommands.cbegin();it!=m_keyboardCommands.cend();++it) {
@@ -2055,9 +2078,22 @@ private:
         return index==0?QStringLiteral("sizeSlider"):QStringLiteral("opacitySlider");
     }
 
-    std::array<QWidget*,4> fadeTargets() const
+    bool anyFadeEnabled() const {return m_fadePanels || m_fadeSphere || m_fadeToolbars;}
+
+    bool fadeEnabled(QWidget *panel) const
     {
-        return {m_layers.data(),m_color.data(),m_brush.data(),m_opacityStrip.data()};
+        if(panel==m_sphere)return m_fadeSphere;
+        if(panel && panel->property("mobileCommandToolbar").toBool())return m_fadeToolbars;
+        return m_fadePanels;
+    }
+
+    QVector<QWidget*> fadeTargets() const
+    {
+        QVector<QWidget*> result{m_layers.data(),m_color.data(),m_brush.data(),m_opacityStrip.data(),m_sphere.data()};
+        if(auto *canvas=m_host?m_host->nativeCanvas():nullptr)
+            for(auto *frame:canvas->findChildren<QFrame*>(QString(),Qt::FindDirectChildrenOnly))
+                if(frame->property("mobileCommandToolbar").toBool())result.append(frame);
+        return result;
     }
 
     QWidget *panelAt(QWidget *target) const
@@ -2072,12 +2108,10 @@ private:
     void wakePanel(QWidget *panel)
     {
         if(!panel)return;
+        if(!m_lastPanelInput.contains(panel))
+            connect(panel,&QObject::destroyed,this,[this,panel]() {m_lastPanelInput.remove(panel);});
         m_lastPanelInput[panel]=m_fadeClock.elapsed();
-        if(auto *effect=qobject_cast<QGraphicsOpacityEffect*>(panel->graphicsEffect())) {
-            if(auto *animation=effect->findChild<QPropertyAnimation*>())animation->stop();
-            effect->setOpacity(1);
-            if(!m_fadePanels)panel->setGraphicsEffect(nullptr);
-        }
+        MobileIdleFade::wake(panel,fadeEnabled(panel));
     }
 
     void endPanelInput(int channel)
@@ -2088,37 +2122,23 @@ private:
 
     void updatePanelFades()
     {
-        if(!m_fadePanels || QApplication::activeModalWidget() || QApplication::activePopupWidget())return;
+        if(!anyFadeEnabled() || m_canvasLayoutEditing || QApplication::activeModalWidget() || QApplication::activePopupWidget())return;
         const auto targets=fadeTargets();
         const qint64 now=m_fadeClock.elapsed();
         for(int i=0;i<int(targets.size());++i) {
             auto *panel=targets[i];
             if(!panel || !panel->isVisible())continue;
-            if((i==0 && !m_keepLayers) || (i==1 && m_keepColor)) {
+            if(!fadeEnabled(panel) || (panel==m_layers && !m_keepLayers) || (panel==m_color && m_keepColor)) {
                 wakePanel(panel);
                 continue;
             }
             bool held=false;
             for(const auto &source:m_fadeHeld)held|=source==panel;
             if(held)continue;
-            if(!m_lastPanelInput.contains(panel))m_lastPanelInput[panel]=now;
+            if(!m_lastPanelInput.contains(panel))wakePanel(panel);
             if(now-m_lastPanelInput.value(panel)<m_fadeDelay*1000)continue;
 
-            auto *effect=qobject_cast<QGraphicsOpacityEffect*>(panel->graphicsEffect());
-            if(!effect) {
-                effect=new QGraphicsOpacityEffect(panel);
-                effect->setOpacity(1);
-                panel->setGraphicsEffect(effect);
-            }
-            const qreal target=m_idleOpacity/100.0;
-            auto *animation=effect->findChild<QPropertyAnimation*>();
-            if(qFuzzyCompare(effect->opacity(),target) ||
-               (animation && animation->state()==QAbstractAnimation::Running))continue;
-            if(!animation)animation=new QPropertyAnimation(effect,"opacity",effect);
-            animation->setDuration(180);
-            animation->setStartValue(effect->opacity());
-            animation->setEndValue(target);
-            animation->start();
+            MobileIdleFade::dim(panel,m_idleOpacity);
         }
     }
 
@@ -2740,6 +2760,7 @@ private:
     bool m_layersHorizontal=false,m_layersCollapsed=false,m_legacyLayerCorner=false;
     QPointer<QToolButton> m_showLayers;
     bool m_fadePanels=false;
+    bool m_fadeSphere=true,m_fadeToolbars=true;
     int m_idleOpacity=35,m_fadeDelay=3;
     QElapsedTimer m_fadeClock;
     QTimer *m_fadeTimer=nullptr;

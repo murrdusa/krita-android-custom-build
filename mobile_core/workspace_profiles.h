@@ -116,6 +116,8 @@ inline bool presetPreference(const QString &key)
         QStringLiteral("MobileStudio/keepLayersOpen"),
         QStringLiteral("MobileStudio/keepColorOpen"),
         QStringLiteral("MobileStudio/fadePanels"),
+        QStringLiteral("MobileStudio/fadeSphere"),
+        QStringLiteral("MobileStudio/fadeToolbars"),
         QStringLiteral("MobileStudio/idlePanelOpacity"),
         QStringLiteral("MobileStudio/panelFadeDelay"),
         QStringLiteral("MobileStudio/protectCanvasBack"),

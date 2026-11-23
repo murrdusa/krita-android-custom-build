@@ -10,6 +10,8 @@
 #include <QToolButton>
 #include <QTimer>
 #include <QTouchEvent>
+#include <QTabletEvent>
+#include <QElapsedTimer>
 #include <functional>
 
 // Use the *toolbar's* axis, not the screen's horizontal axis. A
@@ -130,6 +132,7 @@ protected:
             } else if(!m_active) {
                 return QToolButton::event(event);
             }
+            m_nativeInput.restart();
             const auto *touch=static_cast<QTouchEvent*>(event);
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
             const auto points=touch->points();
@@ -152,8 +155,20 @@ protected:
         return QToolButton::event(event);
     }
 
+    void tabletEvent(QTabletEvent *event) override
+    {
+        if(!handlesGesture()) {QToolButton::tabletEvent(event);return;}
+        m_nativeInput.restart();
+        if(event->type()==QEvent::TabletPress)begin(event->globalPos());
+        else if(event->type()==QEvent::TabletMove && m_active)update(event->globalPos());
+        else if(event->type()==QEvent::TabletRelease)finish(event->globalPos(),false);
+        event->accept();
+    }
+
     void mousePressEvent(QMouseEvent *event) override
     {
+        if(event->source()!=Qt::MouseEventNotSynthesized &&
+           m_nativeInput.isValid() && m_nativeInput.elapsed()<400) {event->accept();return;}
         if(!handlesGesture() ||
            event->button()!=Qt::LeftButton) {
             QToolButton::mousePressEvent(event);
@@ -165,6 +180,8 @@ protected:
 
     void mouseMoveEvent(QMouseEvent *event) override
     {
+        if(event->source()!=Qt::MouseEventNotSynthesized &&
+           m_nativeInput.isValid() && m_nativeInput.elapsed()<400) {event->accept();return;}
         if(!m_active) {
             QToolButton::mouseMoveEvent(event);
             return;
@@ -175,6 +192,8 @@ protected:
 
     void mouseReleaseEvent(QMouseEvent *event) override
     {
+        if(event->source()!=Qt::MouseEventNotSynthesized &&
+           m_nativeInput.isValid() && m_nativeInput.elapsed()<400) {event->accept();return;}
         if(!m_active) {
             QToolButton::mouseReleaseEvent(event);
             return;
@@ -203,8 +222,10 @@ private:
     {
         if(!m_active || m_held)return;
         const QPoint delta=pos-m_start;
-        if(!m_dragged &&
-           delta.manhattanLength()>=QApplication::startDragDistance()) {
+        const int holdSlop=qMax(16,QApplication::startDragDistance()*2);
+        const bool moved=m_hold?QPoint::dotProduct(delta,delta)>=holdSlop*holdSlop:
+                                  delta.manhattanLength()>=QApplication::startDragDistance();
+        if(!m_dragged && moved) {
             m_dragged=true;
             m_holdTimer.stop();
             const QPointer<MobileToolbarGestureButton> alive(this);
@@ -271,6 +292,7 @@ private:
     ColorSample m_sample;
     Hold m_hold;
     QTimer m_holdTimer;
+    QElapsedTimer m_nativeInput;
     bool m_held=false;
 };
 class MobileToolbarDragPreview final : public QWidget

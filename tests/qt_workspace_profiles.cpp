@@ -49,6 +49,8 @@ int main(int argc,char **argv)
     const auto touchKey=QStringLiteral("MobileStudio/touchGestures/99");
     settings.setValue(historyKey,true);
     settings.setValue(artworkKey,QStringList{QStringLiteral("#ff445566")});
+    settings.setValue(QStringLiteral("MobileStudio/fadeSphere"),false);
+    settings.setValue(QStringLiteral("MobileStudio/fadeToolbars"),false);
     const auto preset=capturePreset(settings,folded);
     settings.setValue(historyKey,false);
     settings.setValue(touchKey,QStringLiteral("changed"));
@@ -59,6 +61,8 @@ int main(int argc,char **argv)
        settings.value(group(wide)+QStringLiteral("size")).toSize()!=QSize(850,610) ||
        settings.value(group(folded)+QStringLiteral("size")).toSize()!=QSize(375,790))return 15;
 
+    if(settings.value(QStringLiteral("MobileStudio/fadeSphere"),true).toBool() ||
+       settings.value(QStringLiteral("MobileStudio/fadeToolbars"),true).toBool())return 35;
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,files.path());
     QCoreApplication::setOrganizationName(QStringLiteral("KritaWorkspaceTest"));
@@ -168,6 +172,25 @@ int main(int argc,char **argv)
     if(!selection || bar->isAncestorOf(selection) || selectionSaved.first().toMap()!=preservedTop ||
        selectionSaved.last().toMap().value(QStringLiteral("commands")).toStringList().count(QStringLiteral("selection"))!=1 ||
        selectionSaved.last().toMap().value(QStringLiteral("edge"))!=oldSide.value(QStringLiteral("edge")))return 30;
+    // Edited sidebars should fit only their visible tools, including when
+    // native action visibility changes after the layout has been created.
+    auto fitted=selectionSaved;
+    auto fittedSide=fitted.last().toMap();
+    fittedSide.insert(QStringLiteral("placement"),QRectF(0,0,0.1,0.8));
+    fitted[fitted.size()-1]=fittedSide;
+    local.setValue(group(portraitId)+QStringLiteral("toolbars"),fitted);
+    layout->reloadSettings();QApplication::processEvents();
+    selection=layout->buttonForCommand(QStringLiteral("selection"));
+    QWidget *sideFrame=selection;
+    while(sideFrame && !sideFrame->property("mobileCommandToolbar").toBool())sideFrame=sideFrame->parentWidget();
+    if(!sideFrame)return 31;
+    const auto strip=sideFrame->findChild<QScrollArea*>()->widget();
+    if(sideFrame->height()!=strip->height()+4)return 32;
+    const int fullHeight=sideFrame->height();
+    commands.value(QStringLiteral("selection"))->setVisible(false);QApplication::processEvents();
+    if(sideFrame->height()>=fullHeight || sideFrame->height()!=strip->height()+4)return 33;
+    commands.value(QStringLiteral("selection"))->setVisible(true);QApplication::processEvents();
+    if(sideFrame->height()!=fullHeight)return 34;
     // Toolbar removal must notify the workspace so the standalone Layers
     // launcher can return immediately, and adding Layers must hide it again.
     auto migrated=local.value(group(portraitId)+QStringLiteral("toolbars")).toList();

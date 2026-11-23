@@ -2,6 +2,13 @@
 
 The [feature baseline](FEATURE-BASELINE.md) records user-facing behavior and source paths to preserve across sessions. Continue from latest GitHub `main`, preserving subsequent fixes rather than restoring the older baseline tag wholesale.
 
+## November 23 — reliable sphere holds, idle fading, fitted toolbars
+
+- Holding Color opens the lighting sphere and wakes it if already open. Toolbar holds and the sphere handle native finger and pen input directly, tolerate small hold jitter, suppress synthesized mouse replay, and retain ordinary taps and intentional drags. Holding the sphere still opens its lighting/color settings.
+- Workspace Settings has independent **Fade idle color sphere** and **Fade idle toolbars** switches, both defaulting on. They share the existing delay and opacity controls, restore opacity immediately on input, stay awake during contact and layout editing, and are included in named presets. Existing panel-fading preferences remain independent. Rebuilt toolbar fade records are removed when their widgets are destroyed.
+- Edited sidebars no longer reserve an extra button beyond their contents. Toolbar strips measure visible button extents rather than cached layout hints and resize when native actions hide/show; empty edited toolbars disappear.
+- Local Qt checks under AddressSanitizer pass for native sphere/Color holds, synthetic event suppression, fade/wake/disable behavior, toolbar drag and edited toolbar length/visibility. Final Android build pending; actual phone behavior is unverified. No APK upload requested.
+
 ## November 23 — remove remaining Android chrome and add Selection
 
 - The activity theme now uses Material.NoActionBar, no window title, fullscreen startup, transparent system-bar colors and edge-to-edge enforcement instead of the previous explicit opt-out. Android 11+ hides system bars with WindowInsetsController and disables decor fitting; older Android keeps immersive sticky flags. The native Qt root is also frameless. This targets the reported remaining gray strip near the camera; actual phone appearance is still unverified.
