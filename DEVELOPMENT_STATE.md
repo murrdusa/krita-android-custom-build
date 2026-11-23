@@ -6,7 +6,7 @@ The [feature baseline](FEATURE-BASELINE.md) records user-facing behavior and sou
 
 - The activity theme now uses Material.NoActionBar, no window title, fullscreen startup, transparent system-bar colors and edge-to-edge enforcement instead of the previous explicit opt-out. Android 11+ hides system bars with WindowInsetsController and disables decor fitting; older Android keeps immersive sticky flags. The native Qt root is also frameless. This targets the reported remaining gray strip near the camera; actual phone appearance is still unverified.
 - Added a direct **Selection** command using Krita's native lasso tool. It is included in the vertical toolbar preset and added once to existing sidebars without resetting other controls, geometry or the restored top-bar navigation. Users can still customize the button afterward; it is not repeatedly reinserted. Other selection modes remain available in Tools and native context controls.
-- Final local checks and exact-source Android build pending. No APK upload requested.
+- Local WSL/Docker Android compilation and APK packaging passed for source 428d7784ac6582edf66ac83498c207c7607fc7dd on November 23. Four Qt regressions under AddressSanitizer and nine Python tests pass; the Qt workspace regression verifies one-time Selection migration with navigation preserved. Build log: C:/Users/pokem/Documents/Codex/2026-11-22/cpm/work/chrome-selection-build.log. No APK upload requested.
 
 ## November 22 — finger-paint double tap and camera layout
 
