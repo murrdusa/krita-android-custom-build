@@ -171,7 +171,7 @@ inline QVariantMap twoToolbarPreset()
         {QStringLiteral("commands"),QStringList{
             QStringLiteral("paint"),QStringLiteral("erase"),QStringLiteral("blend"),
             QStringLiteral("tool-settings"),QStringLiteral("color"),
-            QStringLiteral("eyedropper"),QStringLiteral("transform"),
+            QStringLiteral("eyedropper"),QStringLiteral("selection"),QStringLiteral("transform"),
             QStringLiteral("liquify"),QStringLiteral("tools")}},
         {QStringLiteral("edge"),2},{QStringLiteral("colorHistory"),false}
     };

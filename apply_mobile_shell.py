@@ -1774,11 +1774,22 @@ install(FILES org.kde.krita.desktop''',
         '<item name="android:windowBackground">@color/studio_splash_background</item>',
         "match the Android launch window to the Studio background")
     style_xml=one(style_xml,'<style name="DefaultTheme" parent="android:Theme.Material">',
-        '<style name="StudioBaseTheme" parent="android:Theme.Material">',
+        '<style name="StudioBaseTheme" parent="android:Theme.Material.NoActionBar">',
         "share the Studio activity theme across Android versions")
     style_xml=one(style_xml,'</resources>',
         '    <style name="DefaultTheme" parent="StudioBaseTheme" />\n</resources>',
         "retain the original activity theme below Android 12")
+    style_xml=one(style_xml,
+        '<item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>',
+        '<item name="android:windowOptOutEdgeToEdgeEnforcement">false</item>',
+        "allow Studio content to use the camera area on current Android")
+    style_xml=one(style_xml,'</style>','''        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>''',"remove activity title chrome and opaque system-bar backgrounds")
     styles.write_text(style_xml,encoding="utf-8")
     versioned_styles=resources/"values-v31"
     versioned_styles.mkdir(exist_ok=True)
@@ -2134,6 +2145,31 @@ install(FILES org.kde.krita.desktop''',
         tabletPermissionActivity = this;''',
         "Allow the Android drawing surface to extend around the camera cutout")
     activity=one(activity, "            setFullScreen(fullScreen);", """            setFullScreen(fullScreen);
+            if (fullScreen) {
+                android.view.Window window = getWindow();
+                window.setStatusBarColor(android.graphics.Color.TRANSPARENT);
+                window.setNavigationBarColor(android.graphics.Color.TRANSPARENT);
+                if (Build.VERSION.SDK_INT >= 29) {
+                    window.setStatusBarContrastEnforced(false);
+                    window.setNavigationBarContrastEnforced(false);
+                }
+                if (Build.VERSION.SDK_INT >= 30) {
+                    window.setDecorFitsSystemWindows(false);
+                    android.view.WindowInsetsController controller = window.getInsetsController();
+                    if (controller != null) {
+                        controller.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                        controller.hide(android.view.WindowInsets.Type.systemBars());
+                    }
+                } else {
+                    window.getDecorView().setSystemUiVisibility(
+                        android.view.View.SYSTEM_UI_FLAG_FULLSCREEN |
+                        android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                        android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
+                        android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                        android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+                        android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+                }
+            }
             // Qt can replace window attributes when applying its fullscreen state.
             if (Build.VERSION.SDK_INT >= 28) {
                 android.view.WindowManager.LayoutParams params = getWindow().getAttributes();

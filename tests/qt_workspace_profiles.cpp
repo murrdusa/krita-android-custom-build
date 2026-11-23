@@ -149,6 +149,25 @@ int main(int argc,char **argv)
     homeEffect=qobject_cast<QGraphicsOpacityEffect*>(topRow->itemAt(0)->widget()->graphicsEffect());
     if(!positioned || !reference || !bar->isAncestorOf(reference) ||
        !homeEffect || homeEffect->opacity()!=1.0)return 25;
+    // Existing sidebars receive Selection once without resetting navigation,
+    // other commands, or geometry. Reloading must not duplicate the button.
+    auto selectionLegacy=local.value(group(portraitId)+QStringLiteral("toolbars")).toList();
+    const auto preservedTop=selectionLegacy.first().toMap();
+    auto oldSide=selectionLegacy.last().toMap();
+    auto oldIds=oldSide.value(QStringLiteral("commands")).toStringList();
+    oldIds.removeAll(QStringLiteral("selection"));
+    oldSide.insert(QStringLiteral("commands"),oldIds);
+    selectionLegacy[selectionLegacy.size()-1]=oldSide;
+    local.setValue(group(portraitId)+QStringLiteral("toolbars"),selectionLegacy);
+    local.remove(group(portraitId)+QStringLiteral("selectionToolbarV1"));
+    layout->reloadSettings();
+    layout->reloadSettings();
+    QApplication::processEvents();
+    const auto selectionSaved=local.value(group(portraitId)+QStringLiteral("toolbars")).toList();
+    auto *selection=layout->buttonForCommand(QStringLiteral("selection"));
+    if(!selection || bar->isAncestorOf(selection) || selectionSaved.first().toMap()!=preservedTop ||
+       selectionSaved.last().toMap().value(QStringLiteral("commands")).toStringList().count(QStringLiteral("selection"))!=1 ||
+       selectionSaved.last().toMap().value(QStringLiteral("edge"))!=oldSide.value(QStringLiteral("edge")))return 30;
     // Toolbar removal must notify the workspace so the standalone Layers
     // launcher can return immediately, and adding Layers must hide it again.
     auto migrated=local.value(group(portraitId)+QStringLiteral("toolbars")).toList();

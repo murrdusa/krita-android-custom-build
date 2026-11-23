@@ -153,6 +153,15 @@ public:
                 }
             }
         });
+        auto *selectionAction=makeAction("Selection");
+        QObject::connect(selectionAction,&QAction::triggered,workspace,[nativeBridge]() {
+            for(const auto &tool:nativeBridge.tools()) {
+                if(tool.id.section(QLatin1Char('/'),-1)==QStringLiteral("KisToolSelectOutline")) {
+                    nativeBridge.selectTool(tool.id);
+                    return;
+                }
+            }
+        });
         auto *transformAction=makeAction("Transform");
         auto *liquifyAction=makeAction("Liquify");
         QObject::connect(transformAction,&QAction::triggered,workspace,[workspace]() {workspace->activateTransform(false);});
@@ -178,6 +187,7 @@ public:
         setStudioIcon(brushesAction,"krita_tool_freehand");
         setStudioIcon(layersAction,"all-layers");
         setStudioIcon(toolsAction,"tools-wizard");
+        setStudioIcon(selectionAction,"tool_outline_selection");
         setStudioIcon(transformAction,"krita_tool_transform");
         setStudioIcon(liquifyAction,"transform_icons_liquify_main");
         setStudioIcon(eraserAction,"draw-eraser");
@@ -488,7 +498,7 @@ public:
             {"paint",brushesAction},{"erase",eraserAction},{"blend",blendBrushAction},
             {"tool-settings",optionsAction},{"color",colorAction},{"layers",layersAction},
             {"eyedropper",eyedropperAction},{"reference-images",referenceAction},
-            {"transform",transformAction},{"liquify",liquifyAction},
+            {"selection",selectionAction},{"transform",transformAction},{"liquify",liquifyAction},
             {"tools",toolsAction},{"undo",undoAction},{"redo",redoAction},{"save",saveAction},
             {"new",newAction},{"open",openAction},
             {"previous-canvas",previousCanvasAction},{"next-canvas",nextCanvasAction},

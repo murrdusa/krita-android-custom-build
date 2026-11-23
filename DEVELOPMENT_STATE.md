@@ -2,6 +2,12 @@
 
 The [feature baseline](FEATURE-BASELINE.md) records user-facing behavior and source paths to preserve across sessions. Continue from latest GitHub `main`, preserving subsequent fixes rather than restoring the older baseline tag wholesale.
 
+## November 23 — remove remaining Android chrome and add Selection
+
+- The activity theme now uses Material.NoActionBar, no window title, fullscreen startup, transparent system-bar colors and edge-to-edge enforcement instead of the previous explicit opt-out. Android 11+ hides system bars with WindowInsetsController and disables decor fitting; older Android keeps immersive sticky flags. The native Qt root is also frameless. This targets the reported remaining gray strip near the camera; actual phone appearance is still unverified.
+- Added a direct **Selection** command using Krita's native lasso tool. It is included in the vertical toolbar preset and added once to existing sidebars without resetting other controls, geometry or the restored top-bar navigation. Users can still customize the button afterward; it is not repeatedly reinserted. Other selection modes remain available in Tools and native context controls.
+- Final local checks and exact-source Android build pending. No APK upload requested.
+
 ## November 22 — finger-paint double tap and camera layout
 
 - Double-tap bindings remain enabled during finger painting. The native shortcut matcher delays a single painting dot during double-tap recognition, consumes both taps for the gesture, and flushes a pending dot before an actual stroke. Deferred dots retain their originating canvas identity; one-finger drag shortcuts remain disabled during touch painting. A small drag threshold prevents tap jitter from starting a brush stroke.

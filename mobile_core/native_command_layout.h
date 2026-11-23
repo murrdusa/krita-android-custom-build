@@ -441,6 +441,32 @@ private:
             saveBars();
             settings.setValue(navigationMigration,true);
         }
+        const QString selectionMigration=MobileWorkspaceProfiles::group(m_profile)+
+            QStringLiteral("selectionToolbarV1");
+        if(m_commands.contains(QStringLiteral("selection")) &&
+           !settings.value(selectionMigration,false).toBool()) {
+            bool present=false;
+            int side=-1;
+            for(int i=0;i<m_bars.size();++i) {
+                present|=m_bars[i].ids.contains(QStringLiteral("selection"));
+                if(side<0 && verticalEdge(m_bars[i].edge))side=i;
+            }
+            if(!present) {
+                if(side<0) {
+                    Bar bar;
+                    bar.name=QObject::tr("Drawing tools");
+                    bar.edge=Left;
+                    bar.colorHistory=false;
+                    m_bars.append(bar);
+                    side=m_bars.size()-1;
+                }
+                auto &ids=m_bars[side].ids;
+                const int transform=ids.indexOf(QStringLiteral("transform"));
+                ids.insert(transform<0?ids.size():transform,QStringLiteral("selection"));
+                saveBars();
+            }
+            settings.setValue(selectionMigration,true);
+        }
         m_bars.first().adaptive=m_builtin;
         rebuild();
         if(m_applyWorkspace)m_applyWorkspace(m_profile,m_portrait);
