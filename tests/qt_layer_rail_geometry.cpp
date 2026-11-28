@@ -62,4 +62,20 @@ int main()
                                                        {right},QSize(80,48));
     if(!smaller.isValid() || smaller.intersects(right) || smaller.height()!=48)
         qFatal("toolbar could not shorten on a crowded viewport");
+    // Growing layer history must stop above the existing sphere instead
+    // of consuming its rectangle. The native list scrolls past this cap.
+    const QRect phone(0,0,400,600),historyRail(324,50,76,550),sphere(236,420,164,164);
+    const QList<QRect> controls{QRect(350,0,44,44),sphere,QRect(50,50,136,40)};
+    for(int content:{80,160,300,3000}) {
+        const auto clipped=expand(historyRail,phone,content,false,false,controls);
+        if(!clipped.isValid() || clipped.top()!=historyRail.top() || clipped.bottom()>=sphere.top()-2 ||
+           clipped.intersects(sphere))qFatal("layer history displaced or overlapped existing controls");
+    }
+    if(expand(historyRail,phone,3000,false,false,controls).height()!=368)
+        qFatal("layer rail did not cap at the first overlapping control");
+    auto withTopSliders=controls;
+    withTopSliders.append(QRect(214,50,136,40));
+    const auto belowSliders=expand(historyRail,phone,3000,false,false,withTopSliders);
+    if(belowSliders.top()!=92 || belowSliders.bottom()>=sphere.top()-2)
+        qFatal("layer list did not leave compact sliders at the top");
 }

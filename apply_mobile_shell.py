@@ -478,6 +478,27 @@ def main(root:Path):
         (own/"mobile_core/lighting_sphere.h").read_text(encoding="utf-8"),encoding="utf-8")
     (root/"libs/ui/idle_fade.h").write_text(
         (own/"mobile_core/idle_fade.h").read_text(encoding="utf-8"),encoding="utf-8")
+    (root/"libs/ui/selection_preview.h").write_text(
+        (own/"mobile_core/selection_preview.h").read_text(encoding="utf-8"),encoding="utf-8")
+    outline_file=root/"libs/ui/tool/KisToolOutlineBase.cpp"
+    outline=one(outline_file.read_text(encoding="utf-8"),'#include "KisToolOutlineBase.h"',
+        '#include "KisToolOutlineBase.h"\n#ifdef Q_OS_ANDROID\n#include "selection_preview.h"\n#endif',
+        "use a QPainter selection preview on Android")
+    outline=one(outline,'        paintToolOutline(&gc, outline);','''#ifdef Q_OS_ANDROID
+        if (m_type == SELECT) MobileSelectionPreview::paint(gc,outline);
+        else
+#endif
+        paintToolOutline(&gc, outline);''',"draw a contrasting live lasso without native GL outline shaders")
+    outline=one(outline,'        updateCanvasPixelRect(updateRect);','''        updateCanvasPixelRect(updateRect);
+#ifdef Q_OS_ANDROID
+        // Repaint the overlay as well as image damage while selection moves.
+        if (m_type == SELECT && canvas()->canvasWidget()) canvas()->canvasWidget()->update();
+#endif''',"refresh the live selection outline during native input")
+    outline=outline.replace('    endShape();','''    endShape();
+#ifdef Q_OS_ANDROID
+    if (m_type == SELECT && canvas()->canvasWidget()) canvas()->canvasWidget()->update();
+#endif''')
+    outline_file.write_text(outline,encoding="utf-8")
     (root/"prepare_android_qt_platform.py").write_text(
         (own/"prepare_android_qt_platform.py").read_text(encoding="utf-8"),encoding="utf-8")
     native_chrome=own/"mobile_core/native_canvas_chrome.h"

@@ -158,9 +158,17 @@ public:
         styleBrushSlider(m_opacity);
         sizeAndOpacity->addWidget(m_opacity,2);
         if(slidersOnly && !toolSettings) {
+            // Keep only the numeric value, units and drag track on the canvas.
+            // Names remain available to accessibility and tooltips.
+            m_size->setPrefix(QString());
+            m_opacity->setPrefix(QString());
+            m_size->setAccessibleName(i18n("Brush size"));
+            m_opacity->setAccessibleName(i18n("Brush opacity"));
+            m_size->setToolTip(i18n("Brush size"));
+            m_opacity->setToolTip(i18n("Brush opacity"));
             setStyleSheet(QStringLiteral(
-                "QFrame#mobileBrushWorkspace{background:rgba(28,31,37,150);"
-                "border:0;border-radius:8px;}"));
+                "QFrame#mobileBrushWorkspace{background:transparent;"
+                "border:0;border-radius:0;}"));
             for(auto *slider:{m_size,m_opacity}) {
                 slider->setButtonSymbols(QAbstractSpinBox::NoButtons);
                 slider->setFixedHeight(36);
@@ -169,7 +177,7 @@ public:
                 colors.setColor(QPalette::Button,QColor(38,46,55,160));
                 slider->setPalette(colors);
                 slider->setStyleSheet(QStringLiteral(
-                    "QAbstractSpinBox{background:transparent;border:0;padding:0 5px;}"));
+                    "QAbstractSpinBox{background:transparent;border:0;padding:0 3px;font-size:11px;}"));
             }
         }
         details->addLayout(sizeAndOpacity);

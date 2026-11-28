@@ -2,6 +2,14 @@
 
 The [feature baseline](FEATURE-BASELINE.md) records user-facing behavior and source paths to preserve across sessions. Continue from latest GitHub `main`, preserving subsequent fixes rather than restoring the older baseline tag wholesale.
 
+## November 28 — compact top sliders, bounded Layers and lasso preview
+
+- Idle opacity now defaults to 50% (existing explicit opacity choices remain respected). The two-toolbar preset also records 50% as its default.
+- Floating Size/Opacity strips default to visible, top-left/top-right positions and 136 px width. They keep only value, units and the drag track, with accessible names/tooltips and the existing touch height. The slider row is placed before Layers so Opacity is not pushed down. Explicit saved positions/visibility remain supported through Edit UI Layout and Workspace Settings.
+- Growing Layers is placed after the sphere and small utility controls. Its native vertical list has a maximum height at the first occupied rectangle and scrolls remaining rows instead of consuming other controls' space.
+- Android lasso feedback uses a contrasting cosmetic QPainter stroke instead of the native GL outline shader. Moves repaint the canvas overlay, and finishing/cancelling clears it. Native selection creation, combinations, undo and final marching-ants decoration remain unchanged.
+- Three Qt regressions under AddressSanitizer pass: preview visibility on dark/light/colored backgrounds and at zoom, growing rail limits against sphere/top sliders, and workspace defaults/toolbar preservation. Final local Android build pending; phone behavior remains unverified. No APK upload requested.
+
 ## November 23 — reliable sphere holds, idle fading, fitted toolbars
 
 - Holding Color opens the lighting sphere and wakes it if already open. Toolbar holds and the sphere handle native finger and pen input directly, tolerate small hold jitter, suppress synthesized mouse replay, and retain ordinary taps and intentional drags. Holding the sphere still opens its lighting/color settings.

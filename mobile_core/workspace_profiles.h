@@ -179,12 +179,19 @@ inline QVariantMap twoToolbarPreset()
     };
     return {
         {QStringLiteral("preferences"),QVariantMap{
+            {QStringLiteral("MobileStudio/idlePanelOpacity"),50},
             {QStringLiteral("MobileStudio/toolbarColorHistory"),false},
             {QStringLiteral("MobileStudio/colorWheelHistory"),false}}},
         {QStringLiteral("layout"),QVariantMap{
             {QStringLiteral("toolbars"),QVariantList{top,left}},
             {QStringLiteral("layersHorizontal"),false},
-            {QStringLiteral("layerCorner"),1}}}
+            {QStringLiteral("layerCorner"),1},
+            {QStringLiteral("showSizeSlider"),true},
+            {QStringLiteral("showOpacitySlider"),true},
+            {QStringLiteral("sizeSliderCorner"),0},
+            {QStringLiteral("opacitySliderCorner"),1},
+            {QStringLiteral("sizeSliderWidth"),136},
+            {QStringLiteral("opacitySliderWidth"),136}}}
     };
 }
 

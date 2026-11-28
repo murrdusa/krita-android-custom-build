@@ -541,10 +541,15 @@ public:
             hideLayerDropPreview();
         }
         if(horizontal) {
+            setMinimumHeight(0);
+            setMaximumHeight(QWIDGETSIZE_MAX);
             setMinimumWidth(0);
             setMaximumWidth(QWIDGETSIZE_MAX);
-        } else if(width()!=geometry.width() || orientationChanged) {
-            setFixedWidth(geometry.width());
+        } else {
+            // Content growth scrolls inside the space left by other controls.
+            setMinimumHeight(0);
+            setMaximumHeight(qMax(0,geometry.height()));
+            if(width()!=geometry.width() || orientationChanged)setFixedWidth(geometry.width());
         }
         setGeometry(geometry);
         updateLayerName();

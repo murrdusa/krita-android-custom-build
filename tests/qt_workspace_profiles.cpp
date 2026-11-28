@@ -90,6 +90,13 @@ int main(int argc,char **argv)
     MobileNativeCommandLayout::Commands commands;
     QStringList defaults;
     const auto factoryLayout=twoToolbarPreset().value(QStringLiteral("layout")).toMap();
+    if(!factoryLayout.value(QStringLiteral("showSizeSlider")).toBool() ||
+       !factoryLayout.value(QStringLiteral("showOpacitySlider")).toBool() ||
+       factoryLayout.value(QStringLiteral("sizeSliderCorner")).toInt()!=0 ||
+       factoryLayout.value(QStringLiteral("opacitySliderCorner")).toInt()!=1 ||
+       factoryLayout.value(QStringLiteral("sizeSliderWidth")).toInt()!=136 ||
+       twoToolbarPreset().value(QStringLiteral("preferences")).toMap().value(
+           QStringLiteral("MobileStudio/idlePanelOpacity")).toInt()!=50)return 36;
     const auto factoryBars=factoryLayout.value(QStringLiteral("toolbars")).toList();
     if(factoryBars.size()!=2)return 16;
     QStringList ids=factoryBars.first().toMap().value(QStringLiteral("commands")).toStringList();
